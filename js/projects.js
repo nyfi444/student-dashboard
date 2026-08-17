@@ -7,9 +7,16 @@ function projectProgress(p) {
 
 function pageProjects() {
   const projects = state.projects.filter(p => !p.courseId || activeCourses().some(c => c.id === p.courseId));
+  const avgProgress = projects.length ? Math.round(projects.reduce((s, p) => s + projectProgress(p), 0) / projects.length) : null;
+  const dueSoon = projects.filter(p => p.dueDate && daysBetween(p.dueDate) >= 0 && daysBetween(p.dueDate) <= 30).length;
   return `
     ${pageHead('Project Hub', `${projects.length} project${projects.length === 1 ? '' : 's'}`, `<button class="btn btn-primary" onclick="openProjectModal()">+ New project</button>`)}
-    ${projects.length ? `<div class="grid grid-2">${projects.map(projectCard).join('')}</div>` : emptyState(icon('folder',26,1.4), 'Break a big assignment into milestones here.', `<button class="btn btn-primary mt-8" onclick="openProjectModal()">+ New project</button>`)}
+    <div class="grid grid-3 mb-16">
+      <div class="stat-card"><div class="num">${projects.length}</div><div class="lbl">Active projects</div></div>
+      <div class="stat-card"><div class="num ${avgProgress == null ? 'stat-dash' : ''}">${avgProgress != null ? avgProgress + '%' : '—'}</div><div class="lbl">Average progress</div></div>
+      <div class="stat-card"><div class="num">${dueSoon}</div><div class="lbl">Due in 30 days</div></div>
+    </div>
+    ${projects.length ? `<div class="grid grid-2">${projects.map(projectCard).join('')}</div>` : emptyState(icon('folder',26,1.4), 'Break a big assignment into milestones here', `<button class="btn btn-primary mt-8" onclick="openProjectModal()">+ New project</button>`, 'Turn a paper, portfolio, or group project into trackable steps.')}
   `;
 }
 function projectCard(p) {

@@ -7,13 +7,21 @@
 function genGroupCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
 
 function pageStudyGroups() {
+  const groups = state.studyGroups;
+  const upcomingSessions = groups.reduce((s, g) => s + g.events.filter(e => e.date >= todayIso()).length, 0);
+  const coursesLinked = new Set(groups.map(g => g.courseId).filter(Boolean)).size;
   return `
     ${pageHead('Study Groups', 'Coordinate sessions with classmates via a shared code', `
       <button class="btn btn-sm" onclick="openJoinGroupModal()">Join with code</button>
       <button class="btn btn-primary" onclick="openGroupModal()">+ New group</button>
     `)}
+    <div class="grid grid-3 mb-16">
+      <div class="stat-card"><div class="num">${groups.length}</div><div class="lbl">Groups</div></div>
+      <div class="stat-card"><div class="num">${upcomingSessions}</div><div class="lbl">Upcoming sessions</div></div>
+      <div class="stat-card"><div class="num">${coursesLinked}</div><div class="lbl">Courses covered</div></div>
+    </div>
     ${!fbConfigured() ? `<div class="small mb-16" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px">Cross-device sharing needs sync set up (Settings → Account). Groups still work on this device.</div>` : ''}
-    ${state.studyGroups.length ? `<div class="grid grid-3">${state.studyGroups.map(groupCard).join('')}</div>` : emptyState(icon('users',26,1.4), 'No study groups yet.')}
+    ${groups.length ? `<div class="grid grid-3">${groups.map(groupCard).join('')}</div>` : emptyState(icon('users',26,1.4), 'No study groups yet', '', 'Start one and share the code with classmates, or join a group someone else made.')}
   `;
 }
 function groupCard(g) {

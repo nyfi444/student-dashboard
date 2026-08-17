@@ -23,6 +23,17 @@ const ACCENTS = [
 const COURSE_COLORS = ['#7c6fd6', '#d6577f', '#e0785a', '#d69a3a', '#5f9a72', '#3f9c9c', '#4d8fd6', '#9c4fa8'];
 const ASSIGNMENT_TYPES = ['assignment', 'reading', 'discussion', 'quiz', 'exam', 'project', 'paper', 'lab'];
 
+/* Mood presets — swap the full accent pairing (primary + secondary) at once so
+   the app's emotional temperature changes coherently, not just one hue. Type,
+   the signature corner shape, and layout stay identical across all three —
+   customization changes the mood, not the design quality. Champagne (the rare
+   metallic highlight) stays constant across every mood by design. */
+const MOOD_PRESETS = [
+  { id: 'bloom', name: 'Bloom', desc: 'Rose & lavender — the default', accent: '#e7afc7', secondary: '#c3aee8' },
+  { id: 'dusk', name: 'Dusk', desc: 'Slate & silver, cool and quiet', accent: '#4c5b73', secondary: '#b7c0cc' },
+  { id: 'sage', name: 'Sage', desc: 'Sage green & warm terracotta', accent: '#8ca888', secondary: '#d98b6b' },
+];
+
 function seedData() {
   const semId = uid();
   const c1 = uid(), c2 = uid(), c3 = uid();
@@ -35,7 +46,9 @@ function seedData() {
     todoFilter: 'all',
     notebookSelected: null,
     settings: {
-      accent: '#7c6fd6',
+      mood: 'bloom',
+      accent: '#e7afc7',
+      secondaryAccent: '#c3aee8',
       dark: false,
       background: { type: 'gradient', color1: '#fef6f8', color2: '#eef4ff', angle: 135 },
       gradeScale: '4.0',

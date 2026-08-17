@@ -11,9 +11,17 @@ function pageTimer() {
 
   const stats = weeklyStatsByCourse();
   const recent = [...state.timerSessions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
+  const weekSessions = state.timerSessions.filter(s => s.date >= startOfWeek(todayIso()));
+  const weekTotal = weekSessions.reduce((s, x) => s + x.minutes, 0);
+  const avgSession = weekSessions.length ? Math.round(weekTotal / weekSessions.length) : null;
 
   return `
     ${pageHead('Study Timer', 'Track focus time and see where it goes')}
+    <div class="grid grid-3 mb-16">
+      <div class="stat-card"><div class="num">${fmtDuration(weekTotal)}</div><div class="lbl">This week</div></div>
+      <div class="stat-card"><div class="num">${weekSessions.length}</div><div class="lbl">Sessions this week</div></div>
+      <div class="stat-card"><div class="num ${avgSession == null ? 'stat-dash' : ''}">${avgSession != null ? fmtDuration(avgSession) : '—'}</div><div class="lbl">Average session</div></div>
+    </div>
     <div class="grid grid-2" style="align-items:start">
       <div class="card card-pad" style="text-align:center">
         <div class="segmented mb-16"><button class="${t.mode === 'pomodoro' ? 'active' : ''}" onclick="setTimerMode('pomodoro')">Pomodoro</button><button class="${t.mode === 'stopwatch' ? 'active' : ''}" onclick="setTimerMode('stopwatch')">Stopwatch</button></div>

@@ -4,14 +4,21 @@ function pageTodos() {
   const visible = state.todos.filter(t => filter === 'all' || (filter === 'none' ? t.courseId === null : t.courseId === filter));
   const groups = filter === 'all' ? groupTodosByCourse(visible) : [{ courseId: filter === 'none' ? null : filter, items: visible }];
   const openCount = state.todos.filter(t => !t.done).length;
+  const dueToday = state.todos.filter(t => !t.done && t.dueDate === todayIso()).length;
+  const overdueCount = state.todos.filter(t => !t.done && t.dueDate && t.dueDate < todayIso()).length;
 
   return `
     ${pageHead('To-Do List', `${openCount} open task${openCount === 1 ? '' : 's'}`, `
       <button class="btn btn-primary" onclick="openTodoModal()">+ Add to-do</button>
     `)}
+    <div class="grid grid-3 mb-16">
+      <div class="stat-card"><div class="num">${dueToday}</div><div class="lbl">Due today</div></div>
+      <div class="stat-card"><div class="num" style="color:${overdueCount ? 'var(--danger)' : 'inherit'}">${overdueCount}</div><div class="lbl">Overdue</div></div>
+      <div class="stat-card"><div class="num">${openCount}</div><div class="lbl">Open tasks</div></div>
+    </div>
     <div class="flex-gap wrap mb-16">
-      <button class="pill" style="background:${filter === 'all' ? 'var(--accent)' : 'var(--surface-2)'};color:${filter === 'all' ? '#fff' : 'var(--text-dim)'};border:1px solid var(--border);cursor:pointer" onclick="setState({todoFilter:'all'})">All courses</button>
-      ${activeCourses().map(c => `<button class="pill" style="background:${filter === c.id ? c.color : 'var(--surface-2)'};color:${filter === c.id ? '#fff' : 'var(--text-dim)'};border:1px solid var(--border);cursor:pointer" onclick="setState({todoFilter:'${c.id}'})">${esc(c.name)}</button>`).join('')}
+      <button class="pill" style="background:${filter === 'all' ? 'var(--accent)' : 'var(--surface-2)'};color:${filter === 'all' ? 'var(--accent-text)' : 'var(--text-dim)'};border:1px solid var(--border);cursor:pointer" onclick="setState({todoFilter:'all'})">All courses</button>
+      ${activeCourses().map(c => `<button class="pill" style="background:${filter === c.id ? c.color : 'var(--surface-2)'};color:${filter === c.id ? readableTextOn(c.color) : 'var(--text-dim)'};border:1px solid var(--border);cursor:pointer" onclick="setState({todoFilter:'${c.id}'})">${esc(c.name)}</button>`).join('')}
       <button class="pill" style="background:${filter === 'none' ? 'var(--text-dim)' : 'var(--surface-2)'};color:${filter === 'none' ? '#fff' : 'var(--text-dim)'};border:1px solid var(--border);cursor:pointer" onclick="setState({todoFilter:'none'})">General</button>
     </div>
 
@@ -20,9 +27,9 @@ function pageTodos() {
         <div class="flex-between mb-8">
           <div class="flex-gap">${g.courseId ? `<span class="pill-dot" style="background:${getCourseColor(g.courseId)}"></span><strong>${esc(getCourse(g.courseId)?.name || '')}</strong>` : '<strong>General</strong>'}</div>
         </div>
-        ${g.items.length ? g.items.sort(sortTodos).map(todoRow).join('') : emptyState(icon('check-square',26,1.4), 'Nothing here.')}
+        ${g.items.length ? g.items.sort(sortTodos).map(todoRow).join('') : emptyState(icon('check-square',22,1.4), 'All clear here.')}
       </div>
-    `).join('') : emptyState(icon('check-square',26,1.4), 'No to-dos yet.')}
+    `).join('') : emptyState(icon('check-square',26,1.4), 'Nothing on your list yet', `<button class="btn btn-primary mt-8" onclick="openTodoModal()">+ Add to-do</button>`)}
 
     <div class="card card-pad">
       <div class="flex-between mb-8"><h3 style="font-size:14.5px">Recurring templates</h3><button class="btn btn-sm" onclick="openRecurringModal()">+ New template</button></div>
@@ -32,7 +39,7 @@ function pageTodos() {
           ${rt.courseId ? courseChip(rt.courseId) : ''}
           <button class="btn btn-ghost btn-icon btn-sm" onclick="deleteRecurringTemplate('${rt.id}')">${icon('trash',14)}</button>
         </div>
-      `).join('') : `<div class="small muted">Set up weekly readings or discussion posts to auto-add each week.</div>`}
+      `).join('') : emptyState(icon('refresh-cw',20,1.4), 'No recurring templates yet', '', 'Set up weekly readings or discussion posts and they’ll auto-add each week.')}
     </div>
   `;
 }

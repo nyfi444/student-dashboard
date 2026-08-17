@@ -17,9 +17,19 @@ function pageSettings() {
     ${pageHead('Settings', 'Customize your planner')}
     <div class="grid grid-2" style="align-items:start">
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Appearance</h3>
-        <div class="field"><label>Accent color</label>
-          <div class="swatch-grid">${ACCENTS.map(a => `<div class="swatch ${a.hex === state.settings.accent ? 'active' : ''}" style="background:${a.hex}" title="${a.name}" onclick="setAccent('${a.hex}')">${a.hex === state.settings.accent ? checkGlyph(true) : ''}</div>`).join('')}</div>
+        <h3 style="font-size:15px" class="mb-8">Mood</h3>
+        <p class="small muted mb-8">Sets the whole accent pairing at once — type and layout stay the same in every mood.</p>
+        <div class="flex-gap wrap">
+          ${MOOD_PRESETS.map(m => `
+            <div class="card card-pad ${state.settings.mood === m.id ? '' : ''}" style="cursor:pointer;flex:1;min-width:140px;${state.settings.mood === m.id ? `box-shadow:0 0 0 2px ${m.accent}` : ''}" onclick="setMood('${m.id}')">
+              <div class="flex-gap mb-8">
+                <span style="width:16px;height:16px;border-radius:50%;background:${m.accent};flex-shrink:0;box-shadow:0 0 0 2px var(--surface), 0 0 0 3px ${m.secondary}"></span>
+                <strong style="font-size:13px">${m.name}</strong>
+                ${state.settings.mood === m.id ? `<span style="margin-left:auto">${checkGlyph(true)}</span>` : ''}
+              </div>
+              <div class="small muted">${m.desc}</div>
+            </div>
+          `).join('')}
         </div>
         <div class="checkbox-row mt-16"><input type="checkbox" id="st-dark" ${state.settings.dark ? 'checked' : ''} onchange="toggleDark(this.checked)"><label for="st-dark">Dark mode</label></div>
         <div class="field mt-16"><label>Display name</label><input class="input" value="${esc(state.settings.displayName)}" oninput="state.settings.displayName=this.value" onchange="touch()"></div>
@@ -82,8 +92,12 @@ function pageSettings() {
     </div>
   `;
 }
-function setAccent(hex) {
-  state.settings.accent = hex;
+function setMood(id) {
+  const m = MOOD_PRESETS.find(x => x.id === id);
+  if (!m) return;
+  state.settings.mood = id;
+  state.settings.accent = m.accent;
+  state.settings.secondaryAccent = m.secondary;
   applyTheme();
   touch();
 }
@@ -93,6 +107,8 @@ function applyTheme() {
   document.documentElement.style.setProperty('--accent', state.settings.accent);
   document.documentElement.style.setProperty('--accent-light', lighten(state.settings.accent, state.settings.dark ? -60 : 150));
   document.documentElement.style.setProperty('--accent-dark', lighten(state.settings.accent, -30));
+  document.documentElement.style.setProperty('--accent-text', readableTextOn(state.settings.accent));
+  document.documentElement.style.setProperty('--wisteria', state.settings.secondaryAccent || '#c3aee8');
   if (state.settings.dark) document.documentElement.style.removeProperty('--bg');
   else document.documentElement.style.setProperty('--bg', bgCssValue(state.settings.background));
 }

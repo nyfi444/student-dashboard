@@ -3,12 +3,19 @@ const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function pageCourses() {
   const courses = activeCourses();
+  const credits = courses.reduce((s, c) => s + (c.credits || 0), 0);
+  const gpa = computeGPA();
   return `
     ${pageHead('Courses', `${courses.length} course${courses.length === 1 ? '' : 's'} this semester`, `
       ${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}
       <button class="btn btn-primary" onclick="openCourseModal()">+ Add course</button>
     `)}
-    ${courses.length ? `<div class="grid grid-3">${courses.map(courseCard).join('')}</div>` : emptyState(icon('graduation-cap',26,1.4), 'No courses yet — add one or upload a syllabus.', `<button class="btn btn-primary mt-8" onclick="openCourseModal()">+ Add course</button>`)}
+    <div class="grid grid-3 mb-16">
+      <div class="stat-card"><div class="num">${courses.length}</div><div class="lbl">Active courses</div></div>
+      <div class="stat-card"><div class="num">${credits}</div><div class="lbl">Total credits</div></div>
+      <div class="stat-card"><div class="num ${gpa == null ? 'stat-dash' : ''}">${gpa != null ? gpa.toFixed(2) : '—'}</div><div class="lbl">Semester GPA</div></div>
+    </div>
+    ${courses.length ? `<div class="grid grid-3">${courses.map(courseCard).join('')}</div>` : emptyState(icon('graduation-cap',26,1.4), 'Your courses will live here', `<button class="btn btn-primary mt-8" onclick="openCourseModal()">+ Add course</button>`, 'Add one by hand or upload a syllabus and let AI fill in the schedule and grading breakdown.')}
   `;
 }
 

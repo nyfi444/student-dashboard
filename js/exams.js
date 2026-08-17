@@ -5,11 +5,17 @@ function pageExams() {
     .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
   const upcoming = exams.filter(e => daysBetween(e.dueDate) >= 0);
   const past = exams.filter(e => daysBetween(e.dueDate) < 0);
+  const thisMonth = upcoming.filter(e => daysBetween(e.dueDate) <= 30).length;
 
   return `
     ${pageHead('Exam Tracker', `${upcoming.length} upcoming`, `<button class="btn btn-primary" onclick="openAssignmentModal(null);setTimeout(()=>{if($('#af-type'))$('#af-type').value='exam'},0)">+ Add exam</button>`)}
     <div class="grid grid-3 mb-16">
-      ${upcoming.length ? upcoming.map(examCard).join('') : `<div style="grid-column:1/-1">${emptyState(icon('check-square',26,1.4), 'No exams on the horizon.')}</div>`}
+      <div class="stat-card"><div class="num">${upcoming.length}</div><div class="lbl">Upcoming</div></div>
+      <div class="stat-card"><div class="num">${thisMonth}</div><div class="lbl">In the next 30 days</div></div>
+      <div class="stat-card"><div class="num">${past.length}</div><div class="lbl">Completed</div></div>
+    </div>
+    <div class="grid grid-3 mb-16">
+      ${upcoming.length ? upcoming.map(examCard).join('') : `<div style="grid-column:1/-1">${emptyState(icon('flag',26,1.4), 'Nothing on the horizon', '', 'Add your first exam and its countdown will show up here.')}</div>`}
     </div>
     ${past.length ? `<h3 style="font-size:15px" class="mb-8 muted">Past exams</h3><div class="card">${past.map(e => `
       <div class="list-row" style="border-bottom:1px solid var(--border)" onclick="openAssignmentModal('${e.id}')">
@@ -27,7 +33,7 @@ function examCard(e) {
       ${courseChip(e.courseId)}
       <div style="font-weight:700;margin-top:8px">${esc(e.title)}</div>
       <div class="small muted">${fmtDateLong(e.dueDate)}${e.dueTime ? ' · ' + fmtTime(e.dueTime) : ''}</div>
-      <div style="font-family:var(--font-serif);font-size:30px;font-weight:600;margin-top:10px;color:${urgent ? 'var(--danger)' : 'var(--text)'}">${d === 0 ? 'Today' : d + 'd'}</div>
+      <div style="font-family:var(--font-serif);font-style:italic;font-size:32px;margin-top:10px;color:${urgent ? 'var(--danger)' : 'var(--text)'}">${d === 0 ? 'Today' : d + 'd'}</div>
       ${e.notes ? `<div class="small muted mt-8">${esc(e.notes)}</div>` : ''}
     </div>
   `;

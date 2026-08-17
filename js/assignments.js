@@ -4,13 +4,21 @@ const STATUS_LABELS = { 'not-started': 'Not started', 'in-progress': 'In progres
 function pageAssignments() {
   const courseFilter = state._assignCourseFilter || 'all';
   const statusFilter = state._assignStatusFilter || 'all';
-  let items = state.assignments.filter(a => activeCourses().some(c => c.id === a.courseId) || !a.courseId);
+  const all = state.assignments.filter(a => activeCourses().some(c => c.id === a.courseId) || !a.courseId);
+  let items = all;
   if (courseFilter !== 'all') items = items.filter(a => a.courseId === courseFilter);
   if (statusFilter !== 'all') items = items.filter(a => a.status === statusFilter);
   items = items.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+  const counts = { 'not-started': 0, 'in-progress': 0, 'done': 0 };
+  all.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
 
   return `
-    ${pageHead('Assignment Tracker', `${items.length} assignment${items.length === 1 ? '' : 's'}`, `<button class="btn btn-primary" onclick="openAssignmentModal()">+ Add assignment</button>`)}
+    ${pageHead('Assignment Tracker', `${all.length} assignment${all.length === 1 ? '' : 's'}`, `<button class="btn btn-primary" onclick="openAssignmentModal()">+ Add assignment</button>`)}
+    <div class="grid grid-3 mb-16">
+      <div class="stat-card"><div class="num">${counts['not-started']}</div><div class="lbl">Not started</div></div>
+      <div class="stat-card"><div class="num">${counts['in-progress']}</div><div class="lbl">In progress</div></div>
+      <div class="stat-card"><div class="num">${counts['done']}</div><div class="lbl">Done</div></div>
+    </div>
     <div class="flex-gap wrap mb-16">
       <select class="select" style="max-width:200px" onchange="state._assignCourseFilter=this.value;touch()">
         <option value="all">All courses</option>${activeCourses().map(c => `<option value="${c.id}" ${courseFilter === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}

@@ -58,7 +58,7 @@ function pageHead(title, sub, actionsHtml = '') {
   return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions">${actionsHtml}</div></div>`;
 }
 function aiButton(label, onclick, id) {
-  return `<button class="btn btn-sm" ${id ? `id="${id}"` : ''} onclick="${onclick}" style="background:linear-gradient(120deg,var(--accent),var(--accent-dark));color:#fff;border:none">${icon('sparkles', 13, 1.5)} ${esc(label)}</button>`;
+  return `<button class="btn btn-sm" ${id ? `id="${id}"` : ''} onclick="${onclick}" style="background:var(--champagne);color:var(--ink);border:none">${icon('sparkles', 13, 1.5)} ${esc(label)}</button>`;
 }
 function setBtnLoading(btn, loading, labelWhenDone) {
   if (!btn) return;

@@ -44,7 +44,7 @@ function pageGrades() {
       </div>
     `)}
     <div class="grid grid-3 mb-16">
-      <div class="stat-card"><div class="num ${gpa != null ? 'num-hero' : 'stat-dash'}">${gpa != null ? gpa.toFixed(2) : '—'}</div><div class="lbl">${gpa != null ? 'Semester GPA' : 'Add a grade to see your GPA'}</div></div>
+      <div class="stat-card"><div class="num ${gpa == null ? 'stat-dash' : ''}">${gpa != null ? gpa.toFixed(2) : '—'}</div><div class="lbl">${gpa != null ? 'Semester GPA' : 'Add a grade to see your GPA'}</div></div>
       <div class="stat-card"><div class="num">${activeCourses().reduce((s, c) => s + (c.credits || 0), 0)}</div><div class="lbl">Total credits</div></div>
       <div class="stat-card"><div class="num">${activeCourses().length}</div><div class="lbl">Courses</div></div>
     </div>
@@ -62,7 +62,7 @@ function gradeCourseCard(c) {
       <div class="flex-between">
         <div><div style="font-weight:700">${esc(c.name)}</div><div class="small muted">${c.credits || 0} credits</div></div>
         ${display
-          ? `<div style="font-family:var(--font-serif);font-size:22px;font-weight:600;color:${c.color}">${display}</div>`
+          ? `<div style="font-family:var(--font-serif);font-style:italic;font-size:24px;color:${c.color}">${display}</div>`
           : `<div class="small stat-dash" style="font-style:italic">No grades yet</div>`}
       </div>
       <div class="divider"></div>

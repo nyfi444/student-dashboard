@@ -1,12 +1,19 @@
 /* ── Study Tools: flashcard decks + AI study guide/flashcard gen ──── */
 function pageStudyTools() {
   const decks = state.decks.filter(d => !d.courseId || activeCourses().some(c => c.id === d.courseId));
+  const totalCards = decks.reduce((s, d) => s + d.cards.length, 0);
+  const coursesLinked = new Set(decks.map(d => d.courseId).filter(Boolean)).size;
   return `
     ${pageHead('Study Tools', 'Flashcards and AI-assisted studying', `
       ${aiButton('Generate from notes', 'openAiGenerateModal()')}
       <button class="btn btn-primary" onclick="openDeckModal()">+ New deck</button>
     `)}
-    ${decks.length ? `<div class="grid grid-3">${decks.map(deckCard).join('')}</div>` : emptyState(icon('layers',26,1.4), 'No flashcard decks yet.', `<button class="btn btn-primary mt-8" onclick="openDeckModal()">+ New deck</button>`)}
+    <div class="grid grid-3 mb-16">
+      <div class="stat-card"><div class="num">${decks.length}</div><div class="lbl">Decks</div></div>
+      <div class="stat-card"><div class="num">${totalCards}</div><div class="lbl">Total cards</div></div>
+      <div class="stat-card"><div class="num">${coursesLinked}</div><div class="lbl">Courses covered</div></div>
+    </div>
+    ${decks.length ? `<div class="grid grid-3">${decks.map(deckCard).join('')}</div>` : emptyState(icon('layers',26,1.4), 'No flashcard decks yet', `<button class="btn btn-primary mt-8" onclick="openDeckModal()">+ New deck</button>`, 'Build one by hand, or generate cards from your notes with AI.')}
   `;
 }
 function deckCard(d) {

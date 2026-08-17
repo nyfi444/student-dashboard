@@ -59,7 +59,7 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 function readableTextOn(hex) {
   const c = hex.replace('#', '');
   const r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? '#241f38' : '#ffffff';
+  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? '#241b2e' : '#ffffff';
 }
 function lighten(hex, amt) {
   const c = hex.replace('#', '');
