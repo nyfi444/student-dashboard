@@ -93,7 +93,8 @@ function applyTheme() {
   document.documentElement.style.setProperty('--accent', state.settings.accent);
   document.documentElement.style.setProperty('--accent-light', lighten(state.settings.accent, state.settings.dark ? -60 : 150));
   document.documentElement.style.setProperty('--accent-dark', lighten(state.settings.accent, -30));
-  document.documentElement.style.setProperty('--bg', bgCssValue(state.settings.background));
+  if (state.settings.dark) document.documentElement.style.removeProperty('--bg');
+  else document.documentElement.style.setProperty('--bg', bgCssValue(state.settings.background));
 }
 
 function setBackgroundPreset(i) {

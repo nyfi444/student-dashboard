@@ -51,8 +51,8 @@ function priorityDot(p) {
   const cls = { high: 'priority-high', medium: 'priority-med', low: 'priority-low' }[p] || 'priority-med';
   return `<span class="${cls}" title="${p} priority">●</span>`;
 }
-function emptyState(icon, text, actionHtml = '') {
-  return `<div class="empty"><div class="ic">${icon}</div><p>${esc(text)}</p>${actionHtml}</div>`;
+function emptyState(icon, text, actionHtml = '', sub = '') {
+  return `<div class="empty"><div class="ic">${icon}</div><p>${esc(text)}</p>${sub ? `<div class="empty-sub">${esc(sub)}</div>` : ''}${actionHtml}</div>`;
 }
 function pageHead(title, sub, actionsHtml = '') {
   return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions">${actionsHtml}</div></div>`;

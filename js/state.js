@@ -37,7 +37,7 @@ function seedData() {
     settings: {
       accent: '#7c6fd6',
       dark: false,
-      background: { type: 'solid', color1: '#ffffff', color2: '#eef0fb', angle: 135 },
+      background: { type: 'gradient', color1: '#fef6f8', color2: '#eef4ff', angle: 135 },
       gradeScale: '4.0',
       weekStartsMonday: true,
       aiApiKey: '',

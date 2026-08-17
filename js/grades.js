@@ -44,24 +44,26 @@ function pageGrades() {
       </div>
     `)}
     <div class="grid grid-3 mb-16">
-      <div class="stat-card"><div class="num">${gpa != null ? gpa.toFixed(2) : '—'}</div><div class="lbl">Semester GPA</div></div>
+      <div class="stat-card"><div class="num ${gpa != null ? 'num-hero' : 'stat-dash'}">${gpa != null ? gpa.toFixed(2) : '—'}</div><div class="lbl">${gpa != null ? 'Semester GPA' : 'Add a grade to see your GPA'}</div></div>
       <div class="stat-card"><div class="num">${activeCourses().reduce((s, c) => s + (c.credits || 0), 0)}</div><div class="lbl">Total credits</div></div>
       <div class="stat-card"><div class="num">${activeCourses().length}</div><div class="lbl">Courses</div></div>
     </div>
     <div class="grid grid-2">
-      ${activeCourses().map(gradeCourseCard).join('') || emptyState(icon('target',26,1.4), 'Add a course to start tracking grades.')}
+      ${activeCourses().map(gradeCourseCard).join('') || emptyState(icon('target',26,1.4), 'No courses yet', '', 'Add a course and log a few grades — your GPA will show up here automatically.')}
     </div>
   `;
 }
 function setGradeScale(s) { state.settings.gradeScale = s; touch(); }
 function gradeCourseCard(c) {
   const g = computeCourseGrade(c);
-  const display = g.pct == null ? '—' : state.settings.gradeScale === '4.0' ? letterFor(g.pct).letter + ` (${letterFor(g.pct).points.toFixed(1)})` : g.pct.toFixed(1) + '%';
+  const display = g.pct == null ? null : state.settings.gradeScale === '4.0' ? letterFor(g.pct).letter + ` (${letterFor(g.pct).points.toFixed(1)})` : g.pct.toFixed(1) + '%';
   return `
     <div class="card card-pad">
       <div class="flex-between">
         <div><div style="font-weight:700">${esc(c.name)}</div><div class="small muted">${c.credits || 0} credits</div></div>
-        <div style="font-family:var(--font-serif);font-size:22px;font-weight:600;color:${c.color}">${display}</div>
+        ${display
+          ? `<div style="font-family:var(--font-serif);font-size:22px;font-weight:600;color:${c.color}">${display}</div>`
+          : `<div class="small stat-dash" style="font-style:italic">No grades yet</div>`}
       </div>
       <div class="divider"></div>
       ${g.breakdown.map(b => `
