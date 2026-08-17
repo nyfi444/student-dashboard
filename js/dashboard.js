@@ -10,7 +10,6 @@ function pageDashboard() {
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   const overdue = state.assignments.filter(a => activeCourses().some(c => c.id === a.courseId) && a.status !== 'done' && a.dueDate < todayIso());
 
-  const gpa = computeGPA();
   const upcomingExams = state.assignments
     .filter(a => a.type === 'exam' && activeCourses().some(c => c.id === a.courseId) && daysBetween(a.dueDate) >= 0 && daysBetween(a.dueDate) <= 21)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 3);
@@ -30,8 +29,7 @@ function pageDashboard() {
   return `
     ${pageHead(`${greeting}${name}`, fmtDateLong(todayIso()))}
 
-    <div class="grid grid-4 mb-16">
-      <div class="stat-card"><div class="flex-between"><div class="num ${gpa == null ? 'stat-dash' : ''}">${gpa != null ? gpa.toFixed(2) : '—'}</div>${icon('target', 15)}</div><div class="lbl">${gpa != null ? 'Current GPA' : 'Add a grade to see your GPA'}</div></div>
+    <div class="grid grid-3 mb-16">
       <div class="stat-card"><div class="flex-between"><div class="num">${dueThisWeek.length}</div>${icon('clipboard-list', 15)}</div><div class="lbl">Due this week</div></div>
       <div class="stat-card"><div class="flex-between"><div class="num" style="color:${overdue.length ? 'var(--danger)' : 'inherit'}">${overdue.length}</div>${icon('file-text', 15)}</div><div class="lbl">Overdue</div></div>
       <div class="stat-card"><div class="flex-between"><div class="num">${fmtDuration(weekMinutes)}</div>${icon('timer', 15)}</div><div class="lbl">Study time this week</div></div>
