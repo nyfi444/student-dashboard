@@ -68,3 +68,12 @@ function lighten(hex, amt) {
   const b = clamp(parseInt(c.substr(4, 2), 16) + amt, 0, 255);
   return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
 }
+/* Blends toward white by a fraction (0-1) — unlike lighten()'s flat channel
+   add, this never clips to pure white for colors that are already light
+   (e.g. the Petal/Sage accents), so tinted badges/pills stay visibly tinted. */
+function tint(hex, pct) {
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+  const mix = (ch) => Math.round(ch + (255 - ch) * pct);
+  return '#' + [mix(r), mix(g), mix(b)].map(v => v.toString(16).padStart(2, '0')).join('');
+}

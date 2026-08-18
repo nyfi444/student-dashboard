@@ -31,6 +31,7 @@ const ICON_PATHS = {
   'chevron-right': '<path d="M9 5.5 16 12l-7 6.5"/>',
   'cloud-sun': '<circle cx="8" cy="7.5" r="2.7"/><path d="M8 2.5v1.3M4 5.4l.9.9M12 5.4l-.9.9"/><path d="M8.5 20h8a3.5 3.5 0 0 0 .6-6.95A5 5 0 0 0 8 12.2"/>',
   flag: '<path d="M6 21V4"/><path d="M6 4.5c1.6-1 3.4-1 5 0s3.4 1 5 0v9c-1.6 1-3.4 1-5 0s-3.4-1-5 0Z"/>',
+  'panel-left': '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/>',
   play: '<path d="M6.5 4.5v15l13-7.5Z" fill="currentColor" stroke="none"/>',
   pause: '<rect x="6" y="5" width="4.5" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="4.5" height="14" rx="1" fill="currentColor" stroke="none"/>',
 };

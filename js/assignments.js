@@ -13,7 +13,10 @@ function pageAssignments() {
   all.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
 
   return `
-    ${pageHead('Assignment Tracker', `${all.length} assignment${all.length === 1 ? '' : 's'}`, `<button class="btn btn-primary" onclick="openAssignmentModal()">+ Add assignment</button>`)}
+    ${pageHead('Assignment Tracker', `${all.length} assignment${all.length === 1 ? '' : 's'}`, `
+      ${aiButton('Upload PDF', 'openAssignmentUploadModal()')}
+      <button class="btn btn-primary" onclick="openAssignmentModal()">+ Add assignment</button>
+    `)}
     <div class="grid grid-3 mb-16">
       <div class="stat-card"><div class="num">${counts['not-started']}</div><div class="lbl">Not started</div></div>
       <div class="stat-card"><div class="num">${counts['in-progress']}</div><div class="lbl">In progress</div></div>
@@ -118,4 +121,123 @@ function saveAssignmentModal(id) {
 }
 function deleteAssignment(id) {
   confirmDialog('Delete this assignment?', () => { state.assignments = state.assignments.filter(a => a.id !== id); touch(); closeModal(); });
+}
+
+/* ── Bulk upload assignments from a PDF/photo/pasted syllabus ──── */
+function openAssignmentUploadModal() {
+  if (!activeCourses().length) { toast('Add a course first so uploaded assignments have somewhere to go', 'error'); return; }
+  openModal(`
+    <div class="modal-head"><h3>Upload assignments <span class="ai-badge">AI</span></h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-body">
+      ${!hasAiKey() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">Add a Claude API key in Settings → AI first.</div>` : ''}
+      <div class="small muted mb-8">Upload a syllabus or assignment sheet to bulk-add deadlines to an existing course, instead of typing each one in by hand.</div>
+      <div class="segmented mb-8" id="au-tabs">
+        <button class="active" onclick="auTab('paste')" data-tab="paste">Paste text</button>
+        <button onclick="auTab('pdf')" data-tab="pdf">Upload PDF</button>
+        <button onclick="auTab('image')" data-tab="image">Upload photo</button>
+      </div>
+      <div id="au-paste">
+        <textarea class="input" id="au-text" placeholder="Paste an assignment list or syllabus text here…" style="min-height:160px"></textarea>
+      </div>
+      <div id="au-pdf" style="display:none">
+        <div class="upload-drop" onclick="$('#au-pdf-input').click()">
+          <div class="small">Click to choose a PDF</div>
+          <input type="file" id="au-pdf-input" accept="application/pdf" style="display:none" onchange="handleAssignUploadPdf(this.files[0])">
+        </div>
+        <div class="small muted mt-8" id="au-pdf-status"></div>
+      </div>
+      <div id="au-image" style="display:none">
+        <div class="upload-drop" onclick="$('#au-image-input').click()">
+          <div class="small">Click to choose a photo</div>
+          <input type="file" id="au-image-input" accept="image/*" style="display:none" onchange="handleAssignUploadImage(this.files[0])">
+        </div>
+        <div class="small muted mt-8" id="au-image-status"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="au-parse-btn" onclick="runAssignmentParse()" ${hasAiKey() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Parse with AI</button>
+    </div>
+  `, { wide: true });
+  window._auImage = null;
+}
+function auTab(tab) {
+  ['paste', 'pdf', 'image'].forEach(t => { $(`#au-${t}`).style.display = t === tab ? '' : 'none'; });
+  $$('#au-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  window._auActiveTab = tab;
+}
+window._auActiveTab = 'paste';
+async function handleAssignUploadPdf(file) {
+  if (!file) return;
+  $('#au-pdf-status').textContent = 'Reading PDF…';
+  try {
+    const text = await extractPdfText(file);
+    $('#au-text').value = text;
+    $('#au-pdf-status').textContent = `Extracted ${text.length.toLocaleString()} characters.`;
+    auTab('paste');
+  } catch (e) { $('#au-pdf-status').textContent = 'Could not read that PDF.'; }
+}
+async function handleAssignUploadImage(file) {
+  if (!file) return;
+  $('#au-image-status').textContent = 'Loaded — ready to parse.';
+  window._auImage = { base64: await fileToBase64(file), mediaType: file.type || 'image/jpeg' };
+}
+async function runAssignmentParse() {
+  const btn = $('#au-parse-btn');
+  setBtnLoading(btn, true);
+  try {
+    let list;
+    if (window._auActiveTab === 'image' && window._auImage) {
+      list = await aiParseAssignments({ imageBase64: window._auImage.base64, mediaType: window._auImage.mediaType });
+    } else {
+      const text = $('#au-text').value.trim();
+      if (!text) { toast('Paste or upload something first', 'error'); setBtnLoading(btn, false); return; }
+      list = await aiParseAssignments({ text });
+    }
+    closeModal();
+    openAssignmentReviewModal(list);
+  } catch (e) {
+    toast(e.message || 'Could not parse that document', 'error', 4000);
+  } finally { setBtnLoading(btn, false); }
+}
+function openAssignmentReviewModal(list) {
+  window._auParsed = (list || []).map(a => ({ ...a, _include: true, id: uid() }));
+  window._auCourseId = activeCourses()[0]?.id || null;
+  renderAssignmentReviewModal();
+}
+function renderAssignmentReviewModal() {
+  openModal(`
+    <div class="modal-head"><h3>Review & add <span class="ai-badge">AI</span></h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-body">
+      <div class="small muted mb-8">Double-check what the AI pulled out before adding it — edit anything that's off, then pick which course these belong to.</div>
+      <div class="field"><label>Add to course</label><select class="select" id="au-review-course" onchange="window._auCourseId=this.value">${activeCourses().map(c => `<option value="${c.id}" ${c.id === window._auCourseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Assignments found (${window._auParsed.length})</label>
+        <div id="au-review-list" style="max-height:320px;overflow-y:auto">
+          ${window._auParsed.length ? window._auParsed.map((a, i) => `
+            <div class="list-row">
+              <div class="row-check ${a._include ? 'checked' : ''}" onclick="toggleAuAssignment(${i})">${a._include ? checkGlyph(true) : ''}</div>
+              <div class="row-title">${esc(a.title)} ${typeTag(a.type || 'assignment')}</div>
+              <div class="row-meta">${a.dueDate ? fmtDate(a.dueDate) : 'no date'}</div>
+            </div>`).join('') : ''}
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="commitAssignmentUpload()">Add ${window._auParsed.filter(a => a._include).length} assignment${window._auParsed.filter(a => a._include).length === 1 ? '' : 's'}</button>
+    </div>
+  `, { wide: true });
+}
+function toggleAuAssignment(i) { window._auParsed[i]._include = !window._auParsed[i]._include; renderAssignmentReviewModal(); }
+function commitAssignmentUpload() {
+  const courseId = window._auCourseId;
+  const toAdd = (window._auParsed || []).filter(a => a._include && a.title);
+  toAdd.forEach(a => {
+    state.assignments.push({
+      id: uid(), courseId, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
+      dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', category: null, weight: null,
+      maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', recurringTemplateId: null,
+    });
+  });
+  touch(); closeModal(); toast(`Added ${toAdd.length} assignment${toAdd.length === 1 ? '' : 's'}`);
 }

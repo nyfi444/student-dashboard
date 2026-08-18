@@ -13,14 +13,23 @@ const PAGES = {
 
 function render() {
   renderSidebar();
+  document.getElementById('app').classList.toggle('sidebar-collapsed', !!state.settings.sidebarCollapsed);
   const fn = PAGES[state.route] || pageDashboard;
   $('#content').innerHTML = `<div class="fade-in">${fn()}</div>`;
 }
 function bindPage() { /* reserved for pages needing post-render DOM wiring beyond inline handlers */ }
 
+function toggleSidebar() {
+  state.settings.sidebarCollapsed = !state.settings.sidebarCollapsed;
+  touch();
+}
+
 function renderSidebar() {
   $('#sidebar').innerHTML = `
-    <div class="sidebar-brand"><h1>Planner</h1><p>${esc(activeSemesterName())}</p></div>
+    <div class="sidebar-brand">
+      <div><h1>Planner</h1><p>${esc(activeSemesterName())}</p></div>
+      <button class="btn btn-ghost btn-icon btn-sm" onclick="toggleSidebar()" title="Hide sidebar">${icon('panel-left', 16, 1.6)}</button>
+    </div>
     <div style="flex:1;overflow-y:auto">
       ${NAV.map(([label, items]) => `
         <div class="nav-group">
@@ -45,6 +54,7 @@ function initApp() {
   materializeRecurringTodos();
   save();
   bootFirebase();
+  $('.sidebar-expand-fab').innerHTML = icon('panel-left', 16, 1.6);
   render();
 }
 initApp();

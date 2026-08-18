@@ -87,6 +87,18 @@ async function aiParseSyllabus({ text, imageBase64, mediaType }) {
   return extractJson(raw);
 }
 
+const ASSIGNMENTS_SYSTEM = `You extract a list of assignments/deadlines from a document (syllabus, assignment sheet, or course schedule). Reply with ONLY a JSON array (no prose, no markdown fences) of objects matching this shape:
+[{"title": string, "type": "assignment"|"reading"|"discussion"|"quiz"|"exam"|"project"|"paper"|"lab", "dueDate": "YYYY-MM-DD or empty string if unknown", "dueTime": "HH:MM or empty string", "maxPoints": number|null}]
+Infer the current or nearest upcoming year for dates when only month/day is given. Do not invent assignments that aren't mentioned in the document.`;
+
+async function aiParseAssignments({ text, imageBase64, mediaType }) {
+  const userContent = imageBase64
+    ? [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } }, { type: 'text', text: 'Extract the list of assignments/deadlines from this image as specified.' }]
+    : `Here is the document text:\n\n${text.slice(0, 15000)}`;
+  const raw = await callClaude({ system: ASSIGNMENTS_SYSTEM, userContent, maxTokens: 3000 });
+  return extractJson(raw);
+}
+
 async function aiGenerateFlashcards(notesText, count = 10) {
   const system = `You turn study notes into flashcards. Reply with ONLY a JSON array (no prose, no markdown fences) of up to ${count} objects: [{"front": string, "back": string}]. Fronts should be concise questions or terms; backs should be concise answers.`;
   const raw = await callClaude({ system, userContent: `Notes:\n\n${notesText.slice(0, 12000)}`, maxTokens: 2500 });

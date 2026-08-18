@@ -1,14 +1,15 @@
-/* ── To-Do list: grouped by course, filterable, recurring templates ─ */
+/* ── To-Do list: grouped by section, filterable by course, recurring templates ─ */
 function pageTodos() {
   const filter = state.todoFilter;
   const visible = state.todos.filter(t => filter === 'all' || (filter === 'none' ? t.courseId === null : t.courseId === filter));
-  const groups = filter === 'all' ? groupTodosByCourse(visible) : [{ courseId: filter === 'none' ? null : filter, items: visible }];
+  const groups = filter === 'all' ? groupTodosBySection(visible) : [{ sectionId: '_filtered', items: visible }];
   const openCount = state.todos.filter(t => !t.done).length;
   const dueToday = state.todos.filter(t => !t.done && t.dueDate === todayIso()).length;
   const overdueCount = state.todos.filter(t => !t.done && t.dueDate && t.dueDate < todayIso()).length;
 
   return `
     ${pageHead('To-Do List', `${openCount} open task${openCount === 1 ? '' : 's'}`, `
+      <button class="btn btn-sm" onclick="openSectionModal()">${icon('plus',13,2.2)} Section</button>
       <button class="btn btn-primary" onclick="openTodoModal()">+ Add to-do</button>
     `)}
     <div class="grid grid-3 mb-16">
@@ -25,7 +26,10 @@ function pageTodos() {
     ${groups.length ? groups.map(g => `
       <div class="card card-pad mb-16">
         <div class="flex-between mb-8">
-          <div class="flex-gap">${g.courseId ? `<span class="pill-dot" style="background:${getCourseColor(g.courseId)}"></span><strong>${esc(getCourse(g.courseId)?.name || '')}</strong>` : '<strong>General</strong>'}</div>
+          <div class="flex-gap">${sectionGroupLabel(g)}</div>
+          ${g.sectionId && g.sectionId !== '_filtered' ? `<div class="flex-gap">
+            <button class="btn btn-ghost btn-icon btn-sm" onclick="openSectionModal('${g.sectionId}')">${icon('pencil',13)}</button>
+          </div>` : ''}
         </div>
         ${g.items.length ? g.items.sort(sortTodos).map(todoRow).join('') : emptyState(icon('check-square',22,1.4), 'All clear here.')}
       </div>
@@ -44,11 +48,45 @@ function pageTodos() {
   `;
 }
 function sortTodos(a, b) { if (a.done !== b.done) return a.done ? 1 : -1; return (a.dueDate || '').localeCompare(b.dueDate || ''); }
-function groupTodosByCourse(items) {
-  const byId = {};
-  items.forEach(t => { const k = t.courseId || '_none'; (byId[k] = byId[k] || []).push(t); });
-  const order = [...activeCourses().map(c => c.id), '_none'];
-  return order.filter(k => byId[k]).map(k => ({ courseId: k === '_none' ? null : k, items: byId[k] }));
+function groupTodosBySection(items) {
+  const bySection = {};
+  items.forEach(t => { const k = t.sectionId || '_none'; (bySection[k] = bySection[k] || []).push(t); });
+  const order = [...state.todoSections.map(s => s.id), '_none'];
+  return order.filter(k => bySection[k] || k !== '_none').map(k => ({ sectionId: k === '_none' ? null : k, items: bySection[k] || [] }));
+}
+function sectionGroupLabel(g) {
+  if (g.sectionId === '_filtered') return '<strong>Tasks</strong>';
+  if (!g.sectionId) return '<strong>No section</strong>';
+  const s = state.todoSections.find(x => x.id === g.sectionId);
+  return `<strong>${esc(s?.name || 'Section')}</strong>`;
+}
+function openSectionModal(id) {
+  const s = id ? state.todoSections.find(x => x.id === id) : null;
+  openModal(`
+    <div class="modal-head"><h3>${id ? 'Rename section' : 'New section'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Section name</label><input class="input" id="sec-name" value="${esc(s?.name || '')}" placeholder="This week, Personal, Long-term…"></div>
+    </div>
+    <div class="modal-foot">
+      ${id ? `<button class="btn btn-danger" onclick="deleteSection('${id}')">Delete</button>` : ''}
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSectionModal(${id ? `'${id}'` : 'null'})">${id ? 'Save' : 'Create'}</button>
+    </div>
+  `);
+}
+function saveSectionModal(id) {
+  const name = $('#sec-name').value.trim();
+  if (!name) { toast('Give it a name', 'error'); return; }
+  if (id) { state.todoSections.find(x => x.id === id).name = name; }
+  else state.todoSections.push({ id: uid(), name });
+  touch(); closeModal(); toast(id ? 'Section updated' : 'Section created');
+}
+function deleteSection(id) {
+  confirmDialog('Delete this section? To-dos inside move to "No section", nothing is deleted.', () => {
+    state.todoSections = state.todoSections.filter(s => s.id !== id);
+    state.todos.forEach(t => { if (t.sectionId === id) t.sectionId = null; });
+    touch(); closeModal();
+  });
 }
 function todoRow(t) {
   return `<div class="list-row">
@@ -62,7 +100,7 @@ function toggleTodo(id) { const t = state.todos.find(x => x.id === id); t.done =
 function deleteTodo(id) { state.todos = state.todos.filter(t => t.id !== id); touch(); }
 
 function openTodoModal(id) {
-  const t = id ? state.todos.find(x => x.id === id) : { id: uid(), courseId: state.todoFilter !== 'all' && state.todoFilter !== 'none' ? state.todoFilter : null, title: '', done: false, dueDate: todayIso(), priority: 'medium', recurring: null };
+  const t = id ? state.todos.find(x => x.id === id) : { id: uid(), courseId: state.todoFilter !== 'all' && state.todoFilter !== 'none' ? state.todoFilter : null, sectionId: null, title: '', done: false, dueDate: todayIso(), priority: 'medium', recurring: null };
   window._todoDraft = { ...t };
   openModal(`
     <div class="modal-head"><h3>${id ? 'Edit to-do' : 'New to-do'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
@@ -70,9 +108,12 @@ function openTodoModal(id) {
       <div class="field"><label>Title</label><input class="input" id="tf-title" value="${esc(t.title)}"></div>
       <div class="field-row">
         <div class="field"><label>Course</label><select class="select" id="tf-course"><option value="">General</option>${activeCourses().map(c => `<option value="${c.id}" ${c.id === t.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-        <div class="field"><label>Due date</label><input class="input" type="date" id="tf-date" value="${t.dueDate || ''}"></div>
+        <div class="field"><label>Section</label><select class="select" id="tf-section"><option value="">No section</option>${state.todoSections.map(s => `<option value="${s.id}" ${s.id === t.sectionId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
       </div>
-      <div class="field"><label>Priority</label><select class="select" id="tf-priority">${['low', 'medium', 'high'].map(p => `<option value="${p}" ${p === t.priority ? 'selected' : ''}>${p[0].toUpperCase() + p.slice(1)}</option>`).join('')}</select></div>
+      <div class="field-row">
+        <div class="field"><label>Due date</label><input class="input" type="date" id="tf-date" value="${t.dueDate || ''}"></div>
+        <div class="field"><label>Priority</label><select class="select" id="tf-priority">${['low', 'medium', 'high'].map(p => `<option value="${p}" ${p === t.priority ? 'selected' : ''}>${p[0].toUpperCase() + p.slice(1)}</option>`).join('')}</select></div>
+      </div>
     </div>
     <div class="modal-foot">
       ${id ? `<button class="btn btn-danger" onclick="deleteTodo('${id}');closeModal()">Delete</button>` : ''}
@@ -86,6 +127,7 @@ function saveTodoModal(id) {
   d.title = $('#tf-title').value.trim();
   if (!d.title) { toast('Give it a title', 'error'); return; }
   d.courseId = $('#tf-course').value || null;
+  d.sectionId = $('#tf-section').value || null;
   d.dueDate = $('#tf-date').value || null;
   d.priority = $('#tf-priority').value;
   if (id) { const i = state.todos.findIndex(x => x.id === id); state.todos[i] = d; } else state.todos.unshift(d);
@@ -128,6 +170,6 @@ function materializeRecurringTodos() {
     }
     if (d > horizon) return;
     const exists = state.todos.some(t => t.recurringTemplateId === rt.id && t.dueDate === d);
-    if (!exists) state.todos.push({ id: uid(), courseId: rt.courseId, title: rt.title, done: false, dueDate: d, priority: rt.priority || 'medium', recurring: { freq: 'weekly' }, recurringTemplateId: rt.id });
+    if (!exists) state.todos.push({ id: uid(), courseId: rt.courseId, sectionId: null, title: rt.title, done: false, dueDate: d, priority: rt.priority || 'medium', recurring: { freq: 'weekly' }, recurringTemplateId: rt.id });
   });
 }

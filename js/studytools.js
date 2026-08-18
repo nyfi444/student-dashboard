@@ -25,6 +25,7 @@ function deckCard(d) {
       <div class="flex-gap mt-16">
         <button class="btn btn-primary btn-sm" onclick="openStudyMode('${d.id}')" ${d.cards.length ? '' : 'disabled'}>Study</button>
         <button class="btn btn-sm" onclick="openDeckModal('${d.id}')">Edit</button>
+        <button class="btn btn-ghost btn-icon btn-sm" onclick="shareDeckToGroup('${d.id}')" title="Share to group">${icon('users',14)}</button>
         <button class="btn btn-ghost btn-icon btn-sm" onclick="deleteDeck('${d.id}')">${icon('trash',14)}</button>
       </div>
     </div>
@@ -71,6 +72,11 @@ function saveDeckModal(id) {
   touch(); closeModal(); toast(id ? 'Deck updated' : 'Deck created');
 }
 function deleteDeck(id) { confirmDialog('Delete this deck?', () => { state.decks = state.decks.filter(x => x.id !== id); touch(); closeModal(); }); }
+function shareDeckToGroup(id) {
+  const d = state.decks.find(x => x.id === id);
+  if (!d) return;
+  openShareToGroupModal('deck', d.name || 'Untitled deck', { cards: d.cards.map(c => ({ front: c.front, back: c.back })) });
+}
 
 window._study = { deckId: null, idx: 0, flipped: false };
 function openStudyMode(deckId) { window._study = { deckId, idx: 0, flipped: false }; renderStudyMode(); }

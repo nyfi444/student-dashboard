@@ -19,7 +19,7 @@ html { -webkit-text-size-adjust: 100%; }
   --champagne: #cba35c;   /* rare metallic highlight — used sparingly */
 
   --accent: var(--petal);
-  --accent-light: #f8e7ee;
+  --accent-light: #fbf1f5;
   --accent-dark: var(--petal-deep);
   --accent-text: var(--ink); /* readable text/icon color on --accent fills, recomputed per mood */
   --bg: var(--vellum);
@@ -101,13 +101,18 @@ button .i, .btn .i { vertical-align: -2.5px; }
 
 /* ── App shell ─────────────────────────────────────────────── */
 #app { display: flex; min-height: 100%; }
+#app.sidebar-collapsed .sidebar { display: none; }
+.btn.sidebar-expand-fab { display: none; position: fixed; top: 18px; left: 18px; z-index: 150; box-shadow: var(--shadow-lg); }
+#app.sidebar-collapsed ~ .btn.sidebar-expand-fab { display: inline-flex; }
 
 .sidebar {
   width: 232px; flex-shrink: 0; background: var(--surface);
   border-right: 1px solid color-mix(in srgb, var(--border) 70%, transparent); display: flex; flex-direction: column;
   padding: 22px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
 }
-.sidebar-brand { padding: 4px 10px 22px; }
+.sidebar-brand { padding: 4px 6px 22px 10px; display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+.sidebar-brand .btn-icon { opacity: .55; flex-shrink: 0; }
+.sidebar-brand .btn-icon:hover { opacity: 1; }
 .sidebar-brand h1 {
   font-family: var(--font-serif); font-style: italic; font-size: 25px; font-weight: 400; letter-spacing: -.1px;
   color: var(--text);
@@ -310,6 +315,20 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .dash-overdue-row { box-shadow: inset 2px 0 0 var(--danger); background: var(--danger-light); border-radius: 10px; }
 .dash-overdue-row:hover { background: var(--danger-light); filter: brightness(0.98); }
 
+.dash-note-row { flex-wrap: wrap; }
+.sticky-note {
+  background: var(--accent-light); padding: 14px 16px; box-shadow: var(--shadow);
+  border-radius: var(--r-soft) var(--r-tight) var(--r-tight) var(--r-tight);
+  transform: rotate(-1.2deg); transition: transform .15s ease;
+  width: 220px; flex-shrink: 0;
+}
+.sticky-note:hover, .sticky-note:focus-within { transform: rotate(0deg); }
+.sticky-note-input {
+  width: 100%; min-height: 108px; margin-top: 8px; border: none; background: transparent; resize: vertical;
+  font-family: var(--font); font-size: 13px; line-height: 1.5; color: var(--text); outline: none;
+}
+.sticky-note-input::placeholder { color: var(--text-faint); }
+
 /* ── Notebook ──────────────────────────────────────────────────── */
 .notebook-layout { display: grid; grid-template-columns: 252px 1fr; gap: 0; align-items: start; border: 1px solid var(--border); border-radius: var(--r-soft) var(--r-tight) var(--r-tight) var(--r-tight); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; min-height: 74vh; }
 .notebook-tree-panel { padding: 16px 10px; max-height: 74vh; display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--surface-2); }
@@ -342,9 +361,13 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-note-sub { font-size: 10.5px; color: var(--text-faint); display: flex; align-items: center; gap: 4px; margin-top: 1px; }
 .nb-note-del { opacity: 0; flex-shrink: 0; }
 .nb-note-row:hover .nb-note-del { opacity: 1; }
-.notebook-page { max-height: 74vh; overflow-y: auto; }
+.notebook-page { max-height: 74vh; overflow-y: auto; background: var(--surface-2); padding: 26px; }
 .nb-blank { padding: 40px 20px; }
-.nb-page-inner { max-width: 900px; margin: 0 auto; padding: 44px 48px 80px; }
+.nb-page-inner {
+  max-width: 840px; margin: 0 auto; padding: 48px 56px 90px; min-height: calc(74vh - 52px);
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg);
+  border-radius: var(--r-soft) var(--r-tight) var(--r-tight) var(--r-tight);
+}
 .nb-breadcrumb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
 .nb-breadcrumb { font-size: 12px; color: var(--text-faint); }
 .nb-page-actions { display: flex; gap: 6px; }
@@ -395,6 +418,18 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .loading-dots::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
 @keyframes dots { 0%, 20% { content: ''; } 40% { content: '.'; } 60% { content: '..'; } 80%, 100% { content: '...'; } }
 
+/* ── FAQ accordion (Settings) ─────────────────────────────────── */
+.faq-item { border-bottom: 1px solid var(--border); padding: 12px 2px; }
+.faq-item:last-of-type { border-bottom: none; }
+.faq-item summary {
+  cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--text); list-style: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after { content: '+'; font-size: 17px; font-weight: 400; color: var(--text-faint); transition: transform .15s ease; flex-shrink: 0; }
+.faq-item[open] summary::after { transform: rotate(45deg); color: var(--accent-dark); }
+.faq-item p { margin-top: 8px; line-height: 1.6; }
+
 /* ── Print / PDF export (notebook notes) ──────────────────────── */
 #print-area { display: none; }
 .print-title { font-family: var(--font); font-size: 26px; font-weight: 700; margin-bottom: 4px; }
@@ -409,18 +444,30 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 
 @media (max-width: 760px) {
   #app { flex-direction: column; }
-  .sidebar { width: 100%; height: auto; position: relative; padding: 10px; }
-  .sidebar-brand { padding: 4px 8px 10px; }
-  .sidebar > div:nth-child(2) { display: flex; overflow-x: auto; gap: 4px; padding-bottom: 4px; }
+  .sidebar-brand { display: none; }
+  .sidebar {
+    width: 100%; height: auto; position: fixed; bottom: 0; top: auto; left: 0; right: 0; z-index: 120;
+    flex-direction: row; align-items: center; padding: 6px 8px; gap: 6px;
+    border-right: none; border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 20px rgba(60, 30, 40, 0.06);
+  }
+  .sidebar > div:nth-child(2) {
+    flex: 1; min-width: 0; display: flex; overflow-x: auto; gap: 3px;
+    scrollbar-width: none;
+  }
+  .sidebar > div:nth-child(2)::-webkit-scrollbar { display: none; }
   .nav-group { display: flex; align-items: center; gap: 2px; margin-bottom: 0; flex-shrink: 0; }
   .nav-group-label { display: none; }
-  .nav-item { white-space: nowrap; flex-shrink: 0; padding: 8px 11px; }
-  .sidebar-foot { margin-top: 6px; padding-top: 6px; }
-  .content { padding: 16px; }
+  .nav-item { flex-direction: column; gap: 2px; white-space: nowrap; flex-shrink: 0; padding: 7px 10px; font-size: 10px; }
+  .nav-item .ic { width: auto; }
+  .sidebar-foot { margin-top: 0; padding-top: 0; border-top: none; flex-shrink: 0; }
+  .sidebar-foot .user-chip { display: none; }
+  .content { padding: 16px; padding-bottom: 88px; }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
   .notebook-layout { grid-template-columns: 1fr; }
   .notebook-tree-panel { max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
-  .nb-page-inner { padding: 28px 20px 60px; }
+  .notebook-page { padding: 12px; }
+  .nb-page-inner { padding: 28px 20px 60px; min-height: auto; }
   .cal-grid { gap: 3px; }
   .cal-cell { min-height: 64px; padding: 4px; }
   .cal-dow { font-size: 9.5px; padding-bottom: 3px; }
@@ -429,4 +476,7 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
   .cal-week-grid { grid-template-columns: 40px repeat(7, 1fr); }
   .cal-hour-label { font-size: 8.5px; padding-right: 3px; }
   .modal, .modal.wide { width: calc(100vw - 24px); }
+  .dash-note-row { flex-direction: column; }
+  .sticky-note { width: 100%; transform: none; }
+  .btn.sidebar-expand-fab { top: auto; bottom: 18px; left: 18px; }
 }

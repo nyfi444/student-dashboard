@@ -12,6 +12,16 @@ const BACKGROUND_PRESETS = [
 function bgCssValue(bg) { return bg.type === 'gradient' ? `linear-gradient(${bg.angle}deg, ${bg.color1}, ${bg.color2})` : bg.color1; }
 function bgMatchesPreset(bg, p) { return bg.type === p.type && bg.color1 === p.color1 && (bg.type !== 'gradient' || (bg.color2 === p.color2 && bg.angle === p.angle)); }
 
+const FAQ_ITEMS = [
+  { q: 'How does AI syllabus upload work?', a: 'Add a Claude API key under Settings → AI, then go to Courses → Upload syllabus and paste, upload a PDF, or upload a photo of your syllabus. Claude reads it and fills in the course name, meeting times, grading breakdown, and assignments — you review and edit everything before it’s added.' },
+  { q: 'Where is my data stored — is it private?', a: 'Everything lives in your browser’s local storage by default, including your Claude API key, which never leaves this device. Nothing is sent anywhere unless you turn on cross-device sync or use an AI feature (which sends only the text/image you’re asking about to Claude).' },
+  { q: 'How do I sync across devices?', a: 'Sync uses Firebase and needs to be configured once by adding a Firebase project to FB_CONFIG in js/firebase.js. Once that’s done, sign in with Google from Settings → Account to keep this planner in sync everywhere you’re signed in.' },
+  { q: 'What happens when I start a new semester?', a: 'Settings → Semester reset wizard archives your current semester (nothing is deleted — you can still view it from the semester dropdown) and sets up a fresh one, optionally carrying over your course names and instructors as a starting point.' },
+  { q: 'What do Mood and Dark mode do?', a: 'Mood (Settings → Mood) swaps the whole accent color pairing at once — Bloom, Dusk, or Sage — without changing the layout or type. Dark mode is a separate toggle right below it, and works with any mood.' },
+  { q: 'How do Study Group codes work?', a: 'Creating a group generates a short share code; anyone who enters that code under Study Groups → Join with code sees the same shared session calendar. Cross-device joining needs sync configured (see above) — until then, groups still work fine on one device.' },
+  { q: 'Can I back up or move my data?', a: 'Yes — Settings → Data → Export backup downloads everything as a JSON file. Import backup on any device loads it back in and replaces what’s currently there, so it also works as a way to transfer your planner manually without sync.' },
+];
+
 function pageSettings() {
   return `
     ${pageHead('Settings', 'Customize your planner')}
@@ -89,6 +99,17 @@ function pageSettings() {
           <button class="btn btn-danger" onclick="resetAllData()">Erase all data</button>
         </div>
       </div>
+
+      <div class="card card-pad" style="grid-column:1/-1">
+        <h3 style="font-size:15px" class="mb-8">FAQ</h3>
+        <p class="small muted mb-8">Common questions about how this planner works.</p>
+        ${FAQ_ITEMS.map(f => `
+          <details class="faq-item">
+            <summary>${esc(f.q)}</summary>
+            <p class="small dim">${esc(f.a)}</p>
+          </details>
+        `).join('')}
+      </div>
     </div>
   `;
 }
@@ -105,7 +126,7 @@ function toggleDark(on) { state.settings.dark = on; applyTheme(); touch(); }
 function applyTheme() {
   document.documentElement.classList.toggle('dark', state.settings.dark);
   document.documentElement.style.setProperty('--accent', state.settings.accent);
-  document.documentElement.style.setProperty('--accent-light', lighten(state.settings.accent, state.settings.dark ? -60 : 150));
+  document.documentElement.style.setProperty('--accent-light', state.settings.dark ? lighten(state.settings.accent, -60) : tint(state.settings.accent, 0.82));
   document.documentElement.style.setProperty('--accent-dark', lighten(state.settings.accent, -30));
   document.documentElement.style.setProperty('--accent-text', readableTextOn(state.settings.accent));
   document.documentElement.style.setProperty('--wisteria', state.settings.secondaryAccent || '#c3aee8');

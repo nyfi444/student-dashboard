@@ -35,22 +35,31 @@ function pageDashboard() {
       <div class="stat-card"><div class="flex-between"><div class="num">${fmtDuration(weekMinutes)}</div>${icon('timer', 15)}</div><div class="lbl">Study time this week</div></div>
     </div>
 
-    ${sem ? `
-    <div class="card card-pad mb-16">
-      <div class="flex-between mb-8"><span class="small dim" style="font-weight:600">${esc(sem.name)}</span><span class="small muted">Week ${sem.week} of ${sem.totalWeeks} · ${sem.pct}% complete</span></div>
-      <div class="progress"><div style="width:${sem.pct}%"></div></div>
-    </div>` : ''}
+    <div class="flex-gap mb-16 dash-note-row" style="align-items:stretch">
+      <div style="flex:1">
+        ${sem ? `
+        <div class="card card-pad mb-16">
+          <div class="flex-between mb-8"><span class="small dim" style="font-weight:600">${esc(sem.name)}</span><span class="small muted">Week ${sem.week} of ${sem.totalWeeks} · ${sem.pct}% complete</span></div>
+          <div class="progress"><div style="width:${sem.pct}%"></div></div>
+        </div>` : ''}
 
-    <div class="card card-pad mb-16">
-      <div class="small dim mb-8" style="font-weight:600">This week's workload</div>
-      <div class="dash-workload">
-        ${workload.map(d => `
-          <div class="dash-wl-col ${d.isToday ? 'today' : ''}" onclick="setState({route:'calendar',calView:'day',calDate:'${d.date}'})" title="${d.count} item${d.count === 1 ? '' : 's'}">
-            <div class="dash-wl-bar-wrap"><div class="dash-wl-bar" style="height:${d.count ? 14 + (d.count / workload.maxCount) * 34 : 3}px"></div></div>
-            <div class="dash-wl-count">${d.count || ''}</div>
-            <div class="dash-wl-day">${d.label}</div>
+        <div class="card card-pad">
+          <div class="small dim mb-8" style="font-weight:600">This week's workload</div>
+          <div class="dash-workload">
+            ${workload.map(d => `
+              <div class="dash-wl-col ${d.isToday ? 'today' : ''}" onclick="setState({route:'calendar',calView:'day',calDate:'${d.date}'})" title="${d.count} item${d.count === 1 ? '' : 's'}">
+                <div class="dash-wl-bar-wrap"><div class="dash-wl-bar" style="height:${d.count ? 14 + (d.count / workload.maxCount) * 34 : 3}px"></div></div>
+                <div class="dash-wl-count">${d.count || ''}</div>
+                <div class="dash-wl-day">${d.label}</div>
+              </div>
+            `).join('')}
           </div>
-        `).join('')}
+        </div>
+      </div>
+
+      <div class="sticky-note">
+        <div class="small" style="font-weight:600;opacity:.7">Quick note</div>
+        <textarea class="sticky-note-input" placeholder="Jot something down…" oninput="saveQuickNoteDebounced(this.value)">${esc(state.quickNote || '')}</textarea>
       </div>
     </div>
 
@@ -126,6 +135,8 @@ function pageDashboard() {
     </div>
   `;
 }
+
+const saveQuickNoteDebounced = debounce((v) => { state.quickNote = v; save(); }, 400);
 
 function quickAddTodo() {
   const input = $('#quick-add-input');

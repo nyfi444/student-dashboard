@@ -258,6 +258,7 @@ function renderNoteEditor(note) {
           <button class="btn btn-ghost btn-sm" onclick="duplicateNote('${note.id}')">${icon('layers', 13)} Duplicate</button>
           <button class="btn btn-ghost btn-sm" onclick="openMoveNoteModal('${note.id}')">${icon('folder', 13)} Move</button>
           <button class="btn btn-ghost btn-sm" onclick="exportNoteToPdf('${note.id}')">${icon('download', 13)} Export PDF</button>
+          <button class="btn btn-ghost btn-sm" onclick="shareNoteToGroup('${note.id}')">${icon('users', 13)} Share</button>
         </div>
       </div>
       <div class="nb-icon-avatar" style="background:${iconColor}18;color:${iconColor}">${icon('file-text', 20, 1.6)}</div>
@@ -311,6 +312,11 @@ function exportNoteToPdf(id) {
   document.title = note.name || 'Untitled note';
   window.print();
   document.title = restoreTitle;
+}
+function shareNoteToGroup(id) {
+  const note = state.notes.find(n => n.id === id);
+  if (!note) return;
+  openShareToGroupModal('note', note.name || 'Untitled note', { content: note.content || '' });
 }
 
 async function generateStudyGuideFromNote(id) {
