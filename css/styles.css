@@ -21,17 +21,17 @@ html { -webkit-text-size-adjust: 100%; }
   --accent: var(--petal);
   --accent-light: #fbf1f5;
   --accent-dark: var(--petal-deep);
-  --accent-text: var(--ink); /* readable text/icon color on --accent fills, recomputed per mood */
+  --accent-text: #000000; /* readable text/icon color on --accent fills, recomputed per mood */
   --bg: var(--vellum);
-  --bg-text: var(--ink); /* readable text on --bg (sidebar), recomputed per custom background */
+  --bg-text: #000000; /* readable text on --bg (sidebar), recomputed per custom background */
   --bg-text-dim: color-mix(in srgb, var(--bg-text) 65%, var(--bg));
   --bg-text-faint: color-mix(in srgb, var(--bg-text) 42%, var(--bg));
   --surface: var(--cloud);
   --surface-2: #fbf1e8;
   --border: #efe1d4;
-  --text: var(--ink);
-  --text-dim: #6e5f72;
-  --text-faint: #a2949f;
+  --text: #000000;
+  --text-dim: rgba(0, 0, 0, 0.72);
+  --text-faint: rgba(0, 0, 0, 0.46);
   --danger: #c24a5c;
   --danger-light: #fbe6e9;
   --success: #3f8f68;
@@ -54,13 +54,13 @@ html { -webkit-text-size-adjust: 100%; }
 
 html.dark {
   --bg: #1e1720;
-  --bg-text: #f5efe9;
+  --bg-text: #ffffff;
   --surface: #271f2a;
   --surface-2: #2d232f;
   --border: #3d3040;
-  --text: #f5efe9;
-  --text-dim: #c9bac7;
-  --text-faint: #8c7c89;
+  --text: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.75);
+  --text-faint: rgba(255, 255, 255, 0.5);
   --accent-light: #3a2a33;
   --shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.45);
