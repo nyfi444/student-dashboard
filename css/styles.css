@@ -409,7 +409,7 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .flex-between { display: flex; align-items: center; justify-content: space-between; }
 .flex-gap { display: flex; align-items: center; gap: 8px; }
 .wrap { flex-wrap: wrap; }
-.mt-8 { margin-top: 8px; } .mt-16 { margin-top: 16px; } .mb-8 { margin-bottom: 8px; }
+.mt-8 { margin-top: 8px; } .mt-16 { margin-top: 16px; } .mb-8 { margin-bottom: 8px; } .mb-16 { margin-bottom: 16px; }
 .priority-high { color: var(--danger); } .priority-med { color: var(--warn); } .priority-low { color: var(--text-faint); }
 .upload-drop { border: 2px dashed var(--border); border-radius: 14px; padding: 30px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
 .upload-drop:hover, .upload-drop.drag { border-color: var(--accent); background: var(--accent-light); }
