@@ -451,13 +451,13 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
     box-shadow: 0 -8px 20px rgba(60, 30, 40, 0.06);
   }
   .sidebar > div:nth-child(2) {
-    flex: 1; min-width: 0; display: flex; overflow-x: auto; gap: 3px;
+    flex: 1; min-width: 0; display: flex; overflow-x: auto; gap: 10px;
     scrollbar-width: none;
   }
   .sidebar > div:nth-child(2)::-webkit-scrollbar { display: none; }
-  .nav-group { display: flex; align-items: center; gap: 2px; margin-bottom: 0; flex-shrink: 0; }
+  .nav-group { display: flex; align-items: center; gap: 6px; margin-bottom: 0; flex-shrink: 0; }
   .nav-group-label { display: none; }
-  .nav-item { flex-direction: column; gap: 2px; white-space: nowrap; flex-shrink: 0; padding: 7px 10px; font-size: 10px; }
+  .nav-item { flex-direction: column; gap: 3px; white-space: nowrap; flex-shrink: 0; padding: 7px 12px; font-size: 10px; }
   .nav-item .ic { width: auto; }
   .sidebar-foot { margin-top: 0; padding-top: 0; border-top: none; flex-shrink: 0; }
   .sidebar-foot .user-chip { display: none; }
