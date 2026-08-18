@@ -26,13 +26,20 @@ function pageDashboard() {
   const projects = state.projects.filter(p => !p.courseId || activeCourses().some(c => c.id === p.courseId)).slice(0, 3);
   const recentNotes = [...state.notes.filter(n => n.type === 'note')].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 3);
 
+  const dAccent = state.settings.dashboardAccent;
+  const iconColorAttr = dAccent ? `style="color:${dAccent}"` : '';
+  const noteBg = dAccent ? tint(dAccent, 0.82) : 'var(--accent-light)';
+  const noteSizeClass = `size-${state.settings.stickyNoteSize || 'md'}`;
+
   return `
-    ${pageHead(`${greeting}${name}`, fmtDateLong(todayIso()))}
+    ${pageHead(`${greeting}${name}`, fmtDateLong(todayIso()), `
+      <button class="btn btn-icon btn-sm" onclick="openDashboardCustomizeModal()" title="Customize dashboard">${icon('palette', 16, 1.6)}</button>
+    `)}
 
     <div class="grid grid-3 mb-16">
-      <div class="stat-card"><div class="flex-between"><div class="num">${dueThisWeek.length}</div>${icon('clipboard-list', 15)}</div><div class="lbl">Due this week</div></div>
-      <div class="stat-card"><div class="flex-between"><div class="num" style="color:${overdue.length ? 'var(--danger)' : 'inherit'}">${overdue.length}</div>${icon('file-text', 15)}</div><div class="lbl">Overdue</div></div>
-      <div class="stat-card"><div class="flex-between"><div class="num">${fmtDuration(weekMinutes)}</div>${icon('timer', 15)}</div><div class="lbl">Study time this week</div></div>
+      <div class="stat-card"><div class="flex-between"><div class="num">${dueThisWeek.length}</div><span ${iconColorAttr}>${icon('clipboard-list', 15)}</span></div><div class="lbl">Due this week</div></div>
+      <div class="stat-card"><div class="flex-between"><div class="num" style="color:${overdue.length ? 'var(--danger)' : 'inherit'}">${overdue.length}</div><span ${iconColorAttr}>${icon('file-text', 15)}</span></div><div class="lbl">Overdue</div></div>
+      <div class="stat-card"><div class="flex-between"><div class="num">${fmtDuration(weekMinutes)}</div><span ${iconColorAttr}>${icon('timer', 15)}</span></div><div class="lbl">Study time this week</div></div>
     </div>
 
     <div class="flex-gap mb-16 dash-note-row" style="align-items:stretch">
@@ -57,7 +64,7 @@ function pageDashboard() {
         </div>
       </div>
 
-      <div class="sticky-note">
+      <div class="sticky-note ${noteSizeClass}" style="background:${noteBg}">
         <div class="small" style="font-weight:600;opacity:.7">Quick note</div>
         <textarea class="sticky-note-input" placeholder="Jot something down…" oninput="saveQuickNoteDebounced(this.value)">${esc(state.quickNote || '')}</textarea>
       </div>
@@ -137,6 +144,33 @@ function pageDashboard() {
 }
 
 const saveQuickNoteDebounced = debounce((v) => { state.quickNote = v; save(); }, 400);
+
+function openDashboardCustomizeModal() {
+  const current = state.settings.dashboardAccent;
+  const size = state.settings.stickyNoteSize || 'md';
+  openModal(`
+    <div class="modal-head"><h3>Customize dashboard</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Accent color</label>
+        <p class="small muted mb-8">Colors the quick note and the small stat-card icons.</p>
+        <div class="swatch-grid">
+          <div class="swatch ${!current ? 'active' : ''}" style="background:var(--accent)" onclick="setDashboardAccent(null)" title="Theme default">${!current ? checkGlyph(true) : ''}</div>
+          ${ACCENTS.map(a => `<div class="swatch ${current === a.hex ? 'active' : ''}" style="background:${a.hex}" onclick="setDashboardAccent('${a.hex}')" title="${esc(a.name)}">${current === a.hex ? checkGlyph(true) : ''}</div>`).join('')}
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:0"><label>Quick note size</label>
+        <div class="segmented">
+          <button class="${size === 'sm' ? 'active' : ''}" onclick="setStickyNoteSize('sm')">Small</button>
+          <button class="${size === 'md' ? 'active' : ''}" onclick="setStickyNoteSize('md')">Medium</button>
+          <button class="${size === 'lg' ? 'active' : ''}" onclick="setStickyNoteSize('lg')">Large</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-primary" onclick="closeModal()">Done</button></div>
+  `);
+}
+function setDashboardAccent(hex) { state.settings.dashboardAccent = hex; touch(); openDashboardCustomizeModal(); }
+function setStickyNoteSize(size) { state.settings.stickyNoteSize = size; touch(); openDashboardCustomizeModal(); }
 
 function quickAddTodo() {
   const input = $('#quick-add-input');

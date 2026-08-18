@@ -130,8 +130,13 @@ function applyTheme() {
   document.documentElement.style.setProperty('--accent-dark', lighten(state.settings.accent, -30));
   document.documentElement.style.setProperty('--accent-text', readableTextOn(state.settings.accent));
   document.documentElement.style.setProperty('--wisteria', state.settings.secondaryAccent || '#c3aee8');
-  if (state.settings.dark) document.documentElement.style.removeProperty('--bg');
-  else document.documentElement.style.setProperty('--bg', bgCssValue(state.settings.background));
+  if (state.settings.dark) {
+    document.documentElement.style.removeProperty('--bg');
+    document.documentElement.style.removeProperty('--bg-text');
+  } else {
+    document.documentElement.style.setProperty('--bg', bgCssValue(state.settings.background));
+    document.documentElement.style.setProperty('--bg-text', readableTextOn(state.settings.background.color1));
+  }
 }
 
 function setBackgroundPreset(i) {

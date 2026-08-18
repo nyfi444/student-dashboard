@@ -32,6 +32,7 @@ const ICON_PATHS = {
   'cloud-sun': '<circle cx="8" cy="7.5" r="2.7"/><path d="M8 2.5v1.3M4 5.4l.9.9M12 5.4l-.9.9"/><path d="M8.5 20h8a3.5 3.5 0 0 0 .6-6.95A5 5 0 0 0 8 12.2"/>',
   flag: '<path d="M6 21V4"/><path d="M6 4.5c1.6-1 3.4-1 5 0s3.4 1 5 0v9c-1.6 1-3.4 1-5 0s-3.4-1-5 0Z"/>',
   'panel-left': '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/>',
+  palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1 0 1.6-.6 1.6-1.4 0-.4-.2-.7-.2-1.1 0-.8.7-1.4 1.5-1.4h1.6c2.6 0 4.5-1.8 4.5-4.6 0-4.7-4-8.5-9-8.5Z"/><circle cx="7.7" cy="10.5" r="1.15" fill="currentColor" stroke="none"/><circle cx="11.3" cy="7.3" r="1.15" fill="currentColor" stroke="none"/><circle cx="15.7" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>',
   play: '<path d="M6.5 4.5v15l13-7.5Z" fill="currentColor" stroke="none"/>',
   pause: '<rect x="6" y="5" width="4.5" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="4.5" height="14" rx="1" fill="currentColor" stroke="none"/>',
 };

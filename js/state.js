@@ -51,6 +51,8 @@ function seedData() {
       secondaryAccent: '#c3aee8',
       dark: false,
       sidebarCollapsed: false,
+      dashboardAccent: null,
+      stickyNoteSize: 'md',
       background: { type: 'gradient', color1: '#fef6f8', color2: '#eef4ff', angle: 135 },
       gradeScale: '4.0',
       weekStartsMonday: true,
