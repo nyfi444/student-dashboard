@@ -140,6 +140,9 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .avatar { width: 26px; height: 26px; background: var(--accent); color: var(--accent-text); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
 
 .content { flex: 1; min-width: 0; padding: 30px 38px 64px; max-width: 1180px; }
+.content.content-notebook { padding: 0; max-width: none; height: 100vh; overflow: hidden; }
+.content-notebook > .fade-in { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.content-notebook .page-head { margin: 0; padding: 22px 32px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
 .page-head h2 { font-family: var(--font-serif); font-size: 32px; font-weight: 400; letter-spacing: -.2px; color: var(--text); }
 .page-head .sub { font-size: 13px; color: var(--text-faint); margin-top: 4px; }
@@ -338,8 +341,8 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .sticky-note-input::placeholder { color: var(--text-faint); }
 
 /* ── Notebook ──────────────────────────────────────────────────── */
-.notebook-layout { display: grid; grid-template-columns: 252px 1fr; gap: 0; align-items: start; background: var(--surface); overflow: hidden; height: calc(100vh - 158px); min-height: 560px; }
-.notebook-tree-panel { padding: 16px 10px; height: 100%; display: flex; flex-direction: column; background: var(--surface); }
+.notebook-layout { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.notebook-tree-panel { width: 264px; flex-shrink: 0; min-height: 0; padding: 18px 12px; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border); }
 .notebook-search-wrap { position: relative; margin-bottom: 8px; flex-shrink: 0; padding: 0 4px; }
 .notebook-search-ic { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-faint); pointer-events: none; }
 .notebook-search { width: 100%; background: var(--surface-2); border: none; border-radius: 8px; padding: 7px 10px 7px 30px; font-size: 12.5px; color: var(--text); }
@@ -369,12 +372,16 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-note-sub { font-size: 10.5px; color: var(--text-faint); display: flex; align-items: center; gap: 4px; margin-top: 1px; }
 .nb-note-del { opacity: 0; flex-shrink: 0; }
 .nb-note-row:hover .nb-note-del { opacity: 1; }
-.notebook-page { height: 100%; overflow-y: auto; background: var(--surface); }
-.nb-blank { padding: 40px 20px; }
+.notebook-page { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; background: var(--bg); padding: 44px 40px 90px; }
+.nb-blank { height: 100%; display: flex; align-items: center; justify-content: center; }
 .nb-page-inner {
-  max-width: none; margin: 0; padding: 48px 64px 90px; min-height: 100%;
+  max-width: 820px; margin: 0 auto; min-height: calc(100% - 1px);
   background: var(--surface);
+  border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(30, 15, 20, 0.05), 0 18px 40px -14px rgba(30, 15, 20, 0.14);
+  padding: 76px 88px 120px;
 }
+html.dark .nb-page-inner { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 40px -14px rgba(0, 0, 0, 0.4); }
 .nb-breadcrumb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
 .nb-breadcrumb { font-size: 12px; color: var(--text-faint); }
 .nb-page-actions { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -471,9 +478,12 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
   .sidebar-foot .user-chip { display: none; }
   .content { padding: 16px; padding-bottom: 88px; }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-  .notebook-layout { grid-template-columns: 1fr; }
-  .notebook-tree-panel { max-height: 40vh; }
-  .nb-page-inner { padding: 28px 20px 60px; min-height: auto; }
+  .content.content-notebook { height: auto; overflow: visible; padding-bottom: 88px; }
+  .content-notebook .page-head { padding: 16px; }
+  .notebook-layout { flex-direction: column; overflow: visible; }
+  .notebook-tree-panel { width: auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+  .notebook-page { height: auto; overflow: visible; padding: 20px 12px 60px; }
+  .nb-page-inner { max-width: none; padding: 28px 20px 60px; min-height: auto; border-radius: 0; box-shadow: none; }
   .cal-grid { gap: 3px; }
   .cal-cell { min-height: 64px; padding: 4px; }
   .cal-dow { font-size: 9.5px; padding-bottom: 3px; }

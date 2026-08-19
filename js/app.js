@@ -15,6 +15,7 @@ function render() {
   renderSidebar();
   document.getElementById('app').classList.toggle('sidebar-collapsed', !!state.settings.sidebarCollapsed);
   const fn = PAGES[state.route] || pageDashboard;
+  $('#content').classList.toggle('content-notebook', state.route === 'notebook');
   $('#content').innerHTML = `<div class="fade-in">${fn()}</div>`;
 }
 function bindPage() { /* reserved for pages needing post-render DOM wiring beyond inline handlers */ }
