@@ -114,7 +114,7 @@ function dayView() {
 }
 
 function openEventModal(id, presetDate) {
-  const e = id ? state.events.find(x => x.id === id) : { id: uid(), title: '', date: presetDate || todayIso(), startTime: '09:00', endTime: '10:00', courseId: null, type: 'block', color: state.settings.accent };
+  const e = id ? state.events.find(x => x.id === id) : { id: uid(), title: '', date: presetDate || todayIso(), startTime: '09:00', endTime: '10:00', courseId: null, type: 'block', color: ACCENTS[0].hex };
   window._eventDraft = { ...e };
   openModal(`
     <div class="modal-head"><h3>${id ? 'Edit time block' : 'New time block'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>

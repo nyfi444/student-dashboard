@@ -1,23 +1,10 @@
 /* ── Settings: theme, account/sync, AI, grading, data, semesters ─── */
-const BACKGROUND_PRESETS = [
-  { type: 'solid', color1: '#ffffff', color2: '#eef0fb', angle: 135, label: 'White' },
-  { type: 'solid', color1: '#f7f6fb', color2: '#eef0fb', angle: 135, label: 'Soft lavender' },
-  { type: 'solid', color1: '#fdf6f0', color2: '#eef0fb', angle: 135, label: 'Cream' },
-  { type: 'solid', color1: '#f0f7f4', color2: '#eef0fb', angle: 135, label: 'Mint' },
-  { type: 'solid', color1: '#f0f5fb', color2: '#eef0fb', angle: 135, label: 'Sky' },
-  { type: 'gradient', color1: '#ffffff', color2: '#ece9fb', angle: 135, label: 'White → Lavender' },
-  { type: 'gradient', color1: '#fef6f8', color2: '#eef4ff', angle: 135, label: 'Blush → Sky' },
-  { type: 'gradient', color1: '#f4fbf6', color2: '#eef2fb', angle: 135, label: 'Mint → Periwinkle' },
-];
-function bgCssValue(bg) { return bg.type === 'gradient' ? `linear-gradient(${bg.angle}deg, ${bg.color1}, ${bg.color2})` : bg.color1; }
-function bgMatchesPreset(bg, p) { return bg.type === p.type && bg.color1 === p.color1 && (bg.type !== 'gradient' || (bg.color2 === p.color2 && bg.angle === p.angle)); }
-
 const FAQ_ITEMS = [
   { q: 'How does AI syllabus upload work?', a: 'Add a Claude API key under Settings → AI, then go to Courses → Upload syllabus and paste, upload a PDF, or upload a photo of your syllabus. Claude reads it and fills in the course name, meeting times, grading breakdown, and assignments — you review and edit everything before it’s added.' },
   { q: 'Where is my data stored — is it private?', a: 'Everything lives in your browser’s local storage by default, including your Claude API key, which never leaves this device. Nothing is sent anywhere unless you turn on cross-device sync or use an AI feature (which sends only the text/image you’re asking about to Claude).' },
   { q: 'How do I sync across devices?', a: 'Sync uses Firebase and needs to be configured once by adding a Firebase project to FB_CONFIG in js/firebase.js. Once that’s done, sign in with Google from Settings → Account to keep this planner in sync everywhere you’re signed in.' },
   { q: 'What happens when I start a new semester?', a: 'Settings → Semester reset wizard archives your current semester (nothing is deleted — you can still view it from the semester dropdown) and sets up a fresh one, optionally carrying over your course names and instructors as a starting point.' },
-  { q: 'What do Mood and Dark mode do?', a: 'Mood (Settings → Mood) swaps the whole accent color pairing at once — Bloom, Dusk, or Sage — without changing the layout or type. Dark mode is a separate toggle right below it, and works with any mood.' },
+  { q: 'What does Dark mode do?', a: 'Dark mode (Settings → Appearance) switches the whole planner to a black background with white text. It’s the only theme option — everything else stays black and white either way.' },
   { q: 'How do Study Group codes work?', a: 'Creating a group generates a short share code; anyone who enters that code under Study Groups → Join with code sees the same shared session calendar. Cross-device joining needs sync configured (see above) — until then, groups still work fine on one device.' },
   { q: 'Can I back up or move my data?', a: 'Yes — Settings → Data → Export backup downloads everything as a JSON file. Import backup on any device loads it back in and replaces what’s currently there, so it also works as a way to transfer your planner manually without sync.' },
 ];
@@ -27,33 +14,10 @@ function pageSettings() {
     ${pageHead('Settings', 'Customize your planner')}
     <div class="grid grid-2" style="align-items:start">
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Mood</h3>
-        <p class="small muted mb-8">Sets the whole accent pairing at once — type and layout stay the same in every mood.</p>
-        <div class="flex-gap wrap">
-          ${MOOD_PRESETS.map(m => `
-            <div class="card card-pad ${state.settings.mood === m.id ? '' : ''}" style="cursor:pointer;flex:1;min-width:140px;${state.settings.mood === m.id ? `box-shadow:0 0 0 2px ${m.accent}` : ''}" onclick="setMood('${m.id}')">
-              <div class="flex-gap mb-8">
-                <span style="width:16px;height:16px;border-radius:50%;background:${m.accent};flex-shrink:0;box-shadow:0 0 0 2px var(--surface), 0 0 0 3px ${m.secondary}"></span>
-                <strong style="font-size:13px">${m.name}</strong>
-                ${state.settings.mood === m.id ? `<span style="margin-left:auto">${checkGlyph(true)}</span>` : ''}
-              </div>
-              <div class="small muted">${m.desc}</div>
-            </div>
-          `).join('')}
-        </div>
-        <div class="checkbox-row mt-16"><input type="checkbox" id="st-dark" ${state.settings.dark ? 'checked' : ''} onchange="toggleDark(this.checked)"><label for="st-dark">Dark mode</label></div>
+        <h3 style="font-size:15px" class="mb-8">Appearance</h3>
+        <p class="small muted mb-8">Black and white throughout — dark mode just inverts it.</p>
+        <div class="checkbox-row"><input type="checkbox" id="st-dark" ${state.settings.dark ? 'checked' : ''} onchange="toggleDark(this.checked)"><label for="st-dark">Dark mode</label></div>
         <div class="field mt-16"><label>Display name</label><input class="input" value="${esc(state.settings.displayName)}" oninput="state.settings.displayName=this.value" onchange="touch()"></div>
-      </div>
-
-      <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Background</h3>
-        <div class="bg-preview mb-16" style="background:${bgCssValue(state.settings.background)}"></div>
-        <div class="field"><label>Quick presets</label>
-          <div class="flex-gap wrap">
-            ${BACKGROUND_PRESETS.map((p, i) => `<div class="bg-preset ${bgMatchesPreset(state.settings.background, p) ? 'active' : ''}" style="background:${bgCssValue(p)}" title="${esc(p.label)}" onclick="setBackgroundPreset(${i})"></div>`).join('')}
-          </div>
-        </div>
-        <button class="btn btn-sm mt-8" onclick="openBackgroundModal()">${icon('sparkles', 13, 1.6)} Custom color or gradient</button>
       </div>
 
       <div class="card card-pad">
@@ -113,82 +77,11 @@ function pageSettings() {
     </div>
   `;
 }
-function setMood(id) {
-  const m = MOOD_PRESETS.find(x => x.id === id);
-  if (!m) return;
-  state.settings.mood = id;
-  state.settings.accent = m.accent;
-  state.settings.secondaryAccent = m.secondary;
-  applyTheme();
-  touch();
-}
 function toggleDark(on) { state.settings.dark = on; applyTheme(); touch(); }
 function applyTheme() {
   document.documentElement.classList.toggle('dark', state.settings.dark);
-  document.documentElement.style.setProperty('--accent', state.settings.accent);
-  document.documentElement.style.setProperty('--accent-light', state.settings.dark ? lighten(state.settings.accent, -60) : tint(state.settings.accent, 0.82));
-  document.documentElement.style.setProperty('--accent-dark', lighten(state.settings.accent, -30));
-  document.documentElement.style.setProperty('--accent-text', readableTextOn(state.settings.accent));
-  document.documentElement.style.setProperty('--wisteria', state.settings.secondaryAccent || '#c3aee8');
-  if (state.settings.dark) {
-    document.documentElement.style.removeProperty('--bg');
-    document.documentElement.style.removeProperty('--bg-text');
-  } else {
-    document.documentElement.style.setProperty('--bg', bgCssValue(state.settings.background));
-    document.documentElement.style.setProperty('--bg-text', readableTextOn(state.settings.background.color1));
-  }
 }
 
-function setBackgroundPreset(i) {
-  state.settings.background = { ...BACKGROUND_PRESETS[i] };
-  applyTheme();
-  touch();
-}
-
-function openBackgroundModal() {
-  window._bgDraft = JSON.parse(JSON.stringify(state.settings.background));
-  renderBackgroundModal();
-}
-function renderBackgroundModal() {
-  const bg = _bgDraft;
-  openModal(`
-    <div class="modal-head"><h3>Custom background</h3><button class="close-x" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
-    <div class="modal-body">
-      <div class="bg-preview mb-16" id="bg-modal-preview" style="background:${bgCssValue(bg)}"></div>
-      <div class="segmented mb-16">
-        <button class="${bg.type === 'solid' ? 'active' : ''}" onclick="_bgDraft.type='solid';renderBackgroundModal()">Solid</button>
-        <button class="${bg.type === 'gradient' ? 'active' : ''}" onclick="_bgDraft.type='gradient';renderBackgroundModal()">Gradient</button>
-      </div>
-      <div class="grid ${bg.type === 'gradient' ? 'grid-2' : ''}">
-        <div class="field"><label>${bg.type === 'gradient' ? 'Color 1' : 'Color'}</label>${colorWheelHtml('bgw1', bg.color1)}</div>
-        ${bg.type === 'gradient' ? `<div class="field"><label>Color 2</label>${colorWheelHtml('bgw2', bg.color2)}</div>` : ''}
-      </div>
-      ${bg.type === 'gradient' ? `<div class="field mt-8"><label>Angle (${bg.angle}°)</label><input type="range" style="width:100%" min="0" max="360" value="${bg.angle}" oninput="_bgDraft.angle=Number(this.value);refreshBgModalVisuals()"></div>` : ''}
-      <button class="btn btn-sm mt-8" onclick="resetBackgroundToWhite()">Reset to white</button>
-    </div>
-    <div class="modal-foot">
-      <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="applyBackgroundDraft()">Apply</button>
-    </div>
-  `, { wide: true });
-  wireColorWheel('bgw1', () => _bgDraft.color1, (hex) => { _bgDraft.color1 = hex; refreshBgModalVisuals(); });
-  if (bg.type === 'gradient') wireColorWheel('bgw2', () => _bgDraft.color2, (hex) => { _bgDraft.color2 = hex; refreshBgModalVisuals(); });
-}
-function refreshBgModalVisuals() {
-  const preview = $('#bg-modal-preview');
-  if (preview) preview.style.background = bgCssValue(_bgDraft);
-}
-function resetBackgroundToWhite() {
-  _bgDraft = { type: 'solid', color1: '#ffffff', color2: '#eef0fb', angle: 135 };
-  renderBackgroundModal();
-}
-function applyBackgroundDraft() {
-  state.settings.background = _bgDraft;
-  applyTheme();
-  touch();
-  closeModal();
-  toast('Background updated');
-}
 function setAiKey(v) { state.settings.aiApiKey = v.trim(); save(); toast('API key saved'); }
 
 function exportData() {

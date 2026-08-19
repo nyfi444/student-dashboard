@@ -1,7 +1,8 @@
 /* ────────────────────────────────────────────────────────────────
    Student Planner — Design System
-   Theming: CSS custom properties on :root, overridden per accent
-   choice via a data-accent attribute, and dark mode via .dark class.
+   Theming: CSS custom properties on :root, strictly black/white/gray.
+   Dark mode (.dark class) inverts the same neutral palette — there
+   is no other color option anywhere in the app.
 ──────────────────────────────────────────────────────────────── */
 * , *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #app { height: 100%; }
@@ -9,35 +10,29 @@ html { background: var(--bg); }
 html { -webkit-text-size-adjust: 100%; }
 
 :root {
-  /* Named palette — authored, not accent-1/accent-2. See design plan. */
-  --vellum: #faf6f1;      /* page background */
-  --cloud: #fffcf8;       /* card/surface, sits just above Vellum */
-  --petal: #e7afc7;       /* primary accent */
-  --petal-deep: #c97d9c;  /* petal, deepened for text/icon contrast */
-  --wisteria: #c3aee8;    /* secondary accent — supporting role only */
-  --ink: #241b2e;         /* deep aubergine text, not pure black */
-  --champagne: #cba35c;   /* rare metallic highlight — used sparingly */
+  --ink: #141414;          /* near-black, used for the floating selection toolbar */
+  --badge: #ececec;        /* neutral badge fill (e.g. "AI" labels) */
 
-  --accent: var(--petal);
-  --accent-light: #fbf1f5;
-  --accent-dark: var(--petal-deep);
-  --accent-text: #000000; /* readable text/icon color on --accent fills, recomputed per mood */
-  --bg: var(--vellum);
-  --bg-text: #000000; /* readable text on --bg (sidebar), recomputed per custom background */
+  --accent: #141414;
+  --accent-light: #efefef;
+  --accent-dark: #000000;
+  --accent-text: #ffffff; /* readable text/icon color on --accent fills */
+  --bg: #fafafa;
+  --bg-text: #000000;
   --bg-text-dim: color-mix(in srgb, var(--bg-text) 65%, var(--bg));
   --bg-text-faint: color-mix(in srgb, var(--bg-text) 42%, var(--bg));
-  --surface: var(--cloud);
-  --surface-2: #fbf1e8;
-  --border: #efe1d4;
+  --surface: #ffffff;
+  --surface-2: #f0f0f0;
+  --border: #e4e4e4;
   --text: #000000;
   --text-dim: rgba(0, 0, 0, 0.72);
   --text-faint: rgba(0, 0, 0, 0.46);
-  --danger: #c24a5c;
-  --danger-light: #fbe6e9;
-  --success: #3f8f68;
-  --success-light: #e2f5eb;
-  --warn: #b98a3e;
-  --warn-light: #faf0dc;
+  --danger: #141414;
+  --danger-light: #ececec;
+  --success: #3d3d3d;
+  --success-light: #f2f2f2;
+  --warn: #5c5c5c;
+  --warn-light: #f4f4f4;
 
   --radius: 16px;
   --radius-sm: 10px;
@@ -46,22 +41,31 @@ html { -webkit-text-size-adjust: 100%; }
   --r-tight: 9px;
   --r-tight-active: 6px;
 
-  --shadow: 0 1px 2px rgba(60, 30, 40, 0.04), 0 8px 24px rgba(60, 30, 40, 0.06);
-  --shadow-lg: 0 16px 44px rgba(60, 30, 40, 0.18);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.16);
   --font: 'General Sans', -apple-system, 'Segoe UI', sans-serif;
   --font-serif: 'Instrument Serif', Georgia, serif;
 }
 
 html.dark {
-  --bg: #1e1720;
+  --accent: #f2f2f2;
+  --accent-light: #2a2a2a;
+  --accent-dark: #ffffff;
+  --accent-text: #000000;
+  --bg: #0f0f0f;
   --bg-text: #ffffff;
-  --surface: #271f2a;
-  --surface-2: #2d232f;
-  --border: #3d3040;
+  --surface: #1a1a1a;
+  --surface-2: #242424;
+  --border: #333333;
   --text: #ffffff;
   --text-dim: rgba(255, 255, 255, 0.75);
   --text-faint: rgba(255, 255, 255, 0.5);
-  --accent-light: #3a2a33;
+  --danger: #f5f5f5;
+  --danger-light: #2a2a2a;
+  --success: #cfcfcf;
+  --success-light: #262626;
+  --warn: #a8a8a8;
+  --warn-light: #2a2a2a;
   --shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.45);
 }
@@ -207,7 +211,7 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .tag { padding: 2px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
 
 /* ── Modal ─────────────────────────────────────────────────── */
-.overlay { position: fixed; inset: 0; background: rgba(20, 14, 30, .42); backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 200; }
+.overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 200; }
 .overlay.show { opacity: 1; pointer-events: auto; }
 .modal-wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 201; pointer-events: none; padding: 20px; }
 .modal { background: var(--surface); box-shadow: var(--shadow-lg); width: 480px; max-width: 100%; max-height: 86vh; overflow-y: auto; opacity: 0; transform: scale(.96) translateY(8px); transition: opacity .18s, transform .18s; pointer-events: none; }
@@ -281,20 +285,6 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .timer-ring { width: 220px; height: 220px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }
 .timer-display { font-family: var(--font-serif); font-style: italic; font-size: 46px; }
 
-/* ── Color wheel picker (Settings → background) ───────────────── */
-.cw-wheel {
-  width: 150px; height: 150px; border-radius: 50%; margin: 0 auto; position: relative; cursor: crosshair; touch-action: none;
-  background: radial-gradient(circle at center, #fff, transparent 70%), conic-gradient(from 90deg, red, yellow, lime, cyan, blue, magenta, red);
-  box-shadow: 0 0 0 1px var(--border);
-}
-.cw-marker { position: absolute; width: 15px; height: 15px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); transform: translate(-50%,-50%); pointer-events: none; }
-.cw-brightness { width: 100%; margin-top: 12px; }
-.cw-hexrow { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.cw-swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border); flex-shrink: 0; }
-.bg-preview { height: 64px; border-radius: 12px; border: 1px solid var(--border); }
-.bg-preset { width: 30px; height: 30px; border-radius: 9px; cursor: pointer; border: 2px solid var(--border); flex-shrink: 0; transition: transform .12s; }
-.bg-preset:hover { transform: scale(1.08); }
-.bg-preset.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
 
 /* ── Rich text editor (notebook) ──────────────────────────────── */
 .rich-editor { outline: none; line-height: 1.7; }
@@ -372,16 +362,11 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-note-sub { font-size: 10.5px; color: var(--text-faint); display: flex; align-items: center; gap: 4px; margin-top: 1px; }
 .nb-note-del { opacity: 0; flex-shrink: 0; }
 .nb-note-row:hover .nb-note-del { opacity: 1; }
-.notebook-page { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; background: var(--bg); padding: 44px 40px 90px; }
+.notebook-page { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; background: var(--surface); padding: 56px 40px 120px; }
 .nb-blank { height: 100%; display: flex; align-items: center; justify-content: center; }
 .nb-page-inner {
-  max-width: 820px; margin: 0 auto; min-height: calc(100% - 1px);
-  background: var(--surface);
-  border-radius: 3px;
-  box-shadow: 0 1px 2px rgba(30, 15, 20, 0.05), 0 18px 40px -14px rgba(30, 15, 20, 0.14);
-  padding: 76px 88px 120px;
+  max-width: 760px; margin: 0 auto; min-height: calc(100% - 1px);
 }
-html.dark .nb-page-inner { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 40px -14px rgba(0, 0, 0, 0.4); }
 .nb-breadcrumb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
 .nb-breadcrumb { font-size: 12px; color: var(--text-faint); }
 .nb-page-actions { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -428,7 +413,7 @@ html.dark .nb-page-inner { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 40px
 .priority-high { color: var(--danger); } .priority-med { color: var(--warn); } .priority-low { color: var(--text-faint); }
 .upload-drop { border: 2px dashed var(--border); border-radius: 14px; padding: 30px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
 .upload-drop:hover, .upload-drop.drag { border-color: var(--accent); background: var(--accent-light); }
-.ai-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 20px; background: var(--champagne); color: var(--ink); }
+.ai-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 20px; background: var(--badge); color: var(--ink); }
 .loading-dots::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
 @keyframes dots { 0%, 20% { content: ''; } 40% { content: '.'; } 60% { content: '..'; } 80%, 100% { content: '...'; } }
 
@@ -463,7 +448,7 @@ html.dark .nb-page-inner { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 40px
     width: 100%; height: auto; position: fixed; bottom: 0; top: auto; left: 0; right: 0; z-index: 120;
     flex-direction: row; align-items: center; padding: 6px 8px; gap: 6px;
     border-right: none; border-top: 1px solid var(--border);
-    box-shadow: 0 -8px 20px rgba(60, 30, 40, 0.06);
+    box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.06);
   }
   .sidebar > div:nth-child(2) {
     flex: 1; min-width: 0; display: flex; overflow-x: auto; gap: 10px;
@@ -483,7 +468,7 @@ html.dark .nb-page-inner { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 40px
   .notebook-layout { flex-direction: column; overflow: visible; }
   .notebook-tree-panel { width: auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
   .notebook-page { height: auto; overflow: visible; padding: 20px 12px 60px; }
-  .nb-page-inner { max-width: none; padding: 28px 20px 60px; min-height: auto; border-radius: 0; box-shadow: none; }
+  .nb-page-inner { max-width: none; min-height: auto; }
   .cal-grid { gap: 3px; }
   .cal-cell { min-height: 64px; padding: 4px; }
   .cal-dow { font-size: 9.5px; padding-bottom: 3px; }

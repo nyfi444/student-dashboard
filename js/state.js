@@ -9,34 +9,22 @@ const storeKey = 'studentPlanner.v1';
 const legacyKeys = [];
 
 const ACCENTS = [
-  { name: 'Lavender', hex: '#7c6fd6' },
-  { name: 'Rose', hex: '#d6577f' },
-  { name: 'Coral', hex: '#e0785a' },
-  { name: 'Amber', hex: '#d69a3a' },
-  { name: 'Sage', hex: '#5f9a72' },
-  { name: 'Teal', hex: '#3f9c9c' },
-  { name: 'Sky', hex: '#4d8fd6' },
-  { name: 'Indigo', hex: '#5854c9' },
-  { name: 'Plum', hex: '#9c4fa8' },
-  { name: 'Slate', hex: '#5a6273' },
+  { name: 'Black', hex: '#000000' },
+  { name: 'Charcoal', hex: '#2b2b2b' },
+  { name: 'Graphite', hex: '#444444' },
+  { name: 'Slate', hex: '#5c5c5c' },
+  { name: 'Steel', hex: '#767676' },
+  { name: 'Ash', hex: '#909090' },
+  { name: 'Silver', hex: '#a8a8a8' },
+  { name: 'Mist', hex: '#c2c2c2' },
+  { name: 'Fog', hex: '#dcdcdc' },
+  { name: 'Cloud', hex: '#f0f0f0' },
 ];
-const COURSE_COLORS = ['#7c6fd6', '#d6577f', '#e0785a', '#d69a3a', '#5f9a72', '#3f9c9c', '#4d8fd6', '#9c4fa8'];
+const COURSE_COLORS = ['#1f1f1f', '#3a3a3a', '#555555', '#707070', '#8a8a8a', '#a5a5a5', '#c0c0c0', '#4d4d4d'];
 const ASSIGNMENT_TYPES = ['assignment', 'reading', 'discussion', 'quiz', 'exam', 'project', 'paper', 'lab'];
-
-/* Mood presets — swap the full accent pairing (primary + secondary) at once so
-   the app's emotional temperature changes coherently, not just one hue. Type,
-   the signature corner shape, and layout stay identical across all three —
-   customization changes the mood, not the design quality. Champagne (the rare
-   metallic highlight) stays constant across every mood by design. */
-const MOOD_PRESETS = [
-  { id: 'bloom', name: 'Bloom', desc: 'Rose & lavender — the default', accent: '#e7afc7', secondary: '#c3aee8' },
-  { id: 'dusk', name: 'Dusk', desc: 'Slate & silver, cool and quiet', accent: '#4c5b73', secondary: '#b7c0cc' },
-  { id: 'sage', name: 'Sage', desc: 'Sage green & warm terracotta', accent: '#8ca888', secondary: '#d98b6b' },
-];
 
 function seedData() {
   const semId = uid();
-  const c1 = uid(), c2 = uid(), c3 = uid();
   const t = todayIso();
   return {
     route: 'dashboard',
@@ -46,14 +34,9 @@ function seedData() {
     todoFilter: 'all',
     notebookSelected: null,
     settings: {
-      mood: 'bloom',
-      accent: '#e7afc7',
-      secondaryAccent: '#c3aee8',
       dark: false,
       sidebarCollapsed: false,
-      dashboardAccent: null,
       stickyNoteSize: 'md',
-      background: { type: 'gradient', color1: '#fef6f8', color2: '#eef4ff', angle: 135 },
       gradeScale: '4.0',
       weekStartsMonday: true,
       aiApiKey: '',
@@ -62,36 +45,16 @@ function seedData() {
     },
     currentSemesterId: semId,
     semesters: [
-      { id: semId, name: 'Fall Semester', startDate: t, endDate: addDays(t, 110), archived: false },
+      { id: semId, name: 'New Semester', startDate: t, endDate: addDays(t, 110), archived: false },
     ],
-    courses: [
-      { id: c1, semesterId: semId, name: 'Intro to Psychology', code: 'PSY 101', instructor: 'Dr. Alvarez', color: COURSE_COLORS[0], credits: 3, location: 'Hall 220', meetings: [{ day: 1, start: '10:00', end: '11:15' }, { day: 3, start: '10:00', end: '11:15' }], gradingBreakdown: [{ id: uid(), name: 'Exams', weight: 40 }, { id: uid(), name: 'Homework', weight: 25 }, { id: uid(), name: 'Participation', weight: 10 }, { id: uid(), name: 'Final Project', weight: 25 }], finalGradeOverride: null, syllabusRaw: '' },
-      { id: c2, semesterId: semId, name: 'Calculus II', code: 'MATH 202', instructor: 'Prof. Chen', color: COURSE_COLORS[1], credits: 4, location: 'Science 118', meetings: [{ day: 2, start: '09:00', end: '10:30' }, { day: 4, start: '09:00', end: '10:30' }], gradingBreakdown: [{ id: uid(), name: 'Exams', weight: 50 }, { id: uid(), name: 'Problem Sets', weight: 30 }, { id: uid(), name: 'Quizzes', weight: 20 }], finalGradeOverride: null, syllabusRaw: '' },
-      { id: c3, semesterId: semId, name: 'World Literature', code: 'ENGL 214', instructor: 'Dr. Osei', color: COURSE_COLORS[5], credits: 3, location: 'Humanities 3', meetings: [{ day: 5, start: '13:00', end: '14:15' }], gradingBreakdown: [{ id: uid(), name: 'Essays', weight: 45 }, { id: uid(), name: 'Discussion', weight: 20 }, { id: uid(), name: 'Final Exam', weight: 35 }], finalGradeOverride: null, syllabusRaw: '' },
-    ],
-    assignments: [
-      { id: uid(), courseId: c1, title: 'Ch. 1-3 Reading Quiz', type: 'quiz', dueDate: addDays(t, 2), dueTime: '10:00', category: null, weight: null, maxPoints: 20, earnedPoints: null, status: 'not-started', rubric: [], notes: '', recurringTemplateId: null },
-      { id: uid(), courseId: c1, title: 'Midterm Exam', type: 'exam', dueDate: addDays(t, 14), dueTime: '10:00', category: null, weight: null, maxPoints: 100, earnedPoints: null, status: 'not-started', rubric: [], notes: 'Covers ch. 1-6', recurringTemplateId: null },
-      { id: uid(), courseId: c2, title: 'Problem Set 4', type: 'assignment', dueDate: addDays(t, 4), dueTime: '23:59', category: null, weight: null, maxPoints: 50, earnedPoints: null, status: 'in-progress', rubric: [], notes: '', recurringTemplateId: null },
-      { id: uid(), courseId: c3, title: 'Essay 1: Comparative Themes', type: 'paper', dueDate: addDays(t, 9), dueTime: '23:59', category: null, weight: null, maxPoints: 100, earnedPoints: null, status: 'not-started', rubric: [
-        { id: uid(), item: 'Thesis & argument', points: 25, earned: null, done: false },
-        { id: uid(), item: 'Textual evidence', points: 25, earned: null, done: false },
-        { id: uid(), item: 'Organization', points: 20, earned: null, done: false },
-        { id: uid(), item: 'Grammar & style', points: 15, earned: null, done: false },
-        { id: uid(), item: 'Citations (MLA)', points: 15, earned: null, done: false },
-      ], notes: '', recurringTemplateId: null },
-    ],
+    courses: [],
+    assignments: [],
     todoSections: [],
-    todos: [
-      { id: uid(), courseId: c2, sectionId: null, title: 'Review lecture notes before class', done: false, dueDate: t, priority: 'medium', recurring: null },
-      { id: uid(), courseId: null, sectionId: null, title: 'Order textbook for Lit class', done: false, dueDate: addDays(t, 1), priority: 'low', recurring: null },
-      { id: uid(), courseId: c1, sectionId: null, title: 'Email TA about office hours', done: true, dueDate: addDays(t, -1), priority: 'low', recurring: null },
-    ],
+    todos: [],
     events: [],
     quickNote: '',
     notes: [
       { id: 'root', type: 'folder', name: 'Notebooks', parentId: null, courseId: null, open: true },
-      { id: uid(), type: 'note', name: 'Welcome', parentId: 'root', courseId: null, content: '<p>This is your notebook. Create folders per class and take notes here. Build flashcard decks by hand from the Study Tools page.</p>', updatedAt: Date.now() },
     ],
     timerSessions: [],
     decks: [],
@@ -153,6 +116,6 @@ function setState(patch) {
 function touch() { save(); if (typeof render === 'function') render(); }
 
 function getCourse(id) { return state.courses.find(c => c.id === id); }
-function getCourseColor(id) { return getCourse(id)?.color || '#9993ac'; }
+function getCourseColor(id) { return getCourse(id)?.color || '#8a8a8a'; }
 function activeCourses() { return state.courses.filter(c => c.semesterId === state.currentSemesterId); }
 function courseOptions() { return activeCourses().map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join(''); }
