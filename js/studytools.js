@@ -1,11 +1,10 @@
-/* ── Study Tools: flashcard decks + AI study guide/flashcard gen ──── */
+/* ── Study Tools: flashcard decks ────────────────────────────────── */
 function pageStudyTools() {
   const decks = state.decks.filter(d => !d.courseId || activeCourses().some(c => c.id === d.courseId));
   const totalCards = decks.reduce((s, d) => s + d.cards.length, 0);
   const coursesLinked = new Set(decks.map(d => d.courseId).filter(Boolean)).size;
   return `
-    ${pageHead('Study Tools', 'Flashcards and AI-assisted studying', `
-      ${aiButton('Generate from notes', 'openAiGenerateModal()')}
+    ${pageHead('Study Tools', 'Flashcards for studying', `
       <button class="btn btn-primary" onclick="openDeckModal()">+ New deck</button>
     `)}
     <div class="grid grid-3 mb-16">
@@ -13,7 +12,7 @@ function pageStudyTools() {
       <div class="stat-card"><div class="num">${totalCards}</div><div class="lbl">Total cards</div></div>
       <div class="stat-card"><div class="num">${coursesLinked}</div><div class="lbl">Courses covered</div></div>
     </div>
-    ${decks.length ? `<div class="grid grid-3">${decks.map(deckCard).join('')}</div>` : emptyState(icon('layers',26,1.4), 'No flashcard decks yet', `<button class="btn btn-primary mt-8" onclick="openDeckModal()">+ New deck</button>`, 'Build one by hand, or generate cards from your notes with AI.')}
+    ${decks.length ? `<div class="grid grid-3">${decks.map(deckCard).join('')}</div>` : emptyState(icon('layers',26,1.4), 'No flashcard decks yet', `<button class="btn btn-primary mt-8" onclick="openDeckModal()">+ New deck</button>`, 'Build one by hand to start studying.')}
   `;
 }
 function deckCard(d) {
@@ -107,55 +106,4 @@ function shuffleDeck() {
   const deck = state.decks.find(d => d.id === window._study.deckId);
   for (let i = deck.cards.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[deck.cards[i], deck.cards[j]] = [deck.cards[j], deck.cards[i]]; }
   window._study.idx = 0; window._study.flipped = false; touch(); renderStudyMode();
-}
-
-/* Generate a deck or study guide from any note, or from pasted text */
-function openAiGenerateModal() {
-  const notes = state.notes.filter(n => n.type === 'note');
-  openModal(`
-    <div class="modal-head"><h3>Generate with AI <span class="ai-badge">AI</span></h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
-    <div class="modal-body">
-      ${!hasAiKey() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">Add a Claude API key in Settings → AI first.</div>` : ''}
-      <div class="field"><label>Source</label>
-        <select class="select" id="ag-source">
-          <option value="">Paste text instead…</option>
-          ${notes.map(n => `<option value="${n.id}">${esc(n.name)}</option>`).join('')}
-        </select>
-      </div>
-      <div class="field"><label>Or paste notes</label><textarea class="input" id="ag-text" style="min-height:130px"></textarea></div>
-      <div class="field"><label>Generate</label>
-        <div class="segmented"><button class="active" data-g="flashcards" onclick="agPick('flashcards',this)">Flashcards</button><button data-g="guide" onclick="agPick('guide',this)">Study guide</button></div>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="ag-run" onclick="runAiGenerate()" ${hasAiKey() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Generate</button>
-    </div>
-  `);
-  window._agKind = 'flashcards';
-}
-function agPick(kind, btn) { window._agKind = kind; $$('.segmented button[data-g]').forEach(b => b.classList.toggle('active', b === btn)); }
-async function runAiGenerate() {
-  const noteId = $('#ag-source').value;
-  const pasted = $('#ag-text').value.trim();
-  const note = noteId ? state.notes.find(n => n.id === noteId) : null;
-  const text = note ? plainTextOfNote(note) : pasted;
-  const courseId = note ? note.courseId : null;
-  if (!text) { toast('Pick a note or paste some text', 'error'); return; }
-  const btn = $('#ag-run');
-  setBtnLoading(btn, true);
-  try {
-    if (window._agKind === 'flashcards') {
-      const cards = await aiGenerateFlashcards(text, 12);
-      state.decks.push({ id: uid(), name: note ? note.name : 'Generated deck', courseId, cards: cards.map(c => ({ id: uid(), front: c.front, back: c.back })) });
-      touch(); closeModal(); toast(`Created a deck with ${cards.length} cards`);
-    } else {
-      const html = await aiGenerateStudyGuide(text, getCourse(courseId)?.name);
-      const id = uid();
-      state.notes.push({ id, type: 'note', name: (note ? note.name : 'Pasted notes') + ' — Study Guide', parentId: 'root', courseId, content: html, updatedAt: Date.now() });
-      setState({ notebookSelected: id, route: 'notebook' });
-      closeModal(); toast('Study guide created in Notebook');
-    }
-  } catch (e) { toast(e.message || 'Generation failed', 'error', 4000); }
-  finally { setBtnLoading(btn, false); }
 }

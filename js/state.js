@@ -91,7 +91,7 @@ function seedData() {
     quickNote: '',
     notes: [
       { id: 'root', type: 'folder', name: 'Notebooks', parentId: null, courseId: null, open: true },
-      { id: uid(), type: 'note', name: 'Welcome', parentId: 'root', courseId: null, content: '<p>This is your notebook. Create folders per class, take notes here, then turn any note into an AI study guide or flashcard deck from the Study Tools page.</p>', updatedAt: Date.now() },
+      { id: uid(), type: 'note', name: 'Welcome', parentId: 'root', courseId: null, content: '<p>This is your notebook. Create folders per class and take notes here. Build flashcard decks by hand from the Study Tools page.</p>', updatedAt: Date.now() },
     ],
     timerSessions: [],
     decks: [],

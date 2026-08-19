@@ -69,7 +69,7 @@ function pageSettings() {
 
       <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">AI <span class="ai-badge">Claude</span></h3>
-        <p class="small muted mb-8">Powers syllabus auto-fill, AI flashcards, and study guides. Your key is stored only in this browser.</p>
+        <p class="small muted mb-8">Powers syllabus and assignment auto-fill from uploaded documents. Your key is stored only in this browser.</p>
         <div class="field"><label>Claude API key</label><input class="input" type="password" id="st-key" value="${esc(state.settings.aiApiKey)}" placeholder="sk-ant-…" onchange="setAiKey(this.value)"></div>
         <p class="small muted">Get a key at <span style="text-decoration:underline">console.anthropic.com</span>.</p>
       </div>

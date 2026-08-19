@@ -1,4 +1,4 @@
-/* ── AI layer — Claude API calls for syllabus parsing & study tools ─
+/* ── AI layer — Claude API calls for syllabus & assignment parsing ──
    Calls the Anthropic API directly from the browser using a key the
    user pastes into Settings > AI (stored only in localStorage on
    this device). This is fine for a single-user personal tool but
@@ -97,15 +97,4 @@ async function aiParseAssignments({ text, imageBase64, mediaType }) {
     : `Here is the document text:\n\n${text.slice(0, 15000)}`;
   const raw = await callClaude({ system: ASSIGNMENTS_SYSTEM, userContent, maxTokens: 3000 });
   return extractJson(raw);
-}
-
-async function aiGenerateFlashcards(notesText, count = 10) {
-  const system = `You turn study notes into flashcards. Reply with ONLY a JSON array (no prose, no markdown fences) of up to ${count} objects: [{"front": string, "back": string}]. Fronts should be concise questions or terms; backs should be concise answers.`;
-  const raw = await callClaude({ system, userContent: `Notes:\n\n${notesText.slice(0, 12000)}`, maxTokens: 2500 });
-  return extractJson(raw);
-}
-
-async function aiGenerateStudyGuide(notesText, courseName) {
-  const system = `You write a clear, well-organized study guide from a student's notes for ${courseName || 'a course'}. Reply with ONLY HTML using <h2>, <h3>, <p>, <ul>/<li>, and <strong> tags (no markdown, no full document, no <html>/<body> tags) — this gets inserted directly into a notes editor. Organize by topic, bold key terms, keep it skimmable.`;
-  return await callClaude({ system, userContent: `Notes:\n\n${notesText.slice(0, 14000)}`, maxTokens: 3000 });
 }

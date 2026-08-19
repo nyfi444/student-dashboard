@@ -20,7 +20,7 @@ function pageNotebook() {
   const sort = state._notebookSort || 'edited';
 
   const html = `
-    ${pageHead('Notebook', 'Organize notes by class, then turn any note into an AI study guide or flashcards', `
+    ${pageHead('Notebook', 'Organize notes by class', `
       <button class="btn btn-sm" onclick="createFolder('root')">${icon('folder', 13)} Folder</button>
       <button class="btn btn-primary" onclick="createNote('root')">${icon('plus', 13, 2.2)} Note</button>
     `)}
@@ -270,10 +270,6 @@ function renderNoteEditor(note) {
           </select>
           <span class="small muted" id="nb-save-status">Edited ${fmtRelativeTime(note.updatedAt) || 'now'} · ${words} word${words === 1 ? '' : 's'}</span>
         </div>
-        <div class="flex-gap">
-          ${aiButton('Study guide', `generateStudyGuideFromNote('${note.id}')`, 'sg-btn')}
-          ${aiButton('Flashcards', `generateFlashcardsFromNote('${note.id}')`, 'fc-btn')}
-        </div>
       </div>
       <div class="nb-hint">Type <code>/</code> for blocks, or select text to format</div>
       <div class="rich-editor nb-editor-body" id="note-editor" contenteditable="true" data-placeholder="Start writing…" oninput="onNoteEdit('${note.id}', this)">${note.content || ''}</div>
@@ -317,34 +313,4 @@ function shareNoteToGroup(id) {
   const note = state.notes.find(n => n.id === id);
   if (!note) return;
   openShareToGroupModal('note', note.name || 'Untitled note', { content: note.content || '' });
-}
-
-async function generateStudyGuideFromNote(id) {
-  const note = state.notes.find(x => x.id === id);
-  const text = plainTextOfNote(note);
-  if (!text.trim()) { toast('This note is empty', 'error'); return; }
-  const btn = $('#sg-btn');
-  setBtnLoading(btn, true);
-  try {
-    const html = await aiGenerateStudyGuide(text, getCourse(note.courseId)?.name);
-    const newId = uid();
-    state.notes.push({ id: newId, type: 'note', name: note.name + ' — Study Guide', parentId: note.parentId, courseId: note.courseId, content: html, updatedAt: Date.now() });
-    setState({ notebookSelected: newId });
-    toast('Study guide created');
-  } catch (e) { toast(e.message || 'Could not generate a study guide', 'error', 4000); }
-  finally { setBtnLoading(btn, false); }
-}
-async function generateFlashcardsFromNote(id) {
-  const note = state.notes.find(x => x.id === id);
-  const text = plainTextOfNote(note);
-  if (!text.trim()) { toast('This note is empty', 'error'); return; }
-  const btn = $('#fc-btn');
-  setBtnLoading(btn, true);
-  try {
-    const cards = await aiGenerateFlashcards(text, 12);
-    state.decks.push({ id: uid(), name: note.name, courseId: note.courseId, cards: cards.map(c => ({ id: uid(), front: c.front, back: c.back })) });
-    touch();
-    toast(`Created a deck with ${cards.length} cards — see Study Tools`);
-  } catch (e) { toast(e.message || 'Could not generate flashcards', 'error', 4000); }
-  finally { setBtnLoading(btn, false); }
 }
