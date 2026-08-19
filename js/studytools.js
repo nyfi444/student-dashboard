@@ -1,10 +1,10 @@
-/* ── Study Tools: flashcard decks ────────────────────────────────── */
+/* ── Flashcards: decks ────────────────────────────────────────────── */
 function pageStudyTools() {
   const decks = state.decks.filter(d => !d.courseId || activeCourses().some(c => c.id === d.courseId));
   const totalCards = decks.reduce((s, d) => s + d.cards.length, 0);
   const coursesLinked = new Set(decks.map(d => d.courseId).filter(Boolean)).size;
   return `
-    ${pageHead('Study Tools', 'Flashcards for studying', `
+    ${pageHead('Flashcards', 'Build decks and study', `
       <button class="btn btn-primary" onclick="openDeckModal()">+ New deck</button>
     `)}
     <div class="grid grid-3 mb-16">

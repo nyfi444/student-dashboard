@@ -123,7 +123,7 @@ function renderGroupDetail(g) {
           <div class="row-meta">${esc(s.sharedBy || '')}</div>
           <button class="btn btn-sm" onclick="importSharedItem('${g.id}','${s.id}')">Add to mine</button>
           <button class="btn btn-ghost btn-icon btn-sm" onclick="removeSharedItem('${g.id}','${s.id}')">${icon('trash',14)}</button>
-        </div>`).join('') : emptyState(icon('layers',22,1.4), 'Nothing shared yet', '', 'Share a note or flashcard deck from the Notebook or Study Tools page.')}
+        </div>`).join('') : emptyState(icon('layers',22,1.4), 'Nothing shared yet', '', 'Share a note or flashcard deck from the Notebook or Flashcards page.')}
     </div>
     <div class="modal-foot"><button class="btn btn-danger" onclick="deleteGroup('${g.id}')">Leave/delete group</button><button class="btn" onclick="closeGroupDetail()">Close</button></div>
   `);
@@ -137,7 +137,7 @@ function importSharedItem(groupId, itemId) {
     toast(`Added "${s.title}" to your notebook`);
   } else if (s.kind === 'deck') {
     state.decks.push({ id: uid(), name: s.title, courseId: null, cards: s.cards.map(c => ({ id: uid(), front: c.front, back: c.back })) });
-    toast(`Added "${s.title}" to your study tools`);
+    toast(`Added "${s.title}" to your flashcards`);
   }
   touch();
 }
@@ -148,7 +148,7 @@ function removeSharedItem(groupId, itemId) {
   pushGroupToCloud(g);
 }
 
-/* ── Share a note or flashcard deck into a group (called from Notebook / Study Tools) ─ */
+/* ── Share a note or flashcard deck into a group (called from Notebook / Flashcards) ─ */
 function openShareToGroupModal(kind, title, payload) {
   if (!state.studyGroups.length) { toast('Join or create a study group first', 'error'); return; }
   window._shareDraft = { kind, title, payload };
