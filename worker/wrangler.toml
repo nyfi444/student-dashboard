@@ -1,0 +1,13 @@
+name = "student-planner-ai-proxy"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# Restrict which origin(s) may call this Worker. Set to the exact
+# origin your planner is served from (e.g. "https://you.github.io"),
+# or a comma-separated list. Leave as "*" only while testing locally.
+[vars]
+ALLOWED_ORIGIN = "*"
+
+# The real Anthropic key is NOT set here — it's a secret, set via:
+#   wrangler secret put ANTHROPIC_API_KEY
+# so it never lands in source control or this config file.

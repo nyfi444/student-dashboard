@@ -35,6 +35,14 @@ const ICON_PATHS = {
   palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1 0 1.6-.6 1.6-1.4 0-.4-.2-.7-.2-1.1 0-.8.7-1.4 1.5-1.4h1.6c2.6 0 4.5-1.8 4.5-4.6 0-4.7-4-8.5-9-8.5Z"/><circle cx="7.7" cy="10.5" r="1.15" fill="currentColor" stroke="none"/><circle cx="11.3" cy="7.3" r="1.15" fill="currentColor" stroke="none"/><circle cx="15.7" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>',
   play: '<path d="M6.5 4.5v15l13-7.5Z" fill="currentColor" stroke="none"/>',
   pause: '<rect x="6" y="5" width="4.5" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="4.5" height="14" rx="1" fill="currentColor" stroke="none"/>',
+  sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v3M12 18.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  paperclip: '<path d="M8 12.5 15.5 5a3 3 0 0 1 4.2 4.2l-9 9a5 5 0 0 1-7-7l8.5-8.4"/>',
+  star: '<path d="M12 3.5l2.6 5.6 6 .7-4.5 4.1 1.2 6-5.3-3-5.3 3 1.2-6-4.5-4.1 6-.7Z"/>',
+  pin: '<path d="M9 4.5h6l.7 4.3 2.3 1.6-1 2.6H7l-1-2.6 2.3-1.6Z"/><path d="M12 13v7"/>',
+  link: '<path d="M9.5 14.5 14.5 9.5"/><path d="M11 7.5l1.5-1.5a3.5 3.5 0 0 1 5 5L16 12.5"/><path d="M13 16.5 11.5 18a3.5 3.5 0 0 1-5-5L8 11.5"/>',
+  shuffle: '<path d="M3 7h3.5L15 17h6"/><path d="M17.5 5.5 21 7l-3.5 1.5M17.5 18.5 21 17l-3.5-1.5"/><path d="M3 17h3.5L11 12"/><path d="M12.5 9.5 15 7"/>',
+  'grip-vertical': '<circle cx="9" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.1" fill="currentColor" stroke="none"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.7"/>',
 };
 function icon(name, size = 16, strokeWidth = 1.7) {
   const path = ICON_PATHS[name];

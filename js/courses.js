@@ -1,10 +1,19 @@
 /* ── Courses + Syllabus Upload/AI Auto-fill ──────────────────────── */
 const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+function computeDegreeProgress() {
+  const total = state.settings.degreeTotalCredits || 0;
+  if (!total) return null;
+  const completedCredits = state.courses.filter(c => c.status === 'completed').reduce((s, c) => s + (c.credits || 0), 0);
+  const inProgressCredits = state.courses.filter(c => c.status === 'in-progress').reduce((s, c) => s + (c.credits || 0), 0);
+  return { completedCredits, inProgressCredits, total, pct: clamp(Math.round((completedCredits / total) * 100), 0, 100) };
+}
+
 function pageCourses() {
   const courses = activeCourses();
   const credits = courses.reduce((s, c) => s + (c.credits || 0), 0);
   const gpa = computeGPA();
+  const degree = computeDegreeProgress();
   return `
     ${pageHead('Courses', `${courses.length} course${courses.length === 1 ? '' : 's'} this semester`, `
       ${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}
@@ -15,6 +24,12 @@ function pageCourses() {
       <div class="stat-card"><div class="num">${credits}</div><div class="lbl">Total credits</div></div>
       <div class="stat-card"><div class="num ${gpa == null ? 'stat-dash' : ''}">${gpa != null ? gpa.toFixed(2) : '—'}</div><div class="lbl">Semester GPA</div></div>
     </div>
+    ${degree ? `
+    <div class="card card-pad mb-16">
+      <div class="flex-between mb-8"><span class="small dim" style="font-weight:600">Degree progress</span><span class="small muted">${degree.completedCredits} / ${degree.total} credits · ${degree.pct}%</span></div>
+      <div class="progress"><div style="width:${degree.pct}%"></div></div>
+      <div class="small muted mt-8">Set your target total in Settings → Degree.</div>
+    </div>` : ''}
     ${courses.length ? `<div class="grid grid-3">${courses.map(courseCard).join('')}</div>` : emptyState(icon('graduation-cap',26,1.4), 'Your courses will live here', `<button class="btn btn-primary mt-8" onclick="openCourseModal()">+ Add course</button>`, 'Add one by hand or upload a syllabus and let AI fill in the schedule and grading breakdown.')}
   `;
 }
@@ -22,6 +37,8 @@ function pageCourses() {
 function courseCard(c) {
   const meetStr = c.meetings.length ? c.meetings.map(m => `${DOW_NAMES[m.day]} ${fmtTime(m.start)}`).join(', ') : 'No scheduled meetings';
   const totalWeight = c.gradingBreakdown.reduce((s, g) => s + Number(g.weight || 0), 0);
+  const resources = c.resources || [];
+  const pinnedNotes = state.notes.filter(n => n.type === 'note' && n.courseId === c.id && n.pinned);
   return `
     <div class="card card-pad" style="border-top:3px solid ${c.color}">
       <div class="flex-between">
@@ -34,11 +51,17 @@ function courseCard(c) {
           <button class="btn btn-ghost btn-icon btn-sm" onclick="deleteCourse('${c.id}')">${icon('trash',14)}</button>
         </div>
       </div>
+      <div class="flex-gap wrap mt-8">
+        <span class="tag" style="background:var(--surface-2);color:var(--text-dim)">${COURSE_STATUS_LABELS[c.status] || COURSE_STATUS_LABELS['in-progress']}</span>
+        ${c.requirementType ? `<span class="tag" style="background:var(--surface-2);color:var(--text-dim)">${c.requirementType[0].toUpperCase() + c.requirementType.slice(1)}</span>` : ''}
+      </div>
       <div class="small muted mt-8">${esc(meetStr)}</div>
       ${c.location ? `<div class="small muted flex-gap">${icon('map-pin', 12)} ${esc(c.location)}</div>` : ''}
       <div class="divider"></div>
       <div class="small dim" style="margin-bottom:4px">Grading breakdown ${totalWeight !== 100 ? `<span style="color:var(--warn)">(${totalWeight}%)</span>` : ''}</div>
       ${c.gradingBreakdown.map(g => `<div class="flex-between small" style="padding:2px 0"><span class="muted">${esc(g.name)}</span><span>${g.weight}%</span></div>`).join('') || `<div class="small muted">Not set</div>`}
+      ${resources.length ? `<div class="divider"></div><div class="small dim" style="margin-bottom:4px">Resources</div><div class="flex-gap wrap">${resources.map(r => `<a class="btn btn-sm" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.label)}</a>`).join('')}</div>` : ''}
+      ${pinnedNotes.length ? `<div class="divider"></div><div class="small dim" style="margin-bottom:4px">${icon('pin',12,2)} Pinned</div>${pinnedNotes.map(n => `<div class="small" style="cursor:pointer;padding:2px 0" onclick="setState({route:'notebook',notebookSelected:'${n.id}'})">${esc(n.name)}</div>`).join('')}` : ''}
       <div class="flex-between mt-16">
         <span class="small dim">${c.credits || 0} credits</span>
         <a class="btn btn-sm btn-ghost" onclick="setState({route:'grades'})" style="color:var(--accent)">View grade →</a>
@@ -48,8 +71,10 @@ function courseCard(c) {
 }
 
 function openCourseModal(id) {
-  const c = id ? getCourse(id) : { id: uid(), semesterId: state.currentSemesterId, name: '', code: '', instructor: '', color: '#000000', credits: 3, location: '', meetings: [], gradingBreakdown: [], finalGradeOverride: null, syllabusRaw: '' };
+  const c = id ? getCourse(id) : { id: uid(), semesterId: state.currentSemesterId, name: '', code: '', instructor: '', color: '#000000', credits: 3, location: '', status: 'in-progress', requirementType: 'elective', meetings: [], gradingBreakdown: [], resources: [], finalGradeOverride: null, syllabusRaw: '' };
   const draft = JSON.parse(JSON.stringify(c));
+  if (!draft.status) draft.status = 'in-progress';
+  if (!draft.resources) draft.resources = [];
   window._courseDraft = draft;
 
   openModal(`
@@ -67,6 +92,10 @@ function openCourseModal(id) {
         <div class="field" style="max-width:120px"><label>Credits</label><input class="input" type="number" id="cf-credits" value="${draft.credits || ''}"></div>
         <div class="field"><label>Color</label>${colorWheelHtml('cf-color', draft.color)}</div>
       </div>
+      <div class="field-row">
+        <div class="field"><label>Status</label><select class="select" id="cf-status">${COURSE_STATUSES.map(s => `<option value="${s}" ${s === draft.status ? 'selected' : ''}>${COURSE_STATUS_LABELS[s]}</option>`).join('')}</select></div>
+        <div class="field"><label>Requirement</label><select class="select" id="cf-requirement"><option value="required" ${draft.requirementType === 'required' ? 'selected' : ''}>Required</option><option value="elective" ${draft.requirementType === 'elective' ? 'selected' : ''}>Elective</option></select></div>
+      </div>
 
       <div class="field"><label>Class meetings</label>
         <div id="cf-meetings">${draft.meetings.map((m, i) => meetingRow(m, i)).join('')}</div>
@@ -78,6 +107,11 @@ function openCourseModal(id) {
         <button class="btn btn-sm mt-8" onclick="addGradingRow()">+ Add category</button>
         <div class="small muted mt-8" id="cf-weight-total"></div>
       </div>
+
+      <div class="field" style="margin-bottom:0"><label>Resources <span class="small muted">(one-click links)</span></label>
+        <div id="cf-resources">${draft.resources.map((r, i) => resourceRow(r, i)).join('')}</div>
+        <button class="btn btn-sm mt-8" onclick="addResourceRow()">+ Add resource</button>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal()">Cancel</button>
@@ -87,6 +121,16 @@ function openCourseModal(id) {
   wireColorWheel('cf-color', () => _courseDraft.color, (hex) => { _courseDraft.color = hex; });
   updateWeightTotal();
 }
+function resourceRow(r, i) {
+  return `<div class="field-row" style="align-items:center;margin-bottom:6px">
+    <select class="select" style="max-width:150px" onchange="_courseDraft.resources[${i}].kind=this.value;_courseDraft.resources[${i}].label=RESOURCE_KINDS.find(k=>k.key===this.value).label">
+      ${RESOURCE_KINDS.map(k => `<option value="${k.key}" ${k.key === r.kind ? 'selected' : ''}>${k.label}</option>`).join('')}
+    </select>
+    <input class="input" value="${esc(r.url)}" placeholder="https://…  or  mailto:prof@school.edu" oninput="_courseDraft.resources[${i}].url=this.value">
+    <button class="btn btn-ghost btn-icon btn-sm" onclick="_courseDraft.resources.splice(${i},1);$('#cf-resources').innerHTML=_courseDraft.resources.map(resourceRow).join('')">${icon('x',13,2.2)}</button>
+  </div>`;
+}
+function addResourceRow() { _courseDraft.resources.push({ id: uid(), kind: 'other', label: 'Other', url: '' }); $('#cf-resources').innerHTML = _courseDraft.resources.map(resourceRow).join(''); }
 function meetingRow(m, i) {
   return `<div class="field-row" style="align-items:center;margin-bottom:6px" data-mrow="${i}">
     <select class="select" style="max-width:110px" onchange="_courseDraft.meetings[${i}].day=Number(this.value)">${DOW_NAMES.map((d, di) => `<option value="${di}" ${di === m.day ? 'selected' : ''}>${d}</option>`).join('')}</select>
@@ -119,6 +163,9 @@ function saveCourseModal(existingId) {
   d.instructor = $('#cf-instructor').value.trim();
   d.location = $('#cf-location').value.trim();
   d.credits = Number($('#cf-credits').value) || 0;
+  d.status = $('#cf-status').value;
+  d.requirementType = $('#cf-requirement').value;
+  d.resources = d.resources.filter(r => r.url.trim());
   if (!d.name) { toast('Give the course a name', 'error'); return; }
   if (existingId) {
     const idx = state.courses.findIndex(c => c.id === existingId);
@@ -145,7 +192,7 @@ function openSyllabusUploadModal() {
   openModal(`
     <div class="modal-head"><h3>Upload syllabus <span class="ai-badge">AI</span></h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
-      ${!hasAiKey() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">Add a Claude API key in Settings → AI first.</div>` : ''}
+      ${!aiEnabled() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">AI parsing isn’t set up on this deployment yet.</div>` : ''}
       <div class="segmented mb-8" id="syl-tabs">
         <button class="active" onclick="sylTab('paste')" data-tab="paste">Paste text</button>
         <button onclick="sylTab('pdf')" data-tab="pdf">Upload PDF</button>
@@ -171,7 +218,7 @@ function openSyllabusUploadModal() {
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="syl-parse-btn" onclick="runSyllabusParse()" ${hasAiKey() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Parse with AI</button>
+      <button class="btn btn-primary" id="syl-parse-btn" onclick="runSyllabusParse()" ${aiEnabled() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Parse with AI</button>
     </div>
   `, { wide: true });
   window._sylImage = null;

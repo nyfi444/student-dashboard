@@ -10,7 +10,9 @@ function toast(msg, type = 'success', duration = 2600) {
 }
 
 let _modalCloseHandler = null;
+let _modalGen = 0;
 function openModal(html, { wide = false, onClose } = {}) {
+  _modalGen++;
   $('#modal').className = 'modal' + (wide ? ' wide' : '');
   $('#modal').innerHTML = html;
   $('#overlay').classList.add('show');
@@ -22,7 +24,11 @@ function closeModal() {
   $('#overlay').classList.remove('show');
   $('#modal-wrap').classList.remove('show');
   if (_modalCloseHandler) { _modalCloseHandler(); _modalCloseHandler = null; }
-  setTimeout(() => { $('#modal').innerHTML = ''; }, 180);
+  // Snapshot the generation so a stale timeout can't wipe out a modal that
+  // opened again (e.g. closeModal() immediately followed by openModal())
+  // before this delay elapses.
+  const gen = _modalGen;
+  setTimeout(() => { if (_modalGen === gen) $('#modal').innerHTML = ''; }, 180);
 }
 function confirmDialog(message, onConfirm, confirmLabel = 'Delete') {
   openModal(`

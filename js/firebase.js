@@ -6,15 +6,15 @@
    and "Sign in" shows a friendly message instead of erroring.
 ──────────────────────────────────────────────────────────────── */
 const FB_CONFIG = {
-  apiKey: '',
-  authDomain: '',
-  projectId: '',
-  storageBucket: '',
-  messagingSenderId: '',
-  appId: '',
+  apiKey: 'AIzaSyBruZ173x9OGtprhnJVO-8S7TY2taoSYQE',
+  authDomain: 'semester-hq.firebaseapp.com',
+  projectId: 'semester-hq',
+  storageBucket: 'semester-hq.firebasestorage.app',
+  messagingSenderId: '191691583510',
+  appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
 };
 
-let _fbAuth = null, _fbDb = null, _fbUser = null, _syncQueued = false, _applyingRemote = false;
+let _fbAuth = null, _fbDb = null, _fbUser = null, _syncQueued = false, _applyingRemote = false, _fbAuthStateSettled = false;
 
 function fbConfigured() { return !!FB_CONFIG.apiKey; }
 
@@ -25,12 +25,15 @@ function bootFirebase() {
     _fbAuth = firebase.auth();
     _fbDb = firebase.firestore();
     _fbAuth.onAuthStateChanged(async (user) => {
+      const isFirstCallback = !_fbAuthStateSettled;
+      _fbAuthStateSettled = true;
       _fbUser = user;
       if (user) {
         await cloudPull();
         toast(`Synced as ${user.displayName || user.email}`, 'success');
       }
       if (typeof render === 'function') render();
+      if (isFirstCallback && typeof maybeShowOnboarding === 'function') maybeShowOnboarding();
     });
   } catch (e) { console.warn('Firebase init failed', e); }
 }

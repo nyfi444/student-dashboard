@@ -1,27 +1,21 @@
 /* ── AI layer — Claude API calls for syllabus & assignment parsing ──
-   Calls the Anthropic API directly from the browser using a key the
-   user pastes into Settings > AI (stored only in localStorage on
-   this device). This is fine for a single-user personal tool but
-   the key is visible in devtools — don't share this device/profile.
+   Calls go through a Cloudflare Worker proxy (see /worker) that holds
+   the real Anthropic API key server-side, so students never see or
+   supply their own key. Fill in AI_PROXY_URL with your deployed
+   Worker's URL (see worker/README.md for deploy steps) — until then,
+   AI features show as unavailable rather than erroring.
 ──────────────────────────────────────────────────────────────── */
-const AI_ENDPOINT = 'https://api.anthropic.com/v1/messages';
+const AI_PROXY_URL = ''; // e.g. 'https://student-planner-ai-proxy.<your-subdomain>.workers.dev/v1/messages'
 
-function getApiKey() { return (state.settings.aiApiKey || '').trim(); }
-function hasAiKey() { return !!getApiKey(); }
+function aiEnabled() { return !!AI_PROXY_URL; }
 
 class AiError extends Error {}
 
 async function callClaude({ system, userContent, maxTokens = 2000 }) {
-  const key = getApiKey();
-  if (!key) throw new AiError('Add your Claude API key in Settings → AI to use this feature.');
-  const res = await fetch(AI_ENDPOINT, {
+  if (!aiEnabled()) throw new AiError('AI features aren’t set up on this deployment yet.');
+  const res = await fetch(AI_PROXY_URL, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       model: state.settings.aiModel || 'claude-sonnet-4-6',
       max_tokens: maxTokens,
@@ -31,7 +25,6 @@ async function callClaude({ system, userContent, maxTokens = 2000 }) {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    if (res.status === 401) throw new AiError('That API key was rejected. Double-check it in Settings → AI.');
     throw new AiError(`AI request failed (${res.status}). ${body.slice(0, 160)}`);
   }
   const json = await res.json();

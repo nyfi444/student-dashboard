@@ -89,7 +89,7 @@ function deleteSection(id) {
   });
 }
 function todoRow(t) {
-  return `<div class="list-row">
+  return `<div class="list-row" draggable="true" ondragstart="dragStartItem(event,'todo','${t.id}')" title="Drag onto Calendar to reschedule or time-block">
     <div class="row-check ${t.done ? 'checked' : ''}" onclick="toggleTodo('${t.id}')">${t.done ? checkGlyph(true) : ''}</div>
     <div class="row-title ${t.done ? 'done' : ''}" onclick="openTodoModal('${t.id}')">${priorityDot(t.priority)} ${esc(t.title)}</div>
     <div class="row-meta">${t.dueDate ? relativeDay(t.dueDate) : ''}</div>

@@ -18,11 +18,12 @@ function pageNotebook() {
   const note = state.notes.find(n => n.id === selectedId && n.type === 'note');
   const search = (state._notebookSearch || '').trim().toLowerCase();
   const sort = state._notebookSort || 'edited';
+  const pinned = allNotes.filter(n => n.pinned);
 
   const html = `
     ${pageHead('Notebook', 'Organize notes by class', `
       <button class="btn btn-sm" onclick="createFolder('root')">${icon('folder', 13)} Folder</button>
-      <button class="btn btn-primary" onclick="createNote('root')">${icon('plus', 13, 2.2)} Note</button>
+      <button class="btn btn-primary" onclick="openNewNoteModal('root')">${icon('plus', 13, 2.2)} Note</button>
     `)}
     <div class="notebook-layout">
       <div class="notebook-tree-panel">
@@ -30,6 +31,14 @@ function pageNotebook() {
           <span class="notebook-search-ic">${icon('file-text', 13)}</span>
           <input class="notebook-search" placeholder="Search notes & content…" value="${esc(state._notebookSearch || '')}" oninput="state._notebookSearch=this.value;touch()">
         </div>
+        ${pinned.length ? `
+        <div class="nb-pinned-section">
+          <div class="small muted" style="padding:8px 10px 2px;font-weight:600">${icon('pin', 12, 2)} Pinned</div>
+          ${pinned.map(n => `<div class="nb-note-row ${n.id === (state.notebookSelected || allNotes[0]?.id) ? 'selected' : ''}" onclick="selectNote('${n.id}')">
+            <span class="nb-note-ic">${icon('pin', 13, 1.8)}</span>
+            <div class="nb-note-meta"><div class="nb-note-title">${esc(n.name)}</div></div>
+          </div>`).join('')}
+        </div>` : ''}
         <div class="nb-sort-row">
           <span class="small muted">Sort</span>
           <div class="segmented">
@@ -180,7 +189,7 @@ function notebookTree(parentId, depth, search, sort) {
           <span class="flex-gap">${icon(n.open || forceOpen ? 'folder-open' : 'folder', 14)}</span>
           <span class="nb-folder-name">${esc(n.name)}</span>
           ${count ? `<span class="nb-count">${count}</span>` : ''}
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();createNote('${n.id}')" title="New note">${icon('plus', 13, 2.2)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();openNewNoteModal('${n.id}')" title="New note">${icon('plus', 13, 2.2)}</button>
           ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();deleteNoteItem('${n.id}')">${icon('trash', 14)}</button>` : ''}
         </div>
         ${(n.open || forceOpen) ? `<div class="nb-children">${inner}</div>` : ''}
@@ -206,10 +215,29 @@ function createFolder(parentId) {
   state.notes.push({ id: uid(), type: 'folder', name, parentId, courseId: null, open: true });
   touch();
 }
-function createNote(parentId) {
+function createNote(parentId, templateKey) {
   const id = uid();
-  state.notes.push({ id, type: 'note', name: 'Untitled note', parentId, courseId: null, content: '', updatedAt: Date.now() });
+  const tpl = NOTE_TEMPLATES[templateKey] || NOTE_TEMPLATES.blank;
+  state.notes.push({ id, type: 'note', name: templateKey && templateKey !== 'blank' ? tpl.label : 'Untitled note', parentId, courseId: null, pinned: false, content: tpl.body, updatedAt: Date.now() });
   setState({ notebookSelected: id });
+}
+function openNewNoteModal(parentId) {
+  openModal(`
+    <div class="modal-head"><h3>New note</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-body">
+      <div class="small muted mb-8">Pick a template to start with a structure, or start blank.</div>
+      <div class="grid grid-2">
+        ${Object.entries(NOTE_TEMPLATES).map(([key, t]) => `
+          <button class="btn" style="justify-content:flex-start" onclick="createNote('${parentId}','${key}');closeModal()">${esc(t.label)}</button>
+        `).join('')}
+      </div>
+    </div>
+  `);
+}
+function toggleNotePinned(id) {
+  const n = state.notes.find(x => x.id === id);
+  n.pinned = !n.pinned;
+  touch();
 }
 function duplicateNote(id) {
   const n = state.notes.find(x => x.id === id);
@@ -255,6 +283,7 @@ function renderNoteEditor(note) {
       <div class="nb-breadcrumb-row">
         ${crumbs.length ? `<div class="nb-breadcrumb">Notebook<span class="nb-crumb-sep">/</span>${crumbs.map(c => `${esc(c)}<span class="nb-crumb-sep">/</span>`).join('')}</div>` : `<div class="nb-breadcrumb">Notebook</div>`}
         <div class="nb-page-actions">
+          <button class="btn ${note.pinned ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="toggleNotePinned('${note.id}')">${icon('pin', 13)} ${note.pinned ? 'Pinned' : 'Pin'}</button>
           <button class="btn btn-ghost btn-sm" onclick="duplicateNote('${note.id}')">${icon('layers', 13)} Duplicate</button>
           <button class="btn btn-ghost btn-sm" onclick="openMoveNoteModal('${note.id}')">${icon('folder', 13)} Move</button>
           <button class="btn btn-ghost btn-sm" onclick="exportNoteToPdf('${note.id}')">${icon('download', 13)} Export PDF</button>

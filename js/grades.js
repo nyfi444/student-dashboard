@@ -46,7 +46,7 @@ function pageGrades() {
     <div class="grid grid-3 mb-16">
       <div class="stat-card"><div class="num ${gpa == null ? 'stat-dash' : ''}">${gpa != null ? gpa.toFixed(2) : '—'}</div><div class="lbl">${gpa != null ? 'Semester GPA' : 'Add a grade to see your GPA'}</div></div>
       <div class="stat-card"><div class="num">${activeCourses().reduce((s, c) => s + (c.credits || 0), 0)}</div><div class="lbl">Total credits</div></div>
-      <div class="stat-card"><div class="num">${activeCourses().length}</div><div class="lbl">Courses</div></div>
+      <div class="stat-card"><div class="num ${currentSemester()?.targetGPA == null ? 'stat-dash' : ''}">${currentSemester()?.targetGPA != null ? currentSemester().targetGPA.toFixed(2) : '—'}</div><div class="lbl">Target GPA</div></div>
     </div>
     <div class="grid grid-2">
       ${activeCourses().map(gradeCourseCard).join('') || emptyState(icon('target',26,1.4), 'No courses yet', '', 'Add a course and log a few grades — your GPA will show up here automatically.')}
@@ -76,6 +76,7 @@ function gradeCourseCard(c) {
         <label>Manual override (optional)</label>
         <input class="input" type="number" placeholder="e.g. 91 for a known final grade" value="${c.finalGradeOverride ?? ''}" onchange="setGradeOverride('${c.id}', this.value)">
       </div>
+      <button class="btn btn-sm mt-8" onclick="openGradeCalcModal('${c.id}')">${icon('target', 13, 2)} What grade do I need?</button>
     </div>
   `;
 }
@@ -83,4 +84,57 @@ function setGradeOverride(courseId, val) {
   const c = getCourse(courseId);
   c.finalGradeOverride = val === '' ? null : Number(val);
   touch();
+}
+
+/* ── "What grade do I need?" calculator ──────────────────────────
+   Treats the remaining item's weight as the share of the final grade
+   not yet accounted for, so current grade + remaining weight is
+   assumed to add up to 100% of the course. ──────────────────────── */
+function openGradeCalcModal(courseId) {
+  const c = getCourse(courseId);
+  const g = computeCourseGrade(c);
+  openModal(`
+    <div class="modal-head"><h3>What grade do I need?</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-body">
+      <div class="small muted mb-16">${esc(c.name)}</div>
+      <div class="field"><label>Current grade so far (%)</label><input class="input" type="number" id="gc-current" value="${g.pct != null ? g.pct.toFixed(1) : ''}" oninput="renderGradeCalcResults('${courseId}')"></div>
+      <div class="field"><label>Weight of what's left (%)</label><input class="input" type="number" id="gc-weight" placeholder="e.g. 30 for a final exam" oninput="renderGradeCalcResults('${courseId}')"></div>
+      <div class="field"><label>Desired final grade (%)</label><input class="input" type="number" id="gc-desired" placeholder="e.g. 90" oninput="renderGradeCalcResults('${courseId}')"></div>
+      <div class="divider"></div>
+      <div id="gc-result-need"></div>
+      <div class="divider"></div>
+      <div class="field" style="margin-bottom:8px"><label>Or: if you score this on what's left (%)</label><input class="input" type="number" id="gc-hypothetical" placeholder="e.g. 80" oninput="renderGradeCalcResults('${courseId}')"></div>
+      <div id="gc-result-hypo"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-primary" onclick="closeModal()">Done</button></div>
+  `);
+}
+function renderGradeCalcResults(courseId) {
+  const c = getCourse(courseId);
+  const current = Number($('#gc-current').value);
+  const weight = Number($('#gc-weight').value);
+  const desired = Number($('#gc-desired').value);
+  const hypothetical = Number($('#gc-hypothetical').value);
+  const validBase = weight > 0 && weight <= 100 && !isNaN(current);
+  const keptShare = validBase ? (1 - weight / 100) : 0;
+
+  const needEl = $('#gc-result-need');
+  if (validBase && $('#gc-desired').value !== '' && !isNaN(desired)) {
+    const needed = (desired - current * keptShare) / (weight / 100);
+    needEl.innerHTML = needed > 100
+      ? `<div class="small" style="color:var(--danger)">Not possible — you'd need ${needed.toFixed(1)}% on the remaining ${weight}%. Consider adjusting your target.</div>`
+      : needed < 0
+      ? `<div class="small" style="color:var(--success)">You've already secured a ${desired}% or better — even a 0% would work.</div>`
+      : `<div class="small" style="font-size:15px"><strong>You need ${needed.toFixed(1)}%</strong> on the remaining ${weight}% to finish with ${desired}% (${letterFor(desired).letter}).</div>`;
+  } else {
+    needEl.innerHTML = `<div class="small muted">Fill in your current grade, remaining weight, and desired grade.</div>`;
+  }
+
+  const hypoEl = $('#gc-result-hypo');
+  if (validBase && $('#gc-hypothetical').value !== '' && !isNaN(hypothetical)) {
+    const final = current * keptShare + hypothetical * (weight / 100);
+    hypoEl.innerHTML = `<div class="small" style="font-size:15px"><strong>Your final grade would be ${final.toFixed(1)}%</strong> (${letterFor(final).letter}).</div>`;
+  } else {
+    hypoEl.innerHTML = '';
+  }
 }

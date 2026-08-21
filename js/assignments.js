@@ -1,5 +1,6 @@
 /* ── Assignment tracker + rubric checklist ───────────────────────── */
-const STATUS_LABELS = { 'not-started': 'Not started', 'in-progress': 'In progress', 'done': 'Done' };
+const STATUS_LABELS = ASSIGNMENT_STATUS_LABELS;
+function isAssignmentDone(a) { return a.status === 'done' || a.status === 'submitted'; }
 
 function pageAssignments() {
   const courseFilter = state._assignCourseFilter || 'all';
@@ -9,8 +10,9 @@ function pageAssignments() {
   if (courseFilter !== 'all') items = items.filter(a => a.courseId === courseFilter);
   if (statusFilter !== 'all') items = items.filter(a => a.status === statusFilter);
   items = items.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
-  const counts = { 'not-started': 0, 'in-progress': 0, 'done': 0 };
+  const counts = { 'not-started': 0, 'in-progress': 0, waiting: 0, submitted: 0, done: 0 };
   all.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
+  const startSoon = all.filter(a => a.startByDate && a.status !== 'done' && a.status !== 'submitted' && a.startByDate <= todayIso() && a.dueDate >= todayIso());
 
   return `
     ${pageHead('Assignment Tracker', `${all.length} assignment${all.length === 1 ? '' : 's'}`, `
@@ -19,15 +21,19 @@ function pageAssignments() {
     `)}
     <div class="grid grid-3 mb-16">
       <div class="stat-card"><div class="num">${counts['not-started']}</div><div class="lbl">Not started</div></div>
-      <div class="stat-card"><div class="num">${counts['in-progress']}</div><div class="lbl">In progress</div></div>
-      <div class="stat-card"><div class="num">${counts['done']}</div><div class="lbl">Done</div></div>
+      <div class="stat-card"><div class="num">${counts['in-progress'] + counts.waiting}</div><div class="lbl">In progress / waiting</div></div>
+      <div class="stat-card"><div class="num">${counts.submitted + counts.done}</div><div class="lbl">Submitted</div></div>
     </div>
+    ${startSoon.length ? `<div class="card card-pad mb-16" style="border:1.5px solid var(--warn)">
+      <div class="small" style="font-weight:600;color:var(--warn);margin-bottom:6px">${icon('flag',13,2)} Start these soon</div>
+      ${startSoon.map(a => `<div class="list-row" onclick="openAssignmentModal('${a.id}')"><div class="row-title">${esc(a.title)}</div>${courseChip(a.courseId)}<div class="row-meta">due ${relativeDay(a.dueDate)}</div></div>`).join('')}
+    </div>` : ''}
     <div class="flex-gap wrap mb-16">
       <select class="select" style="max-width:200px" onchange="state._assignCourseFilter=this.value;touch()">
         <option value="all">All courses</option>${activeCourses().map(c => `<option value="${c.id}" ${courseFilter === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
       </select>
       <select class="select" style="max-width:170px" onchange="state._assignStatusFilter=this.value;touch()">
-        <option value="all">All statuses</option>${Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}" ${statusFilter === k ? 'selected' : ''}>${v}</option>`).join('')}
+        <option value="all">All statuses</option>${Object.entries(STATUS_LABELS).filter(([k]) => k !== 'done').map(([k, v]) => `<option value="${k}" ${statusFilter === k ? 'selected' : ''}>${v}</option>`).join('')}
       </select>
     </div>
     <div class="card">
@@ -37,24 +43,26 @@ function pageAssignments() {
 }
 function assignmentRow(a) {
   const rubricDone = a.rubric.length ? a.rubric.filter(r => r.done).length : 0;
-  return `<div class="list-row" style="border-bottom:1px solid var(--border)" onclick="openAssignmentModal('${a.id}')">
-    <div class="row-check ${a.status === 'done' ? 'checked' : ''}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${a.status === 'done' ? checkGlyph(true) : ''}</div>
-    <div class="row-title ${a.status === 'done' ? 'done' : ''}">${esc(a.title)} ${typeTag(a.type)}</div>
+  const isDone = a.status === 'done' || a.status === 'submitted';
+  return `<div class="list-row" style="border-bottom:1px solid var(--border)" onclick="openAssignmentModal('${a.id}')" draggable="true" ondragstart="event.stopPropagation();dragStartItem(event,'assignment','${a.id}')" title="Drag onto Calendar to reschedule or time-block">
+    <div class="row-check ${isDone ? 'checked' : ''}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isDone ? checkGlyph(true) : ''}</div>
+    <div class="row-title ${isDone ? 'done' : ''}">${esc(a.title)} ${typeTag(a.type)} ${a.attachments && a.attachments.length ? icon('paperclip', 12, 1.8) : ''}</div>
     ${courseChip(a.courseId)}
     ${a.rubric.length ? `<span class="small muted">${rubricDone}/${a.rubric.length} rubric</span>` : ''}
     <span class="small ${a.status === 'in-progress' ? 'dim' : 'muted'}">${STATUS_LABELS[a.status]}</span>
-    <div class="row-meta" style="color:${daysBetween(a.dueDate) < 0 && a.status !== 'done' ? 'var(--danger)' : 'inherit'}">${a.dueDate ? relativeDay(a.dueDate) : 'no date'}</div>
+    <div class="row-meta" style="color:${daysBetween(a.dueDate) < 0 && !isDone ? 'var(--danger)' : 'inherit'}">${a.dueDate ? relativeDay(a.dueDate) : 'no date'}</div>
   </div>`;
 }
 function toggleAssignmentDone(id) {
   const a = state.assignments.find(x => x.id === id);
-  a.status = a.status === 'done' ? 'not-started' : 'done';
+  a.status = (a.status === 'done' || a.status === 'submitted') ? 'not-started' : 'done';
   touch();
 }
 
 function openAssignmentModal(id) {
-  const a = id ? state.assignments.find(x => x.id === id) : { id: uid(), courseId: activeCourses()[0]?.id || null, title: '', type: 'assignment', dueDate: todayIso(), dueTime: '23:59', category: null, weight: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', recurringTemplateId: null };
+  const a = id ? state.assignments.find(x => x.id === id) : { id: uid(), courseId: activeCourses()[0]?.id || null, title: '', type: 'assignment', dueDate: todayIso(), dueTime: '23:59', startByDate: null, category: null, weight: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
   window._assignDraft = JSON.parse(JSON.stringify(a));
+  if (!_assignDraft.attachments) _assignDraft.attachments = [];
   renderAssignmentModal(id);
 }
 function renderAssignmentModal(id) {
@@ -74,16 +82,29 @@ function renderAssignmentModal(id) {
         <div class="field"><label>Status</label><select class="select" id="af-status">${Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       </div>
       <div class="field-row">
+        <div class="field"><label>Start by <span class="small muted">(optional reminder)</span></label><input class="input" type="date" id="af-startby" value="${a.startByDate || ''}"></div>
         <div class="field"><label>Grading category</label><select class="select" id="af-category"><option value="">—</option>${(course?.gradingBreakdown || []).map(g => `<option value="${g.id}" ${g.id === a.category ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>
+      </div>
+      <div class="field-row">
         <div class="field"><label>Points earned</label><input class="input" type="number" id="af-earned" value="${a.earnedPoints ?? ''}"></div>
         <div class="field"><label>Points possible</label><input class="input" type="number" id="af-max" value="${a.maxPoints ?? ''}"></div>
       </div>
       <div class="field"><label>Notes</label><textarea class="input" id="af-notes">${esc(a.notes || '')}</textarea></div>
 
       <div class="field">
-        <div class="flex-between"><label>Rubric checklist</label>${hasAiKey() ? '' : ''}</div>
+        <div class="flex-between"><label>Rubric checklist</label>${aiEnabled() ? '' : ''}</div>
         <div id="af-rubric">${a.rubric.map((r, i) => rubricRow(r, i)).join('')}</div>
         <button class="btn btn-sm mt-8" onclick="addRubricRow()">+ Break into gradable pieces</button>
+      </div>
+
+      <div class="field" style="margin-bottom:0">
+        <label>Attachments <span class="small muted">(rubric, prompt, reference, reading, instructions)</span></label>
+        <div id="af-attachments">${a.attachments.map((att, i) => attachmentRow(att, i)).join('')}</div>
+        <div class="flex-gap mt-8">
+          <button class="btn btn-sm" onclick="addAttachmentLink()">${icon('link',13,1.8)} Add link</button>
+          <button class="btn btn-sm" onclick="$('#af-attach-file').click()">${icon('upload',13,1.8)} Upload file</button>
+          <input type="file" id="af-attach-file" style="display:none" onchange="addAttachmentFile(this.files[0])">
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -92,6 +113,27 @@ function renderAssignmentModal(id) {
       <button class="btn btn-primary" onclick="saveAssignmentModal(${id ? `'${id}'` : 'null'})">Save</button>
     </div>
   `, { wide: true });
+}
+function attachmentRow(att, i) {
+  return `<div class="field-row" style="align-items:center;margin-bottom:6px">
+    <select class="select" style="max-width:140px" onchange="_assignDraft.attachments[${i}].kind=this.value">${ATTACHMENT_KINDS.map(k => `<option value="${k}" ${k === att.kind ? 'selected' : ''}>${k[0].toUpperCase() + k.slice(1)}</option>`).join('')}</select>
+    <input class="input" value="${esc(att.name)}" placeholder="Name" oninput="_assignDraft.attachments[${i}].name=this.value">
+    ${att.url ? `<a href="${esc(att.url)}" target="_blank" rel="noopener" class="btn btn-sm" onclick="event.stopPropagation()">Open</a>` : ''}
+    <button class="btn btn-ghost btn-icon btn-sm" onclick="_assignDraft.attachments.splice(${i},1);renderAssignmentModal(window._assignDraft.id && state.assignments.some(a=>a.id===window._assignDraft.id) ? window._assignDraft.id : null)">${icon('x',13,2.2)}</button>
+  </div>`;
+}
+function addAttachmentLink() {
+  const url = prompt('Paste a link (rubric, prompt, reading, etc.)');
+  if (!url) return;
+  _assignDraft.attachments.push({ id: uid(), kind: 'reference', name: url.replace(/^https?:\/\//, '').slice(0, 40), url, dataUrl: null });
+  renderAssignmentModal(state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null);
+}
+async function addAttachmentFile(file) {
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) { toast('File too large to store in the browser (max ~3MB) — add it as a link instead', 'error', 4000); return; }
+  const dataUrl = 'data:' + (file.type || 'application/octet-stream') + ';base64,' + (await fileToBase64(file));
+  _assignDraft.attachments.push({ id: uid(), kind: 'other', name: file.name, url: dataUrl, dataUrl });
+  renderAssignmentModal(state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null);
 }
 function rubricRow(r, i) {
   return `<div class="field-row" style="align-items:center;margin-bottom:6px">
@@ -112,6 +154,7 @@ function saveAssignmentModal(id) {
   d.dueDate = $('#af-date').value;
   d.dueTime = $('#af-time').value;
   d.status = $('#af-status').value;
+  d.startByDate = $('#af-startby').value || null;
   d.category = $('#af-category').value || null;
   d.earnedPoints = $('#af-earned').value === '' ? null : Number($('#af-earned').value);
   d.maxPoints = $('#af-max').value === '' ? null : Number($('#af-max').value);
@@ -129,7 +172,7 @@ function openAssignmentUploadModal() {
   openModal(`
     <div class="modal-head"><h3>Upload assignments <span class="ai-badge">AI</span></h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
-      ${!hasAiKey() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">Add a Claude API key in Settings → AI first.</div>` : ''}
+      ${!aiEnabled() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">AI parsing isn’t set up on this deployment yet.</div>` : ''}
       <div class="small muted mb-8">Upload a syllabus or assignment sheet to bulk-add deadlines to an existing course, instead of typing each one in by hand.</div>
       <div class="segmented mb-8" id="au-tabs">
         <button class="active" onclick="auTab('paste')" data-tab="paste">Paste text</button>
@@ -156,7 +199,7 @@ function openAssignmentUploadModal() {
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="au-parse-btn" onclick="runAssignmentParse()" ${hasAiKey() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Parse with AI</button>
+      <button class="btn btn-primary" id="au-parse-btn" onclick="runAssignmentParse()" ${aiEnabled() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Parse with AI</button>
     </div>
   `, { wide: true });
   window._auImage = null;
@@ -235,8 +278,8 @@ function commitAssignmentUpload() {
   toAdd.forEach(a => {
     state.assignments.push({
       id: uid(), courseId, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
-      dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', category: null, weight: null,
-      maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', recurringTemplateId: null,
+      dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', startByDate: null, category: null, weight: null,
+      maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
     });
   });
   touch(); closeModal(); toast(`Added ${toAdd.length} assignment${toAdd.length === 1 ? '' : 's'}`);
