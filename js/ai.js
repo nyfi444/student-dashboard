@@ -5,7 +5,7 @@
    Worker's URL (see worker/README.md for deploy steps) — until then,
    AI features show as unavailable rather than erroring.
 ──────────────────────────────────────────────────────────────── */
-const AI_PROXY_URL = ''; // e.g. 'https://student-planner-ai-proxy.<your-subdomain>.workers.dev/v1/messages'
+const AI_PROXY_URL = 'https://student-planner-ai-proxy.semesterhq.workers.dev/v1/messages';
 
 function aiEnabled() { return !!AI_PROXY_URL; }
 
