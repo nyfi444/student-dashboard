@@ -255,6 +255,17 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .swatch:hover { transform: scale(1.08); }
 .swatch.active { border-color: var(--text); }
 
+/* ── Color wheel picker (course + event colors) ───────────────── */
+.cw-wheel {
+  width: 150px; height: 150px; border-radius: 50%; margin: 0 auto; position: relative; cursor: crosshair; touch-action: none;
+  background: radial-gradient(circle at center, #fff, transparent 70%), conic-gradient(from 90deg, red, yellow, lime, cyan, blue, magenta, red);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.cw-marker { position: absolute; width: 15px; height: 15px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); transform: translate(-50%,-50%); pointer-events: none; }
+.cw-brightness { width: 100%; margin-top: 12px; }
+.cw-hexrow { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.cw-swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border); flex-shrink: 0; }
+
 /* ── Calendar ──────────────────────────────────────────────── */
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .cal-dow { text-align: center; font-size: 11px; font-weight: 700; color: var(--text-faint); padding-bottom: 6px; text-transform: uppercase; }

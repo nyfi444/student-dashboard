@@ -114,7 +114,7 @@ function dayView() {
 }
 
 function openEventModal(id, presetDate) {
-  const e = id ? state.events.find(x => x.id === id) : { id: uid(), title: '', date: presetDate || todayIso(), startTime: '09:00', endTime: '10:00', courseId: null, type: 'block', color: ACCENTS[0].hex };
+  const e = id ? state.events.find(x => x.id === id) : { id: uid(), title: '', date: presetDate || todayIso(), startTime: '09:00', endTime: '10:00', courseId: null, type: 'block', color: '#000000' };
   window._eventDraft = { ...e };
   openModal(`
     <div class="modal-head"><h3>${id ? 'Edit time block' : 'New time block'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
@@ -128,7 +128,7 @@ function openEventModal(id, presetDate) {
         <div class="field"><label>Start</label><input class="input" type="time" id="ef-start" value="${e.startTime}"></div>
         <div class="field"><label>End</label><input class="input" type="time" id="ef-end" value="${e.endTime}"></div>
       </div>
-      <div class="field"><label>Color</label><div class="swatch-grid">${ACCENTS.map(a => `<div class="swatch ${a.hex === e.color ? 'active' : ''}" style="background:${a.hex}" onclick="_eventDraft.color='${a.hex}';this.parentElement.querySelectorAll('.swatch').forEach(s=>s.classList.remove('active'));this.classList.add('active')"></div>`).join('')}</div></div>
+      <div class="field"><label>Color</label>${colorWheelHtml('ef-color', e.color)}</div>
     </div>
     <div class="modal-foot">
       ${id ? `<button class="btn btn-danger" onclick="deleteEvent('${id}')">Delete</button>` : ''}
@@ -136,6 +136,7 @@ function openEventModal(id, presetDate) {
       <button class="btn btn-primary" onclick="saveEvent(${id ? `'${id}'` : 'null'})">Save</button>
     </div>
   `);
+  wireColorWheel('ef-color', () => _eventDraft.color, (hex) => { _eventDraft.color = hex; });
 }
 function saveEvent(id) {
   const d = _eventDraft;

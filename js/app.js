@@ -28,7 +28,7 @@ function toggleSidebar() {
 function renderSidebar() {
   $('#sidebar').innerHTML = `
     <div class="sidebar-brand">
-      <div><h1>Planner</h1><p>${esc(activeSemesterName())}</p></div>
+      <div><h1>Semester HQ</h1><p>${esc(activeSemesterName())}</p></div>
       <button class="btn btn-ghost btn-icon btn-sm" onclick="toggleSidebar()" title="Hide sidebar">${icon('panel-left', 16, 1.6)}</button>
     </div>
     <div style="flex:1;overflow-y:auto">

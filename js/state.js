@@ -8,19 +8,6 @@
 const storeKey = 'studentPlanner.v1';
 const legacyKeys = [];
 
-const ACCENTS = [
-  { name: 'Black', hex: '#000000' },
-  { name: 'Charcoal', hex: '#2b2b2b' },
-  { name: 'Graphite', hex: '#444444' },
-  { name: 'Slate', hex: '#5c5c5c' },
-  { name: 'Steel', hex: '#767676' },
-  { name: 'Ash', hex: '#909090' },
-  { name: 'Silver', hex: '#a8a8a8' },
-  { name: 'Mist', hex: '#c2c2c2' },
-  { name: 'Fog', hex: '#dcdcdc' },
-  { name: 'Cloud', hex: '#f0f0f0' },
-];
-const COURSE_COLORS = ['#1f1f1f', '#3a3a3a', '#555555', '#707070', '#8a8a8a', '#a5a5a5', '#c0c0c0', '#4d4d4d'];
 const ASSIGNMENT_TYPES = ['assignment', 'reading', 'discussion', 'quiz', 'exam', 'project', 'paper', 'lab'];
 
 function seedData() {

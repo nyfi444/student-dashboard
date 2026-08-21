@@ -48,7 +48,7 @@ function courseCard(c) {
 }
 
 function openCourseModal(id) {
-  const c = id ? getCourse(id) : { id: uid(), semesterId: state.currentSemesterId, name: '', code: '', instructor: '', color: COURSE_COLORS[state.courses.length % COURSE_COLORS.length], credits: 3, location: '', meetings: [], gradingBreakdown: [], finalGradeOverride: null, syllabusRaw: '' };
+  const c = id ? getCourse(id) : { id: uid(), semesterId: state.currentSemesterId, name: '', code: '', instructor: '', color: '#000000', credits: 3, location: '', meetings: [], gradingBreakdown: [], finalGradeOverride: null, syllabusRaw: '' };
   const draft = JSON.parse(JSON.stringify(c));
   window._courseDraft = draft;
 
@@ -65,7 +65,7 @@ function openCourseModal(id) {
       </div>
       <div class="field-row">
         <div class="field" style="max-width:120px"><label>Credits</label><input class="input" type="number" id="cf-credits" value="${draft.credits || ''}"></div>
-        <div class="field"><label>Color</label><div class="swatch-grid" id="cf-color-grid">${COURSE_COLORS.map(hex => `<div class="swatch ${hex === draft.color ? 'active' : ''}" style="background:${hex}" onclick="pickCourseColor('${hex}')"></div>`).join('')}</div></div>
+        <div class="field"><label>Color</label>${colorWheelHtml('cf-color', draft.color)}</div>
       </div>
 
       <div class="field"><label>Class meetings</label>
@@ -84,6 +84,7 @@ function openCourseModal(id) {
       <button class="btn btn-primary" onclick="saveCourseModal(${id ? `'${id}'` : 'null'})">Save course</button>
     </div>
   `, { wide: true });
+  wireColorWheel('cf-color', () => _courseDraft.color, (hex) => { _courseDraft.color = hex; });
   updateWeightTotal();
 }
 function meetingRow(m, i) {
@@ -105,10 +106,6 @@ function addMeetingRow() { _courseDraft.meetings.push({ day: 1, start: '10:00', 
 function removeMeetingRow(i) { _courseDraft.meetings.splice(i, 1); $('#cf-meetings').innerHTML = _courseDraft.meetings.map(meetingRow).join(''); }
 function addGradingRow() { _courseDraft.gradingBreakdown.push({ id: uid(), name: '', weight: 0 }); $('#cf-grading').innerHTML = _courseDraft.gradingBreakdown.map(gradingRow).join(''); updateWeightTotal(); }
 function removeGradingRow(i) { _courseDraft.gradingBreakdown.splice(i, 1); $('#cf-grading').innerHTML = _courseDraft.gradingBreakdown.map(gradingRow).join(''); updateWeightTotal(); }
-function pickCourseColor(hex) {
-  _courseDraft.color = hex;
-  $('#cf-color-grid').innerHTML = COURSE_COLORS.map(h => `<div class="swatch ${h === hex ? 'active' : ''}" style="background:${h}" onclick="pickCourseColor('${h}')"></div>`).join('');
-}
 function updateWeightTotal() {
   const el = $('#cf-weight-total'); if (!el) return;
   const total = _courseDraft.gradingBreakdown.reduce((s, g) => s + Number(g.weight || 0), 0);
@@ -223,7 +220,7 @@ function openSyllabusReviewModal(data) {
   const draft = {
     id: uid(), semesterId: state.currentSemesterId,
     name: data.name || '', code: data.code || '', instructor: data.instructor || '', location: data.location || '',
-    credits: data.credits || 3, color: COURSE_COLORS[state.courses.length % COURSE_COLORS.length],
+    credits: data.credits || 3, color: '#000000',
     meetings: Array.isArray(data.meetings) ? data.meetings : [],
     gradingBreakdown: (data.gradingBreakdown || []).map(g => ({ id: uid(), name: g.name, weight: Number(g.weight) || 0 })),
     finalGradeOverride: null, syllabusRaw: '',
