@@ -13,6 +13,12 @@ class AiError extends Error {}
 
 async function callClaude({ system, userContent, maxTokens = 2000 }) {
   if (!aiEnabled()) throw new AiError('AI features aren’t set up on this deployment yet.');
+  // AI upload is part of paid Founding Access, not the free local tier — see
+  // checkout.js. This client-side check just avoids a wasted round trip and
+  // gives a clear message; the Worker enforces the real gate server-side.
+  if (!_fbUser) throw new AiError('Sign in to use AI upload — it’s included with Founding Access ($19, one time).');
+  if (!window._licensed) throw new AiError('AI upload is part of Founding Access ($19, one time). Claim it from the pricing page, then sign in.');
+  const idToken = await _fbUser.getIdToken();
   const res = await fetch(AI_PROXY_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -21,6 +27,7 @@ async function callClaude({ system, userContent, maxTokens = 2000 }) {
       max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: userContent }],
+      idToken,
     }),
   });
   if (!res.ok) {
