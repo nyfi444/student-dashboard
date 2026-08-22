@@ -66,8 +66,15 @@ function initApp() {
 function maybeShowOnboarding() {
   if (state._onboardingSeen) return;
   state._onboardingSeen = true; save();
-  if (fbConfigured() && !_fbUser) openAccountPromptModal();
+  // Skip the sign-up nudge when embedded (e.g. the marketing site's "try it
+  // live" iframe) — every visitor there gets a fresh, empty local state, so
+  // this would otherwise greet them with an account prompt before they've
+  // seen anything. Still land them in the normal first-run wizard.
+  if (fbConfigured() && !_fbUser && !isEmbedded()) openAccountPromptModal();
   else openFirstRunWizardIfNeeded();
+}
+function isEmbedded() {
+  return window.self !== window.top;
 }
 function openFirstRunWizardIfNeeded() {
   if (!state.courses.length && !state._wizardSeen) {
