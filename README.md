@@ -1,33 +1,21 @@
-# Student Planner
+# Student Planner ("Semester HQ")
 
 A student planner covering dashboard, calendar, assignment tracking, grades/GPA, notebook, study timer, exam tracker, project hub, flashcards, and study groups — with AI-assisted syllabus and assignment upload (auto-fills course info, schedule, assignments, and exams from a PDF/photo/text document).
 
 No build step — plain HTML/CSS/JS, runs by opening `index.html` or serving the folder with any static file server.
 
-Both setup steps below are one-time, done-by-the-app-owner configuration — regular students never see an API key or a Firebase config screen. Until you do them, the app still works fully: AI upload just shows as unavailable, and everything runs local-only on each device.
+**What's free vs. paid:** local-only usage (no sign-in) is free forever — full features, on one device, no account needed, so people can try it before buying. Signing in unlocks cross-device sync and AI upload, and requires a one-time $19 "Founding Access" purchase. See `worker/README.md` for how that's enforced (short version: a Cloudflare Worker is the only thing allowed to mark someone as paid, so it can't be bypassed from the browser).
 
-## Setup: AI features (syllabus/assignment upload)
-
-The Claude API key lives server-side in a small Cloudflare Worker proxy (`/worker`), never in the browser.
-
-1. `cd worker`
-2. Install Wrangler if needed: `npm install -g wrangler`
-3. `wrangler login` (needs a free Cloudflare account: https://dash.cloudflare.com/sign-up)
-4. `wrangler secret put ANTHROPIC_API_KEY` — paste a key from https://console.anthropic.com
-5. `wrangler deploy` — copy the printed `https://….workers.dev` URL
-6. In `js/ai.js`, set `AI_PROXY_URL` to that URL + `/v1/messages`
-
-Full details, cost controls, and local dev instructions: [`worker/README.md`](worker/README.md).
+All setup below is one-time, done-by-the-app-owner configuration — regular students never see an API key, a Firebase config screen, or a Stripe key. Until you do it, the app still works fully in free/local-only mode; sign-in and AI upload just show as unavailable.
 
 ## Setup: sign-in + cross-device sync
 
-Sync is designed to be the default experience — once configured, new users are prompted to sign up with Google on first launch, and everything syncs automatically from then on.
-
-1. Go to https://console.firebase.google.com → **Add project** (name it anything, e.g. "student-planner")
-2. In the new project: **Build → Authentication → Get started → Sign-in method → Google → Enable**
-3. **Build → Firestore Database → Create database** (start in production mode; the default rules just need `allow read, write: if request.auth != null;` on the `planners` and `studyGroups` collections)
-4. **Project settings (gear icon) → General → Your apps → Add app → Web** (`</>` icon), register it, and copy the `firebaseConfig` object it gives you
-5. Paste those values into `FB_CONFIG` in `js/firebase.js`:
+1. Go to https://console.firebase.google.com → **Add project**
+2. **Build → Authentication → Get started → Sign-in method → Google → Enable**
+3. **Build → Firestore Database → Create database** (production mode)
+4. Deploy the security rules in [`firestore.rules`](firestore.rules) — either paste its contents into **Firestore → Rules** in the console and click Publish, or if you have the Firebase CLI: `firebase deploy --only firestore:rules`. These rules scope each user's data to themselves, and make sure only the backend Worker (not the browser) can ever mark someone as paid.
+5. **Project settings (gear icon) → General → Your apps → Add app → Web** (`</>` icon), register it, copy the `firebaseConfig` object
+6. Paste those values into `FB_CONFIG` in `js/firebase.js`:
    ```js
    const FB_CONFIG = {
      apiKey: '...',
@@ -38,4 +26,16 @@ Sync is designed to be the default experience — once configured, new users are
      appId: '...',
    };
    ```
-6. Reload the app — first launch (for anyone with no existing local data) now prompts to sign up with Google before the semester setup wizard, with "Continue on this device only" as a fallback.
+
+## Setup: AI upload + payments (one Worker, both features)
+
+Both the AI proxy and the Stripe checkout/licensing live in the same small Cloudflare Worker (`/worker`) — secrets never touch the browser. Full steps, including the Stripe webhook and Firebase service account: [`worker/README.md`](worker/README.md).
+
+Quick version:
+1. `cd worker && wrangler login`
+2. Set secrets: `ANTHROPIC_API_KEY`, `STRIPE_SECRET_KEY`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
+3. Fill in `ALLOWED_ORIGIN`, `APP_URL`, `FIREBASE_PROJECT_ID` in `wrangler.toml`
+4. `wrangler deploy` — set `AI_PROXY_URL` in `js/ai.js` and `CHECKOUT_PROXY_URL` in `js/checkout.js` to the deployed URL
+5. Create the Stripe webhook pointing at `<worker URL>/stripe-webhook`, set `STRIPE_WEBHOOK_SECRET`
+
+Reload the app once all of this is done — Settings → AI should show "Ready to use," and signing in will prompt for the $19 purchase before unlocking sync.

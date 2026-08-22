@@ -171,6 +171,13 @@ button .i, .btn .i { vertical-align: -2.5px; }
 /* ── Cards / surfaces ──────────────────────────────────────── */
 .card { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
 .card-pad { padding: 20px; }
+
+/* ── Paywall ───────────────────────────────────────────────── */
+.paywall-wrap { min-height: 70vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.paywall-card { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg); border-radius: var(--r-soft); padding: 36px 32px; width: 420px; max-width: 100%; text-align: center; }
+.paywall-card h2 { font-family: var(--font-serif); font-weight: 400; font-size: 26px; margin-bottom: 8px; }
+.paywall-price { font-family: var(--font-serif); font-size: 44px; margin: 8px 0 18px; }
+.paywall-card a { color: var(--accent); }
 .grid { display: grid; gap: 18px; }
 .grid-2 { grid-template-columns: repeat(2, 1fr); }
 .grid-3 { grid-template-columns: repeat(3, 1fr); }
