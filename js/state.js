@@ -69,6 +69,14 @@ const BACKGROUND_PRESETS = [
   { color: '#c4eed9', label: 'Emerald Deep' },
   { color: '#c4d5ee', label: 'Sapphire' },
   { color: '#dcc4ee', label: 'Amethyst' },
+  // More pinks
+  { color: '#eec4d5', label: 'Bubblegum' },
+  { color: '#edcfd6', label: 'Carnation' },
+  { color: '#e9bec5', label: 'Flamingo' },
+  // A few more color options
+  { color: '#cfdae8', label: 'Denim' },
+  { color: '#e4e8cf', label: 'Olive' },
+  { color: '#e7ccc0', label: 'Terracotta' },
   // Neutrals
   { color: '#faf7f2', label: 'Warm White' },
   { color: '#eef0f2', label: 'Cool Gray' },
