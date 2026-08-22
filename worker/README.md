@@ -1,49 +1,64 @@
-# AI proxy (Cloudflare Worker)
+# Backend Worker (AI proxy + checkout + licensing)
 
-Holds your Anthropic API key server-side so students never see, paste, or pay for their own key. The planner's frontend calls this Worker instead of `api.anthropic.com` directly.
+One Cloudflare Worker, three jobs — all server-side so secrets never reach the browser:
+
+1. **AI proxy** (`/v1/messages`) — holds your Anthropic key, forwards syllabus/assignment parsing requests.
+2. **Checkout** (`/create-checkout-session`) — starts a one-time $19 Stripe payment ("Founding Access").
+3. **Licensing** (`/stripe-webhook`, `/claim-license`) — the only thing allowed to mark someone as paid. It writes to Firestore's `licenses` collection using a Firebase service account; the browser can only ever *read* its own license (see `../firestore.rules`), never write it — so a user can't just open devtools and grant themselves access.
+
+Local-only usage (no sign-in) stays free forever and doesn't touch any of this. Payment only gates cross-device sync + AI upload.
 
 ## Deploy
 
-1. Install Wrangler (Cloudflare's CLI), if you don't have it:
+1. Install Wrangler if you don't have it: `npm install -g wrangler`
+2. From this `worker/` directory: `wrangler login`
+3. Set the required secrets (each prompts you to paste a value — nothing is written to disk or git):
    ```
-   npm install -g wrangler
+   wrangler secret put ANTHROPIC_API_KEY       # from https://console.anthropic.com
+   wrangler secret put STRIPE_SECRET_KEY       # from https://dashboard.stripe.com/apikeys (starts with sk_)
+   wrangler secret put FIREBASE_CLIENT_EMAIL   # see "Firebase service account" below
+   wrangler secret put FIREBASE_PRIVATE_KEY    # see "Firebase service account" below
    ```
-2. From this `worker/` directory, log in (opens a browser to authorize your Cloudflare account — create a free account first at https://dash.cloudflare.com/sign-up if you don't have one):
-   ```
-   wrangler login
-   ```
-3. Set your real Anthropic API key as a secret (get one at https://console.anthropic.com — never put this in `wrangler.toml` or commit it):
-   ```
-   wrangler secret put ANTHROPIC_API_KEY
-   ```
-4. (Recommended) Lock the Worker down to your actual site's origin so randoms can't use your key from other sites. Edit `ALLOWED_ORIGIN` in `wrangler.toml`, e.g.:
-   ```
-   ALLOWED_ORIGIN = "https://nyfi444.github.io"
-   ```
-5. Deploy:
-   ```
-   wrangler deploy
-   ```
-   Wrangler prints the deployed URL, something like:
-   ```
-   https://student-planner-ai-proxy.<your-subdomain>.workers.dev
-   ```
-6. Back in the planner, open `js/ai.js` and set:
-   ```js
-   const AI_PROXY_URL = 'https://student-planner-ai-proxy.<your-subdomain>.workers.dev/v1/messages';
-   ```
-   (note the `/v1/messages` path at the end). Reload the app — Settings → AI should now show "Ready to use," and syllabus/assignment upload will work with no per-user setup.
+   `STRIPE_WEBHOOK_SECRET` comes later, once the endpoint exists (step 6).
+4. In `wrangler.toml`, fill in:
+   - `ALLOWED_ORIGIN` — your real site's origin, e.g. `"https://nyfi444.github.io"`. **Don't leave this as `"*"` in production** — it's the only thing stopping another website from embedding your key/checkout.
+   - `APP_URL` — the exact page Stripe should redirect back to after checkout, e.g. `"https://nyfi444.github.io/student-dashboard/"`.
+   - `FIREBASE_PROJECT_ID` — from Firebase console → Project settings (not secret, safe as a plain var).
+5. Deploy: `wrangler deploy` — copy the printed URL (e.g. `https://student-planner-ai-proxy.<you>.workers.dev`).
+   - In `js/ai.js`, set `AI_PROXY_URL` to `<that URL>/v1/messages`. That's the only URL to configure — `js/checkout.js` derives the checkout/licensing endpoints from it automatically, since it's the same Worker.
+6. **Set up the Stripe webhook** (this is what actually marks someone as paid after they pay):
+   - Stripe dashboard → Developers → Webhooks → Add endpoint
+   - Endpoint URL: `<your worker URL>/stripe-webhook`
+   - Event to send: `checkout.session.completed`
+   - Copy the "Signing secret" it gives you and run: `wrangler secret put STRIPE_WEBHOOK_SECRET`
+
+## Firebase service account
+
+This lets the Worker write `licenses/{uid}` on your behalf after a real Stripe payment, without using the (Node-only, Workers-incompatible) firebase-admin SDK.
+
+1. Firebase console → Project settings (gear icon) → Service accounts
+2. Generate new private key → downloads a JSON file — **keep this private, never commit it**
+3. From that JSON: `client_email` → `wrangler secret put FIREBASE_CLIENT_EMAIL`, and `private_key` (paste the whole thing including the `BEGIN/END PRIVATE KEY` lines) → `wrangler secret put FIREBASE_PRIVATE_KEY`
+
+## Rate limiting
+
+Protects against someone hammering the AI proxy or checkout routes and running up your bill.
+
+```
+wrangler kv:namespace create RATE_LIMIT
+```
+Paste the printed id into the commented-out `[[kv_namespaces]]` block in `wrangler.toml`, uncomment it, and redeploy. Without this bound, rate limiting is silently skipped (so local dev still works) — for real traffic, set it up.
 
 ## Cost control
 
-- `wrangler.toml` restricts the origin allowed to call the Worker.
-- `src/index.js` caps `max_tokens` at 4000 and only allows a small model allowlist, so a bug or bad actor can't rack up an unbounded bill.
-- Cloudflare Workers' free tier covers generous request volume; Anthropic usage is billed separately on your Anthropic account per token.
-- For real production traffic, consider adding per-IP rate limiting (e.g. a Cloudflare Rate Limiting rule, or a KV/Durable Object counter) — not included here since it depends on how much usage you expect.
+- `ALLOWED_ORIGIN` restricts who can call the Worker at all.
+- `src/index.js` caps AI `max_tokens` at 4000 and only allows a small model allowlist.
+- KV-based rate limiting (above) caps requests per IP per minute (20/min AI, 10/min checkout, 15/min license-claim).
+- Anthropic and Stripe usage are billed separately on your own accounts, per actual usage.
 
 ## Local testing
 
 ```
 wrangler dev
 ```
-This runs the Worker locally (e.g. `http://localhost:8787`) — point `AI_PROXY_URL` at that during development, then switch to the deployed URL for production.
+Runs the Worker locally (e.g. `http://localhost:8787`). Point `AI_PROXY_URL`/`CHECKOUT_PROXY_URL` at that during development. Stripe webhooks need a public URL to reach `wrangler dev` — use `stripe listen --forward-to localhost:8787/stripe-webhook` (Stripe CLI) to test the webhook locally, or just test against the deployed Worker with Stripe test-mode keys.

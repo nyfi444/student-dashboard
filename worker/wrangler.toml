@@ -2,12 +2,40 @@ name = "student-planner-ai-proxy"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
 
-# Restrict which origin(s) may call this Worker. Set to the exact
-# origin your planner is served from (e.g. "https://you.github.io"),
-# or a comma-separated list. Leave as "*" only while testing locally.
+# Restrict which origin(s) may call this Worker — a comma-separated list.
+# Both the app (student-dashboard) and the marketing site (semester-hq-site)
+# call this Worker (AI + checkout), but if they're both hosted under the same
+# GitHub Pages account they share one origin, e.g. "https://nyfi444.github.io"
+# covers both https://nyfi444.github.io/student-dashboard/ AND
+# https://nyfi444.github.io/semester-hq-site/ (CORS only checks scheme+host,
+# not the path). Add a second, comma-separated origin only if they're on
+# genuinely different domains. Leave as "*" only while testing locally.
 [vars]
-ALLOWED_ORIGIN = "*"
+ALLOWED_ORIGIN = "https://nyfi444.github.io"
 
-# The real Anthropic key is NOT set here — it's a secret, set via:
-#   wrangler secret put ANTHROPIC_API_KEY
-# so it never lands in source control or this config file.
+# The exact URL Stripe should redirect back to after checkout (your app's
+# real URL, e.g. "https://nyfi444.github.io/student-dashboard/").
+APP_URL = "https://nyfi444.github.io/student-dashboard/"
+
+# Firebase project id (from Project settings — NOT secret, safe as a var).
+FIREBASE_PROJECT_ID = "semester-hq"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "c159c4afb7cc45619d6db5fd2fcde97d"
+
+# The following are secrets, NOT set here — they never land in source
+# control or this config file. Set each with:
+#   wrangler secret put NAME
+#
+#   ANTHROPIC_API_KEY      — from https://console.anthropic.com
+#   STRIPE_SECRET_KEY      — from https://dashboard.stripe.com/apikeys (starts with sk_)
+#   STRIPE_WEBHOOK_SECRET  — from the webhook endpoint you create in the Stripe dashboard
+#                            (Developers → Webhooks → Add endpoint → URL: this Worker's
+#                            /stripe-webhook route, event: checkout.session.completed)
+#   FIREBASE_CLIENT_EMAIL  — the "client_email" field from a Firebase service account key
+#                            (Firebase console → Project settings → Service accounts →
+#                            Generate new private key)
+#   FIREBASE_PRIVATE_KEY   — the "private_key" field from that same service account key
+#                            (paste it including the BEGIN/END lines; \n in the pasted
+#                            value is handled automatically)
