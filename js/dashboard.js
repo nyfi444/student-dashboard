@@ -238,6 +238,12 @@ function openDashboardCustomizeModal() {
   openModal(`
     <div class="modal-head"><h3>Customize dashboard</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
+      <div class="field"><label>Theme</label>
+        <div class="segmented">
+          <button class="${!state.settings.dark ? 'active' : ''}" onclick="toggleDark(false);openDashboardCustomizeModal()">${icon('sun', 13, 2)} Light</button>
+          <button class="${state.settings.dark ? 'active' : ''}" onclick="toggleDark(true);openDashboardCustomizeModal()">${icon('moon', 13, 2)} Dark</button>
+        </div>
+      </div>
       <div class="field"><label>Quick note size</label>
         <div class="segmented">
           <button class="${size === 'sm' ? 'active' : ''}" onclick="setStickyNoteSize('sm')">Small</button>

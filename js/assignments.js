@@ -163,7 +163,12 @@ function saveAssignmentModal(id) {
   touch(); closeModal(); toast(id ? 'Updated' : 'Assignment added');
 }
 function deleteAssignment(id) {
-  confirmDialog('Delete this assignment?', () => { state.assignments = state.assignments.filter(a => a.id !== id); touch(); closeModal(); });
+  confirmDialog('Delete this assignment? You can restore it from Recently Deleted for 30 days.', () => {
+    const a = state.assignments.find(x => x.id === id);
+    if (a) trashItem('assignment', a.title || 'Untitled assignment', a);
+    state.assignments = state.assignments.filter(a => a.id !== id);
+    touch(); closeModal();
+  });
 }
 
 /* ── Bulk upload assignments from a PDF/photo/pasted syllabus ──── */

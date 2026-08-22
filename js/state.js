@@ -19,18 +19,111 @@ const RESOURCE_KINDS = [
   { key: 'canvas', label: 'Canvas page' }, { key: 'office-hours', label: 'Office hours' }, { key: 'tutoring', label: 'Tutoring center' },
   { key: 'syllabus', label: 'Syllabus' }, { key: 'drive', label: 'Google Drive' }, { key: 'groupme', label: 'Class GroupMe' }, { key: 'other', label: 'Other' },
 ];
+// Fixed, curated set — no free-form picker. Every value is a pale, pre-tinted
+// solid so the background can never go saturated/overbearing.
 const BACKGROUND_PRESETS = [
-  { type: 'solid', color1: '#fafafa', color2: '#eef0fb', angle: 135, label: 'Default' },
-  { type: 'solid', color1: '#ffffff', color2: '#eef0fb', angle: 135, label: 'White' },
-  { type: 'solid', color1: '#fdf6f0', color2: '#eef0fb', angle: 135, label: 'Cream' },
-  { type: 'solid', color1: '#f0f7f4', color2: '#eef0fb', angle: 135, label: 'Mint' },
-  { type: 'solid', color1: '#f0f5fb', color2: '#eef0fb', angle: 135, label: 'Sky' },
-  { type: 'gradient', color1: '#ffffff', color2: '#ece9fb', angle: 135, label: 'White → Lavender' },
-  { type: 'gradient', color1: '#fef6f8', color2: '#eef4ff', angle: 135, label: 'Blush → Sky' },
-  { type: 'gradient', color1: '#f4fbf6', color2: '#eef2fb', angle: 135, label: 'Mint → Periwinkle' },
+  { color: '#fafafa', label: 'Default' },
+  { color: '#ffffff', label: 'White' },
+  { color: '#fdf6f0', label: 'Cream' },
+  { color: '#faf6ec', label: 'Sand' },
+  { color: '#f1f5ee', label: 'Sage' },
+  { color: '#f0f7f4', label: 'Mint' },
+  { color: '#f0f5fb', label: 'Sky' },
+  { color: '#f3f0fb', label: 'Lavender' },
+  { color: '#fdf1f4', label: 'Blush' },
+  // 30-hue wheel — light but visibly colorful, not just near-white pastel
+  { color: '#f0dbdb', label: 'Rose' },
+  { color: '#f0dfdb', label: 'Watermelon' },
+  { color: '#f0e3db', label: 'Coral' },
+  { color: '#f0e8db', label: 'Tangerine' },
+  { color: '#f0ecdb', label: 'Apricot' },
+  { color: '#f0f0db', label: 'Marigold' },
+  { color: '#ecf0db', label: 'Gold' },
+  { color: '#e8f0db', label: 'Honey' },
+  { color: '#e3f0db', label: 'Wheat' },
+  { color: '#dff0db', label: 'Chartreuse' },
+  { color: '#dbf0db', label: 'Lime' },
+  { color: '#dbf0df', label: 'Pistachio' },
+  { color: '#dbf0e3', label: 'Fern' },
+  { color: '#dbf0e8', label: 'Spring' },
+  { color: '#dbf0ec', label: 'Emerald' },
+  { color: '#dbf0f0', label: 'Jade' },
+  { color: '#dbecf0', label: 'Teal' },
+  { color: '#dbe8f0', label: 'Turquoise' },
+  { color: '#dbe3f0', label: 'Aqua' },
+  { color: '#dbdff0', label: 'Cerulean' },
+  { color: '#dbdbf0', label: 'Cornflower' },
+  { color: '#dfdbf0', label: 'Azure' },
+  { color: '#e3dbf0', label: 'Cobalt' },
+  { color: '#e8dbf0', label: 'Indigo' },
+  { color: '#ecdbf0', label: 'Periwinkle' },
+  { color: '#f0dbf0', label: 'Violet' },
+  { color: '#f0dbec', label: 'Orchid' },
+  { color: '#f0dbe8', label: 'Fuchsia' },
+  { color: '#f0dbe3', label: 'Magenta' },
+  { color: '#f0dbdf', label: 'Raspberry' },
+  // Jewel-light accents — a touch more saturated, still light enough to stay soft
+  { color: '#eec4cb', label: 'Ruby' },
+  { color: '#eee0c4', label: 'Amber' },
+  { color: '#eeeac4', label: 'Citrine' },
+  { color: '#c4eed9', label: 'Emerald Deep' },
+  { color: '#c4d5ee', label: 'Sapphire' },
+  { color: '#dcc4ee', label: 'Amethyst' },
+  // Neutrals
+  { color: '#faf7f2', label: 'Warm White' },
+  { color: '#eef0f2', label: 'Cool Gray' },
+  { color: '#f0ebe4', label: 'Taupe' },
+  { color: '#eeece5', label: 'Stone' },
+  { color: '#e9eaec', label: 'Charcoal Mist' },
 ];
-function bgCssValue(bg) { return bg.type === 'gradient' ? `linear-gradient(${bg.angle}deg, ${bg.color1}, ${bg.color2})` : bg.color1; }
-function bgMatchesPreset(bg, p) { return bg.type === p.type && bg.color1 === p.color1 && (bg.type !== 'gradient' || (bg.color2 === p.color2 && bg.angle === p.angle)); }
+function bgCssValue(bg) { return bg?.color || '#fafafa'; }
+function bgMatchesPreset(bg, p) { return bg?.color === p.color; }
+
+/* ── Recently Deleted: soft-delete so destructive actions are recoverable ─
+   Deleted items are snapshotted here instead of vanishing outright, and
+   auto-purged after TRASH_RETENTION_DAYS. Settings → Recently Deleted
+   lets people restore or permanently remove them. ──────────────────── */
+const TRASH_RETENTION_DAYS = 30;
+const TRASH_KIND_LABELS = { 'note-bundle': 'Note', course: 'Course', assignment: 'Assignment', todo: 'To-do', event: 'Time block', project: 'Project', deck: 'Flashcard deck' };
+function trashItem(kind, label, data) {
+  state.trash = state.trash || [];
+  state.trash.unshift({ id: uid(), kind, label, data, deletedAt: Date.now() });
+  purgeOldTrash();
+}
+function purgeOldTrash() {
+  const cutoff = Date.now() - TRASH_RETENTION_DAYS * 86400000;
+  state.trash = (state.trash || []).filter(t => t.deletedAt >= cutoff);
+}
+function restoreTrashItem(id) {
+  const t = (state.trash || []).find(x => x.id === id);
+  if (!t) return;
+  const restoreMap = {
+    'note-bundle': () => state.notes.push(...t.data),
+    course: () => state.courses.push(t.data),
+    assignment: () => state.assignments.push(t.data),
+    todo: () => state.todos.push(t.data),
+    event: () => state.events.push(t.data),
+    project: () => state.projects.push(t.data),
+    deck: () => state.decks.push(t.data),
+  };
+  (restoreMap[t.kind] || (() => {}))();
+  state.trash = state.trash.filter(x => x.id !== id);
+  touch();
+  toast(`Restored "${t.label}"`);
+}
+function permanentlyDeleteTrashItem(id) {
+  confirmDialog('Permanently delete this? It can’t be recovered.', () => {
+    state.trash = (state.trash || []).filter(x => x.id !== id);
+    touch();
+  }, 'Delete forever');
+}
+function emptyTrash() {
+  if (!(state.trash || []).length) return;
+  confirmDialog('Permanently delete everything in Recently Deleted? This can’t be undone.', () => {
+    state.trash = [];
+    touch();
+  }, 'Empty trash');
+}
 
 const NOTE_TEMPLATES = {
   blank: { label: 'Blank note', body: '' },
@@ -57,7 +150,8 @@ function seedData() {
     settings: {
       dark: false,
       sidebarCollapsed: false,
-      background: { type: 'solid', color1: '#fafafa', color2: '#eef0fb', angle: 135 },
+      background: { color: '#fafafa' },
+      recentEventColors: [],
       stickyNoteSize: 'md',
       gradeScale: '4.0',
       weekStartsMonday: true,
@@ -87,6 +181,7 @@ function seedData() {
     projects: [],
     studyGroups: [],
     recurringTemplates: [],
+    trash: [],
   };
 }
 
@@ -121,6 +216,12 @@ function migrate(parsed) {
   const base = seedData();
   const merged = { ...base, ...parsed };
   merged.settings = { ...base.settings, ...(parsed.settings || {}) };
+  // Older saves used a two-color gradient {color1,color2,angle} — collapse to the new solid {color}.
+  if (merged.settings.background?.color1 && !merged.settings.background.color) {
+    merged.settings.background = { color: merged.settings.background.color1 };
+  }
+  const cutoff = Date.now() - TRASH_RETENTION_DAYS * 86400000;
+  merged.trash = (merged.trash || []).filter(t => t.deletedAt >= cutoff);
   return merged;
 }
 

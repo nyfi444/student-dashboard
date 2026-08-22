@@ -53,11 +53,16 @@ function renderProjectModal(id) {
       </div>
     </div>
     <div class="modal-foot">
-      ${id ? `<button class="btn btn-danger" onclick="deleteProject('${id}')">Delete</button>` : ''}
+      ${id ? `<button class="btn btn-danger" onclick="deleteProject('${id}')">Delete</button><button class="btn btn-ghost" onclick="shareProjectToGroup('${id}')">${icon('users', 13)} Share</button>` : ''}
       <button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveProjectModal(${id ? `'${id}'` : 'null'})">Save</button>
     </div>
   `, { wide: true });
+}
+function shareProjectToGroup(id) {
+  const p = state.projects.find(x => x.id === id);
+  if (!p) return;
+  openShareToGroupModal('project', p.title || 'Untitled project', { dueDate: p.dueDate || '', milestones: JSON.parse(JSON.stringify(p.milestones || [])) });
 }
 function milestoneBlock(m, i) {
   return `<div class="card card-pad mb-8" style="background:var(--surface-2)">
@@ -87,4 +92,11 @@ function saveProjectModal(id) {
   if (id) { const i = state.projects.findIndex(x => x.id === id); state.projects[i] = d; } else state.projects.push(d);
   touch(); closeModal(); toast(id ? 'Updated' : 'Project created');
 }
-function deleteProject(id) { confirmDialog('Delete this project?', () => { state.projects = state.projects.filter(p => p.id !== id); touch(); closeModal(); }); }
+function deleteProject(id) {
+  confirmDialog('Delete this project? You can restore it from Recently Deleted for 30 days.', () => {
+    const p = state.projects.find(x => x.id === id);
+    if (p) trashItem('project', p.title || 'Untitled project', p);
+    state.projects = state.projects.filter(p => p.id !== id);
+    touch(); closeModal();
+  });
+}

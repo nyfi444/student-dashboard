@@ -190,6 +190,11 @@ function dayView() {
 function openEventModal(id, presetDate) {
   const e = id ? state.events.find(x => x.id === id) : { id: uid(), title: '', date: presetDate || todayIso(), startTime: '09:00', endTime: '10:00', courseId: null, type: 'block', color: '#000000' };
   window._eventDraft = { ...e };
+  renderEventModal(id);
+}
+function renderEventModal(id) {
+  const e = _eventDraft;
+  const recent = state.settings.recentEventColors || [];
   openModal(`
     <div class="modal-head"><h3>${id ? 'Edit time block' : 'New time block'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
@@ -202,7 +207,9 @@ function openEventModal(id, presetDate) {
         <div class="field"><label>Start</label><input class="input" type="time" id="ef-start" value="${e.startTime}"></div>
         <div class="field"><label>End</label><input class="input" type="time" id="ef-end" value="${e.endTime}"></div>
       </div>
-      <div class="field"><label>Color</label>${colorWheelHtml('ef-color', e.color)}</div>
+      <div class="field"><label>Color</label>${colorWheelHtml('ef-color', e.color)}
+        ${recent.length ? `<div class="small muted mt-8 mb-4">Recently used</div><div class="color-swatch-row">${recent.map(c => `<div class="color-swatch ${c === e.color ? 'active' : ''}" style="background:${c}" title="${c}" onclick="_eventDraft.color='${c}';renderEventModal(${id ? `'${id}'` : 'null'})"></div>`).join('')}</div>` : ''}
+      </div>
     </div>
     <div class="modal-foot">
       ${id ? `<button class="btn btn-danger" onclick="deleteEvent('${id}')">Delete</button>` : ''}
@@ -221,6 +228,19 @@ function saveEvent(id) {
   d.endTime = $('#ef-end').value;
   if (id) { const i = state.events.findIndex(x => x.id === id); state.events[i] = d; }
   else state.events.push(d);
+  saveRecentEventColor(d.color);
   touch(); closeModal(); toast('Saved to calendar');
 }
-function deleteEvent(id) { state.events = state.events.filter(e => e.id !== id); touch(); closeModal(); toast('Removed'); }
+function saveRecentEventColor(hex) {
+  const list = state.settings.recentEventColors || (state.settings.recentEventColors = []);
+  const i = list.indexOf(hex);
+  if (i !== -1) list.splice(i, 1);
+  list.unshift(hex);
+  list.length = Math.min(list.length, 8);
+}
+function deleteEvent(id) {
+  const e = state.events.find(x => x.id === id);
+  if (e) trashItem('event', e.title || 'Untitled time block', e);
+  state.events = state.events.filter(e => e.id !== id);
+  touch(); closeModal(); toast('Removed');
+}

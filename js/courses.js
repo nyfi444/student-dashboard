@@ -178,7 +178,9 @@ function saveCourseModal(existingId) {
   toast(existingId ? 'Course updated' : 'Course added');
 }
 function deleteCourse(id) {
-  confirmDialog('Delete this course? Its assignments and todos will stay but become unassigned.', () => {
+  confirmDialog('Delete this course? Its assignments and todos will stay but become unassigned. You can restore it from Recently Deleted for 30 days.', () => {
+    const course = state.courses.find(c => c.id === id);
+    if (course) trashItem('course', course.name || 'Untitled course', course);
     state.courses = state.courses.filter(c => c.id !== id);
     state.assignments.forEach(a => { if (a.courseId === id) a.courseId = null; });
     state.todos.forEach(t => { if (t.courseId === id) t.courseId = null; });

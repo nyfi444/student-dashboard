@@ -93,7 +93,7 @@ function openGroupDetail(id) {
   }
   window._modalOpenGroupId = id;
 }
-const SHARE_KIND_ICON = { note: 'file-text', deck: 'layers' };
+const SHARE_KIND_ICON = { note: 'file-text', deck: 'layers', project: 'folder' };
 window._groupTab = 'sessions';
 function setGroupTab(tab) { window._groupTab = tab; renderGroupDetail(state.studyGroups.find(x => x.id === window._modalOpenGroupId)); }
 function renderGroupDetail(g) {
@@ -143,7 +143,7 @@ function renderGroupSharedTab(g) {
     ${shared.length ? shared.map(s => `
       <div class="list-row">
         <span class="nb-note-ic">${icon(SHARE_KIND_ICON[s.kind] || 'file-text', 14)}</span>
-        <div class="row-title">${esc(s.title)}${s.kind === 'deck' ? ` <span class="small muted">(${s.cards.length} cards)</span>` : ''}</div>
+        <div class="row-title">${esc(s.title)}${s.kind === 'deck' ? ` <span class="small muted">(${s.cards.length} cards)</span>` : s.kind === 'project' ? ` <span class="small muted">(${(s.milestones || []).length} milestones)</span>` : ''}</div>
         <div class="row-meta">${esc(s.sharedBy || '')}</div>
         <button class="btn btn-sm" onclick="importSharedItem('${g.id}','${s.id}')">Add to mine</button>
         <button class="btn btn-ghost btn-icon btn-sm" onclick="removeSharedItem('${g.id}','${s.id}')">${icon('trash',14)}</button>
@@ -344,6 +344,12 @@ function importSharedItem(groupId, itemId) {
   } else if (s.kind === 'deck') {
     state.decks.push({ id: uid(), name: s.title, courseId: null, cards: s.cards.map(c => ({ id: uid(), front: c.front, back: c.back })) });
     toast(`Added "${s.title}" to your flashcards`);
+  } else if (s.kind === 'project') {
+    state.projects.push({
+      id: uid(), title: s.title, courseId: null, dueDate: s.dueDate || '',
+      milestones: (s.milestones || []).map(m => ({ ...m, id: uid(), tasks: (m.tasks || []).map(t => ({ ...t, id: uid() })) })),
+    });
+    toast(`Added "${s.title}" to your projects`);
   }
   touch();
 }
@@ -364,7 +370,7 @@ function openShareToGroupModal(kind, title, payload) {
       <div class="field"><label>Share to group</label>
         <select class="select" id="share-group">${state.studyGroups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select>
       </div>
-      <p class="small muted">Everyone with this group's code will be able to add a copy to their own ${kind === 'note' ? 'notebook' : 'study tools'}.</p>
+      <p class="small muted">Everyone with this group's code will be able to add a copy to their own ${kind === 'note' ? 'notebook' : kind === 'project' ? 'projects' : 'study tools'}.</p>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="confirmShareToGroup()">Share</button></div>
   `);

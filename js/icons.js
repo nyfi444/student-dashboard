@@ -36,6 +36,7 @@ const ICON_PATHS = {
   play: '<path d="M6.5 4.5v15l13-7.5Z" fill="currentColor" stroke="none"/>',
   pause: '<rect x="6" y="5" width="4.5" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="4.5" height="14" rx="1" fill="currentColor" stroke="none"/>',
   sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v3M12 18.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4 6.8 6.8 0 0 0 20 14.5Z"/>',
   paperclip: '<path d="M8 12.5 15.5 5a3 3 0 0 1 4.2 4.2l-9 9a5 5 0 0 1-7-7l8.5-8.4"/>',
   star: '<path d="M12 3.5l2.6 5.6 6 .7-4.5 4.1 1.2 6-5.3-3-5.3 3 1.2-6-4.5-4.1 6-.7Z"/>',
   pin: '<path d="M9 4.5h6l.7 4.3 2.3 1.6-1 2.6H7l-1-2.6 2.3-1.6Z"/><path d="M12 13v7"/>',

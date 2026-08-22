@@ -97,7 +97,12 @@ function todoRow(t) {
   </div>`;
 }
 function toggleTodo(id) { const t = state.todos.find(x => x.id === id); t.done = !t.done; touch(); }
-function deleteTodo(id) { state.todos = state.todos.filter(t => t.id !== id); touch(); }
+function deleteTodo(id) {
+  const t = state.todos.find(x => x.id === id);
+  if (t) trashItem('todo', t.title || 'Untitled to-do', t);
+  state.todos = state.todos.filter(t => t.id !== id);
+  touch();
+}
 
 function openTodoModal(id) {
   const t = id ? state.todos.find(x => x.id === id) : { id: uid(), courseId: state.todoFilter !== 'all' && state.todoFilter !== 'none' ? state.todoFilter : null, sectionId: null, title: '', done: false, dueDate: todayIso(), priority: 'medium', recurring: null };

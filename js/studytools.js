@@ -84,7 +84,14 @@ function saveDeckModal(id) {
   if (id) { const i = state.decks.findIndex(x => x.id === id); state.decks[i] = d; } else state.decks.push(d);
   touch(); closeModal(); toast(id ? 'Deck updated' : 'Deck created');
 }
-function deleteDeck(id) { confirmDialog('Delete this deck?', () => { state.decks = state.decks.filter(x => x.id !== id); touch(); closeModal(); }); }
+function deleteDeck(id) {
+  confirmDialog('Delete this deck? You can restore it from Recently Deleted for 30 days.', () => {
+    const d = state.decks.find(x => x.id === id);
+    if (d) trashItem('deck', d.name || 'Untitled deck', d);
+    state.decks = state.decks.filter(x => x.id !== id);
+    touch(); closeModal();
+  });
+}
 function shareDeckToGroup(id) {
   const d = state.decks.find(x => x.id === id);
   if (!d) return;
