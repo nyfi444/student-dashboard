@@ -14,6 +14,11 @@ const PAGES = {
 function render() {
   renderSidebar();
   document.getElementById('app').classList.toggle('sidebar-collapsed', !!state.settings.sidebarCollapsed);
+  if (typeof shouldShowPaywall === 'function' && shouldShowPaywall()) {
+    $('#content').classList.remove('content-notebook');
+    $('#content').innerHTML = `<div class="fade-in">${pagePaywall()}</div>`;
+    return;
+  }
   const fn = PAGES[state.route] || pageDashboard;
   $('#content').classList.toggle('content-notebook', state.route === 'notebook');
   $('#content').innerHTML = `<div class="fade-in">${fn()}</div>`;
@@ -95,6 +100,12 @@ function openAccountPromptModal() {
 async function signInFromOnboarding() {
   await signIn();
   closeModal();
+  // Don't blindly jump into the setup wizard — if signing in means this
+  // account still needs to pay, render() will already be showing the
+  // paywall (set by firebase.js's auth callback); stepping into the
+  // wizard here would open a modal on top of it and make it look like
+  // there's no paywall at all.
+  if (typeof shouldShowPaywall === 'function' && shouldShowPaywall()) return;
   openFirstRunWizardIfNeeded();
 }
 function skipAccountPrompt() {
