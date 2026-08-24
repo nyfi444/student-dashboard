@@ -87,6 +87,34 @@ const BACKGROUND_PRESETS = [
 function bgCssValue(bg) { return bg?.color || '#fafafa'; }
 function bgMatchesPreset(bg, p) { return bg?.color === p.color; }
 
+/* ── Dark mode color: derive a dark background + light text tint from the
+   same preset hue, instead of dark mode always being flat black/white. ── */
+function hexToHsl(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  const rf = r / 255, gf = g / 255, bf = b / 255;
+  const max = Math.max(rf, gf, bf), min = Math.min(rf, gf, bf), d = max - min;
+  let h = 0, s = 0; const l = (max + min) / 2;
+  if (d !== 0) {
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === rf) h = 60 * (((gf - bf) / d) % 6);
+    else if (max === gf) h = 60 * ((bf - rf) / d + 2);
+    else h = 60 * ((rf - gf) / d + 4);
+  }
+  if (h < 0) h += 360;
+  return { h, s, l };
+}
+function hslToHex(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60)[r, g, b] = [c, x, 0]; else if (h < 120)[r, g, b] = [x, c, 0]; else if (h < 180)[r, g, b] = [0, c, x];
+  else if (h < 240)[r, g, b] = [0, x, c]; else if (h < 300)[r, g, b] = [x, 0, c]; else[r, g, b] = [c, 0, x];
+  return rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+}
+// Neutral presets (near-zero saturation) fall through to plain dark gray/white,
+// same as classic dark mode — only picking an actual color shifts these.
+function darkBgFromPreset(hex) { const { h, s } = hexToHsl(hex || '#fafafa'); return hslToHex(h, Math.min(s, 0.4), 0.13); }
+function darkTextFromPreset(hex) { const { h, s } = hexToHsl(hex || '#fafafa'); return hslToHex(h, Math.min(s, 0.5), 0.88); }
+
 /* ── Recently Deleted: soft-delete so destructive actions are recoverable ─
    Deleted items are snapshotted here instead of vanishing outright, and
    auto-purged after TRASH_RETENTION_DAYS. Settings → Recently Deleted
@@ -133,17 +161,6 @@ function emptyTrash() {
   }, 'Empty trash');
 }
 
-const NOTE_TEMPLATES = {
-  blank: { label: 'Blank note', body: '' },
-  cornell: { label: 'Cornell Notes', body: '<h3>Cues / Questions</h3><p></p><h3>Notes</h3><p></p><h3>Summary</h3><p></p>' },
-  lecture: { label: 'Lecture Notes', body: '<h3>Topic</h3><p></p><h3>Key Points</h3><p></p><h3>Questions</h3><p></p>' },
-  reading: { label: 'Reading Notes', body: '<h3>Source</h3><p></p><h3>Main Ideas</h3><p></p><h3>Quotes / Evidence</h3><p></p><h3>My Takeaway</h3><p></p>' },
-  meeting: { label: 'Meeting Notes', body: '<h3>Attendees</h3><p></p><h3>Discussion</h3><p></p><h3>Action Items</h3><p></p>' },
-  examreview: { label: 'Exam Review', body: '<h3>Topics Covered</h3><p></p><h3>Practice Questions</h3><p></p><h3>Weak Spots</h3><p></p>' },
-  studyguide: { label: 'Study Guide', body: '<h3>Key Terms</h3><p></p><h3>Concepts</h3><p></p><h3>Sample Problems</h3><p></p>' },
-  research: { label: 'Research Notes', body: '<h3>Question</h3><p></p><h3>Sources</h3><p></p><h3>Findings</h3><p></p><h3>Next Steps</h3><p></p>' },
-};
-
 function seedData() {
   const semId = uid();
   const t = todayIso();
@@ -159,6 +176,7 @@ function seedData() {
       dark: false,
       sidebarCollapsed: false,
       background: { color: '#fafafa' },
+      darkBackground: { color: '#fafafa' },
       recentEventColors: [],
       stickyNoteSize: 'md',
       gradeScale: '4.0',

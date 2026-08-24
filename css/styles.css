@@ -11,6 +11,7 @@ html { -webkit-text-size-adjust: 100%; }
 
 :root {
   --ink: #141414;          /* near-black, used for the floating selection toolbar */
+  --cloud: #ffffff;        /* near-white text/hover on --ink surfaces (floating toolbar) */
   --badge: #ececec;        /* neutral badge fill (e.g. "AI" labels) */
 
   --accent: #141414;
@@ -184,6 +185,14 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .grid-4 { grid-template-columns: repeat(4, 1fr); }
 @media (max-width: 900px) { .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); } }
 
+/* Settings uses a masonry-style column flow instead of a strict grid — a
+   CSS grid row locks its height to the tallest card in it, which left an
+   awkward gap under short cards (e.g. Appearance next to the much taller
+   Background card). Columns pack independently, so no wasted space. */
+.settings-columns { column-count: 2; column-gap: 18px; }
+.settings-columns .card { break-inside: avoid; margin-bottom: 18px; }
+@media (max-width: 900px) { .settings-columns { column-count: 1; } }
+
 .stat-card { padding: 17px 19px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
 .stat-card .num { font-family: var(--font-serif); font-style: italic; font-size: 30px; font-weight: 400; letter-spacing: -.2px; color: var(--text); }
 .stat-card .lbl { font-size: 11.5px; color: var(--text-faint); margin-top: 3px; }
@@ -290,6 +299,25 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .cal-evt.kind-deadline { border: 1px dashed currentColor; }
 .cal-block.kind-exam { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.55); font-weight: 700; }
 .cal-block.kind-deadline { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.16) 0 6px, transparent 6px 12px); }
+
+/* ── Year view: 12 mini months, each a tiny click-through calendar ── */
+.cal-year-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.cal-mini-month { background: var(--surface); border: 1px solid var(--border); padding: 10px; }
+.cal-mini-month-head { font-family: var(--font-serif); font-style: italic; font-size: 15px; margin-bottom: 8px; cursor: pointer; }
+.cal-mini-month-head:hover { color: var(--accent-dark); }
+.cal-mini-dow { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 2px; }
+.cal-mini-dow span { text-align: center; font-size: 8.5px; font-weight: 700; color: var(--text-faint); }
+.cal-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.cal-mini-cell { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 9.5px; color: var(--text-dim); cursor: pointer; border-radius: 4px; gap: 1px; }
+.cal-mini-cell:hover { background: var(--surface-2); }
+.cal-mini-cell.muted { color: var(--text-faint); opacity: .35; }
+.cal-mini-cell.today { background: var(--accent); color: var(--accent-text); font-weight: 700; }
+.cal-mini-dot { width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.cal-mini-cell.today .cal-mini-dot { background: var(--accent-text); }
+.cal-mini-dot.exam { border-radius: 1px; }
+@media (max-width: 900px) {
+  .cal-year-grid { grid-template-columns: repeat(2, 1fr); }
+}
 .cal-week-grid { display: grid; grid-template-columns: 52px repeat(7, 1fr); }
 .cal-hour-label { font-size: 10px; color: var(--text-faint); text-align: right; padding-right: 6px; height: 48px; }
 .cal-day-col { border-left: 1px solid var(--border); position: relative; }
@@ -408,7 +436,15 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-bubble { position: fixed; display: none; align-items: center; gap: 2px; background: var(--ink); padding: 4px; border-radius: var(--r-tight-active); box-shadow: var(--shadow-lg); z-index: 250; }
 .nb-bubble button { background: transparent; border: none; color: var(--cloud); width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; cursor: pointer; }
 .nb-bubble button:hover { background: color-mix(in srgb, var(--cloud) 18%, transparent); }
+.nb-bubble button.active { background: var(--cloud); color: var(--ink); }
 .nb-bubble-sep { width: 1px; height: 18px; background: color-mix(in srgb, var(--cloud) 22%, transparent); margin: 0 3px; flex-shrink: 0; }
+
+/* Persistent formatting toolbar above the editor — an elevated card, not bare buttons */
+.nb-toolbar { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-soft) var(--r-tight) var(--r-tight) var(--r-tight); box-shadow: var(--shadow); padding: 5px; margin: 20px 0 6px; }
+.nb-toolbar button { background: transparent; border: none; min-width: 30px; height: 30px; padding: 0 7px; border-radius: var(--r-tight); display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--text-dim); cursor: pointer; transition: background .12s, color .12s; }
+.nb-toolbar button:hover { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.nb-toolbar button.active { background: var(--accent); color: var(--accent-text); }
+.nb-toolbar-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; flex-shrink: 0; }
 
 /* Slash-command block menu */
 .nb-slash-menu { position: fixed; display: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-soft) var(--r-tight) var(--r-tight) var(--r-tight); box-shadow: var(--shadow-lg); padding: 6px; z-index: 250; width: 240px; max-height: 320px; overflow-y: auto; }
@@ -450,6 +486,20 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .faq-item summary::after { content: '+'; font-size: 17px; font-weight: 400; color: var(--text-faint); transition: transform .15s ease; flex-shrink: 0; }
 .faq-item[open] summary::after { transform: rotate(45deg); color: var(--accent-dark); }
 .faq-item p { margin-top: 8px; line-height: 1.6; }
+
+/* ── Collapsible sub-sections elsewhere in Settings — same accordion
+   language as the FAQ, used to keep long option grids out of the way
+   until asked for (e.g. background presets, Recently Deleted). ────── */
+.settings-collapse { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.settings-collapse summary {
+  cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text-dim); list-style: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px;
+}
+.settings-collapse summary::-webkit-details-marker { display: none; }
+.settings-collapse summary::after { content: '+'; font-size: 16px; font-weight: 400; color: var(--text-faint); transition: transform .15s ease; flex-shrink: 0; }
+.settings-collapse[open] summary::after { transform: rotate(45deg); color: var(--accent-dark); }
+.settings-collapse .settings-collapse-body { margin-top: 10px; }
+.settings-collapse-scroll { max-height: 320px; overflow-y: auto; }
 
 /* ── Print / PDF export (notebook notes) ──────────────────────── */
 #print-area { display: none; }

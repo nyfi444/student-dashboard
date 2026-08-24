@@ -70,8 +70,15 @@ async function joinGroup() {
     const doc = await _fbDb.collection('studyGroups').doc(code).get();
     if (!doc.exists) { toast('No group found with that code', 'error'); return; }
     const g = doc.data();
-    if (!state.studyGroups.some(x => x.code === code)) state.studyGroups.push(g);
+    // The creator's push only ever wrote their own name into `members` — joining
+    // never added the joiner, so rosters (and cross-account visibility) never grew.
+    const me = state.settings.displayName || 'Me';
+    g.members = g.members || [];
+    if (!g.members.includes(me)) g.members.push(me);
+    const i = state.studyGroups.findIndex(x => x.code === code);
+    if (i >= 0) state.studyGroups[i] = g; else state.studyGroups.push(g);
     touch(); closeModal(); toast(`Joined ${g.name}`);
+    pushGroupToCloud(g);
   } catch (e) { toast('Could not join — ' + e.message, 'error'); }
 }
 function pushGroupToCloud(g) {
@@ -93,7 +100,7 @@ function openGroupDetail(id) {
   }
   window._modalOpenGroupId = id;
 }
-const SHARE_KIND_ICON = { note: 'file-text', deck: 'layers', project: 'folder' };
+const SHARE_KIND_ICON = { note: 'file-text', deck: 'layers', project: 'folder', 'note-bundle': 'folder-open' };
 window._groupTab = 'sessions';
 function setGroupTab(tab) { window._groupTab = tab; renderGroupDetail(state.studyGroups.find(x => x.id === window._modalOpenGroupId)); }
 function renderGroupDetail(g) {
@@ -103,12 +110,14 @@ function renderGroupDetail(g) {
     <div class="modal-body">
       <div class="small muted mb-8">Share code: <strong style="letter-spacing:.06em">${g.code}</strong> · ${g.members.length} member${g.members.length === 1 ? '' : 's'}</div>
       <div class="segmented mb-16">
+        <button class="${tab === 'people' ? 'active' : ''}" onclick="setGroupTab('people')">People</button>
         <button class="${tab === 'sessions' ? 'active' : ''}" onclick="setGroupTab('sessions')">Sessions</button>
         <button class="${tab === 'tasks' ? 'active' : ''}" onclick="setGroupTab('tasks')">Group tasks</button>
         <button class="${tab === 'availability' ? 'active' : ''}" onclick="setGroupTab('availability')">Availability</button>
         <button class="${tab === 'projects' ? 'active' : ''}" onclick="setGroupTab('projects')">Projects</button>
         <button class="${tab === 'shared' ? 'active' : ''}" onclick="setGroupTab('shared')">Shared</button>
       </div>
+      ${tab === 'people' ? renderGroupPeopleTab(g) : ''}
       ${tab === 'sessions' ? renderGroupSessionsTab(g) : ''}
       ${tab === 'tasks' ? renderGroupTasksTab(g) : ''}
       ${tab === 'availability' ? renderGroupAvailabilityTab(g) : ''}
@@ -117,6 +126,35 @@ function renderGroupDetail(g) {
     </div>
     <div class="modal-foot"><button class="btn btn-danger" onclick="deleteGroup('${g.id}')">Leave/delete group</button><button class="btn" onclick="closeGroupDetail()">Close</button></div>
   `, { wide: true });
+}
+/* ── People: who's in the group, plus a feed of who shared/assigned what ─ */
+function renderGroupPeopleTab(g) {
+  const me = state.settings.displayName || 'Me';
+  const members = g.members || [];
+  const activity = groupActivityFeed(g).slice(0, 15);
+  return `
+    <div class="small muted mb-8">${members.length} member${members.length === 1 ? '' : 's'} — anyone with the code ${g.code} who's joined shows up here.</div>
+    ${members.map(m => `
+      <div class="list-row">
+        <div class="avatar">${esc((m || '?').trim()[0]?.toUpperCase() || '?')}</div>
+        <div class="row-title">${esc(m)}${m === me ? ' <span class="small muted">(you)</span>' : ''}</div>
+      </div>`).join('')}
+    <div class="divider"></div>
+    <div class="small dim mb-8" style="font-weight:600">Recent activity</div>
+    ${activity.length ? activity.map(a => `
+      <div class="list-row">
+        <span class="nb-note-ic">${icon(a.icon, 14)}</span>
+        <div class="row-title">${esc(a.text)}</div>
+        <div class="row-meta">${fmtRelativeTime(a.at)}</div>
+      </div>`).join('') : emptyState(icon('users', 22, 1.4), 'No activity yet — share something or assign a task.')}
+  `;
+}
+function groupActivityFeed(g) {
+  const items = [];
+  (g.sharedItems || []).forEach(s => items.push({ at: s.sharedAt || 0, icon: SHARE_KIND_ICON[s.kind] || 'file-text', text: `${s.sharedBy || 'Someone'} shared "${s.title}"` }));
+  (g.tasks || []).forEach(t => { if (t.assignedTo && t.assignedAt) items.push({ at: t.assignedAt, icon: 'check-square', text: `"${t.title}" assigned to ${t.assignedTo}` }); });
+  (g.projects || []).forEach(p => (p.tasks || []).forEach(t => { if (t.assignedTo && t.assignedAt) items.push({ at: t.assignedAt, icon: 'folder', text: `"${t.title}" (${p.title}) assigned to ${t.assignedTo}` }); }));
+  return items.sort((a, b) => b.at - a.at);
 }
 function renderGroupSessionsTab(g) {
   const sorted = [...g.events].sort((a, b) => a.date.localeCompare(b.date));
@@ -139,33 +177,98 @@ function renderGroupSessionsTab(g) {
 function renderGroupSharedTab(g) {
   const shared = [...(g.sharedItems || [])].sort((a, b) => (b.sharedAt || 0) - (a.sharedAt || 0));
   return `
-    <div class="flex-between mb-8"><h3 style="font-size:14px">Shared with the group</h3></div>
+    <div class="flex-between mb-8"><h3 style="font-size:14px">Shared with the group</h3><button class="btn btn-sm" onclick="openShareFromGroupModal('${g.id}')">${icon('link', 13)} Link a notebook, note, PDF, deck, or project</button></div>
     ${shared.length ? shared.map(s => `
       <div class="list-row">
         <span class="nb-note-ic">${icon(SHARE_KIND_ICON[s.kind] || 'file-text', 14)}</span>
-        <div class="row-title">${esc(s.title)}${s.kind === 'deck' ? ` <span class="small muted">(${s.cards.length} cards)</span>` : s.kind === 'project' ? ` <span class="small muted">(${(s.milestones || []).length} milestones)</span>` : ''}</div>
+        <div class="row-title">${esc(s.title)}${s.kind === 'deck' ? ` <span class="small muted">(${s.cards.length} cards)</span>` : s.kind === 'project' ? ` <span class="small muted">(${(s.milestones || []).length} milestones)</span>` : s.kind === 'note-bundle' ? ` <span class="small muted">(${(s.notes || []).length} notes)</span>` : ''}</div>
         <div class="row-meta">${esc(s.sharedBy || '')}</div>
         <button class="btn btn-sm" onclick="importSharedItem('${g.id}','${s.id}')">Add to mine</button>
         <button class="btn btn-ghost btn-icon btn-sm" onclick="removeSharedItem('${g.id}','${s.id}')">${icon('trash',14)}</button>
-      </div>`).join('') : emptyState(icon('layers',22,1.4), 'Nothing shared yet', '', 'Share a note or flashcard deck from the Notebook or Flashcards page.')}
+      </div>`).join('') : emptyState(icon('layers',22,1.4), 'Nothing shared yet', '', 'Share a notebook, note, or flashcard deck from the Notebook or Flashcards page.')}
   `;
+}
+// Lets you link something into a group without leaving it — otherwise sharing
+// only worked by navigating to Notebook/Flashcards/Projects and hunting for the
+// Share button there. A note that came from Notebook → Upload PDF works here too,
+// since the extracted text just lives in the note's content like anything else.
+function openShareFromGroupModal(groupId) {
+  openModal(`
+    <div class="modal-head"><h3>Link something into this group</h3><button class="close-x" onclick="renderGroupDetail(state.studyGroups.find(x=>x.id==='${groupId}'))">${icon('x',13,2.2)}</button></div>
+    <div class="modal-body">
+      <div class="field"><label>What do you want to share?</label>
+        <select class="select" id="sfg-kind" onchange="renderShareFromGroupItems()">
+          <option value="note-bundle">Notebook (a whole folder of notes)</option>
+          <option value="note">Single note (includes anything imported via Upload PDF)</option>
+          <option value="deck">Flashcard deck</option>
+          <option value="project">Project</option>
+        </select>
+      </div>
+      <div class="field" id="sfg-item-field"></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="renderGroupDetail(state.studyGroups.find(x=>x.id==='${groupId}'))">Cancel</button><button class="btn btn-primary" onclick="confirmShareFromGroup('${groupId}')">Share</button></div>
+  `);
+  renderShareFromGroupItems();
+}
+function renderShareFromGroupItems() {
+  const kind = $('#sfg-kind').value;
+  const field = $('#sfg-item-field');
+  const items = kind === 'note-bundle' ? foldersWithNotes() : kind === 'note' ? state.notes.filter(n => n.type === 'note') : kind === 'deck' ? state.decks : state.projects;
+  const label = kind === 'note-bundle' ? 'Notebook' : kind === 'note' ? 'Note' : kind === 'deck' ? 'Flashcard deck' : 'Project';
+  field.innerHTML = items.length
+    ? `<label>${label}</label><select class="select" id="sfg-item">${items.map(it => `<option value="${it.id}">${esc(it.name || it.title)}</option>`).join('')}</select>`
+    : `<p class="small muted">${kind === 'note-bundle' ? "You don't have any notebooks with notes in them yet." : `You don't have any ${label.toLowerCase()}s yet.`}</p>`;
+}
+function confirmShareFromGroup(groupId) {
+  const kind = $('#sfg-kind').value;
+  const itemEl = $('#sfg-item');
+  const itemId = itemEl?.value;
+  if (!itemId) { toast('Nothing to share', 'error'); return; }
+  const g = state.studyGroups.find(x => x.id === groupId);
+  let title, payload;
+  if (kind === 'note-bundle') {
+    const folder = state.notes.find(x => x.id === itemId);
+    const notes = state.notes.filter(n => n.type === 'note' && n.parentId === itemId);
+    title = folder.name; payload = { notes: notes.map(n => ({ name: n.name, content: n.content || '' })) };
+  } else if (kind === 'note') {
+    const n = state.notes.find(x => x.id === itemId);
+    title = n.name; payload = { content: n.content || '' };
+  } else if (kind === 'deck') {
+    const d = state.decks.find(x => x.id === itemId);
+    title = d.name; payload = { cards: JSON.parse(JSON.stringify(d.cards || [])) };
+  } else {
+    const p = state.projects.find(x => x.id === itemId);
+    title = p.title; payload = { dueDate: p.dueDate || '', milestones: JSON.parse(JSON.stringify(p.milestones || [])) };
+  }
+  g.sharedItems = g.sharedItems || [];
+  g.sharedItems.push({ id: uid(), kind, title, sharedBy: state.settings.displayName || 'Me', sharedAt: Date.now(), ...payload });
+  touch(); pushGroupToCloud(g);
+  toast(`Shared "${title}" with ${g.name}`);
+  renderGroupDetail(g);
 }
 
 /* ── Group task list — separate from personal to-dos ─────────── */
 function renderGroupTasksTab(g) {
+  const me = state.settings.displayName || 'Me';
+  const mineOnly = !!window._groupTasksMineOnly;
   const tasks = g.tasks || [];
+  const shown = mineOnly ? tasks.filter(t => t.assignedTo === me) : tasks;
   return `
     <div class="field-row">
       <input class="input" id="gt-title" placeholder="Bring flashcards, review chapter 5…" onkeydown="if(event.key==='Enter')addGroupTask('${g.id}')">
       <button class="btn btn-primary btn-sm" onclick="addGroupTask('${g.id}')">Add</button>
     </div>
+    <div class="checkbox-row mt-8"><input type="checkbox" id="gt-mine" ${mineOnly ? 'checked' : ''} onchange="window._groupTasksMineOnly=this.checked;renderGroupDetail(state.studyGroups.find(x=>x.id==='${g.id}'))"><label for="gt-mine">Only show tasks assigned to me</label></div>
     <div class="divider"></div>
-    ${tasks.length ? tasks.map(t => `
+    ${shown.length ? shown.map(t => `
       <div class="list-row">
         <div class="row-check ${t.done ? 'checked' : ''}" onclick="toggleGroupTask('${g.id}','${t.id}')">${t.done ? checkGlyph(true) : ''}</div>
         <div class="row-title ${t.done ? 'done' : ''}">${esc(t.title)}</div>
+        <select class="select" style="max-width:150px" onchange="setGroupTaskOwner('${g.id}','${t.id}',this.value)">
+          <option value="">Unassigned</option>${(g.members || []).map(m => `<option value="${esc(m)}" ${m === t.assignedTo ? 'selected' : ''}>${esc(m)}${m === me ? ' (you)' : ''}</option>`).join('')}
+        </select>
         <button class="btn btn-ghost btn-icon btn-sm" onclick="removeGroupTask('${g.id}','${t.id}')">${icon('trash',14)}</button>
-      </div>`).join('') : emptyState(icon('check-square',22,1.4), 'No shared tasks yet.')}
+      </div>`).join('') : emptyState(icon('check-square',22,1.4), mineOnly ? 'Nothing assigned to you.' : 'No shared tasks yet.')}
   `;
 }
 function addGroupTask(groupId) {
@@ -173,8 +276,14 @@ function addGroupTask(groupId) {
   if (!title) return;
   const g = state.studyGroups.find(x => x.id === groupId);
   g.tasks = g.tasks || [];
-  g.tasks.push({ id: uid(), title, done: false });
+  g.tasks.push({ id: uid(), title, done: false, assignedTo: null, assignedAt: null });
   touch(); renderGroupDetail(g); pushGroupToCloud(g);
+}
+function setGroupTaskOwner(groupId, taskId, owner) {
+  const g = state.studyGroups.find(x => x.id === groupId);
+  const t = (g.tasks || []).find(x => x.id === taskId);
+  if (t) { t.assignedTo = owner || null; t.assignedAt = owner ? Date.now() : null; }
+  touch(); pushGroupToCloud(g);
 }
 function toggleGroupTask(groupId, taskId) {
   const g = state.studyGroups.find(x => x.id === groupId);
@@ -309,7 +418,7 @@ function addGroupProjectTask(groupId, projectId) {
 }
 function toggleGroupProjectTask(groupId, projectId, i) { const { g, p } = findGroupProject(groupId, projectId); p.tasks[i].done = !p.tasks[i].done; touch(); renderGroupDetail(g); pushGroupToCloud(g); }
 function removeGroupProjectTask(groupId, projectId, i) { const { g, p } = findGroupProject(groupId, projectId); p.tasks.splice(i, 1); touch(); renderGroupDetail(g); pushGroupToCloud(g); }
-function setGroupProjectTaskOwner(groupId, projectId, i, owner) { const { g, p } = findGroupProject(groupId, projectId); p.tasks[i].assignedTo = owner || null; touch(); pushGroupToCloud(g); }
+function setGroupProjectTaskOwner(groupId, projectId, i, owner) { const { g, p } = findGroupProject(groupId, projectId); p.tasks[i].assignedTo = owner || null; p.tasks[i].assignedAt = owner ? Date.now() : null; touch(); pushGroupToCloud(g); }
 function addGroupProjectDeadline(groupId, projectId) {
   const { g, p } = findGroupProject(groupId, projectId);
   const title = $(`#gpd-title-${projectId}`).value.trim(), date = $(`#gpd-date-${projectId}`).value;
@@ -341,6 +450,11 @@ function importSharedItem(groupId, itemId) {
   if (s.kind === 'note') {
     state.notes.push({ id: uid(), type: 'note', name: s.title, parentId: 'root', courseId: null, content: s.content, updatedAt: Date.now() });
     toast(`Added "${s.title}" to your notebook`);
+  } else if (s.kind === 'note-bundle') {
+    const folderId = uid();
+    state.notes.push({ id: folderId, type: 'folder', name: s.title, parentId: 'root', courseId: null, open: true });
+    (s.notes || []).forEach(n => state.notes.push({ id: uid(), type: 'note', name: n.name, parentId: folderId, courseId: null, content: n.content, updatedAt: Date.now() }));
+    toast(`Added "${s.title}" to your notebook`);
   } else if (s.kind === 'deck') {
     state.decks.push({ id: uid(), name: s.title, courseId: null, cards: s.cards.map(c => ({ id: uid(), front: c.front, back: c.back })) });
     toast(`Added "${s.title}" to your flashcards`);
@@ -370,7 +484,7 @@ function openShareToGroupModal(kind, title, payload) {
       <div class="field"><label>Share to group</label>
         <select class="select" id="share-group">${state.studyGroups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select>
       </div>
-      <p class="small muted">Everyone with this group's code will be able to add a copy to their own ${kind === 'note' ? 'notebook' : kind === 'project' ? 'projects' : 'study tools'}.</p>
+      <p class="small muted">Everyone with this group's code will be able to add a copy to their own ${kind === 'note' || kind === 'note-bundle' ? 'notebook' : kind === 'project' ? 'projects' : 'study tools'}.</p>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="confirmShareToGroup()">Share</button></div>
   `);

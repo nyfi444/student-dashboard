@@ -3,12 +3,14 @@ const CAL_HOURS = Array.from({ length: 16 }, (_, i) => i + 7); // 7am–10pm
 
 function pageCalendar() {
   const v = state.calView;
-  const label = v === 'month' ? fmtDate(state.calDate, { month: 'long', year: 'numeric' })
+  const label = v === 'year' ? String(new Date(state.calDate + 'T00:00:00').getFullYear())
+    : v === 'month' ? fmtDate(state.calDate, { month: 'long', year: 'numeric' })
     : v === 'week' ? `Week of ${fmtDate(startOfWeek(state.calDate))}`
     : fmtDateLong(state.calDate);
   return `
     ${pageHead('Calendar', label, `
       <div class="segmented">
+        <button class="${v === 'year' ? 'active' : ''}" onclick="setCalView('year')">Year</button>
         <button class="${v === 'month' ? 'active' : ''}" onclick="setCalView('month')">Month</button>
         <button class="${v === 'week' ? 'active' : ''}" onclick="setCalView('week')">Week</button>
         <button class="${v === 'day' ? 'active' : ''}" onclick="setCalView('day')">Day</button>
@@ -19,8 +21,8 @@ function pageCalendar() {
       <button class="btn btn-sm" onclick="openBreaksModal()">${icon('flag', 13, 2)} Breaks</button>
       <button class="btn btn-primary" onclick="openEventModal(null,'${state.calDate}')">+ Time block</button>
     `)}
-    <div class="small muted mb-8">Drag a to-do or assignment from Dashboard/To-Do/Assignments onto a day to reschedule it, or onto a time slot to plan when you'll work on it.</div>
-    <div id="cal-body">${v === 'month' ? monthView() : v === 'week' ? weekView() : dayView()}</div>
+    ${v !== 'year' ? `<div class="small muted mb-8">Drag a to-do or assignment from Dashboard/To-Do/Assignments onto a day to reschedule it, or onto a time slot to plan when you'll work on it.</div>` : `<div class="small muted mb-8">Click a month name to jump into it, or a day to jump straight to that day.</div>`}
+    <div id="cal-body">${v === 'year' ? yearView() : v === 'month' ? monthView() : v === 'week' ? weekView() : dayView()}</div>
   `;
 }
 function isBreakDate(dIso) { return state.breaks.some(b => dIso >= b.startDate && dIso <= b.endDate); }
@@ -90,10 +92,11 @@ function setCalView(v) { setState({ calView: v }); }
 function calToday() { setState({ calDate: todayIso() }); }
 function calNav(dir) {
   const v = state.calView;
-  const d = v === 'month' ? monthShift(state.calDate, dir) : addDays(state.calDate, dir * (v === 'week' ? 7 : 1));
+  const d = v === 'year' ? yearShift(state.calDate, dir) : v === 'month' ? monthShift(state.calDate, dir) : addDays(state.calDate, dir * (v === 'week' ? 7 : 1));
   setState({ calDate: d });
 }
 function monthShift(isoStr, dir) { const d = new Date(isoStr + 'T00:00:00'); d.setMonth(d.getMonth() + dir); return iso(d); }
+function yearShift(isoStr, dir) { const d = new Date(isoStr + 'T00:00:00'); d.setFullYear(d.getFullYear() + dir); return iso(d); }
 
 function meetingsOnDate(dateIso) {
   if (isBreakDate(dateIso)) return [];
@@ -107,6 +110,37 @@ function examsOnDate(dateIso) { return state.assignments.filter(a => a.type === 
 function deadlinesOnDate(dateIso) { return state.assignments.filter(a => a.type !== 'exam' && a.dueDate === dateIso && activeCourses().some(c => c.id === a.courseId)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || null, end: null, color: getCourseColor(a.courseId), kind: 'deadline' })); }
 function itemsOnDate(dateIso) { return [...meetingsOnDate(dateIso), ...customEventsOnDate(dateIso), ...examsOnDate(dateIso), ...deadlinesOnDate(dateIso)].sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
 const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list' };
+
+function yearView() {
+  const year = new Date(state.calDate + 'T00:00:00').getFullYear();
+  return `<div class="cal-year-grid">${Array.from({ length: 12 }, (_, m) => miniMonth(year, m)).join('')}</div>`;
+}
+function miniMonth(year, month) {
+  const first = new Date(year, month, 1);
+  const gridStart = new Date(first); gridStart.setDate(first.getDate() - first.getDay());
+  const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); return d; });
+  return `
+    <div class="cal-mini-month">
+      <div class="cal-mini-month-head" onclick="jumpToMonth(${year},${month})">${first.toLocaleDateString('en-US', { month: 'long' })}</div>
+      <div class="cal-mini-dow">${DOW_NAMES.map(d => `<span>${d[0]}</span>`).join('')}</div>
+      <div class="cal-mini-grid">
+        ${cells.map(d => {
+          const dIso = iso(d);
+          const muted = d.getMonth() !== month;
+          const isToday = dIso === todayIso();
+          const items = muted ? [] : itemsOnDate(dIso);
+          const hasExam = items.some(it => it.kind === 'exam');
+          return `<div class="cal-mini-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''}" onclick="event.stopPropagation();jumpToDay('${dIso}')" title="${esc(items.map(it => it.title).join(', '))}">
+            <span>${d.getDate()}</span>
+            ${items.length ? `<span class="cal-mini-dot ${hasExam ? 'exam' : ''}"></span>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+function jumpToDay(dIso) { setState({ calDate: dIso, calView: 'day' }); }
+function jumpToMonth(year, month) { setState({ calDate: iso(new Date(year, month, 1)), calView: 'month' }); }
 
 function monthView() {
   const d0 = new Date(state.calDate + 'T00:00:00');

@@ -44,6 +44,14 @@ function bootFirebase() {
         if (window._licensed) {
           if (typeof clearCheckoutReturnParam === 'function') clearCheckoutReturnParam();
           await cloudPull();
+          // cloudPull can replace `state` wholesale, so only backfill after it —
+          // otherwise this gets clobbered. Without it, every signed-in account
+          // defaults to the literal string "Me", so study group rosters can't
+          // actually tell members apart.
+          if (!state.settings.displayName && (user.displayName || user.email)) {
+            state.settings.displayName = (user.displayName || user.email.split('@')[0]).trim();
+            touch();
+          }
           toast(`Synced as ${user.displayName || user.email}`, 'success');
         }
       } else {

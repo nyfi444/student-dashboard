@@ -2,11 +2,12 @@
 const FAQ_ITEMS = [
   { q: 'How does AI syllabus upload work?', a: 'Go to Courses → Upload syllabus and paste, upload a PDF, or upload a photo of your syllabus. Claude reads it and fills in the course name, meeting times, grading breakdown, and assignments — you review and edit everything before it’s added. No API key needed — AI requests are proxied through a server that holds the key, so you never see or manage one.' },
   { q: 'Where is my data stored — is it private?', a: 'Everything lives in your browser’s local storage by default. Nothing is sent anywhere unless you turn on cross-device sync or use an AI feature (which sends only the text/image you’re asking about, routed through our AI proxy, never directly to Anthropic from your browser).' },
-  { q: 'How do I sync across devices?', a: 'Sync is the default experience once it’s set up — first launch prompts you to sign up with Google, and everything syncs automatically from then on. The app owner sets this up once by adding a Firebase project to FB_CONFIG in js/firebase.js (see README.md); until they do, the planner runs local-only on this device.' },
+  { q: 'How do I sync across devices?', a: 'Sign in with Google under Settings → Account & Sync to turn it on. If this deployment has payments configured, signing in unlocks a one-time purchase (Founding Access) that activates sync, AI upload, and cross-device Study Groups for that account — without it, everything still works great locally on one device. If payments aren’t configured on this deployment, signing in alone is enough. Either way, the app owner sets sync up once by adding a Firebase project to FB_CONFIG in js/firebase.js (see README.md).' },
   { q: 'What happens when I start a new semester?', a: 'Settings → Semester reset archives your current semester (nothing is deleted — you can still view it from the semester dropdown) and sets up a fresh one, optionally carrying over your course names and instructors as a starting point.' },
-  { q: 'What does Dark mode do?', a: 'Dark mode (Settings → Appearance) switches the whole planner to a black background with white text. In light mode, text stays black and you can pick a soft background preset from Settings → Background — no custom colors, so it never clashes with the app.' },
-  { q: 'How do Study Group codes work?', a: 'Creating a group generates a short share code; anyone who enters that code under Study Groups → Join with code sees the same shared session calendar. Cross-device joining needs sync configured (see above) — until then, groups still work fine on one device.' },
-  { q: 'What can I share with a Study Group?', a: 'Notes, flashcard decks, and projects each have a Share button that sends a copy to one of your groups. Everyone in that group can then add their own copy to their notebook, flashcards, or projects — it’s a one-time copy, not a live sync, so edits after sharing stay local to whoever made them.' },
+  { q: 'What does Dark mode do?', a: 'Dark mode (Settings → Appearance) switches the whole planner to a dark background. By default that’s plain black with white text — but Settings → Background → Dark mode color lets you pick a preset instead, and the background becomes a deep tint of it while the text becomes a light tint of the same color, so it stays readable without being flat black-and-white. Light mode text always stays black; only the background there is customizable.' },
+  { q: 'How do Study Group codes work?', a: 'Creating a group generates a short share code; anyone who enters that code under Study Groups → Join with code joins the same group — sessions, group tasks, availability, shared projects, and a People tab showing everyone in it and who shared or got assigned what recently. Cross-device joining needs sync signed in (see above) — until then, groups still work fine on one device.' },
+  { q: 'What can I share with a Study Group?', a: 'Notes, whole notebook folders, flashcard decks, and projects each have a Share button that sends a copy to one of your groups — or open the group itself and use "Link a notebook, note, PDF, deck, or project" under its Shared tab to share without leaving the group. Everyone in that group can then add their own copy to their notebook, flashcards, or projects — it’s a one-time copy, not a live sync, so edits after sharing stay local to whoever made them.' },
+  { q: 'Can I assign tasks to people in my study group?', a: 'Yes — on a group’s Group tasks tab, every task has a dropdown to assign it to yourself or any other member (there’s also a "only show tasks assigned to me" filter). Tasks inside a shared Project work the same way. The group’s People tab shows a running feed of who got assigned what and who shared what, so it’s easy to see who’s doing what.' },
   { q: 'Can I import a PDF into my notes?', a: 'Yes — open a note and click Upload PDF to pull its text straight in. This is separate from the AI syllabus upload under Courses: it reads text client-side with no AI involved, so it works even without the AI proxy set up, but it won’t parse structure like dates or grading — it just drops the extracted text into the note for you to organize.' },
   { q: 'Can I back up or move my data?', a: 'Yes — Settings → Data → Export backup downloads everything as a JSON file. Import backup on any device loads it back in and replaces what’s currently there, so it also works as a way to transfer your planner manually without sync.' },
   { q: 'I deleted something by accident — can I get it back?', a: 'Yes — deleting a note, course, assignment, to-do, time block, project, or flashcard deck moves it to Settings → Recently Deleted instead of erasing it right away. Restore it any time within 30 days, or delete it forever yourself.' },
@@ -15,7 +16,7 @@ const FAQ_ITEMS = [
 function pageSettings() {
   return `
     ${pageHead('Settings', 'Customize your planner')}
-    <div class="grid grid-2" style="align-items:start">
+    <div class="settings-columns">
       <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">Appearance</h3>
         <div class="checkbox-row"><input type="checkbox" id="st-dark" ${state.settings.dark ? 'checked' : ''} onchange="toggleDark(this.checked)"><label for="st-dark">Dark mode</label></div>
@@ -24,13 +25,26 @@ function pageSettings() {
 
       <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">Background</h3>
-        <p class="small muted mb-8">${state.settings.dark ? 'Background presets apply in light mode — dark mode has its own fixed background.' : 'Changes the page background behind the sidebar and content. Text stays controlled by the Dark mode toggle above, so it always stays legible no matter which background you pick.'}</p>
-        <div class="bg-preview mb-16" style="background:${bgCssValue(state.settings.background)}"></div>
-        <div class="field mb-0"><label>Presets</label>
-          <div class="flex-gap wrap">
+        <p class="small muted mb-8">Changes the light-mode page background behind the sidebar and content. Text stays black either way, so it always stays legible no matter which background you pick.</p>
+        <div class="bg-preview mb-8" style="background:${bgCssValue(state.settings.background)}"></div>
+        <details class="settings-collapse">
+          <summary>Choose a preset — currently ${esc(BACKGROUND_PRESETS.find(p => bgMatchesPreset(state.settings.background, p))?.label || 'custom')}</summary>
+          <div class="settings-collapse-body flex-gap wrap">
             ${BACKGROUND_PRESETS.map((p, i) => `<div class="bg-preset ${bgMatchesPreset(state.settings.background, p) ? 'active' : ''}" style="background:${bgCssValue(p)}" title="${esc(p.label)}" onclick="setBackgroundPreset(${i})"></div>`).join('')}
           </div>
+        </details>
+        <div class="divider"></div>
+        <h3 style="font-size:15px" class="mb-8">Dark mode color</h3>
+        <p class="small muted mb-8">Pick a color for dark mode instead of plain black-and-white — the background becomes a deep tint of it and the text becomes a light tint of the same color, so it always stays readable.</p>
+        <div class="bg-preview mb-8" style="background:${darkBgFromPreset(state.settings.darkBackground.color)};display:flex;align-items:center;justify-content:center">
+          <span style="color:${darkTextFromPreset(state.settings.darkBackground.color)};font-size:13px;font-weight:600">Sample text — Aa</span>
         </div>
+        <details class="settings-collapse">
+          <summary>Choose a preset — currently ${esc(BACKGROUND_PRESETS.find(p => bgMatchesPreset(state.settings.darkBackground, p))?.label || 'custom')}</summary>
+          <div class="settings-collapse-body flex-gap wrap">
+            ${BACKGROUND_PRESETS.map((p, i) => `<div class="bg-preset ${bgMatchesPreset(state.settings.darkBackground, p) ? 'active' : ''}" style="background:${darkBgFromPreset(p.color)}" title="${esc(p.label)}" onclick="setDarkBackgroundPreset(${i})"></div>`).join('')}
+          </div>
+        </details>
       </div>
 
       <div class="card card-pad">
@@ -91,11 +105,11 @@ function pageSettings() {
         </div>
       </div>
 
-      <div class="card card-pad" style="grid-column:1/-1">
+      <div class="card card-pad" style="column-span:all">
         ${pageRecentlyDeleted()}
       </div>
 
-      <div class="card card-pad" style="grid-column:1/-1">
+      <div class="card card-pad" style="column-span:all">
         <h3 style="font-size:15px" class="mb-8">FAQ</h3>
         <p class="small muted mb-8">Common questions about how this planner works.</p>
         ${FAQ_ITEMS.map(f => `
@@ -110,13 +124,7 @@ function pageSettings() {
 }
 function pageRecentlyDeleted() {
   const items = [...(state.trash || [])].sort((a, b) => b.deletedAt - a.deletedAt);
-  return `
-    <div class="flex-between mb-8">
-      <h3 style="font-size:15px">Recently Deleted</h3>
-      ${items.length ? `<button class="btn btn-ghost btn-sm" onclick="emptyTrash()">Empty trash</button>` : ''}
-    </div>
-    <p class="small muted mb-8">Deleted notes, courses, assignments, to-dos, time blocks, projects, and flashcard decks land here for ${TRASH_RETENTION_DAYS} days before they're gone for good.</p>
-    ${items.length ? items.map(t => `
+  const rows = items.map(t => `
       <div class="list-row">
         <span class="pill" style="background:var(--surface-2);color:var(--text-dim)">${esc(TRASH_KIND_LABELS[t.kind] || t.kind)}</span>
         <div class="row-title">${esc(t.label || 'Untitled')}</div>
@@ -124,21 +132,41 @@ function pageRecentlyDeleted() {
         <button class="btn btn-sm" onclick="restoreTrashItem('${t.id}')">${icon('refresh-cw', 12, 2)} Restore</button>
         <button class="btn btn-ghost btn-icon btn-sm" onclick="permanentlyDeleteTrashItem('${t.id}')">${icon('trash', 14)}</button>
       </div>
-    `).join('') : emptyState(icon('trash', 22, 1.4), 'Nothing deleted recently.')}
+  `).join('');
+  return `
+    <div class="flex-between mb-8">
+      <h3 style="font-size:15px">Recently Deleted</h3>
+      ${items.length ? `<button class="btn btn-ghost btn-sm" onclick="emptyTrash()">Empty trash</button>` : ''}
+    </div>
+    <p class="small muted mb-8">Deleted notes, courses, assignments, to-dos, time blocks, projects, and flashcard decks land here for ${TRASH_RETENTION_DAYS} days before they're gone for good.</p>
+    ${items.length ? `
+      <details class="settings-collapse">
+        <summary>${items.length} item${items.length === 1 ? '' : 's'} — view Recently Deleted</summary>
+        <div class="settings-collapse-body settings-collapse-scroll">${rows}</div>
+      </details>
+    ` : emptyState(icon('trash', 22, 1.4), 'Nothing deleted recently.')}
   `;
 }
 function toggleDark(on) { state.settings.dark = on; applyTheme(); touch(); }
 function applyTheme() {
   document.documentElement.classList.toggle('dark', state.settings.dark);
   if (state.settings.dark) {
-    document.documentElement.style.removeProperty('--bg');
+    const darkColor = state.settings.darkBackground?.color;
+    document.documentElement.style.setProperty('--bg', darkBgFromPreset(darkColor));
+    document.documentElement.style.setProperty('--bg-text', darkTextFromPreset(darkColor));
   } else {
+    document.documentElement.style.removeProperty('--bg-text');
     document.documentElement.style.setProperty('--bg', bgCssValue(state.settings.background));
   }
 }
 
 function setBackgroundPreset(i) {
   state.settings.background = { ...BACKGROUND_PRESETS[i] };
+  applyTheme();
+  touch();
+}
+function setDarkBackgroundPreset(i) {
+  state.settings.darkBackground = { ...BACKGROUND_PRESETS[i] };
   applyTheme();
   touch();
 }

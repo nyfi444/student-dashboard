@@ -23,7 +23,7 @@ function pageNotebook() {
   const html = `
     ${pageHead('Notebook', 'Organize notes by class', `
       <button class="btn btn-sm" onclick="createFolder('root')">${icon('folder', 13)} Folder</button>
-      <button class="btn btn-primary" onclick="openNewNoteModal('root')">${icon('plus', 13, 2.2)} Note</button>
+      <button class="btn btn-primary" onclick="createNote('root')">${icon('plus', 13, 2.2)} Note</button>
     `)}
     <div class="notebook-layout">
       <div class="notebook-tree-panel">
@@ -57,17 +57,18 @@ function pageNotebook() {
       </div>
     </div>
     <div class="nb-bubble" id="nb-bubble">
-      <button onmousedown="event.preventDefault()" onclick="runNbCommand('bold')" title="Bold"><b>B</b></button>
-      <button onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic"><i>I</i></button>
-      <button onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline"><u>U</u></button>
-      <button onmousedown="event.preventDefault()" onclick="runNbCommand('strikeThrough')" title="Strikethrough"><s>S</s></button>
+      <button data-nb-cmd="bold" onmousedown="event.preventDefault()" onclick="runNbCommand('bold')" title="Bold"><b>B</b></button>
+      <button data-nb-cmd="italic" onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic"><i>I</i></button>
+      <button data-nb-cmd="underline" onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline"><u>U</u></button>
+      <button data-nb-cmd="strikeThrough" onmousedown="event.preventDefault()" onclick="runNbCommand('strikeThrough')" title="Strikethrough"><s>S</s></button>
+      <button onmousedown="event.preventDefault()" onclick="runNbHighlight()" title="Highlight">${icon('palette', 14)}</button>
       <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','PRE')" title="Code">${'</>'}</button>
       <span class="nb-bubble-sep"></span>
       <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H3')" title="Heading">H3</button>
       <button onmousedown="event.preventDefault()" onclick="runNbCommand('insertUnorderedList')" title="Bulleted list">${icon('clipboard-list', 14)}</button>
       <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','blockquote')" title="Quote">”</button>
       <span class="nb-bubble-sep"></span>
-      <button onmousedown="event.preventDefault()" onclick="promptInsertLink()" title="Link">${icon('map-pin', 13)}</button>
+      <button onmousedown="event.preventDefault()" onclick="promptInsertLink()" title="Link">${icon('link', 13)}</button>
     </div>
     <div class="nb-slash-menu" id="nb-slash-menu">
       ${SLASH_COMMANDS.map(c => `<div class="nb-slash-item" data-key="${c.key}" onmousedown="event.preventDefault()" onclick="runSlashCommand('${c.key}')"><span class="nb-slash-glyph">${c.glyph}</span><span><div class="nb-slash-label">${c.label}</div><div class="nb-slash-desc">${c.desc}</div></span></div>`).join('')}
@@ -83,6 +84,9 @@ function notePath(note) {
   let p = state.notes.find(x => x.id === note.parentId);
   while (p && p.id !== 'root') { parts.unshift(p.name); p = state.notes.find(x => x.id === p.parentId); }
   return parts;
+}
+function foldersWithNotes() {
+  return state.notes.filter(n => n.type === 'folder' && n.id !== 'root' && state.notes.some(x => x.type === 'note' && x.parentId === n.id));
 }
 function allFolders() {
   const list = [];
@@ -108,6 +112,7 @@ function wireBubbleToolbar() {
     bar.style.left = Math.max(8, rect.left + rect.width / 2 - barW / 2) + 'px';
     bar.style.top = Math.max(8, rect.top - barH - 8) + 'px';
   };
+  const positionAndUpdate = () => { positionBubble(); updateNbFormatState(); };
   // Only capture the range from genuine interaction inside the editor (mouseup/keyup
   // there) — never from the document-wide selectionchange event, which also fires
   // (with an already-collapsed selection) the instant a toolbar button steals focus,
@@ -117,7 +122,7 @@ function wireBubbleToolbar() {
     if (sel && sel.rangeCount && sel.anchorNode && editor.contains(sel.anchorNode)) {
       window._nbSavedRange = sel.getRangeAt(0).cloneRange();
     }
-    positionBubble();
+    positionAndUpdate();
   };
   if (window._nbEditorMouseup) editor.removeEventListener('mouseup', window._nbEditorMouseup);
   if (window._nbEditorKeyup) editor.removeEventListener('keyup', window._nbEditorKeyup);
@@ -130,20 +135,59 @@ function wireBubbleToolbar() {
   if (window._nbBubbleUpdate) document.removeEventListener('selectionchange', window._nbBubbleUpdate);
   window._nbBubbleUpdate = positionBubble;
   document.addEventListener('selectionchange', window._nbBubbleUpdate);
+  updateNbFormatState();
+}
+// Toggles bold/italic/underline/strikethrough active state on every toolbar button
+// (bubble + persistent) that declares data-nb-cmd, so the toolbar reflects the
+// formatting under the cursor instead of always looking unpressed.
+const NB_STATE_CMDS = ['bold', 'italic', 'underline', 'strikeThrough'];
+function updateNbFormatState() {
+  NB_STATE_CMDS.forEach(cmd => {
+    let active = false;
+    try { active = document.queryCommandState(cmd); } catch { }
+    $$(`[data-nb-cmd="${cmd}"]`).forEach(btn => btn.classList.toggle('active', active));
+  });
 }
 // Restores the last-known editor selection (captured on selectionchange) before
 // running a format command — clicking a toolbar button can otherwise collapse
 // the selection to the document body before the click handler runs.
-function runNbCommand(cmd, val) {
+function restoreNbSelection() {
   const editor = $('#note-editor');
   if (!editor) return;
   editor.focus();
-  const sel = window.getSelection();
   if (window._nbSavedRange) {
+    const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(window._nbSavedRange);
   }
+}
+function runNbCommand(cmd, val) {
+  const editor = $('#note-editor');
+  if (!editor) return;
+  restoreNbSelection();
   document.execCommand(cmd, false, val);
+  if (window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
+  updateNbFormatState();
+}
+function runNbInsertHtml(html) {
+  const editor = $('#note-editor');
+  if (!editor) return;
+  restoreNbSelection();
+  document.execCommand('insertHTML', false, html);
+  if (window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
+}
+function insertNbChecklist() { runNbInsertHtml('<div class="nb-todo-line"><input type="checkbox">&nbsp;</div>'); }
+function insertNbDivider() { runNbInsertHtml('<hr><p><br></p>'); }
+// Toggles a neutral (grayscale, theme-matched) highlight — no color options
+// elsewhere in the app, so this stays consistent rather than picking a random hue.
+function runNbHighlight() {
+  const editor = $('#note-editor');
+  if (!editor) return;
+  restoreNbSelection();
+  const current = document.queryCommandValue('hiliteColor');
+  const on = current && !/transparent|rgba\(0,\s*0,\s*0,\s*0\)/.test(current);
+  const accentLight = getComputedStyle(document.documentElement).getPropertyValue('--accent-light').trim();
+  document.execCommand('hiliteColor', false, on ? 'transparent' : accentLight);
   if (window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
 }
 function promptInsertLink() {
@@ -224,7 +268,8 @@ function notebookTree(parentId, depth, search, sort) {
           <span class="flex-gap">${icon(n.open || forceOpen ? 'folder-open' : 'folder', 14)}</span>
           <span class="nb-folder-name">${esc(n.name)}</span>
           ${count ? `<span class="nb-count">${count}</span>` : ''}
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();openNewNoteModal('${n.id}')" title="New note">${icon('plus', 13, 2.2)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();createNote('${n.id}')" title="New note">${icon('plus', 13, 2.2)}</button>
+          ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();shareFolderToGroup('${n.id}')" title="Share this notebook with a group">${icon('users', 13)}</button>` : ''}
           ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();deleteNoteItem('${n.id}')">${icon('trash', 14)}</button>` : ''}
         </div>
         ${(n.open || forceOpen) ? `<div class="nb-children">${inner}</div>` : ''}
@@ -250,24 +295,10 @@ function createFolder(parentId) {
   state.notes.push({ id: uid(), type: 'folder', name, parentId, courseId: null, open: true });
   touch();
 }
-function createNote(parentId, templateKey) {
+function createNote(parentId) {
   const id = uid();
-  const tpl = NOTE_TEMPLATES[templateKey] || NOTE_TEMPLATES.blank;
-  state.notes.push({ id, type: 'note', name: templateKey && templateKey !== 'blank' ? tpl.label : 'Untitled note', parentId, courseId: null, pinned: false, content: tpl.body, updatedAt: Date.now() });
+  state.notes.push({ id, type: 'note', name: 'Untitled note', parentId, courseId: null, pinned: false, content: '', updatedAt: Date.now() });
   setState({ notebookSelected: id });
-}
-function openNewNoteModal(parentId) {
-  openModal(`
-    <div class="modal-head"><h3>New note</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
-    <div class="modal-body">
-      <div class="small muted mb-8">Pick a template to start with a structure, or start blank.</div>
-      <div class="grid grid-2">
-        ${Object.entries(NOTE_TEMPLATES).map(([key, t]) => `
-          <button class="btn" style="justify-content:flex-start" onclick="createNote('${parentId}','${key}');closeModal()">${esc(t.label)}</button>
-        `).join('')}
-      </div>
-    </div>
-  `);
 }
 function toggleNotePinned(id) {
   const n = state.notes.find(x => x.id === id);
@@ -340,10 +371,11 @@ function renderNoteEditor(note) {
         </div>
       </div>
       <div class="nb-toolbar" id="nb-toolbar">
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('bold')" title="Bold"><b>B</b></button>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic"><i>I</i></button>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline"><u>U</u></button>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('strikeThrough')" title="Strikethrough"><s>S</s></button>
+        <button data-nb-cmd="bold" onmousedown="event.preventDefault()" onclick="runNbCommand('bold')" title="Bold"><b>B</b></button>
+        <button data-nb-cmd="italic" onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic"><i>I</i></button>
+        <button data-nb-cmd="underline" onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline"><u>U</u></button>
+        <button data-nb-cmd="strikeThrough" onmousedown="event.preventDefault()" onclick="runNbCommand('strikeThrough')" title="Strikethrough"><s>S</s></button>
+        <button onmousedown="event.preventDefault()" onclick="runNbHighlight()" title="Highlight">${icon('palette', 14)}</button>
         <span class="nb-toolbar-sep"></span>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H1')" title="Heading 1">H1</button>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H2')" title="Heading 2">H2</button>
@@ -351,10 +383,12 @@ function renderNoteEditor(note) {
         <span class="nb-toolbar-sep"></span>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('insertUnorderedList')" title="Bulleted list">${icon('clipboard-list', 14)}</button>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('insertOrderedList')" title="Numbered list">1.</button>
+        <button onmousedown="event.preventDefault()" onclick="insertNbChecklist()" title="Checklist">☑</button>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','blockquote')" title="Quote">”</button>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','PRE')" title="Code">${'</>'}</button>
+        <button onmousedown="event.preventDefault()" onclick="insertNbDivider()" title="Divider">—</button>
         <span class="nb-toolbar-sep"></span>
-        <button onmousedown="event.preventDefault()" onclick="promptInsertLink()" title="Link">${icon('map-pin', 13)}</button>
+        <button onmousedown="event.preventDefault()" onclick="promptInsertLink()" title="Link">${icon('link', 13)}</button>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','P')" title="Clear formatting">${icon('x', 13, 2.2)}</button>
       </div>
       <div class="nb-hint">Type <code>/</code> for blocks, or select text to format</div>
@@ -399,6 +433,16 @@ function shareNoteToGroup(id) {
   const note = state.notes.find(n => n.id === id);
   if (!note) return;
   openShareToGroupModal('note', note.name || 'Untitled note', { content: note.content || '' });
+}
+// Shares a whole folder (every note directly inside it — including anything
+// pulled in via Upload PDF) as one bundle, instead of only being able to
+// share notes one at a time.
+function shareFolderToGroup(id) {
+  const folder = state.notes.find(n => n.id === id && n.type === 'folder');
+  if (!folder) return;
+  const notes = state.notes.filter(n => n.type === 'note' && n.parentId === id);
+  if (!notes.length) { toast('This notebook has no notes to share yet', 'error'); return; }
+  openShareToGroupModal('note-bundle', folder.name || 'Untitled notebook', { notes: notes.map(n => ({ name: n.name, content: n.content || '' })) });
 }
 
 function triggerNotePdfUpload(id) {
