@@ -241,9 +241,13 @@ async function verifyFirebaseIdToken(idToken, projectId) {
 async function getFirebaseAccessToken(env) {
   const now = Math.floor(Date.now() / 1000);
   const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  // .trim() defends against stray whitespace/newlines from copy-pasting the
+  // secret value in (a real failure mode: Google's OAuth server reports a
+  // trimmed-looking "account not found" for this rather than a clearer error).
+  const clientEmail = (env.FIREBASE_CLIENT_EMAIL || '').trim();
   const claims = base64url(JSON.stringify({
-    iss: env.FIREBASE_CLIENT_EMAIL,
-    sub: env.FIREBASE_CLIENT_EMAIL,
+    iss: clientEmail,
+    sub: clientEmail,
     aud: 'https://oauth2.googleapis.com/token',
     iat: now,
     exp: now + 3600,
