@@ -344,6 +344,8 @@ function corsHeaders(env, origin, extra = {}) {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'content-type',
     Vary: 'Origin',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
     ...extra,
   };
 }
