@@ -359,7 +359,8 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .dash-wl-col.today .dash-wl-bar { background: var(--accent); }
 .dash-wl-count { font-size: 10.5px; font-weight: 700; color: var(--text-dim); min-height: 13px; }
 .dash-wl-day { font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; }
-.dash-overdue-row { box-shadow: inset 2px 0 0 var(--danger); background: var(--danger-light); border-radius: 10px; }
+.dash-overdue-row { box-shadow: inset 2px 0 0 var(--danger); background: var(--danger-light); border-radius: 10px; margin-bottom: 6px; }
+.dash-overdue-row:last-child { margin-bottom: 0; }
 .dash-overdue-row:hover { background: var(--danger-light); filter: brightness(0.98); }
 
 .dash-note-row { flex-wrap: wrap; }
