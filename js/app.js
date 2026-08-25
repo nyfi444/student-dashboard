@@ -78,9 +78,6 @@ function maybeShowOnboarding() {
   if (fbConfigured() && !_fbUser && !isEmbedded()) openAccountPromptModal();
   else openFirstRunWizardIfNeeded();
 }
-function isEmbedded() {
-  return window.self !== window.top;
-}
 function openFirstRunWizardIfNeeded() {
   if (!state.courses.length && !state._wizardSeen) {
     state._wizardSeen = true; save();

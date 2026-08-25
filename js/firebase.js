@@ -109,7 +109,7 @@ async function cloudPull() {
       _applyingRemote = true;
       state = migrate(JSON.parse(doc.data().data));
       _suspendSave = true;
-      localStorage.setItem(storeKey, JSON.stringify(state));
+      dataStore.setItem(storeKey, JSON.stringify(state));
       _suspendSave = false;
       _applyingRemote = false;
     } else {

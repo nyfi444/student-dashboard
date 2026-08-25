@@ -196,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 function resetAllData() {
   confirmDialog('Erase everything and start fresh? This can’t be undone.', () => {
-    localStorage.removeItem(storeKey); localStorage.removeItem(storeKey + '.bak');
+    dataStore.removeItem(storeKey); dataStore.removeItem(storeKey + '.bak');
     state = seedData(); save(); closeModal(); render();
     toast('Planner reset');
   }, 'Erase everything');

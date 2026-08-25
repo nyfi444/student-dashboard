@@ -8,6 +8,19 @@
 const storeKey = 'studentPlanner.v1';
 const legacyKeys = [];
 
+// True only when this page is loaded inside another page's iframe — in
+// practice that's just the marketing site's live "try it" demo. GitHub Pages
+// serves every project under the same nyfi444.github.io origin, so the demo
+// and the real product share one localStorage bucket by default (paths
+// differ, origin doesn't). Demo visitors read/write sessionStorage instead:
+// it behaves just like localStorage during the visit, but disappears the
+// moment the tab closes, so nothing here ever touches a real user's saved
+// data and nothing lingers after someone leaves the marketing site. This
+// also matches the "your changes stay only in this browser tab" promise
+// already made in that section's copy.
+function isEmbedded() { try { return window.self !== window.top; } catch { return true; } }
+const dataStore = isEmbedded() ? sessionStorage : localStorage;
+
 const ASSIGNMENT_TYPES = ['assignment', 'reading', 'discussion', 'quiz', 'exam', 'project', 'paper', 'lab'];
 const ASSIGNMENT_STATUSES = ['not-started', 'in-progress', 'waiting', 'submitted', 'done'];
 const ASSIGNMENT_STATUS_LABELS = { 'not-started': 'Not started', 'in-progress': 'In progress', waiting: 'Waiting', submitted: 'Submitted', done: 'Done' };
@@ -214,27 +227,31 @@ function seedData() {
 let state = load();
 
 function load() {
-  const raw = localStorage.getItem(storeKey);
+  const raw = dataStore.getItem(storeKey);
   if (raw) {
     try { return migrate(JSON.parse(raw)); }
     catch {
-      const backup = localStorage.getItem(storeKey + '.bak');
+      const backup = dataStore.getItem(storeKey + '.bak');
       if (backup) { try { return migrate(JSON.parse(backup)); } catch {} }
     }
   }
-  for (const old of legacyKeys) {
-    const legacy = localStorage.getItem(old);
-    if (legacy) {
-      try {
-        const migrated = migrate(JSON.parse(legacy));
-        localStorage.setItem(storeKey, JSON.stringify(migrated));
-        localStorage.removeItem(old);
-        return migrated;
-      } catch {}
+  // Legacy-key migration only ever applies to a real device's localStorage —
+  // an embedded demo tab has no history to migrate, it always starts fresh.
+  if (!isEmbedded()) {
+    for (const old of legacyKeys) {
+      const legacy = dataStore.getItem(old);
+      if (legacy) {
+        try {
+          const migrated = migrate(JSON.parse(legacy));
+          dataStore.setItem(storeKey, JSON.stringify(migrated));
+          dataStore.removeItem(old);
+          return migrated;
+        } catch {}
+      }
     }
   }
   const s = seedData();
-  localStorage.setItem(storeKey, JSON.stringify(s));
+  dataStore.setItem(storeKey, JSON.stringify(s));
   return s;
 }
 
@@ -255,8 +272,8 @@ let _suspendSave = false;
 function save() {
   if (_suspendSave) return;
   const json = JSON.stringify(state);
-  localStorage.setItem(storeKey + '.bak', localStorage.getItem(storeKey) || json);
-  localStorage.setItem(storeKey, json);
+  dataStore.setItem(storeKey + '.bak', dataStore.getItem(storeKey) || json);
+  dataStore.setItem(storeKey, json);
   if (typeof queueCloudSync === 'function') queueCloudSync();
 }
 
