@@ -3,8 +3,8 @@
 One Cloudflare Worker, three jobs — all server-side so secrets never reach the browser:
 
 1. **AI proxy** (`/v1/messages`) — holds your Anthropic key, forwards syllabus/assignment parsing requests.
-2. **Checkout** (`/create-checkout-session`) — starts a one-time $19 Stripe payment ("Founding Access").
-3. **Licensing** (`/stripe-webhook`, `/claim-license`) — the only thing allowed to mark someone as paid. It writes to Firestore's `licenses` collection using a Firebase service account; the browser can only ever *read* its own license (see `../firestore.rules`), never write it — so a user can't just open devtools and grant themselves access.
+2. **Checkout** (`/create-checkout-session`) — starts a $7.99/month Stripe subscription ("Semester HQ Plus").
+3. **Licensing** (`/stripe-webhook`, `/claim-license`) — the only thing allowed to mark someone as paid. It writes to Firestore's `licenses` collection using a Firebase service account; the browser can only ever *read* its own license (see `../firestore.rules`), never write it — so a user can't just open devtools and grant themselves access. The webhook also tracks renewals/cancellations, so access turns off automatically if a subscription lapses.
 
 Local-only usage (no sign-in) stays free forever and doesn't touch any of this. Payment only gates cross-device sync + AI upload.
 
@@ -26,10 +26,10 @@ Local-only usage (no sign-in) stays free forever and doesn't touch any of this. 
    - `FIREBASE_PROJECT_ID` — from Firebase console → Project settings (not secret, safe as a plain var).
 5. Deploy: `wrangler deploy` — copy the printed URL (e.g. `https://student-planner-ai-proxy.<you>.workers.dev`).
    - In `js/ai.js`, set `AI_PROXY_URL` to `<that URL>/v1/messages`. That's the only URL to configure — `js/checkout.js` derives the checkout/licensing endpoints from it automatically, since it's the same Worker.
-6. **Set up the Stripe webhook** (this is what actually marks someone as paid after they pay):
+6. **Set up the Stripe webhook** (this is what actually marks someone as paid, and keeps that in sync as the subscription renews or gets canceled):
    - Stripe dashboard → Developers → Webhooks → Add endpoint
    - Endpoint URL: `<your worker URL>/stripe-webhook`
-   - Event to send: `checkout.session.completed`
+   - Events to send: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`
    - Copy the "Signing secret" it gives you and run: `wrangler secret put STRIPE_WEBHOOK_SECRET`
 
 ## Firebase service account

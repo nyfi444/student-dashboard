@@ -1,6 +1,6 @@
-/* ── Paywall: one-time $19 "Founding Access" purchase ─────────────
+/* ── Paywall: $7.99/month "Semester HQ Plus" subscription ─────────
    Local-only usage (no sign-in) is always free. Signing in unlocks
-   cross-device sync + AI upload, gated behind this purchase. The only
+   cross-device sync + AI upload, gated behind this subscription. The only
    thing that can ever mark a user as "paid" is the backend Worker (via
    Stripe webhook, using a service account) — see worker/README.md and
    firestore.rules. This file just talks to that Worker and reflects
@@ -102,9 +102,9 @@ function pagePaywall() {
     <div class="paywall-wrap">
       <div class="paywall-card">
         <h2>Unlock Semester HQ</h2>
-        <p class="small muted mb-16">One-time payment. Lifetime access, no subscription. Unlocks cross-device sync and AI syllabus upload for this account.</p>
-        <div class="paywall-price">$19</div>
-        <button class="btn btn-primary" style="width:100%" onclick="redirectToCheckout()">Get Founding Access</button>
+        <p class="small muted mb-16">Billed monthly, cancel anytime. Unlocks cross-device sync and AI syllabus upload for this account.</p>
+        <div class="paywall-price">$7.99<span class="paywall-price-period">/mo</span></div>
+        <button class="btn btn-primary" style="width:100%" onclick="redirectToCheckout()">Subscribe to Plus</button>
         ${checkoutReturnPending() ? `<p class="small mt-16" style="color:var(--warn)">We received a payment but couldn't confirm it's linked to this account yet. If you just paid, try <a href="#" onclick="event.preventDefault();retryLicenseCheck()">checking again</a>, or contact <a href="mailto:hello@semesterhq.com">hello@semesterhq.com</a>.</p>` : ''}
         <p class="small muted mt-16">Already bought on another device? <a href="#" onclick="event.preventDefault();retryLicenseCheck()">Check again</a>.</p>
         <button class="btn btn-ghost btn-sm mt-8" onclick="signOutUser()">Not now — use local only on this device</button>

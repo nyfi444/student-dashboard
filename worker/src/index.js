@@ -1,18 +1,22 @@
 /* ── Student Planner backend Worker ───────────────────────────────
    Three jobs, all server-side so secrets never reach the browser:
    1. AI proxy (/v1/messages) — holds ANTHROPIC_API_KEY, forwards to Claude.
-   2. Checkout (/create-checkout-session) — starts a one-time Stripe payment.
+   2. Checkout (/create-checkout-session) — starts a $7.99/month Stripe
+      subscription ("Semester HQ Plus").
    3. Licensing (/stripe-webhook, /claim-license) — the ONLY writer of
       Firestore's `licenses` collection. Clients can only read their own
       license (see firestore.rules); this Worker is the sole trusted
       authority that marks someone as paid, using a Firebase service
-      account to write via the Firestore REST API.
+      account to write via the Firestore REST API. Subscription renewals,
+      payment failures, and cancellations all flow through the webhook too
+      (customer.subscription.updated/deleted), so `paid` always reflects
+      whether the subscription is currently active.
 ──────────────────────────────────────────────────────────────── */
 
 const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
 const MAX_TOKENS_CAP = 4000;
 const ANTHROPIC_VERSION = '2023-06-01';
-const FOUNDING_ACCESS_CENTS = 1900; // $19 one-time — bump the marketing copy too if this changes
+const PLUS_PRICE_CENTS = 799; // $7.99/month — bump the marketing copy too if this changes
 
 export default {
   async fetch(request, env) {
@@ -49,7 +53,7 @@ export default {
 };
 
 /* ── 1. AI proxy ──────────────────────────────────────────────── */
-// Gated behind Founding Access — every caller must prove (via a fresh Firebase
+// Gated behind Semester HQ Plus — every caller must prove (via a fresh Firebase
 // ID token) that they're signed in AND that licenses/{uid}.paid is true. This
 // check has to live here, not just in the client (js/ai.js): anyone can call
 // this endpoint directly with curl, bypassing whatever the UI does.
@@ -60,14 +64,14 @@ async function handleAiProxy(request, env, origin) {
   let body;
   try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
 
-  if (!body.idToken) return jsonError('Sign in and unlock Founding Access to use AI upload.', 402, env, origin);
+  if (!body.idToken) return jsonError('Sign in and subscribe to Semester HQ Plus to use AI upload.', 402, env, origin);
   let payload;
   try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
   catch { return jsonError('Your session expired — sign in again.', 401, env, origin); }
 
   try {
     const license = await readFirestoreDoc(env, 'licenses', payload.sub);
-    if (!license?.paid) return jsonError('AI upload is part of Founding Access ($19, one time).', 402, env, origin);
+    if (!license?.paid) return jsonError('AI upload is part of Semester HQ Plus ($7.99/month).', 402, env, origin);
   } catch (e) {
     return jsonError('Could not verify access: ' + e.message, 500, env, origin);
   }
@@ -104,16 +108,22 @@ async function handleCreateCheckoutSession(request, env, origin) {
   try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
 
   const params = new URLSearchParams();
-  params.set('mode', 'payment');
+  params.set('mode', 'subscription');
   params.set('line_items[0][price_data][currency]', 'usd');
-  params.set('line_items[0][price_data][unit_amount]', String(FOUNDING_ACCESS_CENTS));
-  params.set('line_items[0][price_data][product_data][name]', 'Semester HQ — Founding Access');
-  params.set('line_items[0][price_data][product_data][description]', 'One-time payment. Lifetime access, no subscription.');
+  params.set('line_items[0][price_data][unit_amount]', String(PLUS_PRICE_CENTS));
+  params.set('line_items[0][price_data][recurring][interval]', 'month');
+  params.set('line_items[0][price_data][product_data][name]', 'Semester HQ Plus');
+  params.set('line_items[0][price_data][product_data][description]', 'Billed monthly. Cancel anytime.');
   params.set('line_items[0][quantity]', '1');
   params.set('success_url', `${appUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`);
   params.set('cancel_url', `${appUrl}?checkout=cancel`);
   if (body.uid) params.set('client_reference_id', String(body.uid));
   if (body.email) params.set('customer_email', String(body.email));
+  // Stamped onto the Subscription object Stripe creates, so later lifecycle
+  // events (renewal, cancellation) can be resolved back to a uid/email
+  // without a separate customer-id lookup table.
+  if (body.uid) params.set('subscription_data[metadata][uid]', String(body.uid));
+  if (body.email) params.set('subscription_data[metadata][email]', String(body.email).toLowerCase().trim());
 
   const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
@@ -146,7 +156,13 @@ async function handleStripeWebhook(request, env) {
     if (session.payment_status === 'paid') {
       const uid = session.client_reference_id || null;
       const email = (session.customer_details?.email || session.customer_email || '').toLowerCase().trim();
-      const licenseFields = { paid: true, stripeSessionId: session.id, purchasedAt: new Date() };
+      const licenseFields = {
+        paid: true,
+        stripeSessionId: session.id,
+        stripeSubscriptionId: session.subscription || '',
+        stripeCustomerId: session.customer || '',
+        purchasedAt: new Date(),
+      };
       try {
         if (uid) await writeFirestoreDoc(env, 'licenses', uid, licenseFields);
         if (email) await writeFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email), { ...licenseFields, email });
@@ -156,6 +172,31 @@ async function handleStripeWebhook(request, env) {
       }
     }
   }
+
+  // Subscription lifecycle — renewals, payment failures, and cancellations
+  // all land here as the subscription's `status` changes. uid/email come
+  // from the metadata stamped on the subscription at checkout time (see
+  // handleCreateCheckoutSession), not from a separate lookup table.
+  if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+    const sub = event.data.object;
+    const uid = sub.metadata?.uid || null;
+    const email = (sub.metadata?.email || '').toLowerCase().trim();
+    const active = event.type === 'customer.subscription.updated' && ['active', 'trialing'].includes(sub.status);
+    const licenseFields = {
+      paid: active,
+      stripeSubscriptionId: sub.id,
+      stripeCustomerId: sub.customer || '',
+      updatedAt: new Date(),
+    };
+    try {
+      if (uid) await writeFirestoreDoc(env, 'licenses', uid, licenseFields);
+      if (email) await writeFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email), { ...licenseFields, email });
+    } catch (e) {
+      console.error('License update failed', e);
+      return new Response('License update failed', { status: 500 }); // non-2xx makes Stripe retry
+    }
+  }
+
   return new Response('ok', { status: 200 });
 }
 

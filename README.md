@@ -4,7 +4,7 @@ A student planner covering dashboard, calendar, assignment tracking, grades/GPA,
 
 No build step — plain HTML/CSS/JS, runs by opening `index.html` or serving the folder with any static file server.
 
-**What's free vs. paid:** local-only usage (no sign-in) is free forever — full features, on one device, no account needed, so people can try it before buying. Signing in unlocks cross-device sync and AI upload, and requires a one-time $19 "Founding Access" purchase. See `worker/README.md` for how that's enforced (short version: a Cloudflare Worker is the only thing allowed to mark someone as paid, so it can't be bypassed from the browser).
+**What's free vs. paid:** local-only usage (no sign-in) is free forever — full features, on one device, no account needed, so people can try it before buying. Signing in unlocks cross-device sync and AI upload, and requires a $7.99/month "Semester HQ Plus" subscription. See `worker/README.md` for how that's enforced (short version: a Cloudflare Worker is the only thing allowed to mark someone as paid, so it can't be bypassed from the browser).
 
 All setup below is one-time, done-by-the-app-owner configuration — regular students never see an API key, a Firebase config screen, or a Stripe key. Until you do it, the app still works fully in free/local-only mode; sign-in and AI upload just show as unavailable.
 
@@ -38,4 +38,4 @@ Quick version:
 4. `wrangler deploy` — set `AI_PROXY_URL` in `js/ai.js` and `CHECKOUT_PROXY_URL` in `js/checkout.js` to the deployed URL
 5. Create the Stripe webhook pointing at `<worker URL>/stripe-webhook`, set `STRIPE_WEBHOOK_SECRET`
 
-Reload the app once all of this is done — Settings → AI should show "Ready to use," and signing in will prompt for the $19 purchase before unlocking sync.
+Reload the app once all of this is done — Settings → AI should show "Ready to use," and signing in will prompt for the $7.99/month subscription before unlocking sync.
