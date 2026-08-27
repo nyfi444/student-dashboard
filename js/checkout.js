@@ -35,6 +35,26 @@ async function redirectToCheckout() {
   }
 }
 
+// Sends the user to Stripe's own hosted billing portal, where they can
+// update payment info or cancel — Stripe handles the UI and the resulting
+// webhook event (customer.subscription.deleted) updates licenses/{uid}.
+async function redirectToPortal() {
+  if (!checkoutEnabled() || !_fbUser) return;
+  try {
+    const idToken = await _fbUser.getIdToken();
+    const res = await fetch(`${CHECKOUT_PROXY_URL}/create-portal-session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'Could not open billing portal');
+    window.location.href = data.url;
+  } catch (e) {
+    toast('Could not open billing portal: ' + e.message, 'error', 5000);
+  }
+}
+
 // Asks the Worker: does `licenses/{uid}` already say paid, or is there an
 // unclaimed purchase under this account's email (bought before signing up)?
 // The Worker is the only thing that can WRITE a license (see firestore.rules)

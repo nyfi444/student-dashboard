@@ -1,11 +1,12 @@
-# Backend Worker (AI proxy + checkout + licensing + contact form)
+# Backend Worker (AI proxy + checkout + billing portal + licensing + contact form)
 
-One Cloudflare Worker, four jobs — all server-side so secrets never reach the browser:
+One Cloudflare Worker, five jobs — all server-side so secrets never reach the browser:
 
 1. **AI proxy** (`/v1/messages`) — holds your Anthropic key, forwards syllabus/assignment parsing requests.
 2. **Checkout** (`/create-checkout-session`) — starts a $7.99/month Stripe subscription for sign-in and sync.
-3. **Licensing** (`/stripe-webhook`, `/claim-license`) — the only thing allowed to mark someone as paid. It writes to Firestore's `licenses` collection using a Firebase service account; the browser can only ever *read* its own license (see `../firestore.rules`), never write it — so a user can't just open devtools and grant themselves access. The webhook also tracks renewals/cancellations, so access turns off automatically if a subscription lapses.
-4. **Contact form** (`/contact-message`) — the only writer of Firestore's `feedback` collection. Reachable by anyone (signed in or not), so it has its own validation and a honeypot field on top of rate limiting. View submissions in the Firebase console → Firestore Database → `feedback`.
+3. **Billing portal** (`/create-portal-session`) — sends a signed-in, paying user to Stripe's own hosted portal to update payment info or cancel. Requires the Stripe Customer Portal to be turned on once in the Stripe Dashboard (Settings → Billing → Customer portal) before it will work.
+4. **Licensing** (`/stripe-webhook`, `/claim-license`) — the only thing allowed to mark someone as paid. It writes to Firestore's `licenses` collection using a Firebase service account; the browser can only ever *read* its own license (see `../firestore.rules`), never write it — so a user can't just open devtools and grant themselves access. The webhook also tracks renewals/cancellations, so access turns off automatically if a subscription lapses or is cancelled through the billing portal.
+5. **Contact form** (`/contact-message`) — the only writer of Firestore's `feedback` collection. Reachable by anyone (signed in or not), so it has its own validation and a honeypot field on top of rate limiting. View submissions in the Firebase console → Firestore Database → `feedback`.
 
 Local-only usage (no sign-in) stays free forever and doesn't touch any of this. Payment only gates cross-device sync + AI upload.
 

@@ -47,6 +47,10 @@ export default {
       if (!(await checkRateLimit(env, ip, 'checkout', 10))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
       return handleCreateCheckoutSession(request, env, origin);
     }
+    if (url.pathname === '/create-portal-session') {
+      if (!(await checkRateLimit(env, ip, 'portal', 10))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      return handleCreatePortalSession(request, env, origin);
+    }
     if (url.pathname === '/claim-license') {
       if (!(await checkRateLimit(env, ip, 'claim', 15))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
       return handleClaimLicense(request, env, origin);
@@ -143,6 +147,46 @@ async function handleCreateCheckoutSession(request, env, origin) {
   });
   const data = await res.json();
   if (!res.ok) return jsonError('Could not start checkout: ' + (data.error?.message || 'unknown error'), 500, env, origin);
+
+  return new Response(JSON.stringify({ url: data.url }), { headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
+}
+
+/* ── 2b. Billing portal ───────────────────────────────────────── */
+// Lets a signed-in, paying user manage payment info or cancel their
+// subscription through Stripe's own hosted portal — no custom cancel UI
+// to build, and Stripe (not us) handles confirming/processing it. The
+// webhook (below) picks up the resulting cancellation automatically.
+async function handleCreatePortalSession(request, env, origin) {
+  if (!env.STRIPE_SECRET_KEY) return jsonError('Server misconfigured: STRIPE_SECRET_KEY not set.', 500, env, origin);
+  if (!env.FIREBASE_PROJECT_ID) return jsonError('Server misconfigured: FIREBASE_PROJECT_ID not set.', 500, env, origin);
+  const appUrl = env.APP_URL;
+  if (!appUrl) return jsonError('Server misconfigured: APP_URL not set.', 500, env, origin);
+
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
+  if (!body.idToken) return jsonError('Sign in first.', 401, env, origin);
+
+  let payload;
+  try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
+  catch { return jsonError('Your session expired — sign in again.', 401, env, origin); }
+
+  let license;
+  try { license = await readFirestoreDoc(env, 'licenses', payload.sub); }
+  catch (e) { return jsonError('Could not look up your subscription: ' + e.message, 500, env, origin); }
+
+  if (!license?.stripeCustomerId) return jsonError('No active subscription found for this account.', 404, env, origin);
+
+  const params = new URLSearchParams();
+  params.set('customer', license.stripeCustomerId);
+  params.set('return_url', appUrl);
+
+  const res = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+    body: params.toString(),
+  });
+  const data = await res.json();
+  if (!res.ok) return jsonError('Could not open billing portal: ' + (data.error?.message || 'unknown error'), 500, env, origin);
 
   return new Response(JSON.stringify({ url: data.url }), { headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
 }

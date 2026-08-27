@@ -51,6 +51,7 @@ function pageSettings() {
         <h3 style="font-size:15px" class="mb-8">Account & Sync</h3>
         ${_fbUser ? `
           <div class="flex-gap"><div class="avatar">${(_fbUser.displayName || _fbUser.email || '?')[0].toUpperCase()}</div><div><div style="font-weight:600">${esc(_fbUser.displayName || _fbUser.email)}</div><div class="small muted">Synced across devices — this is the default experience.</div></div></div>
+          ${window._licensed ? `<button class="btn mt-16" onclick="redirectToPortal()">Manage subscription</button>` : ''}
           <button class="btn mt-16" onclick="signOutUser()">Sign out</button>
         ` : `
           <p class="small muted mb-16">${fbConfigured() ? 'Create an account and everything syncs automatically — new devices, backups, and study groups all just work. Local storage still covers offline caching and resilience underneath.' : 'Not set up on this deployment yet. The app owner needs to create a Firebase project and fill in FB_CONFIG in js/firebase.js — see README.md. Until then, everything is saved locally in this browser only.'}</p>
