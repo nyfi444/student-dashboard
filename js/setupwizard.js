@@ -1,22 +1,21 @@
 /* ── Semester setup wizard: name+dates → courses → class times →
-   syllabi → colors → target GPA → weekly study goal → done ──────── */
-const WIZARD_STEPS = ['Semester', 'Courses', 'Class times', 'Syllabi', 'Colors', 'Target GPA', 'Study goal', 'Done'];
+   syllabi → colors → weekly study goal → done ──────────────────── */
+const WIZARD_STEPS = ['Semester', 'Courses', 'Class times', 'Syllabi', 'Colors', 'Study goal', 'Done'];
 
 function openSemesterSetupWizard() {
   window._wizard = {
     step: 0,
     semester: { name: '', startDate: todayIso(), endDate: addDays(todayIso(), 110) },
     courses: [],
-    targetGPA: currentSemester()?.targetGPA ?? null,
     weeklyStudyGoalMinutes: state.settings.weeklyStudyGoalMinutes || 300,
   };
   renderWizardStep();
 }
-function wizNewCourse() { return { _wid: uid(), name: '', code: '', credits: 3, color: '#000000', meetings: [], gradingBreakdown: [], resources: [], syllabusStatus: '' }; }
+function wizNewCourse() { return { _wid: uid(), name: '', code: '', credits: 3, color: '#000000', meetings: [], resources: [], syllabusStatus: '' }; }
 
 function renderWizardStep() {
   const w = window._wizard;
-  const stepBody = [wizStep0, wizStep1, wizStep2, wizStep3, wizStep4, wizStep5, wizStep6, wizStepDone][w.step]();
+  const stepBody = [wizStep0, wizStep1, wizStep2, wizStep3, wizStep4, wizStep5, wizStepDone][w.step]();
   const isLast = w.step === WIZARD_STEPS.length - 1;
   openModal(`
     <div class="modal-head"><h3>Semester setup</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
@@ -39,8 +38,7 @@ function wizNext() {
     if (!name) { toast('Name this semester', 'error'); return; }
     w.semester = { name, startDate: $('#wiz-start').value, endDate: $('#wiz-end').value };
   }
-  if (w.step === 5) w.targetGPA = $('#wiz-gpa').value === '' ? null : Number($('#wiz-gpa').value);
-  if (w.step === 6) w.weeklyStudyGoalMinutes = Number($('#wiz-studygoal').value) || 0;
+  if (w.step === 5) w.weeklyStudyGoalMinutes = Number($('#wiz-studygoal').value) || 0;
   w.step++;
   renderWizardStep();
 }
@@ -119,7 +117,6 @@ async function wizUploadSyllabus(ci, file) {
     c.location = data.location || c.location;
     c.credits = data.credits || c.credits;
     if (Array.isArray(data.meetings) && data.meetings.length) c.meetings = data.meetings;
-    if (Array.isArray(data.gradingBreakdown) && data.gradingBreakdown.length) c.gradingBreakdown = data.gradingBreakdown.map(g => ({ id: uid(), name: g.name, weight: Number(g.weight) || 0 }));
     c._pendingAssignments = data.assignments || [];
     c.syllabusStatus = 'Filled in from syllabus ✓';
   } catch (e) {
@@ -139,10 +136,6 @@ function wizStep4() {
 }
 function wizStep5() {
   const w = window._wizard;
-  return `<div class="field"><label>Target GPA for this semester <span class="small muted">(optional)</span></label><input class="input" type="number" step="0.1" id="wiz-gpa" value="${w.targetGPA ?? ''}" placeholder="e.g. 3.7"></div>`;
-}
-function wizStep6() {
-  const w = window._wizard;
   return `<div class="field"><label>Weekly study goal (minutes)</label><input class="input" type="number" id="wiz-studygoal" value="${w.weeklyStudyGoalMinutes}"></div><div class="small muted">Shown on your dashboard and in Today mode.</div>`;
 }
 function wizStepDone() {
@@ -151,24 +144,24 @@ function wizStepDone() {
     <div class="empty">
       <div class="ic">${icon('check-square', 30, 1.4)}</div>
       <p>Your semester is ready.</p>
-      <div class="empty-sub">${esc(w.semester.name)} · ${w.courses.length} course${w.courses.length === 1 ? '' : 's'}${w.targetGPA != null ? ` · target GPA ${w.targetGPA}` : ''}</div>
+      <div class="empty-sub">${esc(w.semester.name)} · ${w.courses.length} course${w.courses.length === 1 ? '' : 's'}</div>
     </div>
   `;
 }
 function wizFinish() {
   const w = window._wizard;
-  const newSem = { id: uid(), name: w.semester.name, startDate: w.semester.startDate, endDate: w.semester.endDate, archived: false, targetGPA: w.targetGPA };
+  const newSem = { id: uid(), name: w.semester.name, startDate: w.semester.startDate, endDate: w.semester.endDate, archived: false };
   state.semesters.push(newSem);
   w.courses.filter(c => c.name.trim()).forEach(c => {
     state.courses.push({
       id: uid(), semesterId: newSem.id, name: c.name.trim(), code: c.code || '', instructor: c.instructor || '',
       color: c.color || '#000000', credits: c.credits || 0, location: c.location || '', status: 'in-progress', requirementType: 'elective',
-      meetings: c.meetings || [], gradingBreakdown: c.gradingBreakdown || [], resources: [], finalGradeOverride: null, syllabusRaw: '',
+      meetings: c.meetings || [], resources: [], syllabusRaw: '',
     });
     (c._pendingAssignments || []).forEach(a => {
       state.assignments.push({
         id: uid(), courseId: state.courses.at(-1).id, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
-        dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', startByDate: null, category: null, weight: null,
+        dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', startByDate: null,
         maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
       });
     });

@@ -1,6 +1,6 @@
 # Student Planner ("Semester HQ")
 
-A student planner covering dashboard, calendar, assignment tracking, grades/GPA, notebook, study timer, exam tracker, project hub, flashcards, and study groups — with AI-assisted syllabus and assignment upload (auto-fills course info, schedule, assignments, and exams from a PDF/photo/text document).
+A student planner covering dashboard, calendar, assignment tracking, notebook, study timer, exam tracker, project hub, flashcards, and study groups — with AI-assisted syllabus and assignment upload (auto-fills course info, schedule, assignments, and exams from a PDF/photo/text document).
 
 No build step — plain HTML/CSS/JS, runs by opening `index.html` or serving the folder with any static file server.
 

@@ -1,12 +1,12 @@
 /* ── App shell: nav, router, boot ────────────────────────────────── */
 const NAV = [
   ['Overview', [['dashboard', 'home', 'Dashboard'], ['calendar', 'calendar', 'Calendar'], ['todos', 'check-square', 'To-Do List']]],
-  ['Coursework', [['courses', 'graduation-cap', 'Courses'], ['assignments', 'clipboard-list', 'Assignments'], ['exams', 'flag', 'Exams'], ['projects', 'folder', 'Projects'], ['grades', 'target', 'Grades & GPA']]],
+  ['Coursework', [['courses', 'graduation-cap', 'Courses'], ['assignments', 'clipboard-list', 'Assignments'], ['exams', 'flag', 'Exams'], ['projects', 'folder', 'Projects']]],
   ['Study', [['notebook', 'book-open', 'Notebook'], ['timer', 'timer', 'Study Timer'], ['studytools', 'layers', 'Flashcards'], ['studygroups', 'users', 'Study Groups']]],
 ];
 const PAGES = {
   dashboard: pageDashboard, calendar: pageCalendar, todos: pageTodos, courses: pageCourses,
-  assignments: pageAssignments, exams: pageExams, projects: pageProjects, grades: pageGrades,
+  assignments: pageAssignments, exams: pageExams, projects: pageProjects,
   notebook: pageNotebook, timer: pageTimer, studytools: pageStudyTools, studygroups: pageStudyGroups,
   settings: pageSettings,
 };

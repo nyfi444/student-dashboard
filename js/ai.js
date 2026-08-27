@@ -74,7 +74,6 @@ const SYLLABUS_SYSTEM = `You extract structured course information from a syllab
 {
   "name": string, "code": string, "instructor": string, "location": string, "credits": number|null,
   "meetings": [{"day": 0-6 (0=Sun), "start": "HH:MM", "end": "HH:MM"}],
-  "gradingBreakdown": [{"name": string, "weight": number}],
   "assignments": [{"title": string, "type": "assignment"|"reading"|"discussion"|"quiz"|"exam"|"project"|"paper"|"lab", "dueDate": "YYYY-MM-DD or empty string if unknown", "dueTime": "HH:MM or empty string", "maxPoints": number|null}]
 }
 Infer the current or nearest upcoming year for dates when the syllabus only gives month/day. If a field is unknown, use an empty string, null, or empty array. Do not invent assignments that aren't mentioned.`;

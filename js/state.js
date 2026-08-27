@@ -192,7 +192,6 @@ function seedData() {
       darkBackground: { color: '#fafafa' },
       recentEventColors: [],
       stickyNoteSize: 'md',
-      gradeScale: '4.0',
       weekStartsMonday: true,
       aiModel: 'claude-sonnet-4-6',
       displayName: '',
@@ -203,7 +202,7 @@ function seedData() {
     },
     currentSemesterId: semId,
     semesters: [
-      { id: semId, name: 'New Semester', startDate: t, endDate: addDays(t, 110), archived: false, targetGPA: null },
+      { id: semId, name: 'New Semester', startDate: t, endDate: addDays(t, 110), archived: false },
     ],
     breaks: [],
     courses: [],
@@ -290,4 +289,3 @@ function getCourseColor(id) { return getCourse(id)?.color || '#8a8a8a'; }
 function activeCourses() { return state.courses.filter(c => c.semesterId === state.currentSemesterId); }
 function courseOptions() { return activeCourses().map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join(''); }
 function currentSemester() { return state.semesters.find(s => s.id === state.currentSemesterId); }
-function setCurrentSemesterTargetGPA(val) { const s = currentSemester(); if (s) s.targetGPA = val === '' ? null : Number(val); touch(); }

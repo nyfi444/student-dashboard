@@ -60,14 +60,13 @@ function toggleAssignmentDone(id) {
 }
 
 function openAssignmentModal(id) {
-  const a = id ? state.assignments.find(x => x.id === id) : { id: uid(), courseId: activeCourses()[0]?.id || null, title: '', type: 'assignment', dueDate: todayIso(), dueTime: '23:59', startByDate: null, category: null, weight: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
+  const a = id ? state.assignments.find(x => x.id === id) : { id: uid(), courseId: activeCourses()[0]?.id || null, title: '', type: 'assignment', dueDate: todayIso(), dueTime: '23:59', startByDate: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
   window._assignDraft = JSON.parse(JSON.stringify(a));
   if (!_assignDraft.attachments) _assignDraft.attachments = [];
   renderAssignmentModal(id);
 }
 function renderAssignmentModal(id) {
   const a = _assignDraft;
-  const course = getCourse(a.courseId);
   openModal(`
     <div class="modal-head"><h3>${id ? 'Edit assignment' : 'New assignment'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
@@ -81,10 +80,7 @@ function renderAssignmentModal(id) {
         <div class="field"><label>Due time</label><input class="input" type="time" id="af-time" value="${a.dueTime || ''}"></div>
         <div class="field"><label>Status</label><select class="select" id="af-status">${Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>Start by <span class="small muted">(optional reminder)</span></label><input class="input" type="date" id="af-startby" value="${a.startByDate || ''}"></div>
-        <div class="field"><label>Grading category</label><select class="select" id="af-category"><option value="">—</option>${(course?.gradingBreakdown || []).map(g => `<option value="${g.id}" ${g.id === a.category ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>
-      </div>
+      <div class="field"><label>Start by <span class="small muted">(optional reminder)</span></label><input class="input" type="date" id="af-startby" value="${a.startByDate || ''}"></div>
       <div class="field-row">
         <div class="field"><label>Points earned</label><input class="input" type="number" id="af-earned" value="${a.earnedPoints ?? ''}"></div>
         <div class="field"><label>Points possible</label><input class="input" type="number" id="af-max" value="${a.maxPoints ?? ''}"></div>
@@ -155,7 +151,6 @@ function saveAssignmentModal(id) {
   d.dueTime = $('#af-time').value;
   d.status = $('#af-status').value;
   d.startByDate = $('#af-startby').value || null;
-  d.category = $('#af-category').value || null;
   d.earnedPoints = $('#af-earned').value === '' ? null : Number($('#af-earned').value);
   d.maxPoints = $('#af-max').value === '' ? null : Number($('#af-max').value);
   d.notes = $('#af-notes').value;
@@ -283,7 +278,7 @@ function commitAssignmentUpload() {
   toAdd.forEach(a => {
     state.assignments.push({
       id: uid(), courseId, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
-      dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', startByDate: null, category: null, weight: null,
+      dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', startByDate: null,
       maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
     });
   });

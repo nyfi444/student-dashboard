@@ -67,23 +67,13 @@ function pageSettings() {
       </div>
 
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Grading</h3>
-        <div class="field"><label>GPA display</label>
-          <div class="segmented"><button class="${state.settings.gradeScale === '4.0' ? 'active' : ''}" onclick="setGradeScale('4.0')">4.0 scale</button><button class="${state.settings.gradeScale === 'percentage' ? 'active' : ''}" onclick="setGradeScale('percentage')">Percentage</button></div>
-        </div>
-      </div>
-
-      <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">Semester</h3>
         <div class="field"><label>Viewing</label>
           <select class="select" onchange="setState({currentSemesterId:this.value})">
             ${state.semesters.map(s => `<option value="${s.id}" ${s.id === state.currentSemesterId ? 'selected' : ''}>${esc(s.name)}${s.archived ? ' (archived)' : ''}</option>`).join('')}
           </select>
         </div>
-        <div class="field-row mt-8">
-          <div class="field" style="margin-bottom:0"><label>Target GPA</label><input class="input" type="number" step="0.1" value="${currentSemester()?.targetGPA ?? ''}" oninput="setCurrentSemesterTargetGPA(this.value)"></div>
-          <div class="field" style="margin-bottom:0"><label>Weekly study goal (min)</label><input class="input" type="number" value="${state.settings.weeklyStudyGoalMinutes ?? ''}" oninput="state.settings.weeklyStudyGoalMinutes=Number(this.value)||0;touch()"></div>
-        </div>
+        <div class="field mt-8" style="margin-bottom:0"><label>Weekly study goal (min)</label><input class="input" type="number" value="${state.settings.weeklyStudyGoalMinutes ?? ''}" oninput="state.settings.weeklyStudyGoalMinutes=Number(this.value)||0;touch()"></div>
         <div class="flex-gap wrap mt-8">
           <button class="btn" onclick="openSemesterResetWizard()">${icon('refresh-cw', 13, 2)} Semester reset</button>
           <button class="btn" onclick="openSemesterSetupWizard()">${icon('sparkles', 13, 1.6)} Semester setup</button>
@@ -227,7 +217,7 @@ function runSemesterReset() {
   state.semesters.push(newSem);
   if ($('#sw-carry').checked) {
     activeCourses().forEach(c => {
-      state.courses.push({ ...JSON.parse(JSON.stringify(c)), id: uid(), semesterId: newSem.id, status: 'in-progress', gradingBreakdown: c.gradingBreakdown.map(g => ({ ...g, id: uid() })), finalGradeOverride: null });
+      state.courses.push({ ...JSON.parse(JSON.stringify(c)), id: uid(), semesterId: newSem.id, status: 'in-progress' });
     });
   }
   setState({ currentSemesterId: newSem.id });

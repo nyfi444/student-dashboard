@@ -12,17 +12,15 @@ function computeDegreeProgress() {
 function pageCourses() {
   const courses = activeCourses();
   const credits = courses.reduce((s, c) => s + (c.credits || 0), 0);
-  const gpa = computeGPA();
   const degree = computeDegreeProgress();
   return `
     ${pageHead('Courses', `${courses.length} course${courses.length === 1 ? '' : 's'} this semester`, `
       ${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}
       <button class="btn btn-primary" onclick="openCourseModal()">+ Add course</button>
     `)}
-    <div class="grid grid-3 mb-16">
+    <div class="grid grid-2 mb-16">
       <div class="stat-card"><div class="num">${courses.length}</div><div class="lbl">Active courses</div></div>
       <div class="stat-card"><div class="num">${credits}</div><div class="lbl">Total credits</div></div>
-      <div class="stat-card"><div class="num ${gpa == null ? 'stat-dash' : ''}">${gpa != null ? gpa.toFixed(2) : '—'}</div><div class="lbl">Semester GPA</div></div>
     </div>
     ${degree ? `
     <div class="card card-pad mb-16">
@@ -30,13 +28,12 @@ function pageCourses() {
       <div class="progress"><div style="width:${degree.pct}%"></div></div>
       <div class="small muted mt-8">Set your target total in Settings → Degree.</div>
     </div>` : ''}
-    ${courses.length ? `<div class="grid grid-3">${courses.map(courseCard).join('')}</div>` : emptyState(icon('graduation-cap',26,1.4), 'Your courses will live here', `<button class="btn btn-primary mt-8" onclick="openCourseModal()">+ Add course</button>`, 'Add one by hand or upload a syllabus and let AI fill in the schedule and grading breakdown.')}
+    ${courses.length ? `<div class="grid grid-3">${courses.map(courseCard).join('')}</div>` : emptyState(icon('graduation-cap',26,1.4), 'Your courses will live here', `<button class="btn btn-primary mt-8" onclick="openCourseModal()">+ Add course</button>`, 'Add one by hand or upload a syllabus and let AI fill in the schedule and assignments.')}
   `;
 }
 
 function courseCard(c) {
   const meetStr = c.meetings.length ? c.meetings.map(m => `${DOW_NAMES[m.day]} ${fmtTime(m.start)}`).join(', ') : 'No scheduled meetings';
-  const totalWeight = c.gradingBreakdown.reduce((s, g) => s + Number(g.weight || 0), 0);
   const resources = c.resources || [];
   const pinnedNotes = state.notes.filter(n => n.type === 'note' && n.courseId === c.id && n.pinned);
   return `
@@ -57,21 +54,17 @@ function courseCard(c) {
       </div>
       <div class="small muted mt-8">${esc(meetStr)}</div>
       ${c.location ? `<div class="small muted flex-gap">${icon('map-pin', 12)} ${esc(c.location)}</div>` : ''}
-      <div class="divider"></div>
-      <div class="small dim" style="margin-bottom:4px">Grading breakdown ${totalWeight !== 100 ? `<span style="color:var(--warn)">(${totalWeight}%)</span>` : ''}</div>
-      ${c.gradingBreakdown.map(g => `<div class="flex-between small" style="padding:2px 0"><span class="muted">${esc(g.name)}</span><span>${g.weight}%</span></div>`).join('') || `<div class="small muted">Not set</div>`}
       ${resources.length ? `<div class="divider"></div><div class="small dim" style="margin-bottom:4px">Resources</div><div class="flex-gap wrap">${resources.map(r => `<a class="btn btn-sm" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.label)}</a>`).join('')}</div>` : ''}
       ${pinnedNotes.length ? `<div class="divider"></div><div class="small dim" style="margin-bottom:4px">${icon('pin',12,2)} Pinned</div>${pinnedNotes.map(n => `<div class="small" style="cursor:pointer;padding:2px 0" onclick="setState({route:'notebook',notebookSelected:'${n.id}'})">${esc(n.name)}</div>`).join('')}` : ''}
       <div class="flex-between mt-16">
         <span class="small dim">${c.credits || 0} credits</span>
-        <a class="btn btn-sm btn-ghost" onclick="setState({route:'grades'})" style="color:var(--accent)">View grade →</a>
       </div>
     </div>
   `;
 }
 
 function openCourseModal(id) {
-  const c = id ? getCourse(id) : { id: uid(), semesterId: state.currentSemesterId, name: '', code: '', instructor: '', color: '#000000', credits: 3, location: '', status: 'in-progress', requirementType: 'elective', meetings: [], gradingBreakdown: [], resources: [], finalGradeOverride: null, syllabusRaw: '' };
+  const c = id ? getCourse(id) : { id: uid(), semesterId: state.currentSemesterId, name: '', code: '', instructor: '', color: '#000000', credits: 3, location: '', status: 'in-progress', requirementType: 'elective', meetings: [], resources: [], syllabusRaw: '' };
   const draft = JSON.parse(JSON.stringify(c));
   if (!draft.status) draft.status = 'in-progress';
   if (!draft.resources) draft.resources = [];
@@ -102,12 +95,6 @@ function openCourseModal(id) {
         <button class="btn btn-sm mt-8" onclick="addMeetingRow()">+ Add meeting time</button>
       </div>
 
-      <div class="field"><label>Grading breakdown</label>
-        <div id="cf-grading">${draft.gradingBreakdown.map((g, i) => gradingRow(g, i)).join('')}</div>
-        <button class="btn btn-sm mt-8" onclick="addGradingRow()">+ Add category</button>
-        <div class="small muted mt-8" id="cf-weight-total"></div>
-      </div>
-
       <div class="field" style="margin-bottom:0"><label>Resources <span class="small muted">(one-click links)</span></label>
         <div id="cf-resources">${draft.resources.map((r, i) => resourceRow(r, i)).join('')}</div>
         <button class="btn btn-sm mt-8" onclick="addResourceRow()">+ Add resource</button>
@@ -119,7 +106,6 @@ function openCourseModal(id) {
     </div>
   `, { wide: true });
   wireColorWheel('cf-color', () => _courseDraft.color, (hex) => { _courseDraft.color = hex; });
-  updateWeightTotal();
 }
 function resourceRow(r, i) {
   return `<div class="field-row" style="align-items:center;margin-bottom:6px">
@@ -139,23 +125,8 @@ function meetingRow(m, i) {
     <button class="btn btn-ghost btn-icon btn-sm" onclick="removeMeetingRow(${i})">${icon('x',13,2.2)}</button>
   </div>`;
 }
-function gradingRow(g, i) {
-  return `<div class="field-row" style="align-items:center;margin-bottom:6px" data-grow="${i}">
-    <input class="input" value="${esc(g.name)}" placeholder="Category" onchange="_courseDraft.gradingBreakdown[${i}].name=this.value">
-    <input class="input" type="number" value="${g.weight}" style="max-width:90px" placeholder="%" oninput="_courseDraft.gradingBreakdown[${i}].weight=Number(this.value);updateWeightTotal()">
-    <button class="btn btn-ghost btn-icon btn-sm" onclick="removeGradingRow(${i})">${icon('x',13,2.2)}</button>
-  </div>`;
-}
 function addMeetingRow() { _courseDraft.meetings.push({ day: 1, start: '10:00', end: '11:00' }); $('#cf-meetings').insertAdjacentHTML('beforeend', meetingRow(_courseDraft.meetings.at(-1), _courseDraft.meetings.length - 1)); }
 function removeMeetingRow(i) { _courseDraft.meetings.splice(i, 1); $('#cf-meetings').innerHTML = _courseDraft.meetings.map(meetingRow).join(''); }
-function addGradingRow() { _courseDraft.gradingBreakdown.push({ id: uid(), name: '', weight: 0 }); $('#cf-grading').innerHTML = _courseDraft.gradingBreakdown.map(gradingRow).join(''); updateWeightTotal(); }
-function removeGradingRow(i) { _courseDraft.gradingBreakdown.splice(i, 1); $('#cf-grading').innerHTML = _courseDraft.gradingBreakdown.map(gradingRow).join(''); updateWeightTotal(); }
-function updateWeightTotal() {
-  const el = $('#cf-weight-total'); if (!el) return;
-  const total = _courseDraft.gradingBreakdown.reduce((s, g) => s + Number(g.weight || 0), 0);
-  el.textContent = `Total weight: ${total}%`;
-  el.style.color = total === 100 || total === 0 ? 'var(--text-faint)' : 'var(--warn)';
-}
 function saveCourseModal(existingId) {
   const d = _courseDraft;
   d.name = $('#cf-name').value.trim();
@@ -271,8 +242,7 @@ function openSyllabusReviewModal(data) {
     name: data.name || '', code: data.code || '', instructor: data.instructor || '', location: data.location || '',
     credits: data.credits || 3, color: '#000000',
     meetings: Array.isArray(data.meetings) ? data.meetings : [],
-    gradingBreakdown: (data.gradingBreakdown || []).map(g => ({ id: uid(), name: g.name, weight: Number(g.weight) || 0 })),
-    finalGradeOverride: null, syllabusRaw: '',
+    syllabusRaw: '',
   };
   window._courseDraft = draft;
   window._sylAssignments = (data.assignments || []).map(a => ({ ...a, _include: true, id: uid() }));
@@ -288,10 +258,6 @@ function openSyllabusReviewModal(data) {
       <div class="field-row">
         <div class="field"><label>Instructor</label><input class="input" id="cf-instructor" value="${esc(draft.instructor)}"></div>
         <div class="field"><label>Location</label><input class="input" id="cf-location" value="${esc(draft.location)}"></div>
-      </div>
-      <div class="field"><label>Grading breakdown</label>
-        <div id="cf-grading">${draft.gradingBreakdown.map((g, i) => gradingRow(g, i)).join('')}</div>
-        <button class="btn btn-sm mt-8" onclick="addGradingRow()">+ Add category</button>
       </div>
       <div class="field"><label>Assignments found (${window._sylAssignments.length})</label>
         <div id="syl-assignment-list" style="max-height:220px;overflow-y:auto">
@@ -330,7 +296,7 @@ function commitSyllabusCourse() {
   (window._sylAssignments || []).filter(a => a._include && a.title).forEach(a => {
     state.assignments.push({
       id: uid(), courseId: d.id, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
-      dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', category: null, weight: null,
+      dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59',
       maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', recurringTemplateId: null,
     });
   });
