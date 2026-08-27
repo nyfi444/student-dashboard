@@ -117,6 +117,10 @@ async function handleCreateCheckoutSession(request, env, origin) {
   params.set('line_items[0][quantity]', '1');
   params.set('success_url', `${appUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`);
   params.set('cancel_url', `${appUrl}?checkout=cancel`);
+  // Shows a "promotion code" box on the Stripe checkout page, so comped
+  // accounts (content partnerships, gifted access, etc.) can be handled
+  // entirely via Stripe Coupons — see SEMESTER_HQ_COUPON_PROCESS.md.
+  params.set('allow_promotion_codes', 'true');
   if (body.uid) params.set('client_reference_id', String(body.uid));
   if (body.email) params.set('customer_email', String(body.email));
   // Stamped onto the Subscription object Stripe creates, so later lifecycle
