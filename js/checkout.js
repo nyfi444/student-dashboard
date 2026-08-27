@@ -1,4 +1,4 @@
-/* ── Paywall: $7.99/month "Semester HQ Plus" subscription ─────────
+/* ── Paywall: $7.99/month subscription for sign-in and sync ───────
    Local-only usage (no sign-in) is always free. Signing in unlocks
    cross-device sync + AI upload, gated behind this subscription. The only
    thing that can ever mark a user as "paid" is the backend Worker (via
@@ -104,7 +104,7 @@ function pagePaywall() {
         <h2>Unlock Semester HQ</h2>
         <p class="small muted mb-16">Billed monthly, cancel anytime. Unlocks cross-device sync and AI syllabus upload for this account.</p>
         <div class="paywall-price">$7.99<span class="paywall-price-period">/mo</span></div>
-        <button class="btn btn-primary" style="width:100%" onclick="redirectToCheckout()">Subscribe to Plus</button>
+        <button class="btn btn-primary" style="width:100%" onclick="redirectToCheckout()">Subscribe</button>
         ${checkoutReturnPending() ? `<p class="small mt-16" style="color:var(--warn)">We received a payment but couldn't confirm it's linked to this account yet. If you just paid, try <a href="#" onclick="event.preventDefault();retryLicenseCheck()">checking again</a>, or contact <a href="mailto:hello@semesterhq.com">hello@semesterhq.com</a>.</p>` : ''}
         <p class="small muted mt-16">Already bought on another device? <a href="#" onclick="event.preventDefault();retryLicenseCheck()">Check again</a>.</p>
         <button class="btn btn-ghost btn-sm mt-8" onclick="signOutUser()">Not now — use local only on this device</button>

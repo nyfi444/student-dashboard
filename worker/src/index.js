@@ -2,7 +2,7 @@
    Three jobs, all server-side so secrets never reach the browser:
    1. AI proxy (/v1/messages) — holds ANTHROPIC_API_KEY, forwards to Claude.
    2. Checkout (/create-checkout-session) — starts a $7.99/month Stripe
-      subscription ("Semester HQ Plus").
+      subscription for sign-in and sync.
    3. Licensing (/stripe-webhook, /claim-license) — the ONLY writer of
       Firestore's `licenses` collection. Clients can only read their own
       license (see firestore.rules); this Worker is the sole trusted
@@ -53,7 +53,7 @@ export default {
 };
 
 /* ── 1. AI proxy ──────────────────────────────────────────────── */
-// Gated behind Semester HQ Plus — every caller must prove (via a fresh Firebase
+// Gated behind a paid subscription — every caller must prove (via a fresh Firebase
 // ID token) that they're signed in AND that licenses/{uid}.paid is true. This
 // check has to live here, not just in the client (js/ai.js): anyone can call
 // this endpoint directly with curl, bypassing whatever the UI does.
@@ -64,14 +64,14 @@ async function handleAiProxy(request, env, origin) {
   let body;
   try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
 
-  if (!body.idToken) return jsonError('Sign in and subscribe to Semester HQ Plus to use AI upload.', 402, env, origin);
+  if (!body.idToken) return jsonError('Sign in and subscribe to use AI upload.', 402, env, origin);
   let payload;
   try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
   catch { return jsonError('Your session expired — sign in again.', 401, env, origin); }
 
   try {
     const license = await readFirestoreDoc(env, 'licenses', payload.sub);
-    if (!license?.paid) return jsonError('AI upload is part of Semester HQ Plus ($7.99/month).', 402, env, origin);
+    if (!license?.paid) return jsonError('AI upload requires a subscription ($7.99/month).', 402, env, origin);
   } catch (e) {
     return jsonError('Could not verify access: ' + e.message, 500, env, origin);
   }
@@ -112,7 +112,7 @@ async function handleCreateCheckoutSession(request, env, origin) {
   params.set('line_items[0][price_data][currency]', 'usd');
   params.set('line_items[0][price_data][unit_amount]', String(PLUS_PRICE_CENTS));
   params.set('line_items[0][price_data][recurring][interval]', 'month');
-  params.set('line_items[0][price_data][product_data][name]', 'Semester HQ Plus');
+  params.set('line_items[0][price_data][product_data][name]', 'Semester HQ');
   params.set('line_items[0][price_data][product_data][description]', 'Billed monthly. Cancel anytime.');
   params.set('line_items[0][quantity]', '1');
   params.set('success_url', `${appUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`);

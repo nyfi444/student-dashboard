@@ -3,7 +3,7 @@
 One Cloudflare Worker, three jobs — all server-side so secrets never reach the browser:
 
 1. **AI proxy** (`/v1/messages`) — holds your Anthropic key, forwards syllabus/assignment parsing requests.
-2. **Checkout** (`/create-checkout-session`) — starts a $7.99/month Stripe subscription ("Semester HQ Plus").
+2. **Checkout** (`/create-checkout-session`) — starts a $7.99/month Stripe subscription for sign-in and sync.
 3. **Licensing** (`/stripe-webhook`, `/claim-license`) — the only thing allowed to mark someone as paid. It writes to Firestore's `licenses` collection using a Firebase service account; the browser can only ever *read* its own license (see `../firestore.rules`), never write it — so a user can't just open devtools and grant themselves access. The webhook also tracks renewals/cancellations, so access turns off automatically if a subscription lapses.
 
 Local-only usage (no sign-in) stays free forever and doesn't touch any of this. Payment only gates cross-device sync + AI upload.

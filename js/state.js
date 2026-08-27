@@ -9,17 +9,28 @@ const storeKey = 'studentPlanner.v1';
 const legacyKeys = [];
 
 // True only when this page is loaded inside another page's iframe — in
-// practice that's just the marketing site's live "try it" demo. GitHub Pages
-// serves every project under the same nyfi444.github.io origin, so the demo
-// and the real product share one localStorage bucket by default (paths
-// differ, origin doesn't). Demo visitors read/write sessionStorage instead:
-// it behaves just like localStorage during the visit, but disappears the
-// moment the tab closes, so nothing here ever touches a real user's saved
-// data and nothing lingers after someone leaves the marketing site. This
-// also matches the "your changes stay only in this browser tab" promise
-// already made in that section's copy.
+// practice that's just the marketing site's live "try it" demo.
 function isEmbedded() { try { return window.self !== window.top; } catch { return true; } }
-const dataStore = isEmbedded() ? sessionStorage : localStorage;
+
+// Embedded demo visitors get a plain in-memory store instead of real
+// localStorage/sessionStorage — deliberately not persisted anywhere. Two
+// reasons: (1) GitHub Pages serves every project under one
+// nyfi444.github.io origin, so the demo and the real product would
+// otherwise share one localStorage bucket (paths differ, origin doesn't) —
+// a visitor playing with the demo could read/write the same data as a
+// real signed-in user on that device; (2) the demo is meant to showcase
+// the product, not stand in for actually signing up — every reload starts
+// from a clean seed so it can't be used as a free, ongoing substitute for
+// a real (paid) account.
+function makeMemoryStore() {
+  const mem = {};
+  return {
+    getItem: (k) => (k in mem ? mem[k] : null),
+    setItem: (k, v) => { mem[k] = String(v); },
+    removeItem: (k) => { delete mem[k]; },
+  };
+}
+const dataStore = isEmbedded() ? makeMemoryStore() : localStorage;
 
 const ASSIGNMENT_TYPES = ['assignment', 'reading', 'discussion', 'quiz', 'exam', 'project', 'paper', 'lab'];
 const ASSIGNMENT_STATUSES = ['not-started', 'in-progress', 'waiting', 'submitted', 'done'];
