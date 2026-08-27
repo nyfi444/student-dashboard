@@ -29,5 +29,13 @@ service cloud.firestore {
     match /licensesByEmail/{emailId} {
       allow read, write: if false;
     }
+
+    // Contact/feedback form submissions from the marketing site. Never read
+    // or written by the client directly — only the Worker's
+    // /contact-message route writes these (with its own rate limiting and
+    // validation), so this is server-only the same way licenses are.
+    match /feedback/{id} {
+      allow read, write: if false;
+    }
   }
 }

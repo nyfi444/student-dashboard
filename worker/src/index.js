@@ -1,5 +1,5 @@
 /* ── Student Planner backend Worker ───────────────────────────────
-   Three jobs, all server-side so secrets never reach the browser:
+   Four jobs, all server-side so secrets never reach the browser:
    1. AI proxy (/v1/messages) — holds ANTHROPIC_API_KEY, forwards to Claude.
    2. Checkout (/create-checkout-session) — starts a $7.99/month Stripe
       subscription for sign-in and sync.
@@ -11,6 +11,9 @@
       payment failures, and cancellations all flow through the webhook too
       (customer.subscription.updated/deleted), so `paid` always reflects
       whether the subscription is currently active.
+   4. Contact form (/contact-message) — the ONLY writer of Firestore's
+      `feedback` collection. Rate-limited and validated server-side since
+      it's reachable by anyone, signed in or not.
 ──────────────────────────────────────────────────────────────── */
 
 const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
@@ -47,6 +50,10 @@ export default {
     if (url.pathname === '/claim-license') {
       if (!(await checkRateLimit(env, ip, 'claim', 15))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
       return handleClaimLicense(request, env, origin);
+    }
+    if (url.pathname === '/contact-message') {
+      if (!(await checkRateLimit(env, ip, 'contact', 5))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      return handleContactMessage(request, env, origin);
     }
     return jsonError('Not found', 404, env, origin);
   },
@@ -233,6 +240,40 @@ async function handleClaimLicense(request, env, origin) {
     return jsonOk({ paid: false }, env, origin);
   } catch (e) {
     return jsonError('Could not check license: ' + e.message, 500, env, origin);
+  }
+}
+
+/* ── 4. Contact form ──────────────────────────────────────────── */
+// Writes to Firestore's `feedback` collection — clients can never read or
+// write it directly (see firestore.rules), only this route, using the same
+// service account as licensing. Reachable by anyone (signed in or not), so
+// this is the one route that needs its own input validation and a honeypot
+// on top of the shared rate limiting.
+const CONTACT_CATEGORIES = ['bug', 'feature', 'billing', 'feedback', 'other'];
+async function handleContactMessage(request, env, origin) {
+  if (!env.FIREBASE_PROJECT_ID) return jsonError('Server misconfigured: FIREBASE_PROJECT_ID not set.', 500, env, origin);
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
+
+  // Honeypot: a field real users never see or fill in. Bots that blindly
+  // fill every field trip it — report success anyway so they don't learn
+  // to leave it blank.
+  if (body.website) return jsonOk({ ok: true }, env, origin);
+
+  const name = String(body.name || '').trim().slice(0, 200);
+  const email = String(body.email || '').trim().slice(0, 320);
+  const category = CONTACT_CATEGORIES.includes(body.category) ? body.category : 'other';
+  const message = String(body.message || '').trim().slice(0, 5000);
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonError('Enter a valid email so we can reply.', 400, env, origin);
+  if (!message) return jsonError('Message can’t be empty.', 400, env, origin);
+
+  try {
+    const id = crypto.randomUUID();
+    await writeFirestoreDoc(env, 'feedback', id, { name, email, category, message, createdAt: new Date() });
+    return jsonOk({ ok: true }, env, origin);
+  } catch (e) {
+    return jsonError('Could not send your message: ' + e.message, 500, env, origin);
   }
 }
 

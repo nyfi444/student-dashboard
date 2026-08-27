@@ -1,10 +1,11 @@
-# Backend Worker (AI proxy + checkout + licensing)
+# Backend Worker (AI proxy + checkout + licensing + contact form)
 
-One Cloudflare Worker, three jobs — all server-side so secrets never reach the browser:
+One Cloudflare Worker, four jobs — all server-side so secrets never reach the browser:
 
 1. **AI proxy** (`/v1/messages`) — holds your Anthropic key, forwards syllabus/assignment parsing requests.
 2. **Checkout** (`/create-checkout-session`) — starts a $7.99/month Stripe subscription for sign-in and sync.
 3. **Licensing** (`/stripe-webhook`, `/claim-license`) — the only thing allowed to mark someone as paid. It writes to Firestore's `licenses` collection using a Firebase service account; the browser can only ever *read* its own license (see `../firestore.rules`), never write it — so a user can't just open devtools and grant themselves access. The webhook also tracks renewals/cancellations, so access turns off automatically if a subscription lapses.
+4. **Contact form** (`/contact-message`) — the only writer of Firestore's `feedback` collection. Reachable by anyone (signed in or not), so it has its own validation and a honeypot field on top of rate limiting. View submissions in the Firebase console → Firestore Database → `feedback`.
 
 Local-only usage (no sign-in) stays free forever and doesn't touch any of this. Payment only gates cross-device sync + AI upload.
 
@@ -53,7 +54,7 @@ Paste the printed id into the commented-out `[[kv_namespaces]]` block in `wrangl
 
 - `ALLOWED_ORIGIN` restricts who can call the Worker at all.
 - `src/index.js` caps AI `max_tokens` at 4000 and only allows a small model allowlist.
-- KV-based rate limiting (above) caps requests per IP per minute (20/min AI, 10/min checkout, 15/min license-claim).
+- KV-based rate limiting (above) caps requests per IP per minute (20/min AI, 10/min checkout, 15/min license-claim, 5/min contact form).
 - Anthropic and Stripe usage are billed separately on your own accounts, per actual usage.
 
 ## Local testing
