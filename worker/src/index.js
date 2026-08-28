@@ -293,7 +293,7 @@ async function handleClaimLicense(request, env, origin) {
 // service account as licensing. Reachable by anyone (signed in or not), so
 // this is the one route that needs its own input validation and a honeypot
 // on top of the shared rate limiting.
-const CONTACT_CATEGORIES = ['bug', 'feature', 'billing', 'feedback', 'other'];
+const CONTACT_CATEGORIES = ['bug', 'feature', 'billing', 'group', 'feedback', 'other'];
 async function handleContactMessage(request, env, origin) {
   if (!env.FIREBASE_PROJECT_ID) return jsonError('Server misconfigured: FIREBASE_PROJECT_ID not set.', 500, env, origin);
   let body;
