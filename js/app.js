@@ -74,15 +74,8 @@ function maybeShowOnboarding() {
   // Skip the sign-up nudge when embedded (e.g. the marketing site's "try it
   // live" iframe) — every visitor there gets a fresh, empty local state, so
   // this would otherwise greet them with an account prompt before they've
-  // seen anything. Still land them in the normal first-run wizard.
+  // seen anything.
   if (fbConfigured() && !_fbUser && !isEmbedded()) openAccountPromptModal();
-  else openFirstRunWizardIfNeeded();
-}
-function openFirstRunWizardIfNeeded() {
-  if (!state.courses.length && !state._wizardSeen) {
-    state._wizardSeen = true; save();
-    openSemesterSetupWizard();
-  }
 }
 function openAccountPromptModal() {
   openModal(`
@@ -97,16 +90,8 @@ function openAccountPromptModal() {
 async function signInFromOnboarding() {
   await signIn();
   closeModal();
-  // Don't blindly jump into the setup wizard — if signing in means this
-  // account still needs to pay, render() will already be showing the
-  // paywall (set by firebase.js's auth callback); stepping into the
-  // wizard here would open a modal on top of it and make it look like
-  // there's no paywall at all.
-  if (typeof shouldShowPaywall === 'function' && shouldShowPaywall()) return;
-  openFirstRunWizardIfNeeded();
 }
 function skipAccountPrompt() {
   closeModal();
-  openFirstRunWizardIfNeeded();
 }
 initApp();
