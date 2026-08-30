@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Error log — Semester HQ</title>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 32px; background: #f7f5f2; color: #1a1a1a; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: #666; margin: 0 0 24px; font-size: 13px; }
+  #gate { max-width: 360px; }
+  #gate input { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+  #gate button, .refresh { margin-top: 10px; padding: 9px 16px; font-size: 14px; border: none; border-radius: 6px; background: #1a1a1a; color: #fff; cursor: pointer; }
+  #gate .err { color: #b3261e; font-size: 13px; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
+  th { background: #f0eeea; font-weight: 600; position: sticky; top: 0; }
+  td.msg { max-width: 360px; word-break: break-word; }
+  td.stack { max-width: 420px; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 11px; color: #555; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge.app { background: #e6f0ff; color: #1a4fa0; }
+  .badge.marketing { background: #f4e6ff; color: #6a1aa0; }
+  #status { font-size: 13px; color: #666; margin-bottom: 12px; }
+  #out { display: none; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>Error log</h1>
+  <p class="sub">Enter the admin token to view recent crash reports.</p>
+  <input type="password" id="token-input" placeholder="Admin token" autocomplete="off">
+  <br>
+  <button id="unlock-btn">View errors</button>
+  <div class="err" id="gate-err"></div>
+</div>
+
+<div id="out">
+  <h1>Error log</h1>
+  <p class="sub">Most recent 50 crash reports from the app and marketing site.</p>
+  <button class="refresh" id="refresh-btn">Refresh</button>
+  <div id="status"></div>
+  <table id="table" style="margin-top:12px;">
+    <thead><tr><th>Time</th><th>Source</th><th>Message</th><th>Stack</th><th>URL</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<script>
+const WORKER_URL = 'https://student-planner-ai-proxy.semesterhq.workers.dev';
+const STORAGE_KEY = 'shq_admin_token';
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+async function loadErrors(token) {
+  const statusEl = document.getElementById('status');
+  const rowsEl = document.getElementById('rows');
+  statusEl.textContent = 'Loading…';
+  try {
+    const res = await fetch(`${WORKER_URL}/admin/errors`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('out').style.display = 'block';
+
+    if (!data.errors.length) {
+      statusEl.textContent = 'No errors logged yet.';
+      rowsEl.innerHTML = '';
+      return;
+    }
+    statusEl.textContent = `${data.errors.length} most recent error${data.errors.length === 1 ? '' : 's'}.`;
+    rowsEl.innerHTML = data.errors.map(e => `
+      <tr>
+        <td>${esc(e.createdAt ? new Date(e.createdAt).toLocaleString() : '')}</td>
+        <td><span class="badge ${esc(e.source)}">${esc(e.source)}</span></td>
+        <td class="msg">${esc(e.message)}</td>
+        <td class="stack">${esc(e.stack)}</td>
+        <td class="msg">${esc(e.url)}</td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    if (document.getElementById('out').style.display === 'block') {
+      statusEl.textContent = 'Failed to load: ' + e.message;
+    } else {
+      document.getElementById('gate-err').textContent = e.message === 'Unauthorized' ? 'Wrong token.' : e.message;
+    }
+  }
+}
+
+function unlock() {
+  const token = document.getElementById('token-input').value.trim();
+  if (!token) return;
+  sessionStorage.setItem(STORAGE_KEY, token);
+  loadErrors(token);
+}
+
+document.getElementById('unlock-btn').addEventListener('click', unlock);
+document.getElementById('token-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
+document.getElementById('refresh-btn').addEventListener('click', () => loadErrors(sessionStorage.getItem(STORAGE_KEY)));
+
+// Skip the prompt if this tab already unlocked it (session-only, not persisted to disk).
+const remembered = sessionStorage.getItem(STORAGE_KEY);
+if (remembered) loadErrors(remembered);
+</script>
+</body>
+</html>

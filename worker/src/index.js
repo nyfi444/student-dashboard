@@ -14,6 +14,13 @@
    4. Contact form (/contact-message) — the ONLY writer of Firestore's
       `feedback` collection. Rate-limited and validated server-side since
       it's reachable by anyone, signed in or not.
+   5. Error logging (/log-error) — the ONLY writer of Firestore's `errors`
+      collection. Client-side crash reporter for both the app and the
+      marketing site; rate-limited since it's reachable by anyone.
+   6. Error viewer (/admin/errors) — read-only, token-gated (ADMIN_TOKEN
+      secret) endpoint for admin/errors.html to list recent crash reports.
+      Not origin-restricted like the rest, since the viewer page isn't
+      served from ALLOWED_ORIGIN; the bearer token is the security boundary.
 ──────────────────────────────────────────────────────────────── */
 
 const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
@@ -30,6 +37,9 @@ export default {
 
     // Stripe calls this server-to-server — no Origin header, verified by signature instead of CORS.
     if (url.pathname === '/stripe-webhook' && request.method === 'POST') return handleStripeWebhook(request, env);
+
+    // Token-gated, not origin-restricted (see job 6 above).
+    if (url.pathname === '/admin/errors' && request.method === 'GET') return handleAdminErrors(request, env);
 
     if (request.method !== 'POST') return jsonError('Method not allowed', 405, env, origin);
 
@@ -58,6 +68,10 @@ export default {
     if (url.pathname === '/contact-message') {
       if (!(await checkRateLimit(env, ip, 'contact', 5))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
       return handleContactMessage(request, env, origin);
+    }
+    if (url.pathname === '/log-error') {
+      if (!(await checkRateLimit(env, ip, 'log-error', 30))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      return handleLogError(request, env, origin);
     }
     return jsonError('Not found', 404, env, origin);
   },
@@ -321,6 +335,58 @@ async function handleContactMessage(request, env, origin) {
   }
 }
 
+/* ── 5. Error logging ─────────────────────────────────────────── */
+// Writes to Firestore's `errors` collection — same server-only pattern as
+// `feedback` (see firestore.rules). Reachable by anyone, so payload sizes
+// are capped and fields coerced to strings rather than trusted as-is.
+const ERROR_SOURCES = ['app', 'marketing'];
+async function handleLogError(request, env, origin) {
+  if (!env.FIREBASE_PROJECT_ID) return jsonError('Server misconfigured: FIREBASE_PROJECT_ID not set.', 500, env, origin);
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
+
+  const source = ERROR_SOURCES.includes(body.source) ? body.source : 'app';
+  const message = String(body.message || '').trim().slice(0, 2000);
+  const stack = String(body.stack || '').trim().slice(0, 4000);
+  const url = String(body.url || '').trim().slice(0, 500);
+  const userAgent = String(body.userAgent || '').trim().slice(0, 300);
+
+  if (!message) return jsonError('Missing error message', 400, env, origin);
+
+  try {
+    const id = crypto.randomUUID();
+    await writeFirestoreDoc(env, 'errors', id, { source, message, stack, url, userAgent, createdAt: new Date() });
+    return jsonOk({ ok: true }, env, origin);
+  } catch (e) {
+    // Don't fail loudly back to the client over a logging endpoint — just
+    // report success so a broken error-reporter doesn't itself spam retries.
+    console.error('Error log write failed', e);
+    return jsonOk({ ok: true }, env, origin);
+  }
+}
+
+/* ── 6. Error viewer ──────────────────────────────────────────── */
+// Backs admin/errors.html. Bearer token compared with timing-safe equality
+// against the ADMIN_TOKEN secret (set via `wrangler secret put ADMIN_TOKEN`).
+async function handleAdminErrors(request, env) {
+  const adminCors = { 'Access-Control-Allow-Origin': '*', 'content-type': 'application/json', 'X-Content-Type-Options': 'nosniff' };
+  if (!env.ADMIN_TOKEN) return new Response(JSON.stringify({ error: 'Server misconfigured: ADMIN_TOKEN not set.' }), { status: 500, headers: adminCors });
+  if (!env.FIREBASE_PROJECT_ID) return new Response(JSON.stringify({ error: 'Server misconfigured: FIREBASE_PROJECT_ID not set.' }), { status: 500, headers: adminCors });
+
+  const authHeader = request.headers.get('Authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  if (!token || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: adminCors });
+  }
+
+  try {
+    const errors = await queryRecentErrors(env, 50);
+    return new Response(JSON.stringify({ errors }), { headers: adminCors });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'Could not load errors: ' + e.message }), { status: 500, headers: adminCors });
+  }
+}
+
 /* ── Stripe signature verification ───────────────────────────── */
 async function verifyStripeSignature(rawBody, sigHeader, secret) {
   const parts = Object.fromEntries(sigHeader.split(',').map(p => p.split('=')));
@@ -421,6 +487,27 @@ async function readFirestoreDoc(env, collection, docId) {
   if (!res.ok) throw new Error('Firestore read failed: ' + await res.text());
   const data = await res.json();
   return fromFirestoreFields(data.fields || {});
+}
+async function queryRecentErrors(env, limit) {
+  const token = await getFirebaseAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery`;
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: 'errors' }],
+      orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
+      limit,
+    },
+  };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Firestore query failed: ' + await res.text());
+  const rows = await res.json();
+  return rows
+    .filter(r => r.document)
+    .map(r => ({ id: r.document.name.split('/').pop(), ...fromFirestoreFields(r.document.fields || {}) }));
 }
 function toFirestoreFields(obj) {
   const fields = {};

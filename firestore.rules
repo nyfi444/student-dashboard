@@ -37,5 +37,12 @@ service cloud.firestore {
     match /feedback/{id} {
       allow read, write: if false;
     }
+
+    // Client-side crash reports from the app and marketing site. Never read
+    // or written by the client directly — only the Worker's /log-error
+    // route writes these, same server-only pattern as feedback.
+    match /errors/{id} {
+      allow read, write: if false;
+    }
   }
 }
