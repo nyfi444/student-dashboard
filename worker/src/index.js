@@ -33,6 +33,12 @@ export default {
     const url = new URL(request.url);
     const origin = request.headers.get('Origin') || '';
 
+    // /admin/errors needs GET + an Authorization header, unlike every other
+    // route here (POST + content-type only) — handle its preflight separately
+    // so the browser doesn't reject the real request for a disallowed method/header.
+    if (request.method === 'OPTIONS' && url.pathname === '/admin/errors') {
+      return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
+    }
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env, origin) });
 
     // Stripe calls this server-to-server — no Origin header, verified by signature instead of CORS.
