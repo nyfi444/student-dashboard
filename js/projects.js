@@ -40,7 +40,7 @@ function openProjectModal(id) {
 function renderProjectModal(id) {
   const p = _projectDraft;
   openModal(`
-    <div class="modal-head"><h3>${id ? 'Edit project' : 'New project'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${id ? 'Edit project' : 'New project'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field-row">
         <div class="field"><label>Title</label><input class="input" id="pf-title" value="${esc(p.title)}"></div>
@@ -67,16 +67,16 @@ function shareProjectToGroup(id) {
 function milestoneBlock(m, i) {
   return `<div class="card card-pad mb-8" style="background:var(--surface-2)">
     <div class="flex-gap">
-      <div class="row-check ${m.done ? 'checked' : ''}" onclick="_projectDraft.milestones[${i}].done=!_projectDraft.milestones[${i}].done;renderProjectModal()">${m.done ? checkGlyph(true) : ''}</div>
+      <button type="button" class="row-check ${m.done ? 'checked' : ''}" role="checkbox" aria-checked="${m.done}" aria-label="Mark ${esc(m.title || 'milestone')} as ${m.done ? 'not done' : 'done'}" onclick="_projectDraft.milestones[${i}].done=!_projectDraft.milestones[${i}].done;renderProjectModal()">${m.done ? checkGlyph(true) : ''}</button>
       <input class="input" value="${esc(m.title)}" placeholder="Milestone" oninput="_projectDraft.milestones[${i}].title=this.value">
-      <button class="btn btn-ghost btn-icon btn-sm" onclick="_projectDraft.milestones.splice(${i},1);renderProjectModal()">${icon('trash',14)}</button>
+      <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove milestone" onclick="_projectDraft.milestones.splice(${i},1);renderProjectModal()">${icon('trash',14)}</button>
     </div>
     <div style="padding-left:28px;margin-top:6px">
       ${m.tasks.map((t, ti) => `
         <div class="flex-gap" style="margin-bottom:4px">
-          <div class="row-check ${t.done ? 'checked' : ''}" style="width:16px;height:16px" onclick="_projectDraft.milestones[${i}].tasks[${ti}].done=!_projectDraft.milestones[${i}].tasks[${ti}].done;renderProjectModal()">${t.done ? checkGlyph(true) : ''}</div>
+          <button type="button" class="row-check ${t.done ? 'checked' : ''}" style="width:20px;height:20px" role="checkbox" aria-checked="${t.done}" aria-label="Mark ${esc(t.title || 'task')} as ${t.done ? 'not done' : 'done'}" onclick="_projectDraft.milestones[${i}].tasks[${ti}].done=!_projectDraft.milestones[${i}].tasks[${ti}].done;renderProjectModal()">${t.done ? checkGlyph(true) : ''}</button>
           <input class="input" style="font-size:12.5px;padding:5px 8px" value="${esc(t.title)}" oninput="_projectDraft.milestones[${i}].tasks[${ti}].title=this.value">
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="_projectDraft.milestones[${i}].tasks.splice(${ti},1);renderProjectModal()">${icon('x',13,2.2)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove task" onclick="_projectDraft.milestones[${i}].tasks.splice(${ti},1);renderProjectModal()">${icon('x',13,2.2)}</button>
         </div>`).join('')}
       <button class="btn btn-sm" onclick="_projectDraft.milestones[${i}].tasks.push({id:uid(),title:'',done:false});renderProjectModal()">+ Task</button>
     </div>

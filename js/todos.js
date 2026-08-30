@@ -28,7 +28,7 @@ function pageTodos() {
         <div class="flex-between mb-8">
           <div class="flex-gap">${sectionGroupLabel(g)}</div>
           ${g.sectionId && g.sectionId !== '_filtered' ? `<div class="flex-gap">
-            <button class="btn btn-ghost btn-icon btn-sm" onclick="openSectionModal('${g.sectionId}')">${icon('pencil',13)}</button>
+            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit section" onclick="openSectionModal('${g.sectionId}')">${icon('pencil',13)}</button>
           </div>` : ''}
         </div>
         ${g.items.length ? g.items.sort(sortTodos).map(todoRow).join('') : emptyState(icon('check-square',22,1.4), 'All clear here.')}
@@ -41,7 +41,7 @@ function pageTodos() {
         <div class="list-row">
           <div class="row-title">${esc(rt.title)} <span class="small muted">— every ${DOW_NAMES[rt.dayOfWeek]}</span></div>
           ${rt.courseId ? courseChip(rt.courseId) : ''}
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="deleteRecurringTemplate('${rt.id}')">${icon('trash',14)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(rt.title)} template" onclick="deleteRecurringTemplate('${rt.id}')">${icon('trash',14)}</button>
         </div>
       `).join('') : emptyState(icon('refresh-cw',20,1.4), 'No recurring templates yet', '', 'Set up weekly readings or discussion posts and they’ll auto-add each week.')}
     </div>
@@ -63,7 +63,7 @@ function sectionGroupLabel(g) {
 function openSectionModal(id) {
   const s = id ? state.todoSections.find(x => x.id === id) : null;
   openModal(`
-    <div class="modal-head"><h3>${id ? 'Rename section' : 'New section'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${id ? 'Rename section' : 'New section'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Section name</label><input class="input" id="sec-name" value="${esc(s?.name || '')}" placeholder="This week, Personal, Long-term…"></div>
     </div>
@@ -93,7 +93,7 @@ function todoRow(t) {
     <button type="button" class="row-check ${t.done ? 'checked' : ''}" role="checkbox" aria-checked="${t.done}" aria-label="Mark ${esc(t.title)} as ${t.done ? 'not done' : 'done'}" onclick="toggleTodo('${t.id}')">${t.done ? checkGlyph(true) : ''}</button>
     <div class="row-title ${t.done ? 'done' : ''}" onclick="openTodoModal('${t.id}')">${priorityDot(t.priority)} ${esc(t.title)}</div>
     <div class="row-meta">${t.dueDate ? relativeDay(t.dueDate) : ''}</div>
-    <button class="btn btn-ghost btn-icon btn-sm" onclick="deleteTodo('${t.id}')">${icon('trash',14)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(t.title)}" onclick="deleteTodo('${t.id}')">${icon('trash',14)}</button>
   </div>`;
 }
 function toggleTodo(id) { const t = state.todos.find(x => x.id === id); t.done = !t.done; touch(); }
@@ -108,7 +108,7 @@ function openTodoModal(id) {
   const t = id ? state.todos.find(x => x.id === id) : { id: uid(), courseId: state.todoFilter !== 'all' && state.todoFilter !== 'none' ? state.todoFilter : null, sectionId: null, title: '', done: false, dueDate: todayIso(), priority: 'medium', recurring: null };
   window._todoDraft = { ...t };
   openModal(`
-    <div class="modal-head"><h3>${id ? 'Edit to-do' : 'New to-do'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${id ? 'Edit to-do' : 'New to-do'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Title</label><input class="input" id="tf-title" value="${esc(t.title)}"></div>
       <div class="field-row">
@@ -141,7 +141,7 @@ function saveTodoModal(id) {
 
 function openRecurringModal() {
   openModal(`
-    <div class="modal-head"><h3>New recurring template</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>New recurring template</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Title</label><input class="input" id="rf-title" placeholder="Weekly reading response"></div>
       <div class="field-row">

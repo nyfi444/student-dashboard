@@ -71,14 +71,14 @@ function pageDashboard() {
         <div class="flex-between mb-8"><h3 style="font-size:15px">What's due this week</h3><span class="pill" style="background:var(--accent-light);color:var(--accent)">${dueThisWeek.length}</span></div>
         ${dueThisWeek.length ? dueThisWeek.map(a => `
           <div class="list-row" onclick="openAssignmentModal('${a.id}')">
-            <div class="row-check ${isAssignmentDone(a) ? 'checked' : ''}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isAssignmentDone(a) ? checkGlyph(true) : ''}</div>
+            <button type="button" class="row-check ${isAssignmentDone(a) ? 'checked' : ''}" role="checkbox" aria-checked="${isAssignmentDone(a)}" aria-label="Mark ${esc(a.title)} as ${isAssignmentDone(a) ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isAssignmentDone(a) ? checkGlyph(true) : ''}</button>
             <div class="row-title">${esc(a.title)} ${typeTag(a.type)}</div>
             ${courseChip(a.courseId)}
             <div class="row-meta">${relativeDay(a.dueDate)}</div>
           </div>`).join('') : emptyState(icon('cloud-sun', 26, 1.4), 'Nothing due in the next 7 days.')}
         ${overdue.length ? `<div class="divider"></div><div class="small" style="color:var(--danger);font-weight:600;margin-bottom:6px">Overdue</div>${overdue.map(a => `
           <div class="list-row dash-overdue-row" onclick="openAssignmentModal('${a.id}')">
-            <div class="row-check" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')"></div>
+            <button type="button" class="row-check" role="checkbox" aria-checked="false" aria-label="Mark ${esc(a.title)} as done" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')"></button>
             <div class="row-title">${esc(a.title)}</div>${courseChip(a.courseId)}
             <div class="row-meta" style="color:var(--danger)">${relativeDay(a.dueDate)}</div>
           </div>`).join('')}` : ''}
@@ -139,7 +139,7 @@ function pageDashboard() {
   return `
     ${pageHead(`${greeting}${name}`, fmtDateLong(todayIso()), `
       <button class="btn btn-sm" onclick="toggleTodayMode()">${icon('sun', 13, 2)} Today</button>
-      <button class="btn btn-icon btn-sm" onclick="openDashboardCustomizeModal()" title="Customize dashboard">${icon('settings', 16, 1.6)}</button>
+      <button class="btn btn-icon btn-sm" onclick="openDashboardCustomizeModal()" title="Customize dashboard" aria-label="Customize dashboard">${icon('settings', 16, 1.6)}</button>
     `)}
     ${order.filter(id => DASH_WIDGETS[id] && !hidden.includes(id)).map(id => DASH_WIDGETS[id]()).join('')}
   `;
@@ -191,7 +191,7 @@ function pageDashboardToday() {
       <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">Tasks today</h3>
         ${tasksToday.length ? tasksToday.map(td => `
-          <div class="list-row" onclick="toggleTodo('${td.id}')"><div class="row-check ${td.done ? 'checked' : ''}">${td.done ? checkGlyph(true) : ''}</div><div class="row-title">${esc(td.title)}</div>${priorityDot(td.priority)}</div>
+          <div class="list-row" onclick="toggleTodo('${td.id}')"><button type="button" class="row-check ${td.done ? 'checked' : ''}" role="checkbox" aria-checked="${td.done}" aria-label="Mark ${esc(td.title)} as ${td.done ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleTodo('${td.id}')">${td.done ? checkGlyph(true) : ''}</button><div class="row-title">${esc(td.title)}</div>${priorityDot(td.priority)}</div>
         `).join('') : emptyState(icon('check-square', 22, 1.4), 'No tasks for today.')}
       </div>
     </div>
@@ -200,7 +200,7 @@ function pageDashboardToday() {
       <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">Due today</h3>
         ${dueToday.length ? dueToday.map(a => `
-          <div class="list-row" onclick="openAssignmentModal('${a.id}')"><div class="row-check ${isAssignmentDone(a) ? 'checked' : ''}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isAssignmentDone(a) ? checkGlyph(true) : ''}</div><div class="row-title">${esc(a.title)} ${typeTag(a.type)}</div>${courseChip(a.courseId)}</div>
+          <div class="list-row" onclick="openAssignmentModal('${a.id}')"><button type="button" class="row-check ${isAssignmentDone(a) ? 'checked' : ''}" role="checkbox" aria-checked="${isAssignmentDone(a)}" aria-label="Mark ${esc(a.title)} as ${isAssignmentDone(a) ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isAssignmentDone(a) ? checkGlyph(true) : ''}</button><div class="row-title">${esc(a.title)} ${typeTag(a.type)}</div>${courseChip(a.courseId)}</div>
         `).join('') : emptyState(icon('clipboard-list', 22, 1.4), 'Nothing due today.')}
       </div>
       <div class="card card-pad">
@@ -236,7 +236,7 @@ function openDashboardCustomizeModal() {
   const size = state.settings.stickyNoteSize || 'md';
   const order = state.settings.dashboardWidgets || Object.keys(DASH_WIDGET_LABELS);
   openModal(`
-    <div class="modal-head"><h3>Customize dashboard</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Customize dashboard</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Theme</label>
         <div class="segmented">
@@ -261,10 +261,10 @@ function openDashboardCustomizeModal() {
 function dashWidgetRow(id, i, total) {
   const on = !(state.settings.hiddenWidgets || []).includes(id);
   return `<div class="list-row">
-    <div class="row-check ${on ? 'checked' : ''}" onclick="toggleDashWidget('${id}')">${on ? checkGlyph(true) : ''}</div>
+    <button type="button" class="row-check ${on ? 'checked' : ''}" role="checkbox" aria-checked="${on}" aria-label="${on ? 'Hide' : 'Show'} ${esc(DASH_WIDGET_LABELS[id] || id)} widget" onclick="toggleDashWidget('${id}')">${on ? checkGlyph(true) : ''}</button>
     <div class="row-title">${esc(DASH_WIDGET_LABELS[id] || id)}</div>
-    <button class="btn btn-ghost btn-icon btn-sm" onclick="moveDashWidget(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
-    <button class="btn btn-ghost btn-icon btn-sm" onclick="moveDashWidget(${i},1)" ${i === total - 1 ? 'disabled' : ''}>↓</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Move up" onclick="moveDashWidget(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Move down" onclick="moveDashWidget(${i},1)" ${i === total - 1 ? 'disabled' : ''}>↓</button>
   </div>`;
 }
 function toggleDashWidget(id) {

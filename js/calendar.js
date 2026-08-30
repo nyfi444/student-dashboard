@@ -15,9 +15,9 @@ function pageCalendar() {
         <button class="${v === 'week' ? 'active' : ''}" onclick="setCalView('week')">Week</button>
         <button class="${v === 'day' ? 'active' : ''}" onclick="setCalView('day')">Day</button>
       </div>
-      <button class="btn btn-sm btn-icon" onclick="calNav(-1)">${icon('chevron-left', 15, 2)}</button>
+      <button class="btn btn-sm btn-icon" aria-label="Previous period" onclick="calNav(-1)">${icon('chevron-left', 15, 2)}</button>
       <button class="btn btn-sm" onclick="calToday()">Today</button>
-      <button class="btn btn-sm btn-icon" onclick="calNav(1)">${icon('chevron-right', 15, 2)}</button>
+      <button class="btn btn-sm btn-icon" aria-label="Next period" onclick="calNav(1)">${icon('chevron-right', 15, 2)}</button>
       <button class="btn btn-sm" onclick="openBreaksModal()">${icon('flag', 13, 2)} Breaks</button>
       <button class="btn btn-primary" onclick="openEventModal(null,'${state.calDate}')">+ Time block</button>
     `)}
@@ -29,7 +29,7 @@ function isBreakDate(dIso) { return state.breaks.some(b => dIso >= b.startDate &
 function breakOnDate(dIso) { return state.breaks.find(b => dIso >= b.startDate && dIso <= b.endDate); }
 function openBreaksModal() {
   openModal(`
-    <div class="modal-head"><h3>School breaks / no-class days</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>School breaks / no-class days</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="small muted mb-8">Class meetings are hidden on these dates — Labor Day, Fall Break, Thanksgiving, Reading Day, etc.</div>
       <div id="brk-list">${state.breaks.map((b, i) => breakRow(b, i)).join('') || '<div class="small muted mb-8">No breaks added yet.</div>'}</div>
@@ -44,7 +44,7 @@ function openBreaksModal() {
   `, { wide: true });
 }
 function breakRow(b, i) {
-  return `<div class="list-row"><div class="row-title">${esc(b.name)}</div><div class="row-meta">${fmtDate(b.startDate)} – ${fmtDate(b.endDate)}</div><button class="btn btn-ghost btn-icon btn-sm" onclick="removeBreak(${i})">${icon('x',13,2.2)}</button></div>`;
+  return `<div class="list-row"><div class="row-title">${esc(b.name)}</div><div class="row-meta">${fmtDate(b.startDate)} – ${fmtDate(b.endDate)}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove break" onclick="removeBreak(${i})">${icon('x',13,2.2)}</button></div>`;
 }
 function addBreak() {
   const name = $('#brk-name').value.trim();
@@ -230,7 +230,7 @@ function renderEventModal(id) {
   const e = _eventDraft;
   const recent = state.settings.recentEventColors || [];
   openModal(`
-    <div class="modal-head"><h3>${id ? 'Edit time block' : 'New time block'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${id ? 'Edit time block' : 'New time block'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Title</label><input class="input" id="ef-title" value="${esc(e.title)}" placeholder="Study session, gym, work…"></div>
       <div class="field-row">

@@ -57,7 +57,7 @@ function pageTimer() {
             ${s.courseId ? courseChip(s.courseId) : '<span class="small muted">General</span>'}
             <div class="row-title">${fmtDuration(s.minutes)}</div>
             <div class="row-meta">${fmtDate(s.date)}</div>
-            <button class="btn btn-ghost btn-icon btn-sm" onclick="deleteSession('${s.id}')">${icon('trash',14)}</button>
+            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete session" onclick="deleteSession('${s.id}')">${icon('trash',14)}</button>
           </div>`).join('') : emptyState(icon('file-text',26,1.4), 'Log a session to see it here.')}
       </div>
     </div>

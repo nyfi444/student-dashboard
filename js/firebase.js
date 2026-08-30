@@ -82,7 +82,7 @@ async function runGoogleSignIn() {
 }
 function openAgeGateModal() {
   openModal(`
-    <div class="modal-head"><h3>Before you sign in</h3><button class="close-x" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Before you sign in</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
       <label class="checkbox-row" style="align-items:flex-start;gap:10px">
         <input type="checkbox" id="age-tos-check" style="margin-top:2px;width:18px;height:18px;flex-shrink:0">

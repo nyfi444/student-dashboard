@@ -121,7 +121,7 @@ function pageRecentlyDeleted() {
         <div class="row-title">${esc(t.label || 'Untitled')}</div>
         <div class="row-meta">Deleted ${fmtRelativeTime(t.deletedAt)}</div>
         <button class="btn btn-sm" onclick="restoreTrashItem('${t.id}')">${icon('refresh-cw', 12, 2)} Restore</button>
-        <button class="btn btn-ghost btn-icon btn-sm" onclick="permanentlyDeleteTrashItem('${t.id}')">${icon('trash', 14)}</button>
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete permanently" onclick="permanentlyDeleteTrashItem('${t.id}')">${icon('trash', 14)}</button>
       </div>
   `).join('');
   return `
@@ -195,7 +195,7 @@ function resetAllData() {
 
 function openSemesterResetWizard() {
   openModal(`
-    <div class="modal-head"><h3>Semester reset</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Semester reset</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <p class="small muted mb-16">Archives your current semester (nothing is deleted) and sets up a new one.</p>
       <div class="field"><label>New semester name</label><input class="input" id="sw-name" placeholder="Spring Semester"></div>

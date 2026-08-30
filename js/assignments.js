@@ -68,7 +68,7 @@ function openAssignmentModal(id) {
 function renderAssignmentModal(id) {
   const a = _assignDraft;
   openModal(`
-    <div class="modal-head"><h3>${id ? 'Edit assignment' : 'New assignment'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${id ? 'Edit assignment' : 'New assignment'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Title</label><input class="input" id="af-title" value="${esc(a.title)}"></div>
       <div class="field-row">
@@ -115,7 +115,7 @@ function attachmentRow(att, i) {
     <select class="select" style="max-width:140px" onchange="_assignDraft.attachments[${i}].kind=this.value">${ATTACHMENT_KINDS.map(k => `<option value="${k}" ${k === att.kind ? 'selected' : ''}>${k[0].toUpperCase() + k.slice(1)}</option>`).join('')}</select>
     <input class="input" value="${esc(att.name)}" placeholder="Name" oninput="_assignDraft.attachments[${i}].name=this.value">
     ${att.url ? `<a href="${esc(att.url)}" target="_blank" rel="noopener" class="btn btn-sm" onclick="event.stopPropagation()">Open</a>` : ''}
-    <button class="btn btn-ghost btn-icon btn-sm" onclick="_assignDraft.attachments.splice(${i},1);renderAssignmentModal(window._assignDraft.id && state.assignments.some(a=>a.id===window._assignDraft.id) ? window._assignDraft.id : null)">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove attachment" onclick="_assignDraft.attachments.splice(${i},1);renderAssignmentModal(window._assignDraft.id && state.assignments.some(a=>a.id===window._assignDraft.id) ? window._assignDraft.id : null)">${icon('x',13,2.2)}</button>
   </div>`;
 }
 function addAttachmentLink() {
@@ -137,7 +137,7 @@ function rubricRow(r, i) {
     <input class="input" value="${esc(r.item)}" placeholder="Piece of the assignment" oninput="_assignDraft.rubric[${i}].item=this.value">
     <input class="input" type="number" value="${r.points ?? ''}" style="max-width:80px" placeholder="pts" oninput="_assignDraft.rubric[${i}].points=Number(this.value)">
     <input class="input" type="number" value="${r.earned ?? ''}" style="max-width:80px" placeholder="earned" oninput="_assignDraft.rubric[${i}].earned=Number(this.value)">
-    <button class="btn btn-ghost btn-icon btn-sm" onclick="_assignDraft.rubric.splice(${i},1);renderAssignmentModal()">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove rubric item" onclick="_assignDraft.rubric.splice(${i},1);renderAssignmentModal()">${icon('x',13,2.2)}</button>
   </div>`;
 }
 function addRubricRow() { _assignDraft.rubric.push({ id: uid(), item: '', points: null, earned: null, done: false }); renderAssignmentModal(); }
@@ -170,7 +170,7 @@ function deleteAssignment(id) {
 function openAssignmentUploadModal() {
   if (!activeCourses().length) { toast('Add a course first so uploaded assignments have somewhere to go', 'error'); return; }
   openModal(`
-    <div class="modal-head"><h3>Upload assignments <span class="ai-badge">AI</span></h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Upload assignments <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       ${!aiEnabled() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">AI parsing isn’t set up on this deployment yet.</div>` : ''}
       <div class="small muted mb-8">Upload a syllabus or assignment sheet to bulk-add deadlines to an existing course, instead of typing each one in by hand.</div>
@@ -250,7 +250,7 @@ function openAssignmentReviewModal(list) {
 }
 function renderAssignmentReviewModal() {
   openModal(`
-    <div class="modal-head"><h3>Review & add <span class="ai-badge">AI</span></h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Review & add <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="small muted mb-8">Double-check what the AI pulled out before adding it — edit anything that's off, then pick which course these belong to.</div>
       <div class="field"><label>Add to course</label><select class="select" id="au-review-course" onchange="window._auCourseId=this.value">${activeCourses().map(c => `<option value="${c.id}" ${c.id === window._auCourseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>

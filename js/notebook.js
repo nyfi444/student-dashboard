@@ -57,18 +57,18 @@ function pageNotebook() {
       </div>
     </div>
     <div class="nb-bubble" id="nb-bubble">
-      <button data-nb-cmd="bold" onmousedown="event.preventDefault()" onclick="runNbCommand('bold')" title="Bold"><b>B</b></button>
-      <button data-nb-cmd="italic" onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic"><i>I</i></button>
-      <button data-nb-cmd="underline" onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline"><u>U</u></button>
-      <button data-nb-cmd="strikeThrough" onmousedown="event.preventDefault()" onclick="runNbCommand('strikeThrough')" title="Strikethrough"><s>S</s></button>
-      <button onmousedown="event.preventDefault()" onclick="runNbHighlight()" title="Highlight">${icon('palette', 14)}</button>
-      <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','PRE')" title="Code">${'</>'}</button>
+      <button data-nb-cmd="bold" onmousedown="event.preventDefault()" onclick="runNbCommand('bold')" title="Bold" aria-label="Bold"><b>B</b></button>
+      <button data-nb-cmd="italic" onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic" aria-label="Italic"><i>I</i></button>
+      <button data-nb-cmd="underline" onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline" aria-label="Underline"><u>U</u></button>
+      <button data-nb-cmd="strikeThrough" onmousedown="event.preventDefault()" onclick="runNbCommand('strikeThrough')" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+      <button onmousedown="event.preventDefault()" onclick="runNbHighlight()" title="Highlight" aria-label="Highlight">${icon('palette', 14)}</button>
+      <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','PRE')" title="Code" aria-label="Code">${'</>'}</button>
       <span class="nb-bubble-sep"></span>
-      <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H3')" title="Heading">H3</button>
-      <button onmousedown="event.preventDefault()" onclick="runNbCommand('insertUnorderedList')" title="Bulleted list">${icon('clipboard-list', 14)}</button>
-      <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','blockquote')" title="Quote">”</button>
+      <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H3')" title="Heading" aria-label="Heading 3">H3</button>
+      <button onmousedown="event.preventDefault()" onclick="runNbCommand('insertUnorderedList')" title="Bulleted list" aria-label="Bulleted list">${icon('clipboard-list', 14)}</button>
+      <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','blockquote')" title="Quote" aria-label="Quote">”</button>
       <span class="nb-bubble-sep"></span>
-      <button onmousedown="event.preventDefault()" onclick="promptInsertLink()" title="Link">${icon('link', 13)}</button>
+      <button onmousedown="event.preventDefault()" onclick="promptInsertLink()" title="Link" aria-label="Insert link">${icon('link', 13)}</button>
     </div>
     <div class="nb-slash-menu" id="nb-slash-menu">
       ${SLASH_COMMANDS.map(c => `<div class="nb-slash-item" data-key="${c.key}" onmousedown="event.preventDefault()" onclick="runSlashCommand('${c.key}')"><span class="nb-slash-glyph">${c.glyph}</span><span><div class="nb-slash-label">${c.label}</div><div class="nb-slash-desc">${c.desc}</div></span></div>`).join('')}
@@ -268,9 +268,9 @@ function notebookTree(parentId, depth, search, sort) {
           <span class="flex-gap">${icon(n.open || forceOpen ? 'folder-open' : 'folder', 14)}</span>
           <span class="nb-folder-name">${esc(n.name)}</span>
           ${count ? `<span class="nb-count">${count}</span>` : ''}
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();createNote('${n.id}')" title="New note">${icon('plus', 13, 2.2)}</button>
-          ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();shareFolderToGroup('${n.id}')" title="Share this notebook with a group">${icon('users', 13)}</button>` : ''}
-          ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();deleteNoteItem('${n.id}')">${icon('trash', 14)}</button>` : ''}
+          <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();createNote('${n.id}')" title="New note" aria-label="New note in ${esc(n.name)}">${icon('plus', 13, 2.2)}</button>
+          ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();shareFolderToGroup('${n.id}')" title="Share this notebook with a group" aria-label="Share ${esc(n.name)} with a group">${icon('users', 13)}</button>` : ''}
+          ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(n.name)}" onclick="event.stopPropagation();deleteNoteItem('${n.id}')">${icon('trash', 14)}</button>` : ''}
         </div>
         ${(n.open || forceOpen) ? `<div class="nb-children">${inner}</div>` : ''}
       </div>`;
@@ -283,7 +283,7 @@ function notebookTree(parentId, depth, search, sort) {
         <div class="nb-note-title">${esc(n.name)}</div>
         <div class="nb-note-sub">${n.courseId ? `<span class="pill-dot" style="background:${getCourseColor(n.courseId)}"></span>${esc(getCourse(n.courseId)?.code || '')} · ` : ''}${fmtRelativeTime(n.updatedAt)}</div>
       </div>
-      <button class="btn btn-ghost btn-icon btn-sm nb-note-del" onclick="event.stopPropagation();deleteNoteItem('${n.id}')">${icon('trash', 14)}</button>
+      <button class="btn btn-ghost btn-icon btn-sm nb-note-del" aria-label="Delete ${esc(n.name)}" onclick="event.stopPropagation();deleteNoteItem('${n.id}')">${icon('trash', 14)}</button>
     </div>`;
   });
   return rows.join('');
@@ -315,7 +315,7 @@ function duplicateNote(id) {
 function openMoveNoteModal(id) {
   const n = state.notes.find(x => x.id === id);
   openModal(`
-    <div class="modal-head"><h3>Move note</h3><button class="close-x" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Move note</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Destination folder</label>
         <select class="select" id="mv-folder">${allFolders().map(f => `<option value="${f.id}" ${f.id === n.parentId ? 'selected' : ''}>${'—'.repeat(f.depth)}${f.depth ? ' ' : ''}${esc(f.name)}</option>`).join('')}</select>
@@ -371,25 +371,25 @@ function renderNoteEditor(note) {
         </div>
       </div>
       <div class="nb-toolbar" id="nb-toolbar">
-        <button data-nb-cmd="bold" onmousedown="event.preventDefault()" onclick="runNbCommand('bold')" title="Bold"><b>B</b></button>
-        <button data-nb-cmd="italic" onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic"><i>I</i></button>
-        <button data-nb-cmd="underline" onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline"><u>U</u></button>
-        <button data-nb-cmd="strikeThrough" onmousedown="event.preventDefault()" onclick="runNbCommand('strikeThrough')" title="Strikethrough"><s>S</s></button>
-        <button onmousedown="event.preventDefault()" onclick="runNbHighlight()" title="Highlight">${icon('palette', 14)}</button>
+        <button data-nb-cmd="bold" onmousedown="event.preventDefault()" onclick="runNbCommand('bold')" title="Bold" aria-label="Bold"><b>B</b></button>
+        <button data-nb-cmd="italic" onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic" aria-label="Italic"><i>I</i></button>
+        <button data-nb-cmd="underline" onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline" aria-label="Underline"><u>U</u></button>
+        <button data-nb-cmd="strikeThrough" onmousedown="event.preventDefault()" onclick="runNbCommand('strikeThrough')" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+        <button onmousedown="event.preventDefault()" onclick="runNbHighlight()" title="Highlight" aria-label="Highlight">${icon('palette', 14)}</button>
         <span class="nb-toolbar-sep"></span>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H1')" title="Heading 1">H1</button>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H2')" title="Heading 2">H2</button>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H3')" title="Heading 3">H3</button>
+        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H1')" title="Heading 1" aria-label="Heading 1">H1</button>
+        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H2')" title="Heading 2" aria-label="Heading 2">H2</button>
+        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H3')" title="Heading 3" aria-label="Heading 3">H3</button>
         <span class="nb-toolbar-sep"></span>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('insertUnorderedList')" title="Bulleted list">${icon('clipboard-list', 14)}</button>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('insertOrderedList')" title="Numbered list">1.</button>
-        <button onmousedown="event.preventDefault()" onclick="insertNbChecklist()" title="Checklist">☑</button>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','blockquote')" title="Quote">”</button>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','PRE')" title="Code">${'</>'}</button>
-        <button onmousedown="event.preventDefault()" onclick="insertNbDivider()" title="Divider">—</button>
+        <button onmousedown="event.preventDefault()" onclick="runNbCommand('insertUnorderedList')" title="Bulleted list" aria-label="Bulleted list">${icon('clipboard-list', 14)}</button>
+        <button onmousedown="event.preventDefault()" onclick="runNbCommand('insertOrderedList')" title="Numbered list" aria-label="Numbered list">1.</button>
+        <button onmousedown="event.preventDefault()" onclick="insertNbChecklist()" title="Checklist" aria-label="Checklist">☑</button>
+        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','blockquote')" title="Quote" aria-label="Quote">”</button>
+        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','PRE')" title="Code" aria-label="Code">${'</>'}</button>
+        <button onmousedown="event.preventDefault()" onclick="insertNbDivider()" title="Divider" aria-label="Divider">—</button>
         <span class="nb-toolbar-sep"></span>
-        <button onmousedown="event.preventDefault()" onclick="promptInsertLink()" title="Link">${icon('link', 13)}</button>
-        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','P')" title="Clear formatting">${icon('x', 13, 2.2)}</button>
+        <button onmousedown="event.preventDefault()" onclick="promptInsertLink()" title="Link" aria-label="Insert link">${icon('link', 13)}</button>
+        <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','P')" title="Clear formatting" aria-label="Clear formatting">${icon('x', 13, 2.2)}</button>
       </div>
       <div class="nb-hint">Type <code>/</code> for blocks, or select text to format</div>
       <div class="rich-editor nb-editor-body" id="note-editor" contenteditable="true" data-placeholder="Start writing…" oninput="onNoteEdit('${note.id}', this)">${note.content || ''}</div>

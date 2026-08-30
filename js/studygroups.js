@@ -36,7 +36,7 @@ function groupCard(g) {
 }
 function openGroupModal() {
   openModal(`
-    <div class="modal-head"><h3>New study group</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>New study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Group name</label><input class="input" id="gf-name" placeholder="Calc II study crew"></div>
       <div class="field"><label>Course</label><select class="select" id="gf-course"><option value="">—</option>${activeCourses().map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
@@ -55,7 +55,7 @@ async function createGroup() {
 }
 function openJoinGroupModal() {
   openModal(`
-    <div class="modal-head"><h3>Join a group</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Join a group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Group code</label><input class="input" id="jf-code" placeholder="ABC123" style="text-transform:uppercase"></div>
       ${!fbConfigured() ? `<div class="small muted">Sync isn't set up on this device, so joining only works once it is — ask whoever created the group to enable it in Settings.</div>` : ''}
@@ -106,7 +106,7 @@ function setGroupTab(tab) { window._groupTab = tab; renderGroupDetail(state.stud
 function renderGroupDetail(g) {
   const tab = window._groupTab;
   openModal(`
-    <div class="modal-head"><h3>${esc(g.name)}</h3><button class="close-x" onclick="closeGroupDetail()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${esc(g.name)}</h3><button class="close-x" aria-label="Close" onclick="closeGroupDetail()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="small muted mb-8">Share code: <strong style="letter-spacing:.06em">${g.code}</strong> · ${g.members.length} member${g.members.length === 1 ? '' : 's'}</div>
       <div class="segmented mb-16">
@@ -170,7 +170,7 @@ function renderGroupSessionsTab(g) {
       <div class="list-row">
         <div class="row-title">${esc(e.title)}</div>
         <div class="row-meta">${relativeDay(e.date)}${e.time ? ' · ' + fmtTime(e.time) : ''}</div>
-        <button class="btn btn-ghost btn-icon btn-sm" onclick="removeGroupEvent('${g.id}','${e.id}')">${icon('trash',14)}</button>
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(e.title)}" onclick="removeGroupEvent('${g.id}','${e.id}')">${icon('trash',14)}</button>
       </div>`).join('') : emptyState(icon('calendar',26,1.4), 'No sessions scheduled yet.')}
   `;
 }
@@ -184,7 +184,7 @@ function renderGroupSharedTab(g) {
         <div class="row-title">${esc(s.title)}${s.kind === 'deck' ? ` <span class="small muted">(${s.cards.length} cards)</span>` : s.kind === 'project' ? ` <span class="small muted">(${(s.milestones || []).length} milestones)</span>` : s.kind === 'note-bundle' ? ` <span class="small muted">(${(s.notes || []).length} notes)</span>` : ''}</div>
         <div class="row-meta">${esc(s.sharedBy || '')}</div>
         <button class="btn btn-sm" onclick="importSharedItem('${g.id}','${s.id}')">Add to mine</button>
-        <button class="btn btn-ghost btn-icon btn-sm" onclick="removeSharedItem('${g.id}','${s.id}')">${icon('trash',14)}</button>
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(s.title)}" onclick="removeSharedItem('${g.id}','${s.id}')">${icon('trash',14)}</button>
       </div>`).join('') : emptyState(icon('layers',22,1.4), 'Nothing shared yet', '', 'Share a notebook, note, or flashcard deck from the Notebook or Flashcards page.')}
   `;
 }
@@ -194,7 +194,7 @@ function renderGroupSharedTab(g) {
 // since the extracted text just lives in the note's content like anything else.
 function openShareFromGroupModal(groupId) {
   openModal(`
-    <div class="modal-head"><h3>Link something into this group</h3><button class="close-x" onclick="renderGroupDetail(state.studyGroups.find(x=>x.id==='${groupId}'))">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Link something into this group</h3><button class="close-x" aria-label="Close" onclick="renderGroupDetail(state.studyGroups.find(x=>x.id==='${groupId}'))">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>What do you want to share?</label>
         <select class="select" id="sfg-kind" onchange="renderShareFromGroupItems()">
@@ -262,12 +262,12 @@ function renderGroupTasksTab(g) {
     <div class="divider"></div>
     ${shown.length ? shown.map(t => `
       <div class="list-row">
-        <div class="row-check ${t.done ? 'checked' : ''}" onclick="toggleGroupTask('${g.id}','${t.id}')">${t.done ? checkGlyph(true) : ''}</div>
+        <button type="button" class="row-check ${t.done ? 'checked' : ''}" role="checkbox" aria-checked="${t.done}" aria-label="Mark ${esc(t.title)} as ${t.done ? 'not done' : 'done'}" onclick="toggleGroupTask('${g.id}','${t.id}')">${t.done ? checkGlyph(true) : ''}</button>
         <div class="row-title ${t.done ? 'done' : ''}">${esc(t.title)}</div>
         <select class="select" style="max-width:150px" onchange="setGroupTaskOwner('${g.id}','${t.id}',this.value)">
           <option value="">Unassigned</option>${(g.members || []).map(m => `<option value="${esc(m)}" ${m === t.assignedTo ? 'selected' : ''}>${esc(m)}${m === me ? ' (you)' : ''}</option>`).join('')}
         </select>
-        <button class="btn btn-ghost btn-icon btn-sm" onclick="removeGroupTask('${g.id}','${t.id}')">${icon('trash',14)}</button>
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(t.title)}" onclick="removeGroupTask('${g.id}','${t.id}')">${icon('trash',14)}</button>
       </div>`).join('') : emptyState(icon('check-square',22,1.4), mineOnly ? 'Nothing assigned to you.' : 'No shared tasks yet.')}
   `;
 }
@@ -314,7 +314,7 @@ function renderGroupAvailabilityTab(g) {
     </div>
     <div class="divider"></div>
     <div class="small dim mb-8" style="font-weight:600">Your blocks</div>
-    ${mine.length ? mine.map((b, i) => `<div class="list-row"><div class="row-title">${AVAIL_DAYS[b.day]} ${fmtTime(b.start)}–${fmtTime(b.end)}</div><button class="btn btn-ghost btn-icon btn-sm" onclick="removeAvailability('${g.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('') : `<div class="small muted">None yet.</div>`}
+    ${mine.length ? mine.map((b, i) => `<div class="list-row"><div class="row-title">${AVAIL_DAYS[b.day]} ${fmtTime(b.start)}–${fmtTime(b.end)}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove availability block" onclick="removeAvailability('${g.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('') : `<div class="small muted">None yet.</div>`}
     <div class="divider"></div>
     <div class="small dim mb-8" style="font-weight:600">Everyone's overlap</div>
     ${overlaps.length ? overlaps.map(o => `<div class="list-row"><div class="row-title">${AVAIL_DAYS[o.day]} ${fmtTime(o.start)}–${fmtTime(o.end)}</div><span class="small muted">${o.members.join(', ')}</span></div>`).join('') : emptyState(icon('users',22,1.4), 'No overlapping availability yet — add your blocks above.')}
@@ -380,29 +380,29 @@ function addGroupProject(groupId) {
 function renderGroupProjectCard(g, p) {
   return `
     <div class="card card-pad mb-16">
-      <div class="flex-between"><div style="font-weight:700">${esc(p.title)}</div><button class="btn btn-ghost btn-icon btn-sm" onclick="removeGroupProject('${g.id}','${p.id}')">${icon('trash',14)}</button></div>
+      <div class="flex-between"><div style="font-weight:700">${esc(p.title)}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(p.title)}" onclick="removeGroupProject('${g.id}','${p.id}')">${icon('trash',14)}</button></div>
       <div class="small dim mt-8" style="font-weight:600">Tasks</div>
       ${p.tasks.map((t, i) => `
         <div class="list-row">
-          <div class="row-check ${t.done ? 'checked' : ''}" onclick="toggleGroupProjectTask('${g.id}','${p.id}',${i})">${t.done ? checkGlyph(true) : ''}</div>
+          <button type="button" class="row-check ${t.done ? 'checked' : ''}" role="checkbox" aria-checked="${t.done}" aria-label="Mark ${esc(t.title)} as ${t.done ? 'not done' : 'done'}" onclick="toggleGroupProjectTask('${g.id}','${p.id}',${i})">${t.done ? checkGlyph(true) : ''}</button>
           <div class="row-title ${t.done ? 'done' : ''}">${esc(t.title)}</div>
           <select class="select" style="max-width:140px" onchange="setGroupProjectTaskOwner('${g.id}','${p.id}',${i},this.value)">
             <option value="">Unassigned</option>${g.members.map(m => `<option value="${esc(m)}" ${m === t.assignedTo ? 'selected' : ''}>${esc(m)}</option>`).join('')}
           </select>
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="removeGroupProjectTask('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(t.title)}" onclick="removeGroupProjectTask('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button>
         </div>`).join('')}
       <div class="field-row mt-8"><input class="input" id="gpt-title-${p.id}" placeholder="New task"><button class="btn btn-sm" onclick="addGroupProjectTask('${g.id}','${p.id}')">+ Task</button></div>
 
       <div class="small dim mt-16" style="font-weight:600">Deadlines</div>
-      ${p.deadlines.map((d, i) => `<div class="list-row"><div class="row-title">${esc(d.title)}</div><div class="row-meta">${fmtDate(d.date)}</div><button class="btn btn-ghost btn-icon btn-sm" onclick="removeGroupProjectDeadline('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('')}
+      ${p.deadlines.map((d, i) => `<div class="list-row"><div class="row-title">${esc(d.title)}</div><div class="row-meta">${fmtDate(d.date)}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(d.title)}" onclick="removeGroupProjectDeadline('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('')}
       <div class="field-row mt-8"><input class="input" id="gpd-title-${p.id}" placeholder="Deadline"><input class="input" type="date" id="gpd-date-${p.id}"><button class="btn btn-sm" onclick="addGroupProjectDeadline('${g.id}','${p.id}')">+ Deadline</button></div>
 
       <div class="small dim mt-16" style="font-weight:600">Meeting dates</div>
-      ${p.meetings.map((m, i) => `<div class="list-row"><div class="row-title">${esc(m.title)}</div><div class="row-meta">${fmtDate(m.date)}</div><button class="btn btn-ghost btn-icon btn-sm" onclick="removeGroupProjectMeeting('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('')}
+      ${p.meetings.map((m, i) => `<div class="list-row"><div class="row-title">${esc(m.title)}</div><div class="row-meta">${fmtDate(m.date)}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(m.title)}" onclick="removeGroupProjectMeeting('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('')}
       <div class="field-row mt-8"><input class="input" id="gpm-title-${p.id}" placeholder="Meeting"><input class="input" type="date" id="gpm-date-${p.id}"><button class="btn btn-sm" onclick="addGroupProjectMeeting('${g.id}','${p.id}')">+ Meeting</button></div>
 
       <div class="small dim mt-16" style="font-weight:600">Files</div>
-      ${p.files.map((f, i) => `<div class="list-row"><a class="row-title" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a><button class="btn btn-ghost btn-icon btn-sm" onclick="removeGroupProjectFile('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('')}
+      ${p.files.map((f, i) => `<div class="list-row"><a class="row-title" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(f.name)}" onclick="removeGroupProjectFile('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('')}
       <div class="field-row mt-8"><input class="input" id="gpf-name-${p.id}" placeholder="File name"><input class="input" id="gpf-url-${p.id}" placeholder="Link (Drive, etc.)"><button class="btn btn-sm" onclick="addGroupProjectFile('${g.id}','${p.id}')">+ File</button></div>
     </div>
   `;
@@ -479,7 +479,7 @@ function openShareToGroupModal(kind, title, payload) {
   if (!state.studyGroups.length) { toast('Join or create a study group first', 'error'); return; }
   window._shareDraft = { kind, title, payload };
   openModal(`
-    <div class="modal-head"><h3>Share "${esc(title)}"</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Share "${esc(title)}"</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Share to group</label>
         <select class="select" id="share-group">${state.studyGroups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select>

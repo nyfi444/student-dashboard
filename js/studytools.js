@@ -38,8 +38,8 @@ function deckCard(d) {
       <div class="flex-gap mt-16">
         <button class="btn btn-primary btn-sm" onclick="openStudyMode('${d.id}')" ${d.cards.length ? '' : 'disabled'}>Study</button>
         <button class="btn btn-sm" onclick="openDeckModal('${d.id}')">Edit</button>
-        <button class="btn btn-ghost btn-icon btn-sm" onclick="shareDeckToGroup('${d.id}')" title="Share to group">${icon('users',14)}</button>
-        <button class="btn btn-ghost btn-icon btn-sm" onclick="deleteDeck('${d.id}')">${icon('trash',14)}</button>
+        <button class="btn btn-ghost btn-icon btn-sm" onclick="shareDeckToGroup('${d.id}')" title="Share to group" aria-label="Share ${esc(d.name)} to group">${icon('users',14)}</button>
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(d.name)}" onclick="deleteDeck('${d.id}')">${icon('trash',14)}</button>
       </div>
     </div>
   `;
@@ -52,7 +52,7 @@ function openDeckModal(id) {
 function renderDeckModal(id) {
   const d = _deckDraft;
   openModal(`
-    <div class="modal-head"><h3>${id ? 'Edit deck' : 'New deck'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${id ? 'Edit deck' : 'New deck'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field-row">
         <div class="field"><label>Deck name</label><input class="input" id="df-name" value="${esc(d.name)}"></div>
@@ -74,7 +74,7 @@ function cardRow(c, i) {
   return `<div class="field-row" style="margin-bottom:6px">
     <input class="input" value="${esc(c.front)}" placeholder="Front" oninput="_deckDraft.cards[${i}].front=this.value">
     <input class="input" value="${esc(c.back)}" placeholder="Back" oninput="_deckDraft.cards[${i}].back=this.value">
-    <button class="btn btn-ghost btn-icon btn-sm" onclick="_deckDraft.cards.splice(${i},1);renderDeckModal()">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove card" onclick="_deckDraft.cards.splice(${i},1);renderDeckModal()">${icon('x',13,2.2)}</button>
   </div>`;
 }
 function saveDeckModal(id) {
@@ -123,7 +123,7 @@ function renderStudyMode() {
   const { deck, cards } = studyCards();
   if (!cards.length) {
     openModal(`
-      <div class="modal-head"><h3>${esc(deck.name)}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+      <div class="modal-head"><h3>${esc(deck.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
       <div class="modal-body">${emptyState(icon('star',24,1.4), window._study.starredOnly ? 'No starred cards yet.' : 'This deck has no cards.')}</div>
       <div class="modal-foot"><button class="btn" onclick="toggleStarredOnly()">${window._study.starredOnly ? 'Show all cards' : 'Show starred only'}</button></div>
     `);
@@ -134,7 +134,7 @@ function renderStudyMode() {
   const card = cards[idx];
   const mode = window._study.mode;
   openModal(`
-    <div class="modal-head"><h3>${esc(deck.name)}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${esc(deck.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="flex-between mb-8">
         <div class="segmented">
@@ -142,7 +142,7 @@ function renderStudyMode() {
           <button class="${mode === 'learn' ? 'active' : ''}" onclick="setStudyMode('learn')">Learn</button>
           <button class="${mode === 'test' ? 'active' : ''}" onclick="setStudyMode('test')">Test yourself</button>
         </div>
-        <button class="btn btn-icon btn-sm ${card.starred ? 'btn-primary' : ''}" onclick="toggleCardStar()" title="Star as difficult">${icon('star',14)}</button>
+        <button class="btn btn-icon btn-sm ${card.starred ? 'btn-primary' : ''}" onclick="toggleCardStar()" title="Star as difficult" aria-pressed="${!!card.starred}" aria-label="Star as difficult">${icon('star',14)}</button>
       </div>
       <div class="small muted mb-8" style="text-align:center">${idx + 1} / ${cards.length}${window._study.starredOnly ? ' · starred only' : ''}</div>
 

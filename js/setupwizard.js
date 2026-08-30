@@ -18,7 +18,7 @@ function renderWizardStep() {
   const stepBody = [wizStep0, wizStep1, wizStep2, wizStep3, wizStep4, wizStep5, wizStepDone][w.step]();
   const isLast = w.step === WIZARD_STEPS.length - 1;
   openModal(`
-    <div class="modal-head"><h3>Semester setup</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Semester setup</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="small muted mb-16">Step ${w.step + 1} of ${WIZARD_STEPS.length} — ${WIZARD_STEPS[w.step]}</div>
       ${stepBody}
@@ -62,7 +62,7 @@ function wizStep1() {
         <input class="input" placeholder="Course name" value="${esc(c.name)}" oninput="window._wizard.courses[${i}].name=this.value">
         <input class="input" placeholder="Code" style="max-width:110px" value="${esc(c.code)}" oninput="window._wizard.courses[${i}].code=this.value">
         <input class="input" type="number" placeholder="Credits" style="max-width:90px" value="${c.credits}" oninput="window._wizard.courses[${i}].credits=Number(this.value)||0">
-        <button class="btn btn-ghost btn-icon btn-sm" onclick="window._wizard.courses.splice(${i},1);renderWizardStep()">${icon('x',13,2.2)}</button>
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove course" onclick="window._wizard.courses.splice(${i},1);renderWizardStep()">${icon('x',13,2.2)}</button>
       </div>
     `).join('') || '<div class="small muted mb-8">No courses added yet.</div>'}</div>
     <button class="btn btn-sm mt-8" onclick="window._wizard.courses.push(wizNewCourse());renderWizardStep()">+ Add course</button>
@@ -79,7 +79,7 @@ function wizStep2() {
           <select class="select" style="max-width:110px" onchange="window._wizard.courses[${ci}].meetings[${mi}].day=Number(this.value)">${DOW_NAMES.map((d, di) => `<option value="${di}" ${di === m.day ? 'selected' : ''}>${d}</option>`).join('')}</select>
           <input class="input" type="time" value="${m.start}" style="max-width:120px" onchange="window._wizard.courses[${ci}].meetings[${mi}].start=this.value">
           <input class="input" type="time" value="${m.end}" style="max-width:120px" onchange="window._wizard.courses[${ci}].meetings[${mi}].end=this.value">
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="window._wizard.courses[${ci}].meetings.splice(${mi},1);renderWizardStep()">${icon('x',13,2.2)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove meeting" onclick="window._wizard.courses[${ci}].meetings.splice(${mi},1);renderWizardStep()">${icon('x',13,2.2)}</button>
         </div>
       `).join('')}</div>
       <button class="btn btn-sm" onclick="window._wizard.courses[${ci}].meetings.push({day:1,start:'10:00',end:'11:00'});renderWizardStep()">+ Add meeting time</button>

@@ -44,8 +44,8 @@ function courseCard(c) {
           <div class="small muted">${esc(c.code || '')}${c.instructor ? ' · ' + esc(c.instructor) : ''}</div>
         </div>
         <div class="flex-gap">
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="openCourseModal('${c.id}')">${icon('pencil',14)}</button>
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="deleteCourse('${c.id}')">${icon('trash',14)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit ${esc(c.name)}" onclick="openCourseModal('${c.id}')">${icon('pencil',14)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(c.name)}" onclick="deleteCourse('${c.id}')">${icon('trash',14)}</button>
         </div>
       </div>
       <div class="flex-gap wrap mt-8">
@@ -71,7 +71,7 @@ function openCourseModal(id) {
   window._courseDraft = draft;
 
   openModal(`
-    <div class="modal-head"><h3>${id ? 'Edit course' : 'Add course'}</h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${id ? 'Edit course' : 'Add course'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field-row">
         <div class="field"><label>Course name</label><input class="input" id="cf-name" value="${esc(draft.name)}" placeholder="Intro to Psychology"></div>
@@ -113,7 +113,7 @@ function resourceRow(r, i) {
       ${RESOURCE_KINDS.map(k => `<option value="${k.key}" ${k.key === r.kind ? 'selected' : ''}>${k.label}</option>`).join('')}
     </select>
     <input class="input" value="${esc(r.url)}" placeholder="https://…  or  mailto:prof@school.edu" oninput="_courseDraft.resources[${i}].url=this.value">
-    <button class="btn btn-ghost btn-icon btn-sm" onclick="_courseDraft.resources.splice(${i},1);$('#cf-resources').innerHTML=_courseDraft.resources.map(resourceRow).join('')">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove resource" onclick="_courseDraft.resources.splice(${i},1);$('#cf-resources').innerHTML=_courseDraft.resources.map(resourceRow).join('')">${icon('x',13,2.2)}</button>
   </div>`;
 }
 function addResourceRow() { _courseDraft.resources.push({ id: uid(), kind: 'other', label: 'Other', url: '' }); $('#cf-resources').innerHTML = _courseDraft.resources.map(resourceRow).join(''); }
@@ -122,7 +122,7 @@ function meetingRow(m, i) {
     <select class="select" style="max-width:110px" onchange="_courseDraft.meetings[${i}].day=Number(this.value)">${DOW_NAMES.map((d, di) => `<option value="${di}" ${di === m.day ? 'selected' : ''}>${d}</option>`).join('')}</select>
     <input class="input" type="time" value="${m.start}" style="max-width:120px" onchange="_courseDraft.meetings[${i}].start=this.value">
     <input class="input" type="time" value="${m.end}" style="max-width:120px" onchange="_courseDraft.meetings[${i}].end=this.value">
-    <button class="btn btn-ghost btn-icon btn-sm" onclick="removeMeetingRow(${i})">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove meeting" onclick="removeMeetingRow(${i})">${icon('x',13,2.2)}</button>
   </div>`;
 }
 function addMeetingRow() { _courseDraft.meetings.push({ day: 1, start: '10:00', end: '11:00' }); $('#cf-meetings').insertAdjacentHTML('beforeend', meetingRow(_courseDraft.meetings.at(-1), _courseDraft.meetings.length - 1)); }
@@ -163,7 +163,7 @@ function deleteCourse(id) {
 /* ── Syllabus upload → AI parse → review & confirm ────────────── */
 function openSyllabusUploadModal() {
   openModal(`
-    <div class="modal-head"><h3>Upload syllabus <span class="ai-badge">AI</span></h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Upload syllabus <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       ${!aiEnabled() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">AI parsing isn’t set up on this deployment yet.</div>` : ''}
       <div class="segmented mb-8" id="syl-tabs">
@@ -248,7 +248,7 @@ function openSyllabusReviewModal(data) {
   window._sylAssignments = (data.assignments || []).map(a => ({ ...a, _include: true, id: uid() }));
 
   openModal(`
-    <div class="modal-head"><h3>Review & confirm <span class="ai-badge">AI</span></h3><button class="close-x" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Review & confirm <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="small muted mb-8">Double-check what the AI pulled out before adding it — edit anything that's off.</div>
       <div class="field-row">
@@ -263,7 +263,7 @@ function openSyllabusReviewModal(data) {
         <div id="syl-assignment-list" style="max-height:220px;overflow-y:auto">
           ${window._sylAssignments.map((a, i) => `
             <div class="list-row">
-              <div class="row-check ${a._include ? 'checked' : ''}" onclick="toggleSylAssignment(${i})">${a._include ? checkGlyph(true) : ''}</div>
+              <button type="button" class="row-check ${a._include ? 'checked' : ''}" role="checkbox" aria-checked="${a._include}" aria-label="${a._include ? 'Exclude' : 'Include'} ${esc(a.title)}" onclick="toggleSylAssignment(${i})">${a._include ? checkGlyph(true) : ''}</button>
               <div class="row-title">${esc(a.title)} ${typeTag(a.type || 'assignment')}</div>
               <div class="row-meta">${a.dueDate ? fmtDate(a.dueDate) : 'no date'}</div>
             </div>`).join('') || '<div class="small muted">None detected — you can add assignments manually later.</div>'}
@@ -280,7 +280,7 @@ function toggleSylAssignment(i) {
   window._sylAssignments[i]._include = !window._sylAssignments[i]._include;
   $('#syl-assignment-list').innerHTML = window._sylAssignments.map((a, idx) => `
     <div class="list-row">
-      <div class="row-check ${a._include ? 'checked' : ''}" onclick="toggleSylAssignment(${idx})">${a._include ? checkGlyph(true) : ''}</div>
+      <button type="button" class="row-check ${a._include ? 'checked' : ''}" role="checkbox" aria-checked="${a._include}" aria-label="${a._include ? 'Exclude' : 'Include'} ${esc(a.title)}" onclick="toggleSylAssignment(${idx})">${a._include ? checkGlyph(true) : ''}</button>
       <div class="row-title">${esc(a.title)} ${typeTag(a.type || 'assignment')}</div>
       <div class="row-meta">${a.dueDate ? fmtDate(a.dueDate) : 'no date'}</div>
     </div>`).join('');
