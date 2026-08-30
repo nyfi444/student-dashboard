@@ -140,11 +140,15 @@ async function handleCreateCheckoutSession(request, env, origin) {
 
   const params = new URLSearchParams();
   params.set('mode', 'subscription');
+  params.set('submit_type', 'subscribe');
   params.set('line_items[0][price_data][currency]', 'usd');
   params.set('line_items[0][price_data][unit_amount]', String(PLUS_PRICE_CENTS));
   params.set('line_items[0][price_data][recurring][interval]', 'month');
   params.set('line_items[0][price_data][product_data][name]', 'Semester HQ');
-  params.set('line_items[0][price_data][product_data][description]', 'Billed monthly. Cancel anytime.');
+  params.set('line_items[0][price_data][product_data][description]', 'Sign-in & sync across every device — cross-device access, AI syllabus upload, and study groups. Cancel anytime.');
+  // Same square mark set as the account's Stripe branding (settings/branding) —
+  // shows up as the line-item thumbnail in the checkout Details dropdown.
+  params.set('line_items[0][price_data][product_data][images][0]', 'https://semester-hq.com/assets/icon-512.png');
   params.set('line_items[0][quantity]', '1');
   params.set('success_url', `${appUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`);
   params.set('cancel_url', `${appUrl}?checkout=cancel`);
