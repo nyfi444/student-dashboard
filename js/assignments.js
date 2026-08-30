@@ -45,7 +45,7 @@ function assignmentRow(a) {
   const rubricDone = a.rubric.length ? a.rubric.filter(r => r.done).length : 0;
   const isDone = a.status === 'done' || a.status === 'submitted';
   return `<div class="list-row" style="border-bottom:1px solid var(--border)" onclick="openAssignmentModal('${a.id}')" draggable="true" ondragstart="event.stopPropagation();dragStartItem(event,'assignment','${a.id}')" title="Drag onto Calendar to reschedule or time-block">
-    <div class="row-check ${isDone ? 'checked' : ''}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isDone ? checkGlyph(true) : ''}</div>
+    <button type="button" class="row-check ${isDone ? 'checked' : ''}" role="checkbox" aria-checked="${isDone}" aria-label="Mark ${esc(a.title)} as ${isDone ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isDone ? checkGlyph(true) : ''}</button>
     <div class="row-title ${isDone ? 'done' : ''}">${esc(a.title)} ${typeTag(a.type)} ${a.attachments && a.attachments.length ? icon('paperclip', 12, 1.8) : ''}</div>
     ${courseChip(a.courseId)}
     ${a.rubric.length ? `<span class="small muted">${rubricDone}/${a.rubric.length} rubric</span>` : ''}
@@ -133,7 +133,7 @@ async function addAttachmentFile(file) {
 }
 function rubricRow(r, i) {
   return `<div class="field-row" style="align-items:center;margin-bottom:6px">
-    <div class="row-check ${r.done ? 'checked' : ''}" style="flex-shrink:0" onclick="_assignDraft.rubric[${i}].done=!_assignDraft.rubric[${i}].done;renderAssignmentModal()">${r.done ? checkGlyph(true) : ''}</div>
+    <button type="button" class="row-check ${r.done ? 'checked' : ''}" style="flex-shrink:0" role="checkbox" aria-checked="${r.done}" aria-label="Mark ${esc(r.item || 'rubric item')} as ${r.done ? 'not done' : 'done'}" onclick="_assignDraft.rubric[${i}].done=!_assignDraft.rubric[${i}].done;renderAssignmentModal()">${r.done ? checkGlyph(true) : ''}</button>
     <input class="input" value="${esc(r.item)}" placeholder="Piece of the assignment" oninput="_assignDraft.rubric[${i}].item=this.value">
     <input class="input" type="number" value="${r.points ?? ''}" style="max-width:80px" placeholder="pts" oninput="_assignDraft.rubric[${i}].points=Number(this.value)">
     <input class="input" type="number" value="${r.earned ?? ''}" style="max-width:80px" placeholder="earned" oninput="_assignDraft.rubric[${i}].earned=Number(this.value)">
@@ -258,7 +258,7 @@ function renderAssignmentReviewModal() {
         <div id="au-review-list" style="max-height:320px;overflow-y:auto">
           ${window._auParsed.length ? window._auParsed.map((a, i) => `
             <div class="list-row">
-              <div class="row-check ${a._include ? 'checked' : ''}" onclick="toggleAuAssignment(${i})">${a._include ? checkGlyph(true) : ''}</div>
+              <button type="button" class="row-check ${a._include ? 'checked' : ''}" role="checkbox" aria-checked="${a._include}" aria-label="${a._include ? 'Exclude' : 'Include'} ${esc(a.title)}" onclick="toggleAuAssignment(${i})">${a._include ? checkGlyph(true) : ''}</button>
               <div class="row-title">${esc(a.title)} ${typeTag(a.type || 'assignment')}</div>
               <div class="row-meta">${a.dueDate ? fmtDate(a.dueDate) : 'no date'}</div>
             </div>`).join('') : ''}

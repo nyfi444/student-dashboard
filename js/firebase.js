@@ -63,13 +63,44 @@ function bootFirebase() {
   } catch (e) { console.warn('Firebase init failed', e); }
 }
 
+// COPPA-relevant: our Terms/Privacy require sign-in users to be 13+. This
+// isn't just policy text — it's a real gate a person has to check before
+// the Google popup opens, and only once per browser (localStorage), not
+// re-shown every sign-in.
+const AGE_TOS_KEY = 'shq_age_tos_confirmed';
 async function signIn() {
   if (!fbConfigured()) { toast('Sync isn’t set up yet — add a Firebase config in js/firebase.js to enable it.', 'info', 4200); return; }
+  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { openAgeGateModal(); return; }
+  await runGoogleSignIn();
+}
+async function runGoogleSignIn() {
   try {
     await _fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
   } catch (e) {
     if (e.code !== 'auth/popup-closed-by-user') toast('Sign-in failed: ' + e.message, 'error');
   }
+}
+function openAgeGateModal() {
+  openModal(`
+    <div class="modal-head"><h3>Before you sign in</h3><button class="close-x" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <label class="checkbox-row" style="align-items:flex-start;gap:10px">
+        <input type="checkbox" id="age-tos-check" style="margin-top:2px;width:18px;height:18px;flex-shrink:0">
+        <span class="small">I'm at least 13 years old, and I agree to Semester HQ's <a href="https://nyfi444.github.io/Semester-HQ-Site/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="https://nyfi444.github.io/Semester-HQ-Site/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAgeGateAndSignIn()">Continue</button>
+    </div>
+  `);
+}
+async function confirmAgeGateAndSignIn() {
+  const checkbox = document.getElementById('age-tos-check');
+  if (!checkbox || !checkbox.checked) { toast('Check the box to continue.', 'error'); return; }
+  localStorage.setItem(AGE_TOS_KEY, '1');
+  closeModal();
+  await runGoogleSignIn();
 }
 async function signOutUser() { if (_fbAuth) await _fbAuth.signOut(); }
 
