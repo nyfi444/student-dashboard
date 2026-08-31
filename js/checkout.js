@@ -131,6 +131,24 @@ function pagePaywall() {
       </div>
     </div>`;
 }
+// Self-serve "Delete my account": cancels any active subscription and erases
+// every server-side record (license, planner doc, Auth user) via the Worker.
+// Local-only data in this browser is untouched — export a backup first if
+// the user wants to keep it, same as any other sign-out.
+async function deleteAccountFully() {
+  if (!_fbUser) return;
+  const idToken = await _fbUser.getIdToken();
+  const res = await fetch(`${CHECKOUT_PROXY_URL}/delete-account`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ idToken }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not delete your account');
+  await signOutUser();
+  return data;
+}
+
 async function retryLicenseCheck() {
   toast('Checking…', 'info', 1500);
   window._licensed = await resolveLicenseStatus();

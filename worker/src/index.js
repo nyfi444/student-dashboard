@@ -71,6 +71,10 @@ export default {
       if (!(await checkRateLimit(env, ip, 'claim', 15))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
       return handleClaimLicense(request, env, origin);
     }
+    if (url.pathname === '/delete-account') {
+      if (!(await checkRateLimit(env, ip, 'delete-account', 5))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      return handleDeleteAccount(request, env, origin);
+    }
     if (url.pathname === '/contact-message') {
       if (!(await checkRateLimit(env, ip, 'contact', 5))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
       return handleContactMessage(request, env, origin);
@@ -311,6 +315,58 @@ async function handleClaimLicense(request, env, origin) {
   }
 }
 
+// Self-serve "delete my account": cancels any active Stripe subscription,
+// erases every server-side record we hold for this uid/email (licenses,
+// the email-keyed linking doc, and the synced planner doc), and deletes the
+// Firebase Auth user itself. Requires the service account's OAuth token to
+// carry the Identity Toolkit scope (see getFirebaseAccessToken) and the
+// underlying GCP service account to have the "Firebase Authentication Admin"
+// role — without that role the Auth-user deletion step fails and is reported
+// back to the client rather than silently ignored, since the rest of the
+// erasure still succeeded and shouldn't be treated as a full failure the
+// user needs to retry.
+async function handleDeleteAccount(request, env, origin) {
+  if (!env.FIREBASE_PROJECT_ID) return jsonError('Server misconfigured: FIREBASE_PROJECT_ID not set.', 500, env, origin);
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
+  if (!body.idToken) return jsonError('Missing idToken', 400, env, origin);
+
+  let payload;
+  try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
+  catch { return jsonError('Your session expired — sign in again.', 401, env, origin); }
+
+  const uid = payload.sub;
+  const email = (payload.email || '').toLowerCase().trim();
+
+  try {
+    const license = await readFirestoreDoc(env, 'licenses', uid);
+
+    if (license?.stripeSubscriptionId && env.STRIPE_SECRET_KEY) {
+      const res = await fetch(`https://api.stripe.com/v1/subscriptions/${license.stripeSubscriptionId}`, {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+      });
+      // Already-canceled subscriptions 404/410 here — not an error for our purposes.
+      if (!res.ok && res.status !== 404) {
+        const data = await res.json().catch(() => ({}));
+        return jsonError('Could not cancel your subscription: ' + (data.error?.message || 'unknown error') + '. Your account was not deleted — try again or email hello@semester-hq.com.', 500, env, origin);
+      }
+    }
+
+    await deleteFirestoreDoc(env, 'licenses', uid);
+    if (email) await deleteFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email));
+    await deleteFirestoreDoc(env, 'planners', uid);
+
+    let authDeleted = true;
+    try { await deleteFirebaseAuthUser(env, uid); }
+    catch (e) { authDeleted = false; console.error('Auth user delete failed', e); }
+
+    return jsonOk({ ok: true, authDeleted }, env, origin);
+  } catch (e) {
+    return jsonError('Could not delete your account: ' + e.message, 500, env, origin);
+  }
+}
+
 /* ── 4. Contact form ──────────────────────────────────────────── */
 // Writes to Firestore's `feedback` collection — clients can never read or
 // write it directly (see firestore.rules), only this route, using the same
@@ -457,7 +513,9 @@ async function getFirebaseAccessToken(env) {
     aud: 'https://oauth2.googleapis.com/token',
     iat: now,
     exp: now + 3600,
-    scope: 'https://www.googleapis.com/auth/datastore',
+    // datastore covers Firestore reads/writes; identitytoolkit is needed
+    // only for handleDeleteAccount's Auth-user deletion step.
+    scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit',
   }));
   const signingInput = `${header}.${claims}`;
   const key = await importPrivateKey(env.FIREBASE_PRIVATE_KEY);
@@ -497,6 +555,21 @@ async function readFirestoreDoc(env, collection, docId) {
   if (!res.ok) throw new Error('Firestore read failed: ' + await res.text());
   const data = await res.json();
   return fromFirestoreFields(data.fields || {});
+}
+async function deleteFirestoreDoc(env, collection, docId) {
+  const token = await getFirebaseAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}`;
+  const res = await fetch(url, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } });
+  if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed: ' + await res.text());
+}
+async function deleteFirebaseAuthUser(env, uid) {
+  const token = await getFirebaseAccessToken(env);
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:delete`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ localId: uid }),
+  });
+  if (!res.ok) throw new Error('Identity Toolkit delete failed: ' + await res.text());
 }
 async function queryRecentErrors(env, limit) {
   const token = await getFirebaseAccessToken(env);

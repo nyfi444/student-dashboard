@@ -13,6 +13,22 @@ const FAQ_ITEMS = [
   { q: 'I deleted something by accident — can I get it back?', a: 'Yes — deleting a note, course, assignment, to-do, time block, project, or flashcard deck moves it to Settings → Recently Deleted instead of erasing it right away. Restore it any time within 30 days, or delete it forever yourself.' },
 ];
 
+function confirmDeleteAccount() {
+  confirmDialog(
+    'This cancels your subscription and permanently deletes your synced data and account — this can’t be undone. Local data in this browser is untouched. Continue?',
+    async () => {
+      try {
+        toast('Deleting your account…', 'info', 4000);
+        const result = await deleteAccountFully();
+        toast(result.authDeleted ? 'Your account has been deleted.' : 'Data deleted — email hello@semester-hq.com to finish removing your sign-in.', 'success', 5000);
+      } catch (e) {
+        toast('Could not delete your account: ' + e.message, 'error', 5000);
+      }
+    },
+    'Delete account'
+  );
+}
+
 function pageSettings() {
   return `
     ${pageHead('Settings', 'Customize your planner')}
@@ -53,6 +69,7 @@ function pageSettings() {
           <div class="flex-gap"><div class="avatar">${(_fbUser.displayName || _fbUser.email || '?')[0].toUpperCase()}</div><div><div style="font-weight:600">${esc(_fbUser.displayName || _fbUser.email)}</div><div class="small muted">Synced across devices — this is the default experience.</div></div></div>
           ${window._licensed ? `<button class="btn mt-16" onclick="redirectToPortal()">Manage subscription</button>` : ''}
           <button class="btn mt-16" onclick="signOutUser()">Sign out</button>
+          ${checkoutEnabled() ? `<button class="btn btn-danger mt-8" onclick="confirmDeleteAccount()">Delete account</button>` : ''}
         ` : `
           <p class="small muted mb-16">${fbConfigured() ? 'Create an account and everything syncs automatically — new devices, backups, and study groups all just work. Local storage still covers offline caching and resilience underneath.' : 'Not set up on this deployment yet. The app owner needs to create a Firebase project and fill in FB_CONFIG in js/firebase.js — see README.md. Until then, everything is saved locally in this browser only.'}</p>
           <button class="btn btn-primary" onclick="signIn()" ${fbConfigured() ? '' : 'disabled'}>Sign up with Google</button>
