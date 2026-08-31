@@ -70,7 +70,10 @@ function bootFirebase() {
 const AGE_TOS_KEY = 'shq_age_tos_confirmed';
 async function signIn() {
   if (!fbConfigured()) { toast('Sync isn’t set up yet — add a Firebase config in js/firebase.js to enable it.', 'info', 4200); return; }
-  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { openAgeGateModal(); return; }
+  // Returning 'age-gate' lets callers (e.g. signInFromOnboarding) know the
+  // gate modal is now showing and awaiting the user, so they don't
+  // immediately close it out from under them.
+  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { openAgeGateModal(); return 'age-gate'; }
   await runGoogleSignIn();
 }
 async function runGoogleSignIn() {

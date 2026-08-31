@@ -69,8 +69,8 @@ function initApp() {
   if (!fbConfigured()) maybeShowOnboarding();
 }
 function maybeShowOnboarding() {
-  if (state._onboardingSeen) return;
-  state._onboardingSeen = true; save();
+  // Prompts every time the app opens signed-out, not just the first visit —
+  // otherwise skipping it once meant Google sign-in was never surfaced again.
   // Skip the sign-up nudge when embedded (e.g. the marketing site's "try it
   // live" iframe) — every visitor there gets a fresh, empty local state, so
   // this would otherwise greet them with an account prompt before they've
@@ -88,8 +88,8 @@ function openAccountPromptModal() {
   `);
 }
 async function signInFromOnboarding() {
-  await signIn();
-  closeModal();
+  const result = await signIn();
+  if (result !== 'age-gate') closeModal();
 }
 function skipAccountPrompt() {
   closeModal();
