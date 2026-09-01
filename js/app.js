@@ -79,10 +79,10 @@ function maybeShowOnboarding() {
 }
 function openAccountPromptModal() {
   openModal(`
-    <div class="modal-head"><h3>Create your account</h3></div>
+    <div class="modal-head"><h3>Sign in to sync</h3></div>
     <div class="modal-body">
-      <p class="small muted mb-16">Sign up so your semester syncs across every device automatically — no setup, no manual backups. You can still use the planner on just this device if you'd rather skip it for now.</p>
-      <button class="btn btn-primary" style="width:100%" onclick="signInFromOnboarding()">${icon('sparkles', 13, 1.6)} Sign up with Google</button>
+      <p class="small muted mb-16">Already subscribed? Sign in with the same Google account to pick up right where you left off. New here? This creates your account automatically and your semester syncs across every device — no setup, no manual backups. You can still use the planner on just this device if you'd rather skip it for now.</p>
+      <button class="btn btn-primary" style="width:100%" onclick="signInFromOnboarding()">${icon('sparkles', 13, 1.6)} Sign in with Google</button>
     </div>
     <div class="modal-foot"><button class="btn" style="width:100%" onclick="skipAccountPrompt()">Continue on this device only</button></div>
   `);
