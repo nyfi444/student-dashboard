@@ -99,7 +99,7 @@ function renderAssignmentModal(id) {
         <div class="flex-gap mt-8">
           <button class="btn btn-sm" onclick="addAttachmentLink()">${icon('link',13,1.8)} Add link</button>
           <button class="btn btn-sm" onclick="$('#af-attach-file').click()">${icon('upload',13,1.8)} Upload file</button>
-          <input type="file" id="af-attach-file" style="display:none" onchange="addAttachmentFile(this.files[0])">
+          <input type="file" id="af-attach-file" multiple style="display:none" onchange="addAttachmentFile(this.files)">
         </div>
       </div>
     </div>
@@ -124,11 +124,15 @@ function addAttachmentLink() {
   _assignDraft.attachments.push({ id: uid(), kind: 'reference', name: url.replace(/^https?:\/\//, '').slice(0, 40), url, dataUrl: null });
   renderAssignmentModal(state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null);
 }
-async function addAttachmentFile(file) {
-  if (!file) return;
-  if (file.size > 3 * 1024 * 1024) { toast('File too large to store in the browser (max ~3MB) — add it as a link instead', 'error', 4000); return; }
-  const dataUrl = 'data:' + (file.type || 'application/octet-stream') + ';base64,' + (await fileToBase64(file));
-  _assignDraft.attachments.push({ id: uid(), kind: 'other', name: file.name, url: dataUrl, dataUrl });
+async function addAttachmentFile(files) {
+  if (!files || !files.length) return;
+  let skipped = 0;
+  for (const file of files) {
+    if (file.size > 3 * 1024 * 1024) { skipped++; continue; }
+    const dataUrl = 'data:' + (file.type || 'application/octet-stream') + ';base64,' + (await fileToBase64(file));
+    _assignDraft.attachments.push({ id: uid(), kind: 'other', name: file.name, url: dataUrl, dataUrl });
+  }
+  if (skipped) toast(`${skipped} file${skipped > 1 ? 's' : ''} too large to store in the browser (max ~3MB) — add ${skipped > 1 ? 'them' : 'it'} as a link instead`, 'error', 4000);
   renderAssignmentModal(state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null);
 }
 function rubricRow(r, i) {
@@ -191,8 +195,8 @@ function openAssignmentUploadModal() {
       </div>
       <div id="au-image" style="display:none">
         <div class="upload-drop" onclick="$('#au-image-input').click()">
-          <div class="small">Click to choose a photo</div>
-          <input type="file" id="au-image-input" accept="image/*" style="display:none" onchange="handleAssignUploadImage(this.files[0])">
+          <div class="small">Click to choose one or more photos</div>
+          <input type="file" id="au-image-input" accept="image/*" multiple style="display:none" onchange="handleAssignUploadImage(this.files)">
         </div>
         <div class="small muted mt-8" id="au-image-status"></div>
       </div>
@@ -202,7 +206,7 @@ function openAssignmentUploadModal() {
       <button class="btn btn-primary" id="au-parse-btn" onclick="runAssignmentParse()" ${aiEnabled() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Parse with AI</button>
     </div>
   `, { wide: true });
-  window._auImage = null;
+  window._auImages = null;
 }
 function auTab(tab) {
   ['paste', 'pdf', 'image'].forEach(t => { $(`#au-${t}`).style.display = t === tab ? '' : 'none'; });
@@ -220,18 +224,19 @@ async function handleAssignUploadPdf(file) {
     auTab('paste');
   } catch (e) { $('#au-pdf-status').textContent = 'Could not read that PDF.'; }
 }
-async function handleAssignUploadImage(file) {
-  if (!file) return;
-  $('#au-image-status').textContent = 'Loaded — ready to parse.';
-  window._auImage = { base64: await fileToBase64(file), mediaType: file.type || 'image/jpeg' };
+async function handleAssignUploadImage(files) {
+  if (!files || !files.length) return;
+  $('#au-image-status').textContent = 'Loading…';
+  window._auImages = await Promise.all(Array.from(files).map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
+  $('#au-image-status').textContent = `${window._auImages.length} photo${window._auImages.length > 1 ? 's' : ''} loaded — ready to parse.`;
 }
 async function runAssignmentParse() {
   const btn = $('#au-parse-btn');
   setBtnLoading(btn, true);
   try {
     let list;
-    if (window._auActiveTab === 'image' && window._auImage) {
-      list = await aiParseAssignments({ imageBase64: window._auImage.base64, mediaType: window._auImage.mediaType });
+    if (window._auActiveTab === 'image' && window._auImages && window._auImages.length) {
+      list = await aiParseAssignments({ images: window._auImages });
     } else {
       const text = $('#au-text').value.trim();
       if (!text) { toast('Paste or upload something first', 'error'); setBtnLoading(btn, false); return; }

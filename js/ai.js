@@ -78,9 +78,16 @@ const SYLLABUS_SYSTEM = `You extract structured course information from a syllab
 }
 Infer the current or nearest upcoming year for dates when the syllabus only gives month/day. If a field is unknown, use an empty string, null, or empty array. Do not invent assignments that aren't mentioned.`;
 
-async function aiParseSyllabus({ text, imageBase64, mediaType }) {
-  const userContent = imageBase64
-    ? [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } }, { type: 'text', text: 'Extract the course info from this syllabus image as specified.' }]
+// `images` is an array of {base64, mediaType} — multiple photos of one syllabus
+// (e.g. a multi-page handout shot page by page) get sent as one message so the
+// model can read them together instead of parsing each page in isolation.
+function imageBlocks(images) {
+  return images.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } }));
+}
+
+async function aiParseSyllabus({ text, images }) {
+  const userContent = images && images.length
+    ? [...imageBlocks(images), { type: 'text', text: 'Extract the course info from this syllabus (across all pages/photos if more than one) as specified.' }]
     : `Here is the syllabus text:\n\n${text.slice(0, 15000)}`;
   const raw = await callClaude({ system: SYLLABUS_SYSTEM, userContent, maxTokens: 3000 });
   return extractJson(raw);
@@ -90,9 +97,9 @@ const ASSIGNMENTS_SYSTEM = `You extract a list of assignments/deadlines from a d
 [{"title": string, "type": "assignment"|"reading"|"discussion"|"quiz"|"exam"|"project"|"paper"|"lab", "dueDate": "YYYY-MM-DD or empty string if unknown", "dueTime": "HH:MM or empty string", "maxPoints": number|null}]
 Infer the current or nearest upcoming year for dates when only month/day is given. Do not invent assignments that aren't mentioned in the document.`;
 
-async function aiParseAssignments({ text, imageBase64, mediaType }) {
-  const userContent = imageBase64
-    ? [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } }, { type: 'text', text: 'Extract the list of assignments/deadlines from this image as specified.' }]
+async function aiParseAssignments({ text, images }) {
+  const userContent = images && images.length
+    ? [...imageBlocks(images), { type: 'text', text: 'Extract the list of assignments/deadlines from these images (they may be multiple pages of one document) as specified.' }]
     : `Here is the document text:\n\n${text.slice(0, 15000)}`;
   const raw = await callClaude({ system: ASSIGNMENTS_SYSTEM, userContent, maxTokens: 3000 });
   return extractJson(raw);

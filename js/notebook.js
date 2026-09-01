@@ -73,7 +73,7 @@ function pageNotebook() {
     <div class="nb-slash-menu" id="nb-slash-menu">
       ${SLASH_COMMANDS.map(c => `<div class="nb-slash-item" data-key="${c.key}" onmousedown="event.preventDefault()" onclick="runSlashCommand('${c.key}')"><span class="nb-slash-glyph">${c.glyph}</span><span><div class="nb-slash-label">${c.label}</div><div class="nb-slash-desc">${c.desc}</div></span></div>`).join('')}
     </div>
-    <input type="file" id="nb-pdf-input" accept="application/pdf" style="display:none" onchange="handleNotePdfUpload(this.files[0])">
+    <input type="file" id="nb-pdf-input" accept="application/pdf" multiple style="display:none" onchange="handleNotePdfUpload(this.files)">
   `;
   setTimeout(() => { wireBubbleToolbar(); wireSlashMenu(); }, 0);
   return html;
@@ -450,24 +450,26 @@ function triggerNotePdfUpload(id) {
   const input = $('#nb-pdf-input');
   if (input) input.click();
 }
-async function handleNotePdfUpload(file) {
+async function handleNotePdfUpload(files) {
   const input = $('#nb-pdf-input');
   const noteId = window._nbPdfNoteId;
   const note = state.notes.find(n => n.id === noteId);
-  if (!file || !note) { if (input) input.value = ''; return; }
+  if (!files || !files.length || !note) { if (input) input.value = ''; return; }
   const status = $('#nb-save-status');
-  if (status) status.textContent = 'Reading PDF…';
-  try {
-    // Text is extracted client-side and stored as plain note content — we don't
-    // keep the raw PDF bytes, which would bloat localStorage/Firestore sync payloads.
-    const text = await extractPdfText(file);
-    const body = text ? text.split(/\n{2,}/).map(p => `<p>${esc(p.trim())}</p>`).join('') : '<p><em>No extractable text found in this PDF.</em></p>';
-    note.content = (note.content || '') + `<h3>${esc(file.name)}</h3>${body}`;
-    note.updatedAt = Date.now();
-    touch();
-    toast('PDF imported into note');
-  } catch (e) {
-    toast('Could not read that PDF', 'error');
+  let failed = 0;
+  for (const file of files) {
+    if (status) status.textContent = `Reading ${file.name}…`;
+    try {
+      // Text is extracted client-side and stored as plain note content — we don't
+      // keep the raw PDF bytes, which would bloat localStorage/Firestore sync payloads.
+      const text = await extractPdfText(file);
+      const body = text ? text.split(/\n{2,}/).map(p => `<p>${esc(p.trim())}</p>`).join('') : '<p><em>No extractable text found in this PDF.</em></p>';
+      note.content = (note.content || '') + `<h3>${esc(file.name)}</h3>${body}`;
+    } catch (e) { failed++; }
   }
+  note.updatedAt = Date.now();
+  touch();
+  if (failed) toast(`Imported ${files.length - failed} of ${files.length} PDFs — ${failed} couldn't be read`, failed === files.length ? 'error' : 'info', 4000);
+  else toast(files.length > 1 ? `${files.length} PDFs imported into note` : 'PDF imported into note');
   if (input) input.value = '';
 }

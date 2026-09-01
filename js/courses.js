@@ -183,8 +183,8 @@ function openSyllabusUploadModal() {
       </div>
       <div id="syl-image" style="display:none">
         <div class="upload-drop" onclick="$('#syl-image-input').click()">
-          <div class="small">Click to choose a photo of your syllabus</div>
-          <input type="file" id="syl-image-input" accept="image/*" style="display:none" onchange="handleSyllabusImage(this.files[0])">
+          <div class="small">Click to choose one or more photos of your syllabus</div>
+          <input type="file" id="syl-image-input" accept="image/*" multiple style="display:none" onchange="handleSyllabusImage(this.files)">
         </div>
         <div class="small muted mt-8" id="syl-image-status"></div>
       </div>
@@ -194,7 +194,7 @@ function openSyllabusUploadModal() {
       <button class="btn btn-primary" id="syl-parse-btn" onclick="runSyllabusParse()" ${aiEnabled() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Parse with AI</button>
     </div>
   `, { wide: true });
-  window._sylImage = null;
+  window._sylImages = null;
 }
 function sylTab(tab) {
   ['paste', 'pdf', 'image'].forEach(t => { $(`#syl-${t}`).style.display = t === tab ? '' : 'none'; });
@@ -212,18 +212,19 @@ async function handleSyllabusPdf(file) {
     sylTab('paste');
   } catch (e) { $('#syl-pdf-status').textContent = 'Could not read that PDF.'; }
 }
-async function handleSyllabusImage(file) {
-  if (!file) return;
-  $('#syl-image-status').textContent = 'Loaded — ready to parse.';
-  window._sylImage = { base64: await fileToBase64(file), mediaType: file.type || 'image/jpeg' };
+async function handleSyllabusImage(files) {
+  if (!files || !files.length) return;
+  $('#syl-image-status').textContent = 'Loading…';
+  window._sylImages = await Promise.all(Array.from(files).map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
+  $('#syl-image-status').textContent = `${window._sylImages.length} photo${window._sylImages.length > 1 ? 's' : ''} loaded — ready to parse.`;
 }
 async function runSyllabusParse() {
   const btn = $('#syl-parse-btn');
   setBtnLoading(btn, true);
   try {
     let data;
-    if (window._sylActiveTab === 'image' && window._sylImage) {
-      data = await aiParseSyllabus({ imageBase64: window._sylImage.base64, mediaType: window._sylImage.mediaType });
+    if (window._sylActiveTab === 'image' && window._sylImages && window._sylImages.length) {
+      data = await aiParseSyllabus({ images: window._sylImages });
     } else {
       const text = $('#syl-text').value.trim();
       if (!text) { toast('Paste or upload a syllabus first', 'error'); setBtnLoading(btn, false); return; }

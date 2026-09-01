@@ -89,7 +89,7 @@ function openAgeGateModal() {
     <div class="modal-body">
       <label class="checkbox-row" style="align-items:flex-start;gap:10px">
         <input type="checkbox" id="age-tos-check" style="margin-top:2px;width:18px;height:18px;flex-shrink:0">
-        <span class="small">I'm at least 13 years old, and I agree to Semester HQ's <a href="https://nyfi444.github.io/Semester-HQ-Site/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="https://nyfi444.github.io/Semester-HQ-Site/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+        <span class="small">I'm at least 13 years old, and I agree to Semester HQ's <a href="https://semester-hq.com/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="https://semester-hq.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
       </label>
     </div>
     <div class="modal-foot">
