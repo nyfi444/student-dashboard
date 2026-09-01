@@ -55,6 +55,16 @@ async function redirectToPortal() {
   }
 }
 
+// A hung Firestore read or fetch here would otherwise stall pollForLicense
+// forever, leaving the "Finishing up your purchase…" screen stuck with no
+// way out — so every network call in this function is capped.
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), ms)),
+  ]);
+}
+
 // Asks the Worker: does `licenses/{uid}` already say paid, or is there an
 // unclaimed purchase under this account's email (bought before signing up)?
 // The Worker is the only thing that can WRITE a license (see firestore.rules)
@@ -63,16 +73,16 @@ async function resolveLicenseStatus() {
   if (!checkoutEnabled()) return true; // payments not configured on this deployment — don't gate
   if (!_fbUser) return false;
   try {
-    const doc = await _fbDb.collection('licenses').doc(_fbUser.uid).get();
+    const doc = await withTimeout(_fbDb.collection('licenses').doc(_fbUser.uid).get(), 8000);
     if (doc.exists && doc.data().paid) return true;
   } catch (e) { console.warn('License check failed', e); }
   try {
-    const idToken = await _fbUser.getIdToken();
-    const res = await fetch(`${CHECKOUT_PROXY_URL}/claim-license`, {
+    const idToken = await withTimeout(_fbUser.getIdToken(), 8000);
+    const res = await withTimeout(fetch(`${CHECKOUT_PROXY_URL}/claim-license`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ idToken }),
-    });
+    }), 8000);
     const data = await res.json();
     return !!data.paid;
   } catch (e) { console.warn('License claim failed', e); return false; }
