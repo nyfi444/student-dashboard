@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log In – Semester HQ</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+
+<!-- Firebase (sign-in only — the full sync bundle loads once inside the app) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+
+<style>
+  body { min-height: 100%; display: flex; align-items: center; justify-content: center; }
+  .login-wrap { min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .login-card { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg); border-radius: var(--r-soft); padding: 40px 34px; width: 400px; max-width: 100%; text-align: center; }
+  .login-logo { font-family: var(--font-serif); font-size: 24px; margin-bottom: 30px; display: flex; align-items: baseline; justify-content: center; gap: 6px; color: var(--text); }
+  .login-logo .spark { color: var(--text-faint); font-size: 13px; position: relative; top: -8px; }
+  .login-card h2 { font-family: var(--font-serif); font-weight: 400; font-size: 26px; margin-bottom: 8px; }
+  .login-sub { font-size: 13px; color: var(--text-faint); line-height: 1.55; margin-bottom: 26px; }
+  .login-error { display: none; background: var(--danger-light); color: var(--danger); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12.5px; margin-bottom: 14px; text-align: left; }
+  .login-error.show { display: block; }
+  .login-check { text-align: left; margin: 2px 0 18px; }
+  .login-foot { margin-top: 24px; font-size: 12.5px; color: var(--text-faint); }
+  .login-foot a { color: var(--text); font-weight: 600; }
+  .login-back { position: fixed; top: 20px; left: 20px; font-size: 13px; color: var(--text-faint); display: flex; align-items: center; gap: 6px; }
+  .login-back:hover { color: var(--text); }
+</style>
+</head>
+<body>
+<a href="https://semester-hq.com/" class="login-back">&larr; semester-hq.com</a>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">Semester HQ <span class="spark">&#10022;</span></div>
+    <h2>Welcome back</h2>
+    <p class="login-sub">Sign in with Google to sync your semester across every device.</p>
+    <div class="login-error" id="login-error"></div>
+    <div id="login-body">
+      <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
+    </div>
+    <p class="login-foot">New to Semester HQ? <a href="https://semester-hq.com/#try">Try it free</a></p>
+  </div>
+</div>
+
+<script>
+const FB_CONFIG = {
+  apiKey: 'AIzaSyBruZ173x9OGtprhnJVO-8S7TY2taoSYQE',
+  authDomain: 'semester-hq.firebaseapp.com',
+  projectId: 'semester-hq',
+  storageBucket: 'semester-hq.firebasestorage.app',
+  messagingSenderId: '191691583510',
+  appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
+};
+const AGE_TOS_KEY = 'shq_age_tos_confirmed';
+let _auth = null;
+
+// Match the app's saved dark-mode preference so this doesn't flash the
+// wrong theme for returning users coming straight from a bookmark/link.
+try {
+  const raw = localStorage.getItem('studentPlanner.v1');
+  if (raw && JSON.parse(raw)?.settings?.dark) document.documentElement.classList.add('dark');
+} catch {}
+
+function showError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function clearError() { document.getElementById('login-error').classList.remove('show'); }
+
+function renderSignInButton() {
+  document.getElementById('login-body').innerHTML =
+    '<button class="btn btn-primary" style="width:100%" onclick="startSignIn()">Continue with Google</button>';
+}
+
+function startSignIn() {
+  clearError();
+  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { showAgeGate(); return; }
+  runSignIn();
+}
+function showAgeGate() {
+  document.getElementById('login-body').innerHTML = `
+    <label class="checkbox-row login-check" style="align-items:flex-start;gap:10px">
+      <input type="checkbox" id="age-tos-check" style="margin-top:2px;width:18px;height:18px;flex-shrink:0">
+      <span class="small">I'm at least 13 years old, and I agree to Semester HQ's <a href="https://semester-hq.com/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="https://semester-hq.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+    </label>
+    <button class="btn btn-primary" style="width:100%" onclick="confirmAgeGate()">Continue with Google</button>
+  `;
+}
+function confirmAgeGate() {
+  const checkbox = document.getElementById('age-tos-check');
+  if (!checkbox || !checkbox.checked) { showError('Check the box to continue.'); return; }
+  clearError();
+  localStorage.setItem(AGE_TOS_KEY, '1');
+  runSignIn();
+}
+async function runSignIn() {
+  document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Signing in&hellip;</button>';
+  try {
+    await _auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    // Success redirects from the onAuthStateChanged listener below.
+  } catch (e) {
+    renderSignInButton();
+    if (e.code !== 'auth/popup-closed-by-user') showError('Sign-in failed: ' + e.message);
+  }
+}
+
+(function init() {
+  if (!FB_CONFIG.apiKey || typeof firebase === 'undefined') {
+    showError('Sign-in isn’t available right now — try again in a moment.');
+    renderSignInButton();
+    return;
+  }
+  firebase.initializeApp(FB_CONFIG);
+  _auth = firebase.auth();
+  let settled = false;
+  _auth.onAuthStateChanged((user) => {
+    if (user) { window.location.href = 'index.html'; return; }
+    if (!settled) { settled = true; renderSignInButton(); }
+  });
+})();
+</script>
+</body>
+</html>
