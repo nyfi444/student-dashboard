@@ -21,6 +21,11 @@
       secret) endpoint for admin/errors.html to list recent crash reports.
       Not origin-restricted like the rest, since the viewer page isn't
       served from ALLOWED_ORIGIN; the bearer token is the security boundary.
+   7. Event tracking (/track-event) — the ONLY writer of Firestore's
+      `events` collection. Records marketing-site CTA clicks (Log in, Try
+      it free, Upgrade, Subscribe, checkout errors) so which buttons
+      actually convert isn't a guess. Same rate-limited, server-only
+      pattern as error logging.
 ──────────────────────────────────────────────────────────────── */
 
 const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
@@ -82,6 +87,10 @@ export default {
     if (url.pathname === '/log-error') {
       if (!(await checkRateLimit(env, ip, 'log-error', 30))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
       return handleLogError(request, env, origin);
+    }
+    if (url.pathname === '/track-event') {
+      if (!(await checkRateLimit(env, ip, 'track-event', 60))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      return handleTrackEvent(request, env, origin);
     }
     return jsonError('Not found', 404, env, origin);
   },
@@ -429,6 +438,31 @@ async function handleLogError(request, env, origin) {
     console.error('Error log write failed', e);
     return jsonOk({ ok: true }, env, origin);
   }
+}
+
+/* ── 7. Event tracking ────────────────────────────────────────── */
+// Writes to Firestore's `events` collection — same server-only, rate-limited
+// pattern as error logging. Intentionally minimal (no cookies, no per-user
+// identity): just which CTA fired, from which page, so conversion is
+// measurable without turning this into a full analytics/tracking pipeline.
+const TRACKED_EVENTS = ['nav_login_click', 'nav_upgrade_click', 'try_it_free_click', 'checkout_started', 'checkout_error'];
+async function handleTrackEvent(request, env, origin) {
+  if (!env.FIREBASE_PROJECT_ID) return jsonOk({ ok: true }, env, origin); // never block the page over a missing config
+
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
+
+  const event = TRACKED_EVENTS.includes(body.event) ? body.event : null;
+  if (!event) return jsonError('Unknown event', 400, env, origin);
+  const path = String(body.path || '').trim().slice(0, 200);
+
+  try {
+    const id = crypto.randomUUID();
+    await writeFirestoreDoc(env, 'events', id, { event, path, createdAt: new Date() });
+  } catch (e) {
+    console.error('Event track write failed', e); // never fail the click over a logging endpoint
+  }
+  return jsonOk({ ok: true }, env, origin);
 }
 
 /* ── 6. Error viewer ──────────────────────────────────────────── */

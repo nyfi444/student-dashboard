@@ -44,5 +44,13 @@ service cloud.firestore {
     match /errors/{id} {
       allow read, write: if false;
     }
+
+    // Marketing-site CTA clicks (Log in, Try it free, Upgrade, Subscribe,
+    // checkout errors) — lets us see which buttons people actually use.
+    // Never read or written by the client directly — only the Worker's
+    // /track-event route writes these, same server-only pattern as feedback.
+    match /events/{id} {
+      allow read, write: if false;
+    }
   }
 }
