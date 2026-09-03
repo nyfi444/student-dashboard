@@ -19,7 +19,11 @@ FIREBASE_PROJECT_ID = "semester-hq"
 # Where contact-form/group-pricing submissions get emailed (only sent at all
 # once RESEND_API_KEY below is set — otherwise it's silently skipped and
 # submissions still land in Firestore's `feedback` collection either way).
-NOTIFY_EMAIL = "hello@semester-hq.com"
+# While NOTIFY_FROM below is still Resend's shared sandbox sender, Resend
+# only allows delivery to the email address the Resend account itself was
+# signed up with — this MUST match that address until you verify your own
+# domain (see worker/README.md), or sends fail with a 403 from Resend.
+NOTIFY_EMAIL = "semesterhq@gmail.com"
 # Must be "onboarding@resend.dev" (Resend's shared sandbox sender) unless
 # you've verified your own sending domain in Resend — see worker/README.md.
 NOTIFY_FROM = "Semester HQ <onboarding@resend.dev>"
