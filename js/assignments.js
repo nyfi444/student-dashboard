@@ -49,7 +49,7 @@ function pageAssignments() {
         <button class="btn btn-danger btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkDeleteAssignments()">${icon('trash', 13)} Delete selected</button>
       </div>
     </div>` : ''}
-    <div class="card">
+    <div class="card" style="padding:${items.length ? '8px' : '0'}">
       ${items.length ? items.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list',26,1.4), 'No assignments match.')}</div>`}
     </div>
   `;

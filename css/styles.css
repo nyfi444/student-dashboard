@@ -258,16 +258,16 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .progress > div { height: 100%; border-radius: 6px; background: var(--accent); transition: width .3s ease; }
 
 /* ── Tables/lists ──────────────────────────────────────────── */
-/* Rows default to a filled, bounded box (not just a hover highlight) so a list
-   of them reads as clearly separate items even without hovering — a thin
-   divider line plus a few px of margin was too subtle once titles got long
-   enough to wrap to two lines. */
-.list-row { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border-radius: 12px; margin-bottom: 10px; background: var(--surface-2); transition: background .12s, box-shadow .12s; }
+/* Each row reads as its own bordered card — not filled gray, which just made
+   the whole list look like one solid gray block with thin cracks in it — with
+   real whitespace between them so a list of rows never looks like one fused
+   slab, even once titles wrap to two lines. */
+.list-row { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border-radius: 12px; margin-bottom: 10px; background: var(--surface); border: 1px solid var(--border); transition: background .12s, border-color .12s; }
 .list-row:last-child { margin-bottom: 0; }
-.list-row:hover { background: var(--border); }
-.modal-body .list-row { background: transparent; margin-bottom: 2px; }
+.list-row:hover { background: var(--surface-2); }
+.modal-body .list-row { background: transparent; border-color: transparent; margin-bottom: 2px; }
 .modal-body .list-row:hover { background: var(--surface-2); }
-.list-row.selected { background: var(--accent-light); }
+.list-row.selected { background: var(--accent-light); border-color: var(--accent); }
 .select-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .select-bar .checkbox-row { margin: 0; }
 .row-check {
