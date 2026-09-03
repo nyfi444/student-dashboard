@@ -6,7 +6,7 @@ One Cloudflare Worker, six jobs — all server-side so secrets never reach the b
 2. **Checkout** (`/create-checkout-session`) — starts a $7.99/month Stripe subscription for sign-in and sync.
 3. **Billing portal** (`/create-portal-session`) — sends a signed-in, paying user to Stripe's own hosted portal to update payment info or cancel. Requires the Stripe Customer Portal to be turned on once in the Stripe Dashboard (Settings → Billing → Customer portal) before it will work.
 4. **Licensing** (`/stripe-webhook`, `/claim-license`) — the only thing allowed to mark someone as paid. It writes to Firestore's `licenses` collection using a Firebase service account; the browser can only ever *read* its own license (see `../firestore.rules`), never write it — so a user can't just open devtools and grant themselves access. The webhook also tracks renewals/cancellations, so access turns off automatically if a subscription lapses or is cancelled through the billing portal.
-5. **Contact form** (`/contact-message`) — the only writer of Firestore's `feedback` collection. Reachable by anyone (signed in or not), so it has its own validation and a honeypot field on top of rate limiting. View submissions in the Firebase console → Firestore Database → `feedback`.
+5. **Contact form** (`/contact-message`) — the only writer of Firestore's `feedback` collection. Reachable by anyone (signed in or not), so it has its own validation and a honeypot field on top of rate limiting. View submissions in the Firebase console → Firestore Database → `feedback`. Also emails a copy to `NOTIFY_EMAIL` via [Resend](https://resend.com) if `RESEND_API_KEY` is set — see "Email notifications" below. Without that key, submissions still save to Firestore, just without an email.
 6. **Account deletion** (`/delete-account`) — self-serve "delete my account" (Settings → Account & Sync → Delete account in the app). Cancels any active Stripe subscription, deletes the `licenses`/`licensesByEmail`/`planners` Firestore docs, and deletes the Firebase Auth user itself. The Auth-user deletion step needs the service account to hold the **Firebase Authentication Admin** IAM role (Google Cloud Console → IAM & Admin → find the service account → Edit → Add role) — without it, the data is still fully erased but the sign-in itself lingers and the response reports `authDeleted: false` so it's visible rather than silently swallowed.
 
 Local-only usage (no sign-in) stays free forever and doesn't touch any of this. Payment only gates cross-device sync + AI upload.
@@ -42,6 +42,18 @@ This lets the Worker write `licenses/{uid}` on your behalf after a real Stripe p
 1. Firebase console → Project settings (gear icon) → Service accounts
 2. Generate new private key → downloads a JSON file — **keep this private, never commit it**
 3. From that JSON: `client_email` → `wrangler secret put FIREBASE_CLIENT_EMAIL`, and `private_key` (paste the whole thing including the `BEGIN/END PRIVATE KEY` lines) → `wrangler secret put FIREBASE_PRIVATE_KEY`
+
+## Email notifications (contact form)
+
+Optional. Without it, contact-form and group-pricing submissions still save to Firestore's `feedback` collection — this just also emails you a copy so you actually notice one came in.
+
+1. Sign up at [resend.com](https://resend.com) (free tier: 3,000 emails/month, plenty for a contact form) and create an API key: dashboard → API Keys → Create API Key.
+2. `wrangler secret put RESEND_API_KEY` — paste the key.
+3. In `wrangler.toml`, set `NOTIFY_EMAIL` to the address you want submissions sent to (defaults to `hello@semester-hq.com`).
+4. Leave `NOTIFY_FROM` as `Semester HQ <onboarding@resend.dev>` to start — that's Resend's shared sandbox sender and works immediately, no setup. Once you've verified your own domain in Resend (dashboard → Domains → Add Domain, then add the DNS records it gives you), change `NOTIFY_FROM` to something like `Semester HQ <notifications@semester-hq.com>` instead — mail from your own domain is less likely to land in spam.
+5. Redeploy (`wrangler deploy`) after changing `wrangler.toml`.
+
+Each email's `reply_to` is set to the submitter's address, so replying to the notification goes straight back to them.
 
 ## Rate limiting
 

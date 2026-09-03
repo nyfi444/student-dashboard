@@ -16,6 +16,14 @@ APP_URL = "https://app.semester-hq.com/"
 # Firebase project id (from Project settings — NOT secret, safe as a var).
 FIREBASE_PROJECT_ID = "semester-hq"
 
+# Where contact-form/group-pricing submissions get emailed (only sent at all
+# once RESEND_API_KEY below is set — otherwise it's silently skipped and
+# submissions still land in Firestore's `feedback` collection either way).
+NOTIFY_EMAIL = "hello@semester-hq.com"
+# Must be "onboarding@resend.dev" (Resend's shared sandbox sender) unless
+# you've verified your own sending domain in Resend — see worker/README.md.
+NOTIFY_FROM = "Semester HQ <onboarding@resend.dev>"
+
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
 id = "c159c4afb7cc45619d6db5fd2fcde97d"
@@ -35,3 +43,6 @@ id = "c159c4afb7cc45619d6db5fd2fcde97d"
 #   FIREBASE_PRIVATE_KEY   — the "private_key" field from that same service account key
 #                            (paste it including the BEGIN/END lines; \n in the pasted
 #                            value is handled automatically)
+#   RESEND_API_KEY         — optional. From https://resend.com/api-keys (free tier is
+#                            plenty for a contact form). Without this set, contact-form
+#                            submissions still save to Firestore, just without an email.

@@ -13,7 +13,10 @@
       whether the subscription is currently active.
    4. Contact form (/contact-message) — the ONLY writer of Firestore's
       `feedback` collection. Rate-limited and validated server-side since
-      it's reachable by anyone, signed in or not.
+      it's reachable by anyone, signed in or not. Also emails the site
+      owner a copy via Resend if RESEND_API_KEY is set (optional — see
+      worker/README.md), since the Firestore write alone never showed up
+      anywhere a person would actually notice it.
    5. Error logging (/log-error) — the ONLY writer of Firestore's `errors`
       collection. Client-side crash reporter for both the app and the
       marketing site; rate-limited since it's reachable by anyone.
@@ -404,10 +407,32 @@ async function handleContactMessage(request, env, origin) {
   try {
     const id = crypto.randomUUID();
     await writeFirestoreDoc(env, 'feedback', id, { name, email, category, message, createdAt: new Date() });
+    // Best-effort — the Firestore write above is what actually preserves the
+    // message, so a flaky email provider must never fail the submission itself.
+    // Without this, the ONLY way to see a new message was to go check the
+    // Firestore console by hand.
+    await notifyNewContactMessage(env, { name, email, category, message }).catch(e => console.error('contact notify email failed', e));
     return jsonOk({ ok: true }, env, origin);
   } catch (e) {
     return jsonError('Could not send your message: ' + e.message, 500, env, origin);
   }
+}
+// Sends the site owner an email via Resend (https://resend.com) so a new
+// contact-form/group-pricing submission shows up in an inbox instead of only
+// the Firestore `feedback` collection. Silently no-ops if RESEND_API_KEY
+// isn't set, so this stays optional — see worker/README.md to enable it.
+async function notifyNewContactMessage(env, { name, email, category, message }) {
+  if (!env.RESEND_API_KEY) return;
+  const to = env.NOTIFY_EMAIL || 'hello@semester-hq.com';
+  const from = env.NOTIFY_FROM || 'Semester HQ <onboarding@resend.dev>';
+  const subject = `[Semester HQ] New ${category} message${name ? ' from ' + name : ''}`;
+  const text = `Category: ${category}\nFrom: ${name || '(no name given)'} <${email}>\n\n${message}`;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ from, to, reply_to: email, subject, text }),
+  });
+  if (!res.ok) throw new Error(`Resend API ${res.status}: ${await res.text()}`);
 }
 
 /* ── 5. Error logging ─────────────────────────────────────────── */
