@@ -70,6 +70,30 @@ async function extractPdfText(file) {
   return text.trim();
 }
 
+// Renders each PDF page to an actual page image (instead of just pulling text out)
+// so an upload looks like the real document — figures, handwriting, layout and
+// all — not a stripped-down text reflow. Capped in page count/resolution/quality
+// since every image is stored inline as a data URL alongside the rest of the
+// planner (see FIRESTORE_DOC_SAFE_BYTES in firebase.js).
+async function extractPdfPageImages(file, { scale = 1.3, quality = 0.78, maxPages = 20 } = {}) {
+  const buf = await file.arrayBuffer();
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pageCount = Math.min(pdf.numPages, maxPages);
+  const images = [];
+  for (let i = 1; i <= pageCount; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    images.push(canvas.toDataURL('image/jpeg', quality));
+  }
+  return { images, totalPages: pdf.numPages, truncated: pdf.numPages > pageCount };
+}
+
 const SYLLABUS_SYSTEM = `You extract structured course information from a syllabus. Reply with ONLY a JSON object (no prose, no markdown fences) matching this shape:
 {
   "name": string, "code": string, "instructor": string, "location": string, "credits": number|null,

@@ -43,11 +43,6 @@ function pageDashboard() {
         <div class="flex-between mb-8"><span class="small dim" style="font-weight:600">${esc(sem.name)}</span><span class="small muted">Week ${sem.week} of ${sem.totalWeeks} · ${sem.pct}% complete</span></div>
         <div class="progress"><div style="width:${sem.pct}%"></div></div>
       </div>` : '',
-    degreeProgress: () => { const d = computeDegreeProgress(); return d ? `
-      <div class="card card-pad mb-16">
-        <div class="flex-between mb-8"><span class="small dim" style="font-weight:600">Degree progress</span><span class="small muted">${d.completedCredits} / ${d.total} credits · ${d.pct}%</span></div>
-        <div class="progress"><div style="width:${d.pct}%"></div></div>
-      </div>` : ''; },
     workload: () => `
       <div class="card card-pad mb-16">
         <div class="small dim mb-8" style="font-weight:600">This week's workload</div>
@@ -223,7 +218,6 @@ const saveQuickNoteDebounced = debounce((v) => { state.quickNote = v; save(); },
 const DASH_WIDGET_LABELS = {
   stats: 'Quick stats (due, overdue, study time)',
   semesterProgress: 'Semester progress',
-  degreeProgress: 'Degree progress',
   workload: 'Weekly workload chart',
   quickNote: 'Quick note',
   dueThisWeek: 'What\'s due this week / overdue',

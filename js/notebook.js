@@ -195,6 +195,57 @@ function promptInsertLink() {
   if (url) runNbCommand('createLink', url);
 }
 
+/* ── Font family / size / color — the editor otherwise had no way to change
+   how text looks beyond bold/italic/headings, unlike a normal word processor. ── */
+const NB_FONT_FAMILIES = [
+  { label: 'Default font', value: '' },
+  { label: 'Sans-serif', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Serif', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Monospace', value: '"Courier New", monospace' },
+  { label: 'Trebuchet MS', value: '"Trebuchet MS", sans-serif' },
+  { label: 'Verdana', value: 'Verdana, sans-serif' },
+  { label: 'Comic Sans MS', value: '"Comic Sans MS", cursive' },
+];
+const NB_FONT_SIZES = [12, 14, 15, 16, 18, 20, 24, 28, 32, 36, 48];
+function runNbFontFamily(family) {
+  const editor = $('#note-editor');
+  if (!editor || !family) return;
+  restoreNbSelection();
+  document.execCommand('fontName', false, family);
+  if (window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
+}
+// execCommand('fontSize') only understands the legacy 1–7 scale, so it's used as a
+// marker (size 7) and then swapped for a real pixel value via inline style — the
+// standard workaround since there's no execCommand for an arbitrary font size.
+// Chrome's fontSize command replaces (rather than extends) an existing <font
+// face> wrapper around the same selection, so the chosen font family is
+// re-applied onto the resulting span — otherwise picking a size after a family
+// silently threw the family away.
+function runNbFontSize(px) {
+  const editor = $('#note-editor');
+  if (!editor || !px) return;
+  restoreNbSelection();
+  let existingFont = '';
+  try { existingFont = document.queryCommandValue('fontName') || ''; } catch { }
+  document.execCommand('fontSize', false, '7');
+  $$('font[size="7"]', editor).forEach(f => {
+    const span = document.createElement('span');
+    const face = f.getAttribute('face') || existingFont;
+    if (face) span.style.fontFamily = face.replace(/^"|"$/g, '');
+    span.style.fontSize = px + 'px';
+    while (f.firstChild) span.appendChild(f.firstChild);
+    f.replaceWith(span);
+  });
+  if (window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
+}
+function runNbTextColor(hex) {
+  const editor = $('#note-editor');
+  if (!editor) return;
+  restoreNbSelection();
+  document.execCommand('foreColor', false, hex);
+  if (window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
+}
+
 /* ── Slash-command block menu ─────────────────────────────────── */
 function wireSlashMenu() {
   const editor = $('#note-editor');
@@ -371,6 +422,16 @@ function renderNoteEditor(note) {
         </div>
       </div>
       <div class="nb-toolbar" id="nb-toolbar">
+        <select class="nb-toolbar-select" title="Font family" aria-label="Font family" onmousedown="event.stopPropagation()" onchange="runNbFontFamily(this.value);this.selectedIndex=0">
+          <option value="">Font</option>
+          ${NB_FONT_FAMILIES.filter(f => f.value).map(f => `<option value='${f.value.replace(/'/g, "&#39;")}' style="font-family:${f.value}">${esc(f.label)}</option>`).join('')}
+        </select>
+        <select class="nb-toolbar-select" style="width:64px" title="Font size" aria-label="Font size" onmousedown="event.stopPropagation()" onchange="runNbFontSize(this.value);this.selectedIndex=0">
+          <option value="">Size</option>
+          ${NB_FONT_SIZES.map(sz => `<option value="${sz}">${sz}</option>`).join('')}
+        </select>
+        <label class="nb-toolbar-color" title="Text color" aria-label="Text color">A<input type="color" value="#000000" onmousedown="event.stopPropagation()" oninput="runNbTextColor(this.value)"></label>
+        <span class="nb-toolbar-sep"></span>
         <button data-nb-cmd="bold" onmousedown="event.preventDefault()" onclick="runNbCommand('bold')" title="Bold" aria-label="Bold"><b>B</b></button>
         <button data-nb-cmd="italic" onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic" aria-label="Italic"><i>I</i></button>
         <button data-nb-cmd="underline" onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline" aria-label="Underline"><u>U</u></button>
@@ -456,14 +517,18 @@ async function handleNotePdfUpload(files) {
   const note = state.notes.find(n => n.id === noteId);
   if (!files || !files.length || !note) { if (input) input.value = ''; return; }
   const status = $('#nb-save-status');
-  let failed = 0;
+  let failed = 0, truncatedAny = false;
   for (const file of files) {
-    if (status) status.textContent = `Reading ${file.name}…`;
+    if (status) status.textContent = `Rendering ${file.name}…`;
     try {
-      // Text is extracted client-side and stored as plain note content — we don't
-      // keep the raw PDF bytes, which would bloat localStorage/Firestore sync payloads.
-      const text = await extractPdfText(file);
-      const body = text ? text.split(/\n{2,}/).map(p => `<p>${esc(p.trim())}</p>`).join('') : '<p><em>No extractable text found in this PDF.</em></p>';
+      // Each page is rendered to an actual image and dropped in — the real
+      // document (figures, layout, handwriting) rather than a stripped text
+      // reflow. See extractPdfPageImages in ai.js for the size/page caps.
+      const { images, truncated } = await extractPdfPageImages(file);
+      if (truncated) truncatedAny = true;
+      const body = images.length
+        ? images.map(src => `<p><img src="${src}" alt="${esc(file.name)} page" style="max-width:100%;border-radius:6px;border:1px solid var(--border);margin:4px 0"></p>`).join('')
+        : '<p><em>No pages could be rendered from this PDF.</em></p>';
       note.content = (note.content || '') + `<h3>${esc(file.name)}</h3>${body}`;
     } catch (e) { failed++; }
   }
@@ -471,5 +536,6 @@ async function handleNotePdfUpload(files) {
   touch();
   if (failed) toast(`Imported ${files.length - failed} of ${files.length} PDFs — ${failed} couldn't be read`, failed === files.length ? 'error' : 'info', 4000);
   else toast(files.length > 1 ? `${files.length} PDFs imported into note` : 'PDF imported into note');
+  if (truncatedAny) toast('One PDF had more pages than could be imported — only the first 20 pages of it were added', 'info', 5000);
   if (input) input.value = '';
 }

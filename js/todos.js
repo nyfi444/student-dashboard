@@ -1,15 +1,20 @@
 /* ── To-Do list: grouped by section, filterable by course, recurring templates ─ */
 function pageTodos() {
   const filter = state.todoFilter;
+  const selectMode = !!state._todoSelectMode;
+  const selected = new Set(state._todoSelectedIds || []);
   const visible = state.todos.filter(t => filter === 'all' || (filter === 'none' ? t.courseId === null : t.courseId === filter));
   const groups = filter === 'all' ? groupTodosBySection(visible) : [{ sectionId: '_filtered', items: visible }];
+  window._todoVisibleIds = visible.map(t => t.id);
   const openCount = state.todos.filter(t => !t.done).length;
   const dueToday = state.todos.filter(t => !t.done && t.dueDate === todayIso()).length;
   const overdueCount = state.todos.filter(t => !t.done && t.dueDate && t.dueDate < todayIso()).length;
+  const allSelected = visible.length > 0 && visible.every(t => selected.has(t.id));
 
   return `
     ${pageHead('To-Do List', `${openCount} open task${openCount === 1 ? '' : 's'}`, `
       <button class="btn btn-sm" onclick="openSectionModal()">${icon('plus',13,2.2)} Section</button>
+      <button class="btn btn-sm ${selectMode ? 'btn-primary' : ''}" onclick="toggleTodoSelectMode()">${icon('check-square', 13, 2)} ${selectMode ? 'Cancel' : 'Select'}</button>
       <button class="btn btn-primary" onclick="openTodoModal()">+ Add to-do</button>
     `)}
     <div class="grid grid-3 mb-16">
@@ -22,6 +27,14 @@ function pageTodos() {
       ${activeCourses().map(c => `<button class="pill" style="background:${filter === c.id ? c.color : 'var(--surface-2)'};color:${filter === c.id ? readableTextOn(c.color) : 'var(--text-dim)'};border:1px solid var(--border);cursor:pointer" onclick="setState({todoFilter:'${c.id}'})">${esc(c.name)}</button>`).join('')}
       <button class="pill" style="background:${filter === 'none' ? 'var(--text-dim)' : 'var(--surface-2)'};color:${filter === 'none' ? '#fff' : 'var(--text-dim)'};border:1px solid var(--border);cursor:pointer" onclick="setState({todoFilter:'none'})">General</button>
     </div>
+    ${selectMode ? `
+    <div class="card card-pad mb-16 select-bar">
+      <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleTodoSelectAll()"><span>Select all${visible.length ? ` (${visible.length})` : ''}</span></label>
+      <div class="flex-gap" style="align-items:center">
+        <span class="small muted">${selected.size} selected</span>
+        <button class="btn btn-danger btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkDeleteTodos()">${icon('trash', 13)} Delete selected</button>
+      </div>
+    </div>` : ''}
 
     ${groups.length ? groups.map(g => `
       <div class="card card-pad mb-16">
@@ -31,7 +44,7 @@ function pageTodos() {
             <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit section" onclick="openSectionModal('${g.sectionId}')">${icon('pencil',13)}</button>
           </div>` : ''}
         </div>
-        ${g.items.length ? g.items.sort(sortTodos).map(todoRow).join('') : emptyState(icon('check-square',22,1.4), 'All clear here.')}
+        ${g.items.length ? g.items.sort(sortTodos).map(t => todoRow(t, selectMode, selected)).join('') : emptyState(icon('check-square',22,1.4), 'All clear here.')}
       </div>
     `).join('') : emptyState(icon('check-square',26,1.4), 'Nothing on your list yet', `<button class="btn btn-primary mt-8" onclick="openTodoModal()">+ Add to-do</button>`)}
 
@@ -88,7 +101,15 @@ function deleteSection(id) {
     touch(); closeModal();
   });
 }
-function todoRow(t) {
+function todoRow(t, selectMode, selected) {
+  const isSelected = !!(selected && selected.has(t.id));
+  if (selectMode) {
+    return `<div class="list-row ${isSelected ? 'selected' : ''}" onclick="toggleTodoSelected('${t.id}')">
+      <button type="button" class="row-check ${isSelected ? 'checked' : ''}" role="checkbox" aria-checked="${isSelected}" aria-label="${isSelected ? 'Deselect' : 'Select'} ${esc(t.title)}" onclick="event.stopPropagation();toggleTodoSelected('${t.id}')">${isSelected ? checkGlyph(true) : ''}</button>
+      <div class="row-title ${t.done ? 'done' : ''}">${priorityDot(t.priority)} ${esc(t.title)}</div>
+      <div class="row-meta">${t.dueDate ? relativeDay(t.dueDate) : ''}</div>
+    </div>`;
+  }
   return `<div class="list-row" draggable="true" ondragstart="dragStartItem(event,'todo','${t.id}')" title="Drag onto Calendar to reschedule or time-block">
     <button type="button" class="row-check ${t.done ? 'checked' : ''}" role="checkbox" aria-checked="${t.done}" aria-label="Mark ${esc(t.title)} as ${t.done ? 'not done' : 'done'}" onclick="toggleTodo('${t.id}')">${t.done ? checkGlyph(true) : ''}</button>
     <div class="row-title ${t.done ? 'done' : ''}" onclick="openTodoModal('${t.id}')">${priorityDot(t.priority)} ${esc(t.title)}</div>
@@ -102,6 +123,39 @@ function deleteTodo(id) {
   if (t) trashItem('todo', t.title || 'Untitled to-do', t);
   state.todos = state.todos.filter(t => t.id !== id);
   touch();
+}
+function toggleTodoSelectMode() {
+  state._todoSelectMode = !state._todoSelectMode;
+  state._todoSelectedIds = [];
+  touch();
+}
+function toggleTodoSelected(id) {
+  const set = new Set(state._todoSelectedIds || []);
+  if (set.has(id)) set.delete(id); else set.add(id);
+  state._todoSelectedIds = [...set];
+  touch();
+}
+function toggleTodoSelectAll() {
+  const ids = window._todoVisibleIds || [];
+  const set = new Set(state._todoSelectedIds || []);
+  const allSelected = ids.length > 0 && ids.every(id => set.has(id));
+  state._todoSelectedIds = allSelected ? [] : ids.slice();
+  touch();
+}
+function bulkDeleteTodos() {
+  const ids = state._todoSelectedIds || [];
+  if (!ids.length) return;
+  confirmDialog(`Delete ${ids.length} to-do${ids.length === 1 ? '' : 's'}? You can restore them from Recently Deleted for 30 days.`, () => {
+    ids.forEach(id => {
+      const t = state.todos.find(x => x.id === id);
+      if (t) trashItem('todo', t.title || 'Untitled to-do', t);
+    });
+    state.todos = state.todos.filter(t => !ids.includes(t.id));
+    state._todoSelectedIds = [];
+    state._todoSelectMode = false;
+    touch();
+    toast(`Deleted ${ids.length} to-do${ids.length === 1 ? '' : 's'}`);
+  }, `Delete ${ids.length}`);
 }
 
 function openTodoModal(id) {

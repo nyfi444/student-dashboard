@@ -1,18 +1,9 @@
 /* ── Courses + Syllabus Upload/AI Auto-fill ──────────────────────── */
 const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function computeDegreeProgress() {
-  const total = state.settings.degreeTotalCredits || 0;
-  if (!total) return null;
-  const completedCredits = state.courses.filter(c => c.status === 'completed').reduce((s, c) => s + (c.credits || 0), 0);
-  const inProgressCredits = state.courses.filter(c => c.status === 'in-progress').reduce((s, c) => s + (c.credits || 0), 0);
-  return { completedCredits, inProgressCredits, total, pct: clamp(Math.round((completedCredits / total) * 100), 0, 100) };
-}
-
 function pageCourses() {
   const courses = activeCourses();
   const credits = courses.reduce((s, c) => s + (c.credits || 0), 0);
-  const degree = computeDegreeProgress();
   return `
     ${pageHead('Courses', `${courses.length} course${courses.length === 1 ? '' : 's'} this semester`, `
       ${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}
@@ -22,12 +13,6 @@ function pageCourses() {
       <div class="stat-card"><div class="num">${courses.length}</div><div class="lbl">Active courses</div></div>
       <div class="stat-card"><div class="num">${credits}</div><div class="lbl">Total credits</div></div>
     </div>
-    ${degree ? `
-    <div class="card card-pad mb-16">
-      <div class="flex-between mb-8"><span class="small dim" style="font-weight:600">Degree progress</span><span class="small muted">${degree.completedCredits} / ${degree.total} credits · ${degree.pct}%</span></div>
-      <div class="progress"><div style="width:${degree.pct}%"></div></div>
-      <div class="small muted mt-8">Set your target total in Settings → Degree.</div>
-    </div>` : ''}
     ${courses.length ? `<div class="grid grid-3">${courses.map(courseCard).join('')}</div>` : emptyState(icon('graduation-cap',26,1.4), 'Your courses will live here', `<button class="btn btn-primary mt-8" onclick="openCourseModal()">+ Add course</button>`, 'Add one by hand or upload a syllabus and let AI fill in the schedule and assignments.')}
   `;
 }
@@ -211,12 +196,16 @@ async function handleSyllabusPdf(file) {
     $('#syl-pdf-status').textContent = `Extracted ${text.length.toLocaleString()} characters.`;
     sylTab('paste');
   } catch (e) { $('#syl-pdf-status').textContent = 'Could not read that PDF.'; }
+  const input = $('#syl-pdf-input');
+  if (input) input.value = '';
 }
 async function handleSyllabusImage(files) {
   if (!files || !files.length) return;
   $('#syl-image-status').textContent = 'Loading…';
   window._sylImages = await Promise.all(Array.from(files).map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
   $('#syl-image-status').textContent = `${window._sylImages.length} photo${window._sylImages.length > 1 ? 's' : ''} loaded — ready to parse.`;
+  const input = $('#syl-image-input');
+  if (input) input.value = '';
 }
 async function runSyllabusParse() {
   const btn = $('#syl-parse-btn');

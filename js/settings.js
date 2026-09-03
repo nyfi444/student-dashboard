@@ -99,12 +99,6 @@ function pageSettings() {
       </div>
 
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Degree</h3>
-        <p class="small muted mb-8">Track progress across all semesters, not just this one.</p>
-        <div class="field" style="margin-bottom:0"><label>Total credits needed to graduate</label><input class="input" type="number" value="${state.settings.degreeTotalCredits ?? ''}" oninput="state.settings.degreeTotalCredits=Number(this.value)||0;touch()"></div>
-      </div>
-
-      <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">Data</h3>
         <div class="flex-gap wrap">
           <button class="btn" onclick="exportData()">Export backup</button>

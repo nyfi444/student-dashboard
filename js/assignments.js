@@ -5,18 +5,23 @@ function isAssignmentDone(a) { return a.status === 'done' || a.status === 'submi
 function pageAssignments() {
   const courseFilter = state._assignCourseFilter || 'all';
   const statusFilter = state._assignStatusFilter || 'all';
+  const selectMode = !!state._assignSelectMode;
+  const selected = new Set(state._assignSelectedIds || []);
   const all = state.assignments.filter(a => activeCourses().some(c => c.id === a.courseId) || !a.courseId);
   let items = all;
   if (courseFilter !== 'all') items = items.filter(a => a.courseId === courseFilter);
   if (statusFilter !== 'all') items = items.filter(a => a.status === statusFilter);
   items = items.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+  window._assignVisibleIds = items.map(a => a.id);
   const counts = { 'not-started': 0, 'in-progress': 0, waiting: 0, submitted: 0, done: 0 };
   all.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
   const startSoon = all.filter(a => a.startByDate && a.status !== 'done' && a.status !== 'submitted' && a.startByDate <= todayIso() && a.dueDate >= todayIso());
+  const allSelected = items.length > 0 && items.every(a => selected.has(a.id));
 
   return `
     ${pageHead('Assignment Tracker', `${all.length} assignment${all.length === 1 ? '' : 's'}`, `
       ${aiButton('Upload PDF', 'openAssignmentUploadModal()')}
+      <button class="btn btn-sm ${selectMode ? 'btn-primary' : ''}" onclick="toggleAssignSelectMode()">${icon('check-square', 13, 2)} ${selectMode ? 'Cancel' : 'Select'}</button>
       <button class="btn btn-primary" onclick="openAssignmentModal()">+ Add assignment</button>
     `)}
     <div class="grid grid-3 mb-16">
@@ -36,16 +41,28 @@ function pageAssignments() {
         <option value="all">All statuses</option>${Object.entries(STATUS_LABELS).filter(([k]) => k !== 'done').map(([k, v]) => `<option value="${k}" ${statusFilter === k ? 'selected' : ''}>${v}</option>`).join('')}
       </select>
     </div>
+    ${selectMode ? `
+    <div class="card card-pad mb-16 select-bar">
+      <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAssignSelectAll()"><span>Select all${items.length ? ` (${items.length})` : ''}</span></label>
+      <div class="flex-gap" style="align-items:center">
+        <span class="small muted">${selected.size} selected</span>
+        <button class="btn btn-danger btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkDeleteAssignments()">${icon('trash', 13)} Delete selected</button>
+      </div>
+    </div>` : ''}
     <div class="card">
-      ${items.length ? items.map(assignmentRow).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list',26,1.4), 'No assignments match.')}</div>`}
+      ${items.length ? items.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list',26,1.4), 'No assignments match.')}</div>`}
     </div>
   `;
 }
-function assignmentRow(a) {
+function assignmentRow(a, selectMode, selected) {
   const rubricDone = a.rubric.length ? a.rubric.filter(r => r.done).length : 0;
   const isDone = a.status === 'done' || a.status === 'submitted';
-  return `<div class="list-row" style="border-bottom:1px solid var(--border)" onclick="openAssignmentModal('${a.id}')" draggable="true" ondragstart="event.stopPropagation();dragStartItem(event,'assignment','${a.id}')" title="Drag onto Calendar to reschedule or time-block">
-    <button type="button" class="row-check ${isDone ? 'checked' : ''}" role="checkbox" aria-checked="${isDone}" aria-label="Mark ${esc(a.title)} as ${isDone ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isDone ? checkGlyph(true) : ''}</button>
+  const isSelected = !!(selected && selected.has(a.id));
+  const rowClick = selectMode ? `toggleAssignSelected('${a.id}')` : `openAssignmentModal('${a.id}')`;
+  return `<div class="list-row ${isSelected ? 'selected' : ''}" style="border-bottom:1px solid var(--border)" onclick="${rowClick}" draggable="${selectMode ? 'false' : 'true'}" ondragstart="event.stopPropagation();dragStartItem(event,'assignment','${a.id}')" title="${selectMode ? '' : 'Drag onto Calendar to reschedule or time-block'}">
+    ${selectMode
+      ? `<button type="button" class="row-check ${isSelected ? 'checked' : ''}" role="checkbox" aria-checked="${isSelected}" aria-label="${isSelected ? 'Deselect' : 'Select'} ${esc(a.title)}" onclick="event.stopPropagation();toggleAssignSelected('${a.id}')">${isSelected ? checkGlyph(true) : ''}</button>`
+      : `<button type="button" class="row-check ${isDone ? 'checked' : ''}" role="checkbox" aria-checked="${isDone}" aria-label="Mark ${esc(a.title)} as ${isDone ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isDone ? checkGlyph(true) : ''}</button>`}
     <div class="row-title ${isDone ? 'done' : ''}">${esc(a.title)} ${typeTag(a.type)} ${a.attachments && a.attachments.length ? icon('paperclip', 12, 1.8) : ''}</div>
     ${courseChip(a.courseId)}
     ${a.rubric.length ? `<span class="small muted">${rubricDone}/${a.rubric.length} rubric</span>` : ''}
@@ -57,6 +74,39 @@ function toggleAssignmentDone(id) {
   const a = state.assignments.find(x => x.id === id);
   a.status = (a.status === 'done' || a.status === 'submitted') ? 'not-started' : 'done';
   touch();
+}
+function toggleAssignSelectMode() {
+  state._assignSelectMode = !state._assignSelectMode;
+  state._assignSelectedIds = [];
+  touch();
+}
+function toggleAssignSelected(id) {
+  const set = new Set(state._assignSelectedIds || []);
+  if (set.has(id)) set.delete(id); else set.add(id);
+  state._assignSelectedIds = [...set];
+  touch();
+}
+function toggleAssignSelectAll() {
+  const ids = window._assignVisibleIds || [];
+  const set = new Set(state._assignSelectedIds || []);
+  const allSelected = ids.length > 0 && ids.every(id => set.has(id));
+  state._assignSelectedIds = allSelected ? [] : ids.slice();
+  touch();
+}
+function bulkDeleteAssignments() {
+  const ids = state._assignSelectedIds || [];
+  if (!ids.length) return;
+  confirmDialog(`Delete ${ids.length} assignment${ids.length === 1 ? '' : 's'}? You can restore them from Recently Deleted for 30 days.`, () => {
+    ids.forEach(id => {
+      const a = state.assignments.find(x => x.id === id);
+      if (a) trashItem('assignment', a.title || 'Untitled assignment', a);
+    });
+    state.assignments = state.assignments.filter(a => !ids.includes(a.id));
+    state._assignSelectedIds = [];
+    state._assignSelectMode = false;
+    touch();
+    toast(`Deleted ${ids.length} assignment${ids.length === 1 ? '' : 's'}`);
+  }, `Delete ${ids.length}`);
 }
 
 function openAssignmentModal(id) {
@@ -115,13 +165,22 @@ function attachmentRow(att, i) {
     <select class="select" style="max-width:140px" onchange="_assignDraft.attachments[${i}].kind=this.value">${ATTACHMENT_KINDS.map(k => `<option value="${k}" ${k === att.kind ? 'selected' : ''}>${k[0].toUpperCase() + k.slice(1)}</option>`).join('')}</select>
     <input class="input" value="${esc(att.name)}" placeholder="Name" oninput="_assignDraft.attachments[${i}].name=this.value">
     ${att.url ? `<a href="${esc(att.url)}" target="_blank" rel="noopener" class="btn btn-sm" onclick="event.stopPropagation()">Open</a>` : ''}
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove attachment" onclick="_assignDraft.attachments.splice(${i},1);renderAssignmentModal(window._assignDraft.id && state.assignments.some(a=>a.id===window._assignDraft.id) ? window._assignDraft.id : null)">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove attachment" onclick="_assignDraft.attachments.splice(${i},1);syncAssignmentAttachmentsIfExisting();renderAssignmentModal(window._assignDraft.id && state.assignments.some(a=>a.id===window._assignDraft.id) ? window._assignDraft.id : null)">${icon('x',13,2.2)}</button>
   </div>`;
+}
+// Attachments added to an assignment that already exists in state are persisted
+// immediately, not just staged on the draft — otherwise closing the modal any way
+// other than clicking "Save" (the X button, Escape, clicking outside) silently
+// discarded whatever was just uploaded.
+function syncAssignmentAttachmentsIfExisting() {
+  const existing = state.assignments.find(a => a.id === _assignDraft.id);
+  if (existing) { existing.attachments = _assignDraft.attachments; save(); }
 }
 function addAttachmentLink() {
   const url = prompt('Paste a link (rubric, prompt, reading, etc.)');
   if (!url) return;
   _assignDraft.attachments.push({ id: uid(), kind: 'reference', name: url.replace(/^https?:\/\//, '').slice(0, 40), url, dataUrl: null });
+  syncAssignmentAttachmentsIfExisting();
   renderAssignmentModal(state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null);
 }
 async function addAttachmentFile(files) {
@@ -133,7 +192,10 @@ async function addAttachmentFile(files) {
     _assignDraft.attachments.push({ id: uid(), kind: 'other', name: file.name, url: dataUrl, dataUrl });
   }
   if (skipped) toast(`${skipped} file${skipped > 1 ? 's' : ''} too large to store in the browser (max ~3MB) — add ${skipped > 1 ? 'them' : 'it'} as a link instead`, 'error', 4000);
+  syncAssignmentAttachmentsIfExisting();
   renderAssignmentModal(state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null);
+  const input = $('#af-attach-file');
+  if (input) input.value = '';
 }
 function rubricRow(r, i) {
   return `<div class="field-row" style="align-items:center;margin-bottom:6px">
@@ -223,12 +285,16 @@ async function handleAssignUploadPdf(file) {
     $('#au-pdf-status').textContent = `Extracted ${text.length.toLocaleString()} characters.`;
     auTab('paste');
   } catch (e) { $('#au-pdf-status').textContent = 'Could not read that PDF.'; }
+  const input = $('#au-pdf-input');
+  if (input) input.value = '';
 }
 async function handleAssignUploadImage(files) {
   if (!files || !files.length) return;
   $('#au-image-status').textContent = 'Loading…';
   window._auImages = await Promise.all(Array.from(files).map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
   $('#au-image-status').textContent = `${window._auImages.length} photo${window._auImages.length > 1 ? 's' : ''} loaded — ready to parse.`;
+  const input = $('#au-image-input');
+  if (input) input.value = '';
 }
 async function runAssignmentParse() {
   const btn = $('#au-parse-btn');

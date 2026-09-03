@@ -81,9 +81,9 @@ async function joinGroup() {
     pushGroupToCloud(g);
   } catch (e) { toast('Could not join — ' + e.message, 'error'); }
 }
-function pushGroupToCloud(g) {
+function pushGroupToCloud(g, onError) {
   if (!fbConfigured() || !_fbUser) return;
-  _fbDb.collection('studyGroups').doc(g.code).set(g).catch(e => console.warn('group sync failed', e));
+  _fbDb.collection('studyGroups').doc(g.code).set(g).catch(e => { console.warn('group sync failed', e); if (onError) onError(e); });
 }
 
 let _groupUnsub = null;
@@ -100,7 +100,7 @@ function openGroupDetail(id) {
   }
   window._modalOpenGroupId = id;
 }
-const SHARE_KIND_ICON = { note: 'file-text', deck: 'layers', project: 'folder', 'note-bundle': 'folder-open' };
+const SHARE_KIND_ICON = { note: 'file-text', deck: 'layers', project: 'folder', 'note-bundle': 'folder-open', file: 'paperclip' };
 window._groupTab = 'sessions';
 function setGroupTab(tab) { window._groupTab = tab; renderGroupDetail(state.studyGroups.find(x => x.id === window._modalOpenGroupId)); }
 function renderGroupDetail(g) {
@@ -177,27 +177,34 @@ function renderGroupSessionsTab(g) {
 function renderGroupSharedTab(g) {
   const shared = [...(g.sharedItems || [])].sort((a, b) => (b.sharedAt || 0) - (a.sharedAt || 0));
   return `
-    <div class="flex-between mb-8"><h3 style="font-size:14px">Shared with the group</h3><button class="btn btn-sm" onclick="openShareFromGroupModal('${g.id}')">${icon('link', 13)} Link a notebook, note, PDF, deck, or project</button></div>
+    <div class="flex-between mb-8"><h3 style="font-size:14px">Shared with the group</h3><button class="btn btn-sm" onclick="openShareFromGroupModal('${g.id}')">${icon('link', 13)} Share a file, notebook, note, deck, or project</button></div>
     ${shared.length ? shared.map(s => `
       <div class="list-row">
         <span class="nb-note-ic">${icon(SHARE_KIND_ICON[s.kind] || 'file-text', 14)}</span>
-        <div class="row-title">${esc(s.title)}${s.kind === 'deck' ? ` <span class="small muted">(${s.cards.length} cards)</span>` : s.kind === 'project' ? ` <span class="small muted">(${(s.milestones || []).length} milestones)</span>` : s.kind === 'note-bundle' ? ` <span class="small muted">(${(s.notes || []).length} notes)</span>` : ''}</div>
+        <div class="row-title">${esc(s.title)}${s.kind === 'deck' ? ` <span class="small muted">(${s.cards.length} cards)</span>` : s.kind === 'project' ? ` <span class="small muted">(${(s.milestones || []).length} milestones)</span>` : s.kind === 'note-bundle' ? ` <span class="small muted">(${(s.notes || []).length} notes)</span>` : s.kind === 'file' ? ` <span class="small muted">(${fmtFileSize(s.size)})</span>` : ''}</div>
         <div class="row-meta">${esc(s.sharedBy || '')}</div>
-        <button class="btn btn-sm" onclick="importSharedItem('${g.id}','${s.id}')">Add to mine</button>
+        ${s.kind === 'file' ? `<a class="btn btn-sm" href="${esc(s.dataUrl)}" target="_blank" rel="noopener" download="${esc(s.fileName || s.title)}">${icon('download', 13)} Download</a>` : `<button class="btn btn-sm" onclick="importSharedItem('${g.id}','${s.id}')">Add to mine</button>`}
         <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(s.title)}" onclick="removeSharedItem('${g.id}','${s.id}')">${icon('trash',14)}</button>
-      </div>`).join('') : emptyState(icon('layers',22,1.4), 'Nothing shared yet', '', 'Share a notebook, note, or flashcard deck from the Notebook or Flashcards page.')}
+      </div>`).join('') : emptyState(icon('layers',22,1.4), 'Nothing shared yet', '', 'Share a file, notebook, note, or flashcard deck from here or from the Notebook/Flashcards page.')}
   `;
 }
+function fmtFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+const GROUP_FILE_MAX_BYTES = 2 * 1024 * 1024; // group docs sync as a single Firestore doc (1MB cap) alongside sessions/tasks/etc, so keep files smaller than assignment attachments
 // Lets you link something into a group without leaving it — otherwise sharing
 // only worked by navigating to Notebook/Flashcards/Projects and hunting for the
 // Share button there. A note that came from Notebook → Upload PDF works here too,
 // since the extracted text just lives in the note's content like anything else.
 function openShareFromGroupModal(groupId) {
   openModal(`
-    <div class="modal-head"><h3>Link something into this group</h3><button class="close-x" aria-label="Close" onclick="renderGroupDetail(state.studyGroups.find(x=>x.id==='${groupId}'))">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Share into this group</h3><button class="close-x" aria-label="Close" onclick="renderGroupDetail(state.studyGroups.find(x=>x.id==='${groupId}'))">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>What do you want to share?</label>
         <select class="select" id="sfg-kind" onchange="renderShareFromGroupItems()">
+          <option value="file">Upload a file (PDF, doc, image…)</option>
           <option value="note-bundle">Notebook (a whole folder of notes)</option>
           <option value="note">Single note (includes anything imported via Upload PDF)</option>
           <option value="deck">Flashcard deck</option>
@@ -206,43 +213,74 @@ function openShareFromGroupModal(groupId) {
       </div>
       <div class="field" id="sfg-item-field"></div>
     </div>
-    <div class="modal-foot"><button class="btn" onclick="renderGroupDetail(state.studyGroups.find(x=>x.id==='${groupId}'))">Cancel</button><button class="btn btn-primary" onclick="confirmShareFromGroup('${groupId}')">Share</button></div>
+    <div class="modal-foot"><button class="btn" onclick="renderGroupDetail(state.studyGroups.find(x=>x.id==='${groupId}'))">Cancel</button><button class="btn btn-primary" id="sfg-share-btn" onclick="confirmShareFromGroup('${groupId}')">Share</button></div>
   `);
   renderShareFromGroupItems();
 }
 function renderShareFromGroupItems() {
   const kind = $('#sfg-kind').value;
   const field = $('#sfg-item-field');
+  if (kind === 'file') {
+    field.innerHTML = `<label>File</label>
+      <div class="upload-drop" onclick="$('#sfg-file-input').click()">
+        <div class="small" id="sfg-file-status">Click to choose a file (max ${fmtFileSize(GROUP_FILE_MAX_BYTES)})</div>
+        <input type="file" id="sfg-file-input" style="display:none" onchange="handleShareFromGroupFile(this.files[0])">
+      </div>`;
+    window._sfgFile = null;
+    return;
+  }
   const items = kind === 'note-bundle' ? foldersWithNotes() : kind === 'note' ? state.notes.filter(n => n.type === 'note') : kind === 'deck' ? state.decks : state.projects;
   const label = kind === 'note-bundle' ? 'Notebook' : kind === 'note' ? 'Note' : kind === 'deck' ? 'Flashcard deck' : 'Project';
   field.innerHTML = items.length
     ? `<label>${label}</label><select class="select" id="sfg-item">${items.map(it => `<option value="${it.id}">${esc(it.name || it.title)}</option>`).join('')}</select>`
     : `<p class="small muted">${kind === 'note-bundle' ? "You don't have any notebooks with notes in them yet." : `You don't have any ${label.toLowerCase()}s yet.`}</p>`;
 }
+async function handleShareFromGroupFile(file) {
+  if (!file) return;
+  const status = $('#sfg-file-status');
+  if (file.size > GROUP_FILE_MAX_BYTES) {
+    if (status) status.textContent = `Too large — max ${fmtFileSize(GROUP_FILE_MAX_BYTES)}`;
+    window._sfgFile = null;
+    return;
+  }
+  if (status) status.textContent = 'Reading…';
+  const dataUrl = 'data:' + (file.type || 'application/octet-stream') + ';base64,' + (await fileToBase64(file));
+  window._sfgFile = { name: file.name, size: file.size, dataUrl };
+  if (status) status.textContent = `${file.name} (${fmtFileSize(file.size)}) — ready to share`;
+  const input = $('#sfg-file-input');
+  if (input) input.value = '';
+}
 function confirmShareFromGroup(groupId) {
   const kind = $('#sfg-kind').value;
-  const itemEl = $('#sfg-item');
-  const itemId = itemEl?.value;
-  if (!itemId) { toast('Nothing to share', 'error'); return; }
   const g = state.studyGroups.find(x => x.id === groupId);
   let title, payload;
-  if (kind === 'note-bundle') {
-    const folder = state.notes.find(x => x.id === itemId);
-    const notes = state.notes.filter(n => n.type === 'note' && n.parentId === itemId);
-    title = folder.name; payload = { notes: notes.map(n => ({ name: n.name, content: n.content || '' })) };
-  } else if (kind === 'note') {
-    const n = state.notes.find(x => x.id === itemId);
-    title = n.name; payload = { content: n.content || '' };
-  } else if (kind === 'deck') {
-    const d = state.decks.find(x => x.id === itemId);
-    title = d.name; payload = { cards: JSON.parse(JSON.stringify(d.cards || [])) };
+  if (kind === 'file') {
+    if (!window._sfgFile) { toast('Choose a file first', 'error'); return; }
+    title = window._sfgFile.name;
+    payload = { fileName: window._sfgFile.name, size: window._sfgFile.size, dataUrl: window._sfgFile.dataUrl };
   } else {
-    const p = state.projects.find(x => x.id === itemId);
-    title = p.title; payload = { dueDate: p.dueDate || '', milestones: JSON.parse(JSON.stringify(p.milestones || [])) };
+    const itemEl = $('#sfg-item');
+    const itemId = itemEl?.value;
+    if (!itemId) { toast('Nothing to share', 'error'); return; }
+    if (kind === 'note-bundle') {
+      const folder = state.notes.find(x => x.id === itemId);
+      const notes = state.notes.filter(n => n.type === 'note' && n.parentId === itemId);
+      title = folder.name; payload = { notes: notes.map(n => ({ name: n.name, content: n.content || '' })) };
+    } else if (kind === 'note') {
+      const n = state.notes.find(x => x.id === itemId);
+      title = n.name; payload = { content: n.content || '' };
+    } else if (kind === 'deck') {
+      const d = state.decks.find(x => x.id === itemId);
+      title = d.name; payload = { cards: JSON.parse(JSON.stringify(d.cards || [])) };
+    } else {
+      const p = state.projects.find(x => x.id === itemId);
+      title = p.title; payload = { dueDate: p.dueDate || '', milestones: JSON.parse(JSON.stringify(p.milestones || [])) };
+    }
   }
   g.sharedItems = g.sharedItems || [];
   g.sharedItems.push({ id: uid(), kind, title, sharedBy: state.settings.displayName || 'Me', sharedAt: Date.now(), ...payload });
-  touch(); pushGroupToCloud(g);
+  touch();
+  pushGroupToCloud(g, () => toast(`Shared "${title}" with ${g.name}, but it may be too large to sync to other members — try a smaller file.`, 'error', 5000));
   toast(`Shared "${title}" with ${g.name}`);
   renderGroupDetail(g);
 }
@@ -304,8 +342,13 @@ function renderGroupAvailabilityTab(g) {
   const availability = g.availability || {};
   const mine = availability[me] || [];
   const overlaps = computeAvailabilityOverlap(availability);
+  // Show every member's blocks (grouped by member), not just your own — otherwise
+  // there was no way to actually see when your groupmates are free, only the
+  // computed 2+-way overlap, which stays empty until someone else has also added
+  // blocks and can look like availability "isn't showing up" for anyone else.
+  const others = (g.members || []).filter(m => m !== me && (availability[m] || []).length);
   return `
-    <div class="small muted mb-8">Add blocks when you're free — Semester HQ highlights times everyone overlaps.</div>
+    <div class="small muted mb-8">Add blocks when you're free — everyone in the group can see them here, and Semester HQ highlights times everyone overlaps.</div>
     <div class="field-row">
       <select class="select" id="av-day" style="max-width:110px">${AVAIL_DAYS.map((d, i) => `<option value="${i}">${d}</option>`).join('')}</select>
       <input class="input" type="time" id="av-start" value="17:00">
@@ -315,6 +358,12 @@ function renderGroupAvailabilityTab(g) {
     <div class="divider"></div>
     <div class="small dim mb-8" style="font-weight:600">Your blocks</div>
     ${mine.length ? mine.map((b, i) => `<div class="list-row"><div class="row-title">${AVAIL_DAYS[b.day]} ${fmtTime(b.start)}–${fmtTime(b.end)}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove availability block" onclick="removeAvailability('${g.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('') : `<div class="small muted">None yet.</div>`}
+    <div class="divider"></div>
+    <div class="small dim mb-8" style="font-weight:600">Everyone's availability</div>
+    ${others.length ? others.map(m => `
+      <div class="small" style="font-weight:600;margin:8px 0 2px">${esc(m)}</div>
+      ${(availability[m] || []).map(b => `<div class="list-row"><div class="row-title">${AVAIL_DAYS[b.day]} ${fmtTime(b.start)}–${fmtTime(b.end)}</div></div>`).join('')}
+    `).join('') : `<div class="small muted">No one else has added their availability yet — share the group code ${g.code} so they can.</div>`}
     <div class="divider"></div>
     <div class="small dim mb-8" style="font-weight:600">Everyone's overlap</div>
     ${overlaps.length ? overlaps.map(o => `<div class="list-row"><div class="row-title">${AVAIL_DAYS[o.day]} ${fmtTime(o.start)}–${fmtTime(o.end)}</div><span class="small muted">${o.members.join(', ')}</span></div>`).join('') : emptyState(icon('users',22,1.4), 'No overlapping availability yet — add your blocks above.')}
@@ -402,8 +451,13 @@ function renderGroupProjectCard(g, p) {
       <div class="field-row mt-8"><input class="input" id="gpm-title-${p.id}" placeholder="Meeting"><input class="input" type="date" id="gpm-date-${p.id}"><button class="btn btn-sm" onclick="addGroupProjectMeeting('${g.id}','${p.id}')">+ Meeting</button></div>
 
       <div class="small dim mt-16" style="font-weight:600">Files</div>
-      ${p.files.map((f, i) => `<div class="list-row"><a class="row-title" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(f.name)}" onclick="removeGroupProjectFile('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('')}
-      <div class="field-row mt-8"><input class="input" id="gpf-name-${p.id}" placeholder="File name"><input class="input" id="gpf-url-${p.id}" placeholder="Link (Drive, etc.)"><button class="btn btn-sm" onclick="addGroupProjectFile('${g.id}','${p.id}')">+ File</button></div>
+      ${p.files.map((f, i) => `<div class="list-row"><a class="row-title" href="${esc(f.url)}" target="_blank" rel="noopener" ${f.dataUrl ? `download="${esc(f.name)}"` : ''}>${esc(f.name)}</a>${f.size ? `<span class="small muted">${fmtFileSize(f.size)}</span>` : ''}<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(f.name)}" onclick="removeGroupProjectFile('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('')}
+      <div class="field-row mt-8"><input class="input" id="gpf-name-${p.id}" placeholder="File name"><input class="input" id="gpf-url-${p.id}" placeholder="Link (Drive, etc.)"><button class="btn btn-sm" onclick="addGroupProjectFile('${g.id}','${p.id}')">+ Link</button></div>
+      <div class="flex-gap mt-8">
+        <button class="btn btn-sm" onclick="$('#gpf-upload-${p.id}').click()">${icon('upload', 13, 1.8)} Upload file</button>
+        <input type="file" id="gpf-upload-${p.id}" style="display:none" onchange="addGroupProjectFileUpload('${g.id}','${p.id}',this.files[0])">
+        <span class="small muted" id="gpf-upload-status-${p.id}"></span>
+      </div>
     </div>
   `;
 }
@@ -443,6 +497,17 @@ function addGroupProjectFile(groupId, projectId) {
   touch(); renderGroupDetail(g); pushGroupToCloud(g);
 }
 function removeGroupProjectFile(groupId, projectId, i) { const { g, p } = findGroupProject(groupId, projectId); p.files.splice(i, 1); touch(); renderGroupDetail(g); pushGroupToCloud(g); }
+async function addGroupProjectFileUpload(groupId, projectId, file) {
+  const { g, p } = findGroupProject(groupId, projectId);
+  const status = $(`#gpf-upload-status-${projectId}`);
+  if (!file) return;
+  if (file.size > GROUP_FILE_MAX_BYTES) { if (status) status.textContent = `Too large — max ${fmtFileSize(GROUP_FILE_MAX_BYTES)}`; return; }
+  if (status) status.textContent = 'Uploading…';
+  const dataUrl = 'data:' + (file.type || 'application/octet-stream') + ';base64,' + (await fileToBase64(file));
+  p.files.push({ id: uid(), name: file.name, url: dataUrl, dataUrl, size: file.size });
+  touch(); renderGroupDetail(g);
+  pushGroupToCloud(g, () => toast(`"${file.name}" saved here, but is too large to sync to other members`, 'error', 5000));
+}
 function importSharedItem(groupId, itemId) {
   const g = state.studyGroups.find(x => x.id === groupId);
   const s = (g.sharedItems || []).find(x => x.id === itemId);
