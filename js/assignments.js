@@ -59,7 +59,7 @@ function assignmentRow(a, selectMode, selected) {
   const isDone = a.status === 'done' || a.status === 'submitted';
   const isSelected = !!(selected && selected.has(a.id));
   const rowClick = selectMode ? `toggleAssignSelected('${a.id}')` : `openAssignmentModal('${a.id}')`;
-  return `<div class="list-row ${isSelected ? 'selected' : ''}" style="border-bottom:1px solid var(--border)" onclick="${rowClick}" draggable="${selectMode ? 'false' : 'true'}" ondragstart="event.stopPropagation();dragStartItem(event,'assignment','${a.id}')" title="${selectMode ? '' : 'Drag onto Calendar to reschedule or time-block'}">
+  return `<div class="list-row ${isSelected ? 'selected' : ''}" onclick="${rowClick}" draggable="${selectMode ? 'false' : 'true'}" ondragstart="event.stopPropagation();dragStartItem(event,'assignment','${a.id}')" title="${selectMode ? '' : 'Drag onto Calendar to reschedule or time-block'}">
     ${selectMode
       ? `<button type="button" class="row-check ${isSelected ? 'checked' : ''}" role="checkbox" aria-checked="${isSelected}" aria-label="${isSelected ? 'Deselect' : 'Select'} ${esc(a.title)}" onclick="event.stopPropagation();toggleAssignSelected('${a.id}')">${isSelected ? checkGlyph(true) : ''}</button>`
       : `<button type="button" class="row-check ${isDone ? 'checked' : ''}" role="checkbox" aria-checked="${isDone}" aria-label="Mark ${esc(a.title)} as ${isDone ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isDone ? checkGlyph(true) : ''}</button>`}

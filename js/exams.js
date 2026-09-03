@@ -18,7 +18,7 @@ function pageExams() {
       ${upcoming.length ? upcoming.map(examCard).join('') : `<div style="grid-column:1/-1">${emptyState(icon('flag',26,1.4), 'Nothing on the horizon', '', 'Add your first exam and its countdown will show up here.')}</div>`}
     </div>
     ${past.length ? `<h3 style="font-size:15px" class="mb-8 muted">Past exams</h3><div class="card">${past.map(e => `
-      <div class="list-row" style="border-bottom:1px solid var(--border)" onclick="openAssignmentModal('${e.id}')">
+      <div class="list-row" onclick="openAssignmentModal('${e.id}')">
         ${courseChip(e.courseId)}<div class="row-title">${esc(e.title)}</div>
         <div class="row-meta">${fmtDate(e.dueDate)}</div>
         ${e.earnedPoints != null && e.maxPoints ? `<span class="small">${e.earnedPoints}/${e.maxPoints}</span>` : ''}
