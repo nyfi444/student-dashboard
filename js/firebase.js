@@ -14,7 +14,7 @@ const FB_CONFIG = {
   appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
 };
 
-let _fbAuth = null, _fbDb = null, _fbUser = null, _syncQueued = false, _applyingRemote = false, _fbAuthStateSettled = false;
+let _fbAuth = null, _fbDb = null, _fbUser = null, _syncQueued = false, _applyingRemote = false;
 
 function fbConfigured() { return !!FB_CONFIG.apiKey; }
 
@@ -25,8 +25,6 @@ function bootFirebase() {
     _fbAuth = firebase.auth();
     _fbDb = firebase.firestore();
     _fbAuth.onAuthStateChanged(async (user) => {
-      const isFirstCallback = !_fbAuthStateSettled;
-      _fbAuthStateSettled = true;
       _fbUser = user;
       window._licenseChecked = false;
       window._licensed = false;
@@ -58,7 +56,6 @@ function bootFirebase() {
         window._licenseChecked = true;
       }
       if (typeof render === 'function') render();
-      if (isFirstCallback && typeof maybeShowOnboarding === 'function') maybeShowOnboarding();
     });
   } catch (e) { console.warn('Firebase init failed', e); }
 }
@@ -78,10 +75,25 @@ async function signIn() {
 }
 async function runGoogleSignIn() {
   try {
-    await _fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    // Always show Google's account chooser, even if this browser already has
+    // a Google session — otherwise a user who picked the wrong account once
+    // (or has multiple Google accounts) gets silently signed back into that
+    // same wrong account on every later attempt, with no way to pick another
+    // one short of clearing cookies.
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    await _fbAuth.signInWithPopup(provider);
   } catch (e) {
     if (e.code !== 'auth/popup-closed-by-user') toast('Sign-in failed: ' + e.message, 'error');
   }
+}
+// One-click fix for "I'm signed in with the wrong Google account": sign out
+// of this account, then immediately reopen the picker so they can choose the
+// right one, instead of leaving them to figure out sign-out + sign-in as two
+// separate, unlabeled steps.
+async function switchGoogleAccount() {
+  await signOutUser();
+  await runGoogleSignIn();
 }
 function openAgeGateModal() {
   openModal(`

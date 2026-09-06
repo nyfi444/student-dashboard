@@ -63,12 +63,15 @@ function emptyState(icon, text, actionHtml = '', sub = '') {
 function pageHead(title, sub, actionsHtml = '') {
   return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions">${signInHeaderButton()}${actionsHtml}</div></div>`;
 }
-// A persistent, always-visible way to sign in — not just buried in a modal or
+// A persistent, always-visible way to log in — not just buried in a modal or
 // Settings — since it's the same click for a brand-new account or an existing
-// paid one (Google sign-in / resolveLicenseStatus handles both, see firebase.js).
+// paid one (Google sign-in / resolveLicenseStatus handles both, see
+// firebase.js). Links to the dedicated login.html page rather than opening
+// an in-app modal, so logging in or signing up is always a real page, never
+// a popup layered on top of whatever you were doing.
 function signInHeaderButton() {
   if (!fbConfigured() || _fbUser) return '';
-  return `<button class="btn btn-sm" onclick="signIn()">${icon('sparkles', 13, 2)} Sign in</button>`;
+  return `<a class="btn btn-sm" href="login.html">${icon('sparkles', 13, 2)} Log in</a>`;
 }
 function aiButton(label, onclick, id) {
   return `<button class="btn btn-sm" ${id ? `id="${id}"` : ''} onclick="${onclick}" style="background:var(--badge);color:var(--ink);border:none">${icon('sparkles', 13, 1.5)} ${esc(label)}</button>`;

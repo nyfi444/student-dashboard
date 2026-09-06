@@ -62,36 +62,5 @@ function initApp() {
   bootFirebase();
   $('.sidebar-expand-fab').innerHTML = icon('panel-left', 16, 1.6);
   render();
-  // If sync is configured, wait for bootFirebase()'s first auth callback (see
-  // firebase.js) before deciding whether to show the account prompt — it needs
-  // to know if this is already a signed-in returning user. Otherwise, no
-  // callback is coming, so decide immediately.
-  if (!fbConfigured()) maybeShowOnboarding();
-}
-function maybeShowOnboarding() {
-  // Prompts every time the app opens signed-out, not just the first visit —
-  // otherwise skipping it once meant Google sign-in was never surfaced again.
-  // Skip the sign-up nudge when embedded (e.g. the marketing site's "try it
-  // live" iframe) — every visitor there gets a fresh, empty local state, so
-  // this would otherwise greet them with an account prompt before they've
-  // seen anything.
-  if (fbConfigured() && !_fbUser && !isEmbedded()) openAccountPromptModal();
-}
-function openAccountPromptModal() {
-  openModal(`
-    <div class="modal-head"><h3>Sign in to sync</h3></div>
-    <div class="modal-body">
-      <p class="small muted mb-16">Already subscribed? Sign in with the same Google account to pick up right where you left off. New here? This creates your account automatically and your semester syncs across every device — no setup, no manual backups. You can still use the planner on just this device if you'd rather skip it for now.</p>
-      <button class="btn btn-primary" style="width:100%" onclick="signInFromOnboarding()">${icon('sparkles', 13, 1.6)} Sign in with Google</button>
-    </div>
-    <div class="modal-foot"><button class="btn" style="width:100%" onclick="skipAccountPrompt()">Continue on this device only</button></div>
-  `);
-}
-async function signInFromOnboarding() {
-  const result = await signIn();
-  if (result !== 'age-gate') closeModal();
-}
-function skipAccountPrompt() {
-  closeModal();
 }
 initApp();

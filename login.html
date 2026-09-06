@@ -19,34 +19,72 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 
 <style>
-  body { min-height: 100%; display: flex; align-items: center; justify-content: center; }
-  .login-wrap { min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; }
-  .login-card { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg); border-radius: var(--r-soft); padding: 40px 34px; width: 400px; max-width: 100%; text-align: center; }
-  .login-logo { font-family: var(--font-serif); font-size: 24px; margin-bottom: 30px; display: flex; align-items: baseline; justify-content: center; gap: 6px; color: var(--text); }
-  .login-logo .spark { color: var(--text-faint); font-size: 13px; position: relative; top: -8px; }
-  .login-card h2 { font-family: var(--font-serif); font-weight: 400; font-size: 26px; margin-bottom: 8px; }
-  .login-sub { font-size: 13px; color: var(--text-faint); line-height: 1.55; margin-bottom: 26px; }
+  html, body { height: 100%; }
+  body { margin: 0; }
+  /* A real two-panel page filling the viewport — not a card floating on
+     empty space, which reads as a popup/modal rather than a page. */
+  .login-page { min-height: 100vh; display: flex; }
+  .login-brand {
+    flex: 1 1 46%; background: var(--ink); color: var(--cloud);
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 60px 64px;
+  }
+  .login-brand-logo { font-family: var(--font-serif); font-size: 20px; display: flex; align-items: baseline; gap: 6px; margin-bottom: 56px; }
+  .login-brand-logo .spark { opacity: .55; font-size: 12px; position: relative; top: -8px; }
+  .login-brand h1 { font-family: var(--font-serif); font-weight: 400; font-size: clamp(30px, 3.4vw, 44px); line-height: 1.15; max-width: 480px; }
+  .login-features { list-style: none; margin: 40px 0 0; padding: 0; display: flex; flex-direction: column; gap: 16px; max-width: 420px; }
+  .login-features li { font-size: 14px; line-height: 1.5; opacity: .78; padding-left: 22px; position: relative; }
+  .login-features li::before { content: '✓'; position: absolute; left: 0; opacity: .7; }
+
+  .login-main { flex: 1 1 54%; display: flex; flex-direction: column; padding: 32px 48px; }
+  .login-back { font-size: 13px; color: var(--text-faint); display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; }
+  .login-back:hover { color: var(--text); }
+  .login-form-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+  .login-form { width: 100%; max-width: 360px; }
+  .login-form h2 { font-family: var(--font-serif); font-weight: 400; font-size: 30px; margin-bottom: 8px; }
+  .login-sub { font-size: 13.5px; color: var(--text-faint); line-height: 1.55; margin-bottom: 28px; }
   .login-error { display: none; background: var(--danger-light); color: var(--danger); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12.5px; margin-bottom: 14px; text-align: left; }
   .login-error.show { display: block; }
   .login-check { text-align: left; margin: 2px 0 18px; }
   .login-foot { margin-top: 24px; font-size: 12.5px; color: var(--text-faint); }
   .login-foot a { color: var(--text); font-weight: 600; }
-  .login-back { position: fixed; top: 20px; left: 20px; font-size: 13px; color: var(--text-faint); display: flex; align-items: center; gap: 6px; }
-  .login-back:hover { color: var(--text); }
+
+  @media (max-width: 860px) {
+    .login-page { flex-direction: column; }
+    .login-brand { flex: none; padding: 40px 28px; text-align: center; align-items: center; }
+    .login-brand-logo { justify-content: center; margin-bottom: 28px; }
+    .login-h1-wrap { display: flex; flex-direction: column; align-items: center; }
+    .login-features { display: none; }
+    .login-main { padding: 24px 28px 48px; }
+  }
 </style>
 </head>
 <body>
-<a href="https://semester-hq.com/" class="login-back">&larr; semester-hq.com</a>
-<div class="login-wrap">
-  <div class="login-card">
-    <div class="login-logo">Semester HQ <span class="spark">&#10022;</span></div>
-    <h2>Welcome back</h2>
-    <p class="login-sub">Sign in with Google to sync your semester across every device.</p>
-    <div class="login-error" id="login-error"></div>
-    <div id="login-body">
-      <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
+<div class="login-page">
+  <div class="login-brand">
+    <div class="login-brand-logo">Semester HQ <span class="spark">&#10022;</span></div>
+    <div class="login-h1-wrap">
+      <h1>Your entire semester,<br>finally in one place.</h1>
+      <ul class="login-features">
+        <li>Calendar, assignments, and notes synced across every device</li>
+        <li>Upload a syllabus and let your semester fill itself in</li>
+        <li>Share study groups and tasks with classmates, kept in sync</li>
+      </ul>
     </div>
-    <p class="login-foot">New to Semester HQ? <a href="https://semester-hq.com/#try">Try it free</a></p>
+  </div>
+  <div class="login-main">
+    <a href="https://semester-hq.com/" class="login-back">&larr; semester-hq.com</a>
+    <div class="login-form-wrap">
+      <div class="login-form">
+        <h2>Log in</h2>
+        <p class="login-sub">Continue with Google to sync your semester across every device.</p>
+        <div class="login-error" id="login-error"></div>
+        <div id="login-body">
+          <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
+        </div>
+        <p class="login-foot">New to Semester HQ? Signing up is the same button above — continuing with Google creates your account automatically.</p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -105,7 +143,12 @@ function confirmAgeGate() {
 async function runSignIn() {
   document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Signing in&hellip;</button>';
   try {
-    await _auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    // Always show the account chooser, even if this browser already has a
+    // Google session — so picking the wrong account once never traps someone
+    // into reusing it silently on every later sign-in attempt.
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    await _auth.signInWithPopup(provider);
     // Success redirects from the onAuthStateChanged listener below.
   } catch (e) {
     renderSignInButton();
