@@ -152,8 +152,14 @@ function renderGroupPeopleTab(g) {
 function groupActivityFeed(g) {
   const items = [];
   (g.sharedItems || []).forEach(s => items.push({ at: s.sharedAt || 0, icon: SHARE_KIND_ICON[s.kind] || 'file-text', text: `${s.sharedBy || 'Someone'} shared "${s.title}"` }));
-  (g.tasks || []).forEach(t => { if (t.assignedTo && t.assignedAt) items.push({ at: t.assignedAt, icon: 'check-square', text: `"${t.title}" assigned to ${t.assignedTo}` }); });
-  (g.projects || []).forEach(p => (p.tasks || []).forEach(t => { if (t.assignedTo && t.assignedAt) items.push({ at: t.assignedAt, icon: 'folder', text: `"${t.title}" (${p.title}) assigned to ${t.assignedTo}` }); }));
+  (g.tasks || []).forEach(t => {
+    if (t.assignedTo && t.assignedAt) items.push({ at: t.assignedAt, icon: 'check-square', text: `"${t.title}" assigned to ${t.assignedTo}` });
+    if (t.done && t.completedBy && t.completedAt) items.push({ at: t.completedAt, icon: 'check', text: `${t.completedBy} completed "${t.title}"` });
+  });
+  (g.projects || []).forEach(p => (p.tasks || []).forEach(t => {
+    if (t.assignedTo && t.assignedAt) items.push({ at: t.assignedAt, icon: 'folder', text: `"${t.title}" (${p.title}) assigned to ${t.assignedTo}` });
+    if (t.done && t.completedBy && t.completedAt) items.push({ at: t.completedAt, icon: 'check', text: `${t.completedBy} completed "${t.title}"` });
+  }));
   return items.sort((a, b) => b.at - a.at);
 }
 function renderGroupSessionsTab(g) {
@@ -326,7 +332,11 @@ function setGroupTaskOwner(groupId, taskId, owner) {
 function toggleGroupTask(groupId, taskId) {
   const g = state.studyGroups.find(x => x.id === groupId);
   const t = (g.tasks || []).find(x => x.id === taskId);
-  if (t) t.done = !t.done;
+  if (t) {
+    t.done = !t.done;
+    t.completedBy = t.done ? (state.settings.displayName || 'Me') : null;
+    t.completedAt = t.done ? Date.now() : null;
+  }
   touch(); renderGroupDetail(g); pushGroupToCloud(g);
 }
 function removeGroupTask(groupId, taskId) {
@@ -470,7 +480,14 @@ function addGroupProjectTask(groupId, projectId) {
   p.tasks.push({ id: uid(), title, done: false, assignedTo: null });
   touch(); renderGroupDetail(g); pushGroupToCloud(g);
 }
-function toggleGroupProjectTask(groupId, projectId, i) { const { g, p } = findGroupProject(groupId, projectId); p.tasks[i].done = !p.tasks[i].done; touch(); renderGroupDetail(g); pushGroupToCloud(g); }
+function toggleGroupProjectTask(groupId, projectId, i) {
+  const { g, p } = findGroupProject(groupId, projectId);
+  const t = p.tasks[i];
+  t.done = !t.done;
+  t.completedBy = t.done ? (state.settings.displayName || 'Me') : null;
+  t.completedAt = t.done ? Date.now() : null;
+  touch(); renderGroupDetail(g); pushGroupToCloud(g);
+}
 function removeGroupProjectTask(groupId, projectId, i) { const { g, p } = findGroupProject(groupId, projectId); p.tasks.splice(i, 1); touch(); renderGroupDetail(g); pushGroupToCloud(g); }
 function setGroupProjectTaskOwner(groupId, projectId, i, owner) { const { g, p } = findGroupProject(groupId, projectId); p.tasks[i].assignedTo = owner || null; p.tasks[i].assignedAt = owner ? Date.now() : null; touch(); pushGroupToCloud(g); }
 function addGroupProjectDeadline(groupId, projectId) {
