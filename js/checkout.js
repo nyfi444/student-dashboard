@@ -113,7 +113,7 @@ function pagePaywall() {
     return `
       <div class="paywall-wrap">
         <div class="paywall-card">
-          <h2>Finishing up your purchase…</h2>
+          <h2>Setting up your HQ…</h2>
           <p class="small muted">This usually takes a few seconds. Hang tight.</p>
         </div>
       </div>`;

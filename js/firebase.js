@@ -34,9 +34,14 @@ function bootFirebase() {
       window._licensed = false;
       if (typeof render === 'function') render(); // show a "checking" state rather than flash stale content
       if (user) {
+        // Captured before resolveLicenseStatus()/pollForLicense() below, since
+        // a successful license check clears this param — need to know whether
+        // this moment is "just paid" to show "Your HQ is ready" instead of the
+        // routine returning-user toast.
+        const justPurchased = typeof checkoutReturnPending === 'function' && checkoutReturnPending();
         window._licensed = await resolveLicenseStatus();
         // Just came back from Stripe and the webhook may still be catching up — retry a bit before giving up.
-        if (!window._licensed && typeof checkoutReturnPending === 'function' && checkoutReturnPending()) {
+        if (!window._licensed && justPurchased) {
           window._checkoutPending = true;
           if (typeof render === 'function') render();
           window._licensed = await pollForLicense();
@@ -54,7 +59,7 @@ function bootFirebase() {
             state.settings.displayName = (user.displayName || user.email.split('@')[0]).trim();
             touch();
           }
-          toast(`Synced as ${user.displayName || user.email}`, 'success');
+          toast(justPurchased ? 'Your HQ is ready — welcome in.' : `Synced as ${user.displayName || user.email}`, 'success');
         }
       } else {
         window._licenseChecked = true;
