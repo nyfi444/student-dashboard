@@ -220,7 +220,7 @@
         <div id="login-body">
           <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
         </div>
-        <p class="login-foot">New to Semester HQ? Just enter your email above — creating an account and logging in are the same step.</p>
+        <p class="login-foot">New to Semester HQ? Enter your email above — if it's new, we'll take you straight to checkout instead of an inbox.</p>
       </div>
     </div>
     <div class="login-sitefoot">
@@ -239,6 +239,10 @@ const FB_CONFIG = {
   messagingSenderId: '191691583510',
   appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
 };
+// Same Worker used everywhere else in the app (js/ai.js, js/checkout.js) —
+// login.html is intentionally dependency-light so it doesn't load the rest
+// of the app's JS just to check one email against Stripe/Firestore.
+const WORKER_BASE_URL = 'https://student-planner-ai-proxy.semesterhq.workers.dev';
 const AGE_TOS_KEY = 'shq_age_tos_confirmed';
 const EMAIL_LINK_STORAGE_KEY = 'shq_email_for_signin';
 let _auth = null;
@@ -262,7 +266,7 @@ function renderSignInButton() {
     </form>
     <div class="login-divider"><span>or</span></div>
     <button class="btn btn-google" style="width:100%" onclick="startSignIn()">Continue with Google</button>
-    <p class="login-note">Students use Google to securely access their Semester HQ account — any email works if you'd rather sign in that way.</p>
+    <p class="login-note">Students use Google to securely access their Semester HQ account. Any email works too — existing subscribers get a sign-in link, new ones go straight to checkout.</p>
   `;
 }
 function renderEmailSent(email) {
@@ -278,10 +282,51 @@ function startSignIn() {
   if (localStorage.getItem(AGE_TOS_KEY) !== '1') { showAgeGate(); return; }
   runSignIn();
 }
-function startEmailSignIn() {
+// Checks whether this email already has a paid plan before doing anything
+// else — a brand-new email skips the magic-link round trip entirely and
+// goes straight to Stripe, instead of making someone dig a sign-in email out
+// of their inbox just to land on a "no plan yet, subscribe" screen. Returns
+// null (not false) on any failure, so a flaky network never blocks sign-in —
+// it just falls back to the original verified-link path.
+async function checkEmailHasPlan(email) {
+  try {
+    const res = await fetch(`${WORKER_BASE_URL}/check-email`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return !!data.paid;
+  } catch { return null; }
+}
+async function redirectToCheckoutForEmail(email) {
+  try {
+    const res = await fetch(`${WORKER_BASE_URL}/create-checkout-session`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout');
+    window.location.href = data.url;
+    return true;
+  } catch (e) {
+    showError('Could not start checkout: ' + e.message);
+    return false;
+  }
+}
+async function startEmailSignIn() {
   clearError();
   const email = document.getElementById('login-email-input')?.value.trim();
   if (!email) { showError('Enter your email to continue.'); return; }
+
+  document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Checking&hellip;</button>';
+  const hasPlan = await checkEmailHasPlan(email);
+
+  if (hasPlan === false) {
+    const started = await redirectToCheckoutForEmail(email);
+    if (!started) renderSignInButton();
+    return;
+  }
+  // Existing subscriber, or the check itself failed — either way, fall back
+  // to the real sign-in flow rather than guessing.
   _pendingEmail = email;
   if (localStorage.getItem(AGE_TOS_KEY) !== '1') { showAgeGate(); return; }
   runEmailSignIn(email);

@@ -3,14 +3,17 @@
    1. AI proxy (/v1/messages) — holds ANTHROPIC_API_KEY, forwards to Claude.
    2. Checkout (/create-checkout-session) — starts a $7.99/month Stripe
       subscription for sign-in and sync.
-   3. Licensing (/stripe-webhook, /claim-license) — the ONLY writer of
-      Firestore's `licenses` collection. Clients can only read their own
-      license (see firestore.rules); this Worker is the sole trusted
-      authority that marks someone as paid, using a Firebase service
+   3. Licensing (/stripe-webhook, /claim-license, /check-email) — the ONLY
+      writer of Firestore's `licenses` collection. Clients can only read
+      their own license (see firestore.rules); this Worker is the sole
+      trusted authority that marks someone as paid, using a Firebase service
       account to write via the Firestore REST API. Subscription renewals,
       payment failures, and cancellations all flow through the webhook too
       (customer.subscription.updated/deleted), so `paid` always reflects
-      whether the subscription is currently active.
+      whether the subscription is currently active. /check-email is the one
+      unauthenticated read here — a bare "has this email paid?" boolean,
+      used by login.html to skip the magic-link step entirely for emails
+      with no plan yet and send them straight to Checkout.
    4. Contact form (/contact-message) — the ONLY writer of Firestore's
       `feedback` collection. Rate-limited and validated server-side since
       it's reachable by anyone, signed in or not. Also emails the site
@@ -78,6 +81,10 @@ export default {
     if (url.pathname === '/claim-license') {
       if (!(await checkRateLimit(env, ip, 'claim', 15))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
       return handleClaimLicense(request, env, origin);
+    }
+    if (url.pathname === '/check-email') {
+      if (!(await checkRateLimit(env, ip, 'check-email', 20))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      return handleCheckEmail(request, env, origin);
     }
     if (url.pathname === '/delete-account') {
       if (!(await checkRateLimit(env, ip, 'delete-account', 5))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
@@ -324,6 +331,28 @@ async function handleClaimLicense(request, env, origin) {
     return jsonOk({ paid: false }, env, origin);
   } catch (e) {
     return jsonError('Could not check license: ' + e.message, 500, env, origin);
+  }
+}
+
+// Unauthenticated, pre-signin lookup: lets login.html skip the magic-link
+// round trip for an email with no paid plan and send it straight to Stripe
+// Checkout instead. Only ever returns a bare boolean — never stripeCustomerId,
+// uid, or anything else from the license doc — so this can't be used to pull
+// anything more than "has this email paid," which is the same fact anyone
+// could already confirm by going through the real sign-in flow. Rate-limited
+// (see router) since, unlike /claim-license, it doesn't require proving you
+// own the email first.
+async function handleCheckEmail(request, env, origin) {
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
+  const email = String(body.email || '').toLowerCase().trim();
+  if (!email || !email.includes('@')) return jsonError('Missing or invalid email', 400, env, origin);
+
+  try {
+    const byEmail = await readFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email));
+    return jsonOk({ paid: !!byEmail?.paid }, env, origin);
+  } catch (e) {
+    return jsonError('Could not check email: ' + e.message, 500, env, origin);
   }
 }
 
