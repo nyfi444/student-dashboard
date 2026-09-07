@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<meta name="theme-color" content="#141414">
+<meta name="theme-color" content="#171512">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
@@ -21,75 +21,211 @@
 <style>
   html, body { height: 100%; }
   body { margin: 0; }
+
+  /* Self-contained editorial palette for this page only — deliberately
+     fixed regardless of the app's light/dark preference, since this is a
+     brand moment, not app chrome. */
+  .login-page {
+    --lp-ink: #17140f;
+    --lp-ink-2: #201c16;
+    --lp-cloud: #f7f2ea;
+    --lp-cloud-dim: rgba(247, 242, 234, .64);
+    --lp-cloud-faint: rgba(247, 242, 234, .4);
+    --lp-cloud-line: rgba(247, 242, 234, .07);
+    --lp-paper: #f7f2ea;
+    --lp-paper-2: #efe8db;
+    --lp-text: #17140f;
+    --lp-text-dim: rgba(23, 20, 15, .66);
+    --lp-text-faint: rgba(23, 20, 15, .42);
+    --lp-border: rgba(23, 20, 15, .13);
+    --lp-rose: #ad9686;
+    --lp-radius: 3px;
+  }
+
   /* A real two-panel page filling the viewport — not a card floating on
      empty space, which reads as a popup/modal rather than a page. */
-  .login-page { min-height: 100vh; display: flex; }
-  .login-brand {
-    flex: 1 1 46%; background: var(--ink); color: var(--cloud);
-    display: flex; flex-direction: column; justify-content: space-between;
-    padding: 56px 64px;
-  }
-  .login-brand-mid { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-  .login-brand-logo { font-family: var(--font-serif); font-style: italic; font-size: 20px; display: flex; align-items: baseline; gap: 6px; }
-  .login-brand-logo .spark { opacity: .5; font-size: 12px; position: relative; top: -8px; }
-  .login-eyebrow { display: flex; align-items: center; gap: 9px; font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; opacity: .5; margin-bottom: 26px; }
-  .login-eyebrow .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-  .login-brand h1 { font-family: var(--font-serif); font-weight: 400; font-size: clamp(38px, 4.4vw, 58px); line-height: 1.12; max-width: 520px; }
-  .login-brand h1 em { font-style: italic; opacity: .62; }
-  .login-brand-foot { margin-top: 34px; font-size: 14px; line-height: 1.6; opacity: .5; max-width: 400px; }
+  .login-page { min-height: 100vh; display: flex; background: var(--lp-paper); }
 
-  .login-main { flex: 1 1 54%; display: flex; flex-direction: column; padding: 32px 56px; }
-  .login-back { font-size: 13px; color: var(--text-faint); display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; }
-  .login-back:hover { color: var(--text); }
-  .login-form-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+  /* ---------- Left / brand panel ---------- */
+  .login-brand {
+    flex: 1 1 58%; position: relative; overflow: hidden;
+    background: var(--lp-ink); color: var(--lp-cloud);
+    display: flex; flex-direction: column;
+    padding: 48px 5.5vw 56px;
+  }
+  .login-brand-grid {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 62px, var(--lp-cloud-line) 62px, var(--lp-cloud-line) 63px),
+      repeating-linear-gradient(90deg, transparent, transparent 62px, var(--lp-cloud-line) 62px, var(--lp-cloud-line) 63px);
+    -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.9), rgba(0,0,0,.15));
+            mask-image: linear-gradient(180deg, rgba(0,0,0,.9), rgba(0,0,0,.15));
+  }
+  .login-brand-mono {
+    position: absolute; left: -0.09em; bottom: -0.34em; z-index: 0; pointer-events: none;
+    font-family: var(--font-serif); font-style: italic; font-weight: 400;
+    font-size: min(46vw, 640px); line-height: 1; color: var(--lp-cloud); opacity: .045;
+  }
+  .login-grain { position: absolute; inset: 0; pointer-events: none; opacity: .05; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .login-brand-logo {
+    position: relative; z-index: 1;
+    font-family: var(--font-serif); font-style: italic; font-size: 16px; font-weight: 400;
+    display: flex; align-items: baseline; gap: 6px; letter-spacing: .02em;
+  }
+  .login-brand-logo .spark { opacity: .55; font-size: 10px; position: relative; top: -7px; }
+
+  .login-brand-mid { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: clamp(24px, 7vh, 84px); }
+  .login-eyebrow {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 11px; font-weight: 600; letter-spacing: .17em; text-transform: uppercase;
+    color: var(--lp-cloud-dim); margin-bottom: 24px;
+  }
+  .login-eyebrow .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--lp-rose); flex-shrink: 0; }
+  .login-brand h1 {
+    font-family: var(--font-serif); font-weight: 400; font-size: clamp(42px, 4.9vw, 72px);
+    line-height: 1.03; letter-spacing: -.015em; max-width: 9.5em; margin: 0;
+  }
+  .login-brand h1 em { font-style: italic; color: var(--lp-rose); }
+
+  .login-brand-foot { position: relative; z-index: 1; margin-top: 32px; font-size: 13px; line-height: 1.65; letter-spacing: .002em; color: var(--lp-cloud-faint); max-width: 340px; }
+
+  /* Cropped product-preview card peeking off the panel's edge */
+  .login-preview {
+    position: absolute; right: -78px; bottom: -58px; z-index: 1; pointer-events: none;
+    width: 300px; transform: rotate(-3deg);
+    filter: grayscale(1) contrast(.94) brightness(1.02);
+    opacity: .9;
+  }
+  .lp-card {
+    background: var(--lp-cloud); border-radius: 10px; padding: 16px 16px 18px;
+    box-shadow: 0 30px 60px rgba(0,0,0,.35);
+  }
+  .lp-card-head { display: flex; gap: 5px; margin-bottom: 14px; }
+  .lp-card-head span { width: 6px; height: 6px; border-radius: 50%; background: rgba(23,20,15,.18); }
+  .lp-row { display: flex; align-items: center; gap: 9px; padding: 7px 0; border-top: 1px solid rgba(23,20,15,.08); }
+  .lp-row:first-of-type { border-top: none; }
+  .lp-row i { width: 13px; height: 13px; border-radius: 3px; border: 1.5px solid rgba(23,20,15,.3); flex-shrink: 0; display: block; }
+  .lp-row b { height: 8px; border-radius: 2px; background: rgba(23,20,15,.16); flex: 1; }
+  .lp-row.done i { background: rgba(23,20,15,.3); }
+  .lp-row.done b { opacity: .45; }
+  .lp-cal { display: flex; gap: 4px; margin-top: 14px; }
+  .lp-cal span { flex: 1; aspect-ratio: 1; border-radius: 2px; background: rgba(23,20,15,.08); }
+  .lp-cal span.on { background: var(--lp-rose); }
+
+  /* ---------- Right / login panel ---------- */
+  .login-main { flex: 1 1 42%; position: relative; display: flex; flex-direction: column; padding: 32px 5.5vw 28px; }
+  .login-back { position: relative; z-index: 1; font-size: 13px; color: var(--lp-text-faint); display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; text-decoration: none; }
+  .login-back:hover { color: var(--lp-text); }
+
+  .login-form-wrap { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: clamp(0px, 6vw, 64px); }
   .login-form { width: 100%; max-width: 400px; }
-  .login-form h2 { font-family: var(--font-serif); font-weight: 400; font-size: 46px; line-height: 1.1; margin-bottom: 14px; }
-  .login-sub { font-size: 15.5px; color: var(--text-faint); line-height: 1.6; margin-bottom: 34px; }
-  .login-error { display: none; background: var(--danger-light); color: var(--danger); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12.5px; margin-bottom: 14px; text-align: left; }
+  .login-form h2 { font-family: var(--font-serif); font-weight: 400; font-size: 52px; line-height: 1.02; letter-spacing: -.015em; margin: 0 0 8px; color: var(--lp-text); }
+  .login-sub { font-size: 14.5px; color: var(--lp-text-dim); line-height: 1.55; margin: 0 0 40px; }
+
+  .login-error { display: none; background: #f6e9e4; color: #8a3a24; border-radius: var(--lp-radius); padding: 11px 13px; font-size: 12.5px; margin-bottom: 14px; text-align: left; }
   .login-error.show { display: block; }
-  .login-check { text-align: left; margin: 2px 0 18px; }
-  .login-form .btn { font-size: 15px; padding: 15px 20px; }
-  .login-form .input { font-size: 15px; padding: 15px 16px; }
-  .login-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; font-size: 12px; color: var(--text-faint); }
-  .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-  .login-sent { text-align: left; font-size: 14.5px; line-height: 1.6; color: var(--text); background: var(--surface-2); border-radius: var(--radius-sm); padding: 16px; }
+  .login-check { text-align: left; margin: 2px 0 18px; color: var(--lp-text-dim); }
+
+  .login-form .input {
+    font-size: 15px; padding: 15px 16px; border-radius: var(--lp-radius);
+    background: var(--lp-paper-2); border: 1px solid var(--lp-border); color: var(--lp-text);
+  }
+  .login-form .input:focus { border-color: var(--lp-ink); }
+  .login-form .input::placeholder { color: var(--lp-text-faint); }
+
+  .login-form .btn {
+    font-size: 14.5px; font-weight: 600; padding: 15px 20px; border-radius: var(--lp-radius);
+    letter-spacing: .01em; transition: box-shadow .15s ease, background .15s ease, transform .05s ease;
+  }
+  .login-form .btn.btn-primary {
+    background: var(--lp-ink); color: var(--lp-cloud); border: 1px solid var(--lp-ink); box-shadow: none;
+  }
+  .login-form .btn.btn-primary:hover { background: var(--lp-ink-2); box-shadow: 0 6px 20px rgba(23,20,15,.22); }
+  .login-form .btn.btn-primary:active { transform: translateY(1px); }
+  .login-form .btn.btn-google {
+    background: var(--lp-cloud); color: var(--lp-text); border: 1px solid var(--lp-border); box-shadow: 0 1px 2px rgba(23,20,15,.04);
+  }
+  .login-form .btn.btn-google:hover { border-color: var(--lp-ink); box-shadow: 0 4px 14px rgba(23,20,15,.1); }
+  .login-form .btn.btn-google:active { transform: translateY(1px); box-shadow: none; }
+  .login-form .btn:disabled { opacity: .55; }
+
+  .login-divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--lp-text-faint); }
+  .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--lp-border); }
+
+  .login-note { font-size: 12px; line-height: 1.65; color: var(--lp-text-faint); margin: 16px 0 0; text-align: left; }
+
+  .login-sent { text-align: left; font-size: 14.5px; line-height: 1.6; color: var(--lp-text); background: var(--lp-paper-2); border: 1px solid var(--lp-border); border-radius: var(--lp-radius); padding: 16px; }
   .login-sent strong { display: block; margin-bottom: 4px; font-size: 15.5px; }
-  .login-foot { margin-top: 26px; font-size: 13.5px; color: var(--text-faint); }
-  .login-foot a { color: var(--text); font-weight: 600; }
+
+  .login-foot { margin-top: 24px; font-size: 13px; line-height: 1.55; color: var(--lp-text-faint); }
+  .login-foot a { color: var(--lp-text); font-weight: 600; }
+
+  .login-sitefoot {
+    position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center;
+    font-size: 11.5px; letter-spacing: .01em; color: var(--lp-text-faint); padding-top: 24px; margin-top: 16px; border-top: 1px solid var(--lp-border);
+  }
+  .login-sitefoot-links { display: flex; gap: 16px; }
+  .login-sitefoot-links a { color: var(--lp-text-faint); text-decoration: none; }
+  .login-sitefoot-links a:hover { color: var(--lp-text); }
 
   @media (max-width: 860px) {
     .login-page { flex-direction: column; }
-    .login-brand { flex: none; padding: 44px 28px; text-align: center; align-items: center; }
-    .login-brand-logo, .login-eyebrow { justify-content: center; }
-    .login-h1-wrap { display: flex; flex-direction: column; align-items: center; }
-    .login-brand-foot { display: none; }
-    .login-main { padding: 24px 28px 48px; }
+    .login-brand { flex: none; padding: 40px 26px 88px; text-align: center; align-items: center; }
+    .login-brand-logo { justify-content: center; }
+    .login-brand-mid { justify-content: center; padding-bottom: 0; }
+    .login-eyebrow { justify-content: center; }
+    .login-brand h1 { max-width: none; }
+    .login-brand-foot, .login-preview, .login-brand-mono { display: none; }
+    .login-main { padding: 24px 26px 22px; }
+    .login-form-wrap { align-items: center; padding-left: 0; }
+    .login-form { text-align: center; }
+    .login-check { text-align: left; }
     .login-form h2 { font-size: 36px; }
+    .login-sitefoot { flex-direction: column; gap: 8px; }
   }
 </style>
 </head>
 <body>
 <div class="login-page">
   <div class="login-brand">
+    <div class="login-brand-grid"></div>
+    <div class="login-brand-mono">S</div>
+    <div class="login-grain"></div>
     <div class="login-brand-logo">Semester HQ <span class="spark">&#10022;</span></div>
     <div class="login-brand-mid">
       <div class="login-eyebrow"><span class="dot"></span>Everything your semester needs</div>
       <h1>Your entire semester,<br><em>finally</em> in one place.</h1>
     </div>
     <p class="login-brand-foot">Calendar, assignments, notes, and study groups — synced across every device.</p>
+    <div class="login-preview" aria-hidden="true">
+      <div class="lp-card">
+        <div class="lp-card-head"><span></span><span></span><span></span></div>
+        <div class="lp-row done"><i></i><b style="max-width:70%"></b></div>
+        <div class="lp-row"><i></i><b></b></div>
+        <div class="lp-row"><i></i><b style="max-width:55%"></b></div>
+        <div class="lp-cal"><span></span><span></span><span class="on"></span><span></span><span></span><span></span><span></span></div>
+      </div>
+    </div>
   </div>
   <div class="login-main">
     <a href="https://semester-hq.com/" class="login-back">&larr; semester-hq.com</a>
     <div class="login-form-wrap">
       <div class="login-form">
-        <h2>Log in</h2>
-        <p class="login-sub">Any email works — sync your semester across every device.</p>
+        <h2>Welcome back.</h2>
+        <p class="login-sub">Your semester is right where you left it.</p>
         <div class="login-error" id="login-error"></div>
         <div id="login-body">
           <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
         </div>
         <p class="login-foot">New to Semester HQ? Just enter your email above — creating an account and logging in are the same step.</p>
       </div>
+    </div>
+    <div class="login-sitefoot">
+      <span>Semester HQ &copy; 2026</span>
+      <span class="login-sitefoot-links"><a href="https://semester-hq.com/privacy.html">Privacy</a><a href="https://semester-hq.com/terms.html">Terms</a></span>
     </div>
   </div>
 </div>
@@ -110,13 +246,6 @@ let _auth = null;
 // resume the email flow instead of defaulting to Google.
 let _pendingEmail = null;
 
-// Match the app's saved dark-mode preference so this doesn't flash the
-// wrong theme for returning users coming straight from a bookmark/link.
-try {
-  const raw = localStorage.getItem('studentPlanner.v1');
-  if (raw && JSON.parse(raw)?.settings?.dark) document.documentElement.classList.add('dark');
-} catch {}
-
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function showError(msg) {
   const el = document.getElementById('login-error');
@@ -132,7 +261,8 @@ function renderSignInButton() {
       <button class="btn btn-primary" type="submit" style="width:100%">Continue with email</button>
     </form>
     <div class="login-divider"><span>or</span></div>
-    <button class="btn" style="width:100%" onclick="startSignIn()">Continue with Google</button>
+    <button class="btn btn-google" style="width:100%" onclick="startSignIn()">Continue with Google</button>
+    <p class="login-note">Students use Google to securely access their Semester HQ account — any email works if you'd rather sign in that way.</p>
   `;
 }
 function renderEmailSent(email) {
