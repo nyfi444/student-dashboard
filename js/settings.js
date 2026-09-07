@@ -71,8 +71,9 @@ function pageSettings() {
           <button class="btn mt-16" onclick="signOutUser()">Sign out</button>
           ${checkoutEnabled() ? `<button class="btn btn-danger mt-8" onclick="confirmDeleteAccount()">Delete account</button>` : ''}
         ` : `
-          <p class="small muted mb-16">${fbConfigured() ? 'Already subscribed? Sign in with the same Google account to pick up right where you left off. New here? Signing in creates your account automatically — everything then syncs across devices, backups, and study groups. Local storage still covers offline caching and resilience underneath.' : 'Not set up on this deployment yet. The app owner needs to create a Firebase project and fill in FB_CONFIG in js/firebase.js — see README.md. Until then, everything is saved locally in this browser only.'}</p>
-          <button class="btn btn-primary" onclick="signIn()" ${fbConfigured() ? '' : 'disabled'}>Sign in with Google</button>
+          <p class="small muted mb-16">${fbConfigured() ? 'Already subscribed? Sign in with the same account to pick up right where you left off. New here? Signing in creates your account automatically — everything then syncs across devices, backups, and study groups. Any email works, not just Google. Local storage still covers offline caching and resilience underneath.' : 'Not set up on this deployment yet. The app owner needs to create a Firebase project and fill in FB_CONFIG in js/firebase.js — see README.md. Until then, everything is saved locally in this browser only.'}</p>
+          <button class="btn btn-primary" onclick="signIn()" ${fbConfigured() ? '' : 'disabled'}>Continue with Google</button>
+          <button class="btn mt-8" onclick="openEmailSignInModal()" ${fbConfigured() ? '' : 'disabled'}>Continue with email</button>
         `}
       </div>
 

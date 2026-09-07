@@ -49,6 +49,11 @@
   .login-error.show { display: block; }
   .login-check { text-align: left; margin: 2px 0 18px; }
   .login-form .btn { font-size: 15px; padding: 15px 20px; }
+  .login-form .input { font-size: 15px; padding: 15px 16px; }
+  .login-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; font-size: 12px; color: var(--text-faint); }
+  .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .login-sent { text-align: left; font-size: 14.5px; line-height: 1.6; color: var(--text); background: var(--surface-2); border-radius: var(--radius-sm); padding: 16px; }
+  .login-sent strong { display: block; margin-bottom: 4px; font-size: 15.5px; }
   .login-foot { margin-top: 26px; font-size: 13.5px; color: var(--text-faint); }
   .login-foot a { color: var(--text); font-weight: 600; }
 
@@ -78,12 +83,12 @@
     <div class="login-form-wrap">
       <div class="login-form">
         <h2>Log in</h2>
-        <p class="login-sub">Continue with Google to sync your semester across every device.</p>
+        <p class="login-sub">Any email works — sync your semester across every device.</p>
         <div class="login-error" id="login-error"></div>
         <div id="login-body">
           <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
         </div>
-        <p class="login-foot">New to Semester HQ? Signing up is the same button above — continuing with Google creates your account automatically.</p>
+        <p class="login-foot">New to Semester HQ? Just enter your email above — creating an account and logging in are the same step.</p>
       </div>
     </div>
   </div>
@@ -99,7 +104,11 @@ const FB_CONFIG = {
   appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
 };
 const AGE_TOS_KEY = 'shq_age_tos_confirmed';
+const EMAIL_LINK_STORAGE_KEY = 'shq_email_for_signin';
 let _auth = null;
+// Holds an email waiting on the age gate, so confirmAgeGate() knows to
+// resume the email flow instead of defaulting to Google.
+let _pendingEmail = null;
 
 // Match the app's saved dark-mode preference so this doesn't flash the
 // wrong theme for returning users coming straight from a bookmark/link.
@@ -108,6 +117,7 @@ try {
   if (raw && JSON.parse(raw)?.settings?.dark) document.documentElement.classList.add('dark');
 } catch {}
 
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function showError(msg) {
   const el = document.getElementById('login-error');
   el.textContent = msg;
@@ -116,14 +126,35 @@ function showError(msg) {
 function clearError() { document.getElementById('login-error').classList.remove('show'); }
 
 function renderSignInButton() {
-  document.getElementById('login-body').innerHTML =
-    '<button class="btn btn-primary" style="width:100%" onclick="startSignIn()">Continue with Google</button>';
+  document.getElementById('login-body').innerHTML = `
+    <form onsubmit="event.preventDefault();startEmailSignIn()">
+      <input class="input" type="email" id="login-email-input" placeholder="you@example.com" required autocomplete="email" style="width:100%;margin-bottom:12px;box-sizing:border-box">
+      <button class="btn btn-primary" type="submit" style="width:100%">Continue with email</button>
+    </form>
+    <div class="login-divider"><span>or</span></div>
+    <button class="btn" style="width:100%" onclick="startSignIn()">Continue with Google</button>
+  `;
+}
+function renderEmailSent(email) {
+  document.getElementById('login-body').innerHTML = `
+    <div class="login-sent"><strong>Check your inbox.</strong>We sent a sign-in link to ${escapeHtml(email)} — open it on this device to finish logging in.</div>
+    <button class="btn btn-sm mt-8" style="width:100%" onclick="renderSignInButton()">Use a different email</button>
+  `;
 }
 
 function startSignIn() {
   clearError();
+  _pendingEmail = null;
   if (localStorage.getItem(AGE_TOS_KEY) !== '1') { showAgeGate(); return; }
   runSignIn();
+}
+function startEmailSignIn() {
+  clearError();
+  const email = document.getElementById('login-email-input')?.value.trim();
+  if (!email) { showError('Enter your email to continue.'); return; }
+  _pendingEmail = email;
+  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { showAgeGate(); return; }
+  runEmailSignIn(email);
 }
 function showAgeGate() {
   document.getElementById('login-body').innerHTML = `
@@ -131,7 +162,7 @@ function showAgeGate() {
       <input type="checkbox" id="age-tos-check" style="margin-top:2px;width:18px;height:18px;flex-shrink:0">
       <span class="small">I'm at least 13 years old, and I agree to Semester HQ's <a href="https://semester-hq.com/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="https://semester-hq.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
     </label>
-    <button class="btn btn-primary" style="width:100%" onclick="confirmAgeGate()">Continue with Google</button>
+    <button class="btn btn-primary" style="width:100%" onclick="confirmAgeGate()">Continue</button>
   `;
 }
 function confirmAgeGate() {
@@ -139,7 +170,13 @@ function confirmAgeGate() {
   if (!checkbox || !checkbox.checked) { showError('Check the box to continue.'); return; }
   clearError();
   localStorage.setItem(AGE_TOS_KEY, '1');
-  runSignIn();
+  if (_pendingEmail) {
+    const email = _pendingEmail;
+    _pendingEmail = null;
+    runEmailSignIn(email);
+  } else {
+    runSignIn();
+  }
 }
 async function runSignIn() {
   document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Signing in&hellip;</button>';
@@ -156,8 +193,46 @@ async function runSignIn() {
     if (e.code !== 'auth/popup-closed-by-user') showError('Sign-in failed: ' + e.message);
   }
 }
+// Passwordless email link — works with any address (iCloud, Outlook,
+// a plain .com inbox, whatever), not just Google accounts. Requires
+// "Email Link" turned on in the Firebase console under Authentication →
+// Sign-in method; this is a one-time setup step, not something code can do.
+async function runEmailSignIn(email) {
+  document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Sending link&hellip;</button>';
+  try {
+    await _auth.sendSignInLinkToEmail(email, {
+      url: window.location.origin + window.location.pathname,
+      handleCodeInApp: true,
+    });
+    localStorage.setItem(EMAIL_LINK_STORAGE_KEY, email);
+    renderEmailSent(email);
+  } catch (e) {
+    renderSignInButton();
+    showError('Could not send sign-in link: ' + e.message);
+  }
+}
+// If this page was opened from the link that runEmailSignIn() emailed out,
+// finish signing in. Same device: the email is already in localStorage from
+// when the link was requested. Different device: ask once, since Firebase
+// can't verify the email from the link alone.
+async function tryCompleteEmailLink() {
+  if (!_auth.isSignInWithEmailLink(window.location.href)) return false;
+  let email = localStorage.getItem(EMAIL_LINK_STORAGE_KEY);
+  if (!email) email = window.prompt('Confirm the email you used to request this link:');
+  if (!email) return false;
+  try {
+    await _auth.signInWithEmailLink(email, window.location.href);
+    localStorage.removeItem(EMAIL_LINK_STORAGE_KEY);
+    history.replaceState({}, '', window.location.pathname);
+    return true;
+    // Success redirects from the onAuthStateChanged listener below.
+  } catch (e) {
+    showError('That sign-in link is invalid or expired: ' + e.message);
+    return false;
+  }
+}
 
-(function init() {
+(async function init() {
   if (!FB_CONFIG.apiKey || typeof firebase === 'undefined') {
     showError('Sign-in isn’t available right now — try again in a moment.');
     renderSignInButton();
@@ -165,6 +240,7 @@ async function runSignIn() {
   }
   firebase.initializeApp(FB_CONFIG);
   _auth = firebase.auth();
+  await tryCompleteEmailLink();
   let settled = false;
   _auth.onAuthStateChanged((user) => {
     if (user) { window.location.href = 'index.html'; return; }

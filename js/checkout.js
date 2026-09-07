@@ -123,8 +123,9 @@ function pagePaywall() {
       <div class="paywall-wrap">
         <div class="paywall-card">
           <h2>Payment received 🎉</h2>
-          <p class="small muted mb-16">Sign in with Google to activate your account — it'll be linked to this purchase automatically.</p>
-          <button class="btn btn-primary" style="width:100%" onclick="signIn()">${icon('sparkles', 13, 1.6)} Sign in with Google</button>
+          <p class="small muted mb-16">Sign in to activate your account — it'll be linked to this purchase automatically. Use whichever you paid with; any email works, not just Google.</p>
+          <button class="btn btn-primary" style="width:100%" onclick="signIn()">${icon('sparkles', 13, 1.6)} Continue with Google</button>
+          <button class="btn btn-sm mt-8" style="width:100%" onclick="openEmailSignInModal()">Continue with email instead</button>
         </div>
       </div>`;
   }
@@ -134,12 +135,13 @@ function pagePaywall() {
       <div class="paywall-card">
         <h2>No plan on this account yet</h2>
         ${signedInEmail ? `<p class="small muted mb-8">Signed in as <strong>${esc(signedInEmail)}</strong></p>` : ''}
-        <p class="small muted mb-16">If you already subscribed, this is probably just the wrong Google account — switch below and it'll unlock right away. Otherwise, $7.99/mo unlocks cross-device sync and AI syllabus upload for this account. Billed monthly, cancel anytime.</p>
+        <p class="small muted mb-16">If you already subscribed, this is probably just the wrong account — switch below and it'll unlock right away. Otherwise, $7.99/mo unlocks cross-device sync and AI syllabus upload for this account. Billed monthly, cancel anytime.</p>
         <div class="paywall-price">$7.99<span class="paywall-price-period">/mo</span></div>
         <button class="btn btn-primary" style="width:100%" onclick="redirectToCheckout()">Subscribe</button>
         ${checkoutReturnPending() ? `<p class="small mt-16" style="color:var(--warn)">We received a payment but couldn't confirm it's linked to this account yet. If you just paid, try <a href="#" onclick="event.preventDefault();retryLicenseCheck()">checking again</a>, or contact <a href="mailto:hello@semester-hq.com">hello@semester-hq.com</a>.</p>` : ''}
         <p class="small muted mt-16">Already bought on another device? <a href="#" onclick="event.preventDefault();retryLicenseCheck()">Check again</a>.</p>
         <button class="btn btn-sm mt-8" style="width:100%" onclick="switchGoogleAccount()">Wrong account? Switch Google account</button>
+        <button class="btn btn-sm mt-8" style="width:100%" onclick="openEmailSignInModal()">Or log in with a different email</button>
         <button class="btn btn-ghost btn-sm mt-8" onclick="signOutUser()">Not now — use local only on this device</button>
       </div>
     </div>`;

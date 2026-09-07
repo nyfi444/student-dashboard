@@ -24,6 +24,10 @@ function bootFirebase() {
     firebase.initializeApp(FB_CONFIG);
     _fbAuth = firebase.auth();
     _fbDb = firebase.firestore();
+    // Safety net: normally an emailed sign-in link points at login.html (the
+    // canonical sign-in page), but if one is ever opened while pointed at
+    // the app itself, complete it here instead of leaving it inert.
+    completeEmailLinkSignInIfPresent();
     _fbAuth.onAuthStateChanged(async (user) => {
       _fbUser = user;
       window._licenseChecked = false;
@@ -62,9 +66,12 @@ function bootFirebase() {
 
 // COPPA-relevant: our Terms/Privacy require sign-in users to be 13+. This
 // isn't just policy text — it's a real gate a person has to check before
-// the Google popup opens, and only once per browser (localStorage), not
-// re-shown every sign-in.
+// the Google popup (or an email link) goes out, and only once per browser
+// (localStorage), not re-shown every sign-in.
 const AGE_TOS_KEY = 'shq_age_tos_confirmed';
+// Holds an email address waiting on the age gate, so confirmAgeGateAndSignIn
+// knows to resume the email flow instead of defaulting to Google.
+let _pendingEmailSignIn = null;
 async function signIn() {
   if (!fbConfigured()) { toast('Sync isn’t set up yet — add a Firebase config in js/firebase.js to enable it.', 'info', 4200); return; }
   // Returning 'age-gate' lets callers (e.g. signInFromOnboarding) know the
@@ -95,6 +102,71 @@ async function switchGoogleAccount() {
   await signOutUser();
   await runGoogleSignIn();
 }
+
+// ── Email link (passwordless) sign-in — works with any address, not just
+// Google accounts. Requires "Email Link" to be turned on in the Firebase
+// console under Authentication → Sign-in method (a one-time setup step,
+// not something this code can do on its own).
+const EMAIL_LINK_STORAGE_KEY = 'shq_email_for_signin';
+function emailSignInUrl() {
+  // Always round-trips through login.html — the one canonical sign-in page —
+  // regardless of which in-app screen (paywall, settings) kicked this off.
+  return new URL('login.html', window.location.href).toString();
+}
+async function sendEmailSignInLink(email) {
+  if (!fbConfigured()) { toast('Sync isn’t set up yet — add a Firebase config in js/firebase.js to enable it.', 'info', 4200); return false; }
+  try {
+    await _fbAuth.sendSignInLinkToEmail(email, { url: emailSignInUrl(), handleCodeInApp: true });
+    localStorage.setItem(EMAIL_LINK_STORAGE_KEY, email);
+    return true;
+  } catch (e) {
+    toast('Could not send sign-in link: ' + e.message, 'error');
+    return false;
+  }
+}
+// Safety net for opening the link somewhere other than login.html — see the
+// call in bootFirebase(). login.html has its own copy of this same logic
+// since it runs before the main app bundle is loaded.
+async function completeEmailLinkSignInIfPresent() {
+  if (!_fbAuth.isSignInWithEmailLink(window.location.href)) return;
+  let email = localStorage.getItem(EMAIL_LINK_STORAGE_KEY);
+  if (!email) email = window.prompt('Confirm the email you used to request this link:');
+  if (!email) return;
+  try {
+    await _fbAuth.signInWithEmailLink(email, window.location.href);
+    localStorage.removeItem(EMAIL_LINK_STORAGE_KEY);
+    history.replaceState({}, '', window.location.pathname);
+  } catch (e) {
+    toast('Sign-in link failed: ' + e.message, 'error');
+  }
+}
+function openEmailSignInModal() {
+  openModal(`
+    <div class="modal-head"><h3>Continue with email</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <p class="small muted mb-16">We'll email you a link to sign in — no password, and no Google account needed. Any email address works.</p>
+      <div class="field"><input class="input" type="email" id="email-signin-input" placeholder="you@example.com" autocomplete="email"></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitEmailSignIn()">Send link</button></div>
+  `);
+}
+async function submitEmailSignIn() {
+  const input = document.getElementById('email-signin-input');
+  const email = input?.value.trim();
+  if (!email) { toast('Enter your email first.', 'error'); return; }
+  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { _pendingEmailSignIn = email; openAgeGateModal(); return; }
+  await sendEmailSignInLinkAndConfirm(email);
+}
+async function sendEmailSignInLinkAndConfirm(email) {
+  const ok = await sendEmailSignInLink(email);
+  if (!ok) return;
+  openModal(`
+    <div class="modal-head"><h3>Check your inbox</h3></div>
+    <div class="modal-body"><p class="small muted">We sent a sign-in link to <strong>${esc(email)}</strong>. Open it on this device to finish logging in.</p></div>
+    <div class="modal-foot"><button class="btn" style="width:100%" onclick="closeModal()">Done</button></div>
+  `);
+}
+
 function openAgeGateModal() {
   openModal(`
     <div class="modal-head"><h3>Before you sign in</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
@@ -115,7 +187,13 @@ async function confirmAgeGateAndSignIn() {
   if (!checkbox || !checkbox.checked) { toast('Check the box to continue.', 'error'); return; }
   localStorage.setItem(AGE_TOS_KEY, '1');
   closeModal();
-  await runGoogleSignIn();
+  if (_pendingEmailSignIn) {
+    const email = _pendingEmailSignIn;
+    _pendingEmailSignIn = null;
+    await sendEmailSignInLinkAndConfirm(email);
+  } else {
+    await runGoogleSignIn();
+  }
 }
 async function signOutUser() { if (_fbAuth) await _fbAuth.signOut(); }
 
