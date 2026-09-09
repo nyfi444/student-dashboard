@@ -61,7 +61,8 @@ function pageNotebook() {
       <button data-nb-cmd="italic" onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic" aria-label="Italic"><i>I</i></button>
       <button data-nb-cmd="underline" onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline" aria-label="Underline"><u>U</u></button>
       <button data-nb-cmd="strikeThrough" onmousedown="event.preventDefault()" onclick="runNbCommand('strikeThrough')" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
-      <button onmousedown="event.preventDefault()" onclick="runNbHighlight()" title="Highlight" aria-label="Highlight">${icon('palette', 14)}</button>
+      <button class="nb-toolbar-color" onmousedown="event.preventDefault()" onclick="openNbColorPopover(this,'text')" title="Text color" aria-label="Text color">A<span class="nb-color-swatch nb-textcolor-swatch"></span></button>
+      <button class="nb-toolbar-color" onmousedown="event.preventDefault()" onclick="openNbColorPopover(this,'highlight')" title="Highlight color" aria-label="Highlight color">${icon('palette', 14)}<span class="nb-color-swatch nb-highlightcolor-swatch"></span></button>
       <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','PRE')" title="Code" aria-label="Code">${'</>'}</button>
       <span class="nb-bubble-sep"></span>
       <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H3')" title="Heading" aria-label="Heading 3">H3</button>
@@ -73,9 +74,10 @@ function pageNotebook() {
     <div class="nb-slash-menu" id="nb-slash-menu">
       ${SLASH_COMMANDS.map(c => `<div class="nb-slash-item" data-key="${c.key}" onmousedown="event.preventDefault()" onclick="runSlashCommand('${c.key}')"><span class="nb-slash-glyph">${c.glyph}</span><span><div class="nb-slash-label">${c.label}</div><div class="nb-slash-desc">${c.desc}</div></span></div>`).join('')}
     </div>
+    <div class="nb-color-popover" id="nb-color-popover"></div>
     <input type="file" id="nb-pdf-input" accept="application/pdf" multiple style="display:none" onchange="handleNotePdfUpload(this.files)">
   `;
-  setTimeout(() => { wireBubbleToolbar(); wireSlashMenu(); }, 0);
+  setTimeout(() => { wireBubbleToolbar(); wireSlashMenu(); updateNbColorSwatches(); }, 0);
   return html;
 }
 
@@ -193,17 +195,86 @@ function runNbInsertHtml(html) {
 }
 function insertNbChecklist() { runNbInsertHtml('<div class="nb-todo-line"><input type="checkbox">&nbsp;</div>'); }
 function insertNbDivider() { runNbInsertHtml('<hr><p><br></p>'); }
-// Toggles a neutral (grayscale, theme-matched) highlight — no color options
-// elsewhere in the app, so this stays consistent rather than picking a random hue.
-function runNbHighlight() {
+function runNbHighlightColor(hex) {
   const editor = $('#note-editor');
   if (!editor) return;
   restoreNbSelection();
-  const current = document.queryCommandValue('hiliteColor');
-  const on = current && !/transparent|rgba\(0,\s*0,\s*0,\s*0\)/.test(current);
-  const accentLight = getComputedStyle(document.documentElement).getPropertyValue('--accent-light').trim();
-  document.execCommand('hiliteColor', false, on ? 'transparent' : accentLight);
+  document.execCommand('hiliteColor', false, hex);
+  window._nbLastHighlightColor = hex;
+  updateNbColorSwatches();
   if (window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
+}
+function clearNbHighlight() {
+  const editor = $('#note-editor');
+  if (!editor) return;
+  restoreNbSelection();
+  document.execCommand('hiliteColor', false, 'transparent');
+  if (window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
+  closeNbColorPopover();
+}
+function updateNbColorSwatches() {
+  $$('.nb-textcolor-swatch').forEach(el => el.style.background = window._nbLastTextColor || '#000000');
+  $$('.nb-highlightcolor-swatch').forEach(el => el.style.background = window._nbLastHighlightColor || '#fde68a');
+}
+/* ── Text/highlight color popover — a gradient color wheel (see colorwheel.js,
+   also used for course/event colors) instead of the browser's native picker
+   or a single fixed highlight shade. ── */
+function openNbColorPopover(anchorEl, mode) {
+  const editor = $('#note-editor');
+  const pop = $('#nb-color-popover');
+  if (!editor || !pop) return;
+  restoreNbSelection();
+  window._nbColorMode = mode;
+  let hex;
+  if (mode === 'text') {
+    hex = rgbStringToHex(document.queryCommandValue('foreColor'), window._nbLastTextColor || '#000000');
+  } else {
+    const current = document.queryCommandValue('hiliteColor');
+    const on = current && !/transparent|rgba\(0,\s*0,\s*0,\s*0\)/.test(current);
+    hex = on ? rgbStringToHex(current, window._nbLastHighlightColor || '#fde68a') : (window._nbLastHighlightColor || '#fde68a');
+  }
+  pop.innerHTML = `
+    <div class="nb-color-pop-head">
+      <span>${mode === 'text' ? 'Text color' : 'Highlight color'}</span>
+      ${mode === 'highlight' ? `<button class="nb-color-pop-clear" onmousedown="event.preventDefault()" onclick="clearNbHighlight()">Remove</button>` : ''}
+    </div>
+    ${colorWheelHtml('nb-cw', hex)}
+  `;
+  wireColorWheel('nb-cw', () => hex, (newHex) => {
+    hex = newHex;
+    if (mode === 'text') runNbTextColor(newHex); else runNbHighlightColor(newHex);
+  });
+  pop.style.display = 'block';
+  positionNbColorPopover(anchorEl);
+  document.removeEventListener('mousedown', nbColorPopoverOutsideClick);
+  document.removeEventListener('keydown', nbColorPopoverKeydown);
+  setTimeout(() => {
+    document.addEventListener('mousedown', nbColorPopoverOutsideClick);
+    document.addEventListener('keydown', nbColorPopoverKeydown);
+  }, 0);
+}
+function positionNbColorPopover(anchorEl) {
+  const pop = $('#nb-color-popover');
+  if (!pop) return;
+  const rect = anchorEl.getBoundingClientRect();
+  const popW = pop.offsetWidth || 182, popH = pop.offsetHeight || 230;
+  let left = Math.min(rect.left, window.innerWidth - popW - 8);
+  let top = rect.bottom + 8;
+  if (top + popH > window.innerHeight - 8) top = rect.top - popH - 8;
+  pop.style.left = Math.max(8, left) + 'px';
+  pop.style.top = Math.max(8, top) + 'px';
+}
+function nbColorPopoverOutsideClick(e) {
+  const pop = $('#nb-color-popover');
+  if (!pop || pop.style.display === 'none' || pop.contains(e.target)) return;
+  closeNbColorPopover();
+}
+function nbColorPopoverKeydown(e) { if (e.key === 'Escape') closeNbColorPopover(); }
+function closeNbColorPopover() {
+  const pop = $('#nb-color-popover');
+  if (pop) pop.style.display = 'none';
+  document.removeEventListener('mousedown', nbColorPopoverOutsideClick);
+  document.removeEventListener('keydown', nbColorPopoverKeydown);
 }
 function promptInsertLink() {
   const url = prompt('Link URL?');
@@ -258,6 +329,8 @@ function runNbTextColor(hex) {
   if (!editor) return;
   restoreNbSelection();
   document.execCommand('foreColor', false, hex);
+  window._nbLastTextColor = hex;
+  updateNbColorSwatches();
   if (window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
 }
 
@@ -450,13 +523,13 @@ function renderNoteEditor(note) {
           <option value="">Size</option>
           ${NB_FONT_SIZES.map(sz => `<option value="${sz}">${sz}</option>`).join('')}
         </select>
-        <label class="nb-toolbar-color" title="Text color" aria-label="Text color">A<input type="color" value="#000000" onmousedown="event.stopPropagation()" oninput="runNbTextColor(this.value)"></label>
+        <button class="nb-toolbar-color" onmousedown="event.preventDefault()" onclick="openNbColorPopover(this,'text')" title="Text color" aria-label="Text color">A<span class="nb-color-swatch nb-textcolor-swatch"></span></button>
         <span class="nb-toolbar-sep"></span>
         <button data-nb-cmd="bold" onmousedown="event.preventDefault()" onclick="runNbCommand('bold')" title="Bold" aria-label="Bold"><b>B</b></button>
         <button data-nb-cmd="italic" onmousedown="event.preventDefault()" onclick="runNbCommand('italic')" title="Italic" aria-label="Italic"><i>I</i></button>
         <button data-nb-cmd="underline" onmousedown="event.preventDefault()" onclick="runNbCommand('underline')" title="Underline" aria-label="Underline"><u>U</u></button>
         <button data-nb-cmd="strikeThrough" onmousedown="event.preventDefault()" onclick="runNbCommand('strikeThrough')" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
-        <button onmousedown="event.preventDefault()" onclick="runNbHighlight()" title="Highlight" aria-label="Highlight">${icon('palette', 14)}</button>
+        <button class="nb-toolbar-color" onmousedown="event.preventDefault()" onclick="openNbColorPopover(this,'highlight')" title="Highlight color" aria-label="Highlight color">${icon('palette', 14)}<span class="nb-color-swatch nb-highlightcolor-swatch"></span></button>
         <span class="nb-toolbar-sep"></span>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H1')" title="Heading 1" aria-label="Heading 1">H1</button>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','H2')" title="Heading 2" aria-label="Heading 2">H2</button>

@@ -10,6 +10,13 @@ function hexToRgb(hex) {
   return { r: parseInt(hex.slice(0, 2), 16) || 0, g: parseInt(hex.slice(2, 4), 16) || 0, b: parseInt(hex.slice(4, 6), 16) || 0 };
 }
 function rgbToHex(r, g, b) { return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join(''); }
+// document.queryCommandValue('foreColor'/'hiliteColor') returns an rgb(...) string
+// (or a bare color name/'transparent'), never a hex — this bridges that back to hex
+// for feeding into colorWheelHtml, falling back when there's nothing usable to parse.
+function rgbStringToHex(str, fallback) {
+  const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(str || '');
+  return m ? rgbToHex(+m[1], +m[2], +m[3]) : fallback;
+}
 function hsvToHex(h, s, v) {
   s = Math.max(0, Math.min(1, s)); v = Math.max(0, Math.min(1, v)); h = ((h % 360) + 360) % 360;
   const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
