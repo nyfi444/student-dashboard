@@ -158,6 +158,7 @@ function openSyllabusUploadModal() {
       </div>
       <div id="syl-paste">
         <textarea class="input" id="syl-text" placeholder="Paste your syllabus text here…" style="min-height:180px"></textarea>
+        <div class="small muted mt-8" id="syl-paste-status"></div>
       </div>
       <div id="syl-pdf" style="display:none">
         <div class="upload-drop" onclick="$('#syl-pdf-input').click()">
@@ -191,11 +192,15 @@ async function handleSyllabusPdf(file) {
   if (!file) return;
   $('#syl-pdf-status').textContent = 'Reading PDF…';
   try {
-    const text = await extractPdfText(file);
+    // A scanned/malformed PDF, or a slow/blocked CDN fetch of the pdf.js
+    // worker, can otherwise hang forever with no error — this makes sure the
+    // status text always resolves to something instead of hanging silently.
+    const text = await withTimeout(extractPdfText(file), 30000, 'Timed out reading this PDF');
+    if (!text.trim()) { $('#syl-pdf-status').textContent = 'No text found in that PDF — try the "Upload photo" tab instead.'; return; }
     $('#syl-text').value = text;
-    $('#syl-pdf-status').textContent = `Extracted ${text.length.toLocaleString()} characters.`;
     sylTab('paste');
-  } catch (e) { $('#syl-pdf-status').textContent = 'Could not read that PDF.'; }
+    $('#syl-paste-status').textContent = `📄 ${file.name} — extracted ${text.length.toLocaleString()} characters.`;
+  } catch (e) { $('#syl-pdf-status').textContent = 'Could not read that PDF — try again or use the "Upload photo" tab instead.'; }
   const input = $('#syl-pdf-input');
   if (input) input.value = '';
 }

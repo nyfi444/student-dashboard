@@ -537,23 +537,28 @@ async function handleNotePdfUpload(files) {
   const note = state.notes.find(n => n.id === noteId);
   if (!files || !files.length || !note) { if (input) input.value = ''; return; }
   const status = $('#nb-save-status');
-  let failed = 0, truncatedAny = false;
+  let failed = 0, truncatedAny = false, markerId = '';
   for (const file of files) {
     if (status) status.textContent = `Rendering ${file.name}…`;
     try {
       // Each page is rendered to an actual image and dropped in — the real
       // document (figures, layout, handwriting) rather than a stripped text
       // reflow. See extractPdfPageImages in ai.js for the size/page caps.
-      const { images, truncated } = await extractPdfPageImages(file);
+      // Wrapped in a timeout: a scanned/malformed PDF, or a slow/blocked CDN
+      // fetch of the pdf.js worker, can otherwise hang forever with no error,
+      // making the upload silently look like it never happened.
+      const { images, truncated } = await withTimeout(extractPdfPageImages(file), 30000, 'Timed out reading this PDF');
       if (truncated) truncatedAny = true;
       const body = images.length
         ? images.map(src => `<p><img src="${src}" alt="${esc(file.name)} page" style="max-width:100%;border-radius:6px;border:1px solid var(--border);margin:4px 0"></p>`).join('')
         : '<p><em>No pages could be rendered from this PDF.</em></p>';
-      note.content = (note.content || '') + `<h3>${esc(file.name)}</h3>${body}`;
+      markerId = 'nb-import-' + uid();
+      note.content = (note.content || '') + `<h3 id="${markerId}">${esc(file.name)}</h3>${body}`;
     } catch (e) { failed++; }
   }
   note.updatedAt = Date.now();
   touch();
+  if (markerId) requestAnimationFrame(() => document.getElementById(markerId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   if (failed) toast(`Imported ${files.length - failed} of ${files.length} PDFs — ${failed} couldn't be read`, failed === files.length ? 'error' : 'info', 4000);
   else toast(files.length > 1 ? `${files.length} PDFs imported into note` : 'PDF imported into note');
   if (truncatedAny) toast('One PDF had more pages than could be imported — only the first 20 pages of it were added', 'info', 5000);

@@ -54,6 +54,15 @@ function fmtDuration(mins) {
   return `${h}h ${m}m`;
 }
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+// Some PDFs (scanned, malformed, or stuck behind a slow/blocked CDN worker
+// fetch) make pdf.js hang indefinitely with no error — this races it against
+// a timer so upload UIs can always surface something instead of hanging forever.
+function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
 
 /* Perceived-brightness check so text stays legible on any accent swatch */
 function readableTextOn(hex) {
