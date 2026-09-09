@@ -43,10 +43,10 @@ function renderProjectModal(id) {
     <div class="modal-head"><h3>${id ? 'Edit project' : 'New project'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field-row">
-        <div class="field"><label>Title</label><input class="input" id="pf-title" value="${esc(p.title)}"></div>
-        <div class="field"><label>Due date</label><input class="input" type="date" id="pf-date" value="${p.dueDate || ''}"></div>
+        <div class="field"><label>Title</label><input class="input" id="pf-title" value="${esc(p.title)}" oninput="_projectDraft.title=this.value"></div>
+        <div class="field"><label>Due date</label><input class="input" type="date" id="pf-date" value="${p.dueDate || ''}" oninput="_projectDraft.dueDate=this.value"></div>
       </div>
-      <div class="field"><label>Course</label><select class="select" id="pf-course"><option value="">—</option>${activeCourses().map(c => `<option value="${c.id}" ${c.id === p.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Course</label><select class="select" id="pf-course" onchange="_projectDraft.courseId=this.value||null"><option value="">—</option>${activeCourses().map(c => `<option value="${c.id}" ${c.id === p.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Milestones</label>
         <div id="pf-milestones">${p.milestones.map((m, i) => milestoneBlock(m, i)).join('')}</div>
         <button class="btn btn-sm mt-8" onclick="addMilestone()">+ Add milestone</button>

@@ -55,8 +55,8 @@ function renderDeckModal(id) {
     <div class="modal-head"><h3>${id ? 'Edit deck' : 'New deck'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field-row">
-        <div class="field"><label>Deck name</label><input class="input" id="df-name" value="${esc(d.name)}"></div>
-        <div class="field"><label>Course</label><select class="select" id="df-course"><option value="">—</option>${activeCourses().map(c => `<option value="${c.id}" ${c.id === d.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Deck name</label><input class="input" id="df-name" value="${esc(d.name)}" oninput="_deckDraft.name=this.value"></div>
+        <div class="field"><label>Course</label><select class="select" id="df-course" onchange="_deckDraft.courseId=this.value||null"><option value="">—</option>${activeCourses().map(c => `<option value="${c.id}" ${c.id === d.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
       </div>
       <div class="field"><label>Cards</label>
         <div id="df-cards">${d.cards.map((c, i) => cardRow(c, i)).join('')}</div>
