@@ -14,7 +14,7 @@ const FB_CONFIG = {
   appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
 };
 
-let _fbAuth = null, _fbDb = null, _fbUser = null, _syncQueued = false, _applyingRemote = false;
+let _fbAuth = null, _fbDb = null, _fbStorage = null, _fbUser = null, _syncQueued = false, _applyingRemote = false;
 
 function fbConfigured() { return !!FB_CONFIG.apiKey; }
 
@@ -24,6 +24,7 @@ function bootFirebase() {
     firebase.initializeApp(FB_CONFIG);
     _fbAuth = firebase.auth();
     _fbDb = firebase.firestore();
+    _fbStorage = firebase.storage();
     // Safety net: normally an emailed sign-in link points at login.html (the
     // canonical sign-in page), but if one is ever opened while pointed at
     // the app itself, complete it here instead of leaving it inert.
@@ -227,6 +228,68 @@ let _syncTooLargeShown = false;
 // on another device.
 let _lastSyncedNoteIds = new Set();
 
+// File attachments (assignment files, study-group shared files/project
+// files) are a *different* problem than notes: splitting into more
+// Firestore documents doesn't help here, because a single photo or PDF can
+// itself be several MB — well past the 1MB-per-document cap no matter how
+// it's split. These upload to actual Firebase Storage instead, with only
+// the resulting download URL (a short string) ever touching Firestore.
+// Local-only (not signed in, or signed in but unpaid) usage is completely
+// unaffected — attachments stay inline as base64, exactly as before, since
+// there's no cloud sync happening for that account anyway.
+async function uploadDataUrlToStorage(path, dataUrl) {
+  const ref = _fbStorage.ref(path);
+  await ref.putString(dataUrl, 'data_url');
+  return await ref.getDownloadURL();
+}
+// Scans for any attachment still holding inline base64 (data:...) instead
+// of a real Storage URL and uploads it — covers both a brand new upload
+// that hasn't reached Storage yet (e.g. it was added while offline) and an
+// existing account's already-synced attachments from before this shipped.
+// Runs at the top of every sync cycle so it naturally retries anything that
+// failed last time, without needing a separate one-time migration path.
+async function migrateInlineAttachmentsToStorage() {
+  if (!_fbUser || !window._licensed) return;
+  const jobs = [];
+  for (const a of state.assignments || []) {
+    for (const att of a.attachments || []) {
+      if (att.dataUrl && att.dataUrl.startsWith('data:')) {
+        jobs.push((async () => {
+          try {
+            const url = await uploadDataUrlToStorage(`users/${_fbUser.uid}/attachments/${att.id}`, att.dataUrl);
+            att.url = url; att.dataUrl = null;
+          } catch (e) { console.warn('Attachment upload failed, staying local-only for now', att.id, e); }
+        })());
+      }
+    }
+  }
+  for (const g of state.studyGroups || []) {
+    for (const item of g.sharedItems || []) {
+      if (item.kind === 'file' && item.dataUrl && item.dataUrl.startsWith('data:')) {
+        jobs.push((async () => {
+          try {
+            const url = await uploadDataUrlToStorage(`studyGroups/${g.id}/${item.id}`, item.dataUrl);
+            item.url = url; item.dataUrl = null;
+          } catch (e) { console.warn('Shared file upload failed, staying local-only for now', item.id, e); }
+        })());
+      }
+    }
+    for (const p of g.projects || []) {
+      for (const f of p.files || []) {
+        if (f.dataUrl && f.dataUrl.startsWith('data:')) {
+          jobs.push((async () => {
+            try {
+              const url = await uploadDataUrlToStorage(`studyGroups/${g.id}/${f.id}`, f.dataUrl);
+              f.url = url; f.dataUrl = null;
+            } catch (e) { console.warn('Project file upload failed, staying local-only for now', f.id, e); }
+          })());
+        }
+      }
+    }
+  }
+  if (jobs.length) await Promise.all(jobs);
+}
+
 function queueCloudSync() {
   if (!_fbUser || _applyingRemote) return;
   if (_syncQueued) return;
@@ -234,6 +297,7 @@ function queueCloudSync() {
   setTimeout(async () => {
     _syncQueued = false;
     try {
+      await migrateInlineAttachmentsToStorage();
       const { notes, ...coreState } = state;
       const coreData = JSON.stringify(coreState);
       if (coreData.length > FIRESTORE_DOC_SAFE_BYTES) {

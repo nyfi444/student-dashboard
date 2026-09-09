@@ -1,0 +1,21 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Personal file attachments (on assignments) — only the owner can
+    // read/write their own. Files live here instead of embedded as base64
+    // inside the Firestore planner doc, since a single photo or PDF can
+    // easily exceed Firestore's 1MB-per-document cap on its own — no amount
+    // of splitting documents fixes that, only actual blob storage does.
+    match /users/{uid}/attachments/{fileId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Study group files — shared by code among members, same permissive
+    // model as the studyGroups Firestore collection (membership is enforced
+    // at the app layer via the join-by-code flow, not here).
+    match /studyGroups/{groupId}/{fileId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

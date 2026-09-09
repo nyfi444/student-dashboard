@@ -189,7 +189,7 @@ function renderGroupSharedTab(g) {
         <span class="nb-note-ic">${icon(SHARE_KIND_ICON[s.kind] || 'file-text', 14)}</span>
         <div class="row-title">${esc(s.title)}${s.kind === 'deck' ? ` <span class="small muted">(${s.cards.length} cards)</span>` : s.kind === 'project' ? ` <span class="small muted">(${(s.milestones || []).length} milestones)</span>` : s.kind === 'note-bundle' ? ` <span class="small muted">(${(s.notes || []).length} notes)</span>` : s.kind === 'file' ? ` <span class="small muted">(${fmtFileSize(s.size)})</span>` : ''}</div>
         <div class="row-meta">${esc(s.sharedBy || '')}</div>
-        ${s.kind === 'file' ? `<a class="btn btn-sm" href="${esc(s.dataUrl)}" target="_blank" rel="noopener" download="${esc(s.fileName || s.title)}">${icon('download', 13)} Download</a>` : `<button class="btn btn-sm" onclick="importSharedItem('${g.id}','${s.id}')">Add to mine</button>`}
+        ${s.kind === 'file' ? `<a class="btn btn-sm" href="${esc(s.url || s.dataUrl)}" target="_blank" rel="noopener" download="${esc(s.fileName || s.title)}">${icon('download', 13)} Download</a>` : `<button class="btn btn-sm" onclick="importSharedItem('${g.id}','${s.id}')">Add to mine</button>`}
         <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(s.title)}" onclick="removeSharedItem('${g.id}','${s.id}')">${icon('trash',14)}</button>
       </div>`).join('') : emptyState(icon('layers',22,1.4), 'Nothing shared yet', '', 'Share a file, notebook, note, or flashcard deck from here or from the Notebook/Flashcards page.')}
   `;
@@ -263,7 +263,7 @@ function confirmShareFromGroup(groupId) {
   if (kind === 'file') {
     if (!window._sfgFile) { toast('Choose a file first', 'error'); return; }
     title = window._sfgFile.name;
-    payload = { fileName: window._sfgFile.name, size: window._sfgFile.size, dataUrl: window._sfgFile.dataUrl };
+    payload = { fileName: window._sfgFile.name, size: window._sfgFile.size, url: window._sfgFile.dataUrl, dataUrl: window._sfgFile.dataUrl };
   } else {
     const itemEl = $('#sfg-item');
     const itemId = itemEl?.value;
@@ -461,7 +461,7 @@ function renderGroupProjectCard(g, p) {
       <div class="field-row mt-8"><input class="input" id="gpm-title-${p.id}" placeholder="Meeting"><input class="input" type="date" id="gpm-date-${p.id}"><button class="btn btn-sm" onclick="addGroupProjectMeeting('${g.id}','${p.id}')">+ Meeting</button></div>
 
       <div class="small dim mt-16" style="font-weight:600">Files</div>
-      ${p.files.map((f, i) => `<div class="list-row"><a class="row-title" href="${esc(f.url)}" target="_blank" rel="noopener" ${f.dataUrl ? `download="${esc(f.name)}"` : ''}>${esc(f.name)}</a>${f.size ? `<span class="small muted">${fmtFileSize(f.size)}</span>` : ''}<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(f.name)}" onclick="removeGroupProjectFile('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('')}
+      ${p.files.map((f, i) => `<div class="list-row"><a class="row-title" href="${esc(f.url)}" target="_blank" rel="noopener" ${f.size ? `download="${esc(f.name)}"` : ''}>${esc(f.name)}</a>${f.size ? `<span class="small muted">${fmtFileSize(f.size)}</span>` : ''}<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(f.name)}" onclick="removeGroupProjectFile('${g.id}','${p.id}',${i})">${icon('x',13,2.2)}</button></div>`).join('')}
       <div class="field-row mt-8"><input class="input" id="gpf-name-${p.id}" placeholder="File name"><input class="input" id="gpf-url-${p.id}" placeholder="Link (Drive, etc.)"><button class="btn btn-sm" onclick="addGroupProjectFile('${g.id}','${p.id}')">+ Link</button></div>
       <div class="flex-gap mt-8">
         <button class="btn btn-sm" onclick="$('#gpf-upload-${p.id}').click()">${icon('upload', 13, 1.8)} Upload file</button>
