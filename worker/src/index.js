@@ -396,6 +396,11 @@ async function handleDeleteAccount(request, env, origin) {
 
     await deleteFirestoreDoc(env, 'licenses', uid);
     if (email) await deleteFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email));
+    // Notes live in their own subcollection (planners/{uid}/notes/{id}), not
+    // inline in the planner doc — deleting the parent doc below does NOT
+    // cascade-delete those, Firestore never does that automatically. Delete
+    // them explicitly first or "delete my account" leaves every note behind.
+    await deleteFirestoreSubcollection(env, `planners/${uid}`, 'notes');
     await deleteFirestoreDoc(env, 'planners', uid);
 
     let authDeleted = true;
@@ -649,6 +654,24 @@ async function deleteFirestoreDoc(env, collection, docId) {
   const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}/${docId}`;
   const res = await fetch(url, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } });
   if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed: ' + await res.text());
+}
+// Firestore never cascade-deletes a subcollection when its parent document
+// is deleted — has to be done by hand: list every doc, delete each one,
+// page through if there are more than one page's worth.
+async function deleteFirestoreSubcollection(env, parentPath, subcollectionId) {
+  const token = await getFirebaseAccessToken(env);
+  const base = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${parentPath}/${subcollectionId}`;
+  let pageToken = '';
+  for (;;) {
+    const url = `${base}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Firestore list failed: ' + await res.text());
+    const data = await res.json();
+    const docs = data.documents || [];
+    await Promise.all(docs.map(d => fetch(`https://firestore.googleapis.com/v1/${d.name}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })));
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+  }
 }
 async function deleteFirebaseAuthUser(env, uid) {
   const token = await getFirebaseAccessToken(env);

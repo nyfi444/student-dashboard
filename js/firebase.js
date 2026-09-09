@@ -214,6 +214,18 @@ async function signOutUser() { if (_fbAuth) await _fbAuth.signOut(); }
 
 const FIRESTORE_DOC_SAFE_BYTES = 900000; // Firestore caps documents at 1MB — warn before we hit it
 let _syncFailureShown = false;
+let _syncTooLargeShown = false;
+// Notebook notes sync to their own document per note — planners/{uid}/notes/{id}
+// — instead of inline in the core planner doc. Inline was the actual bug:
+// someone's notes only ever grow over a semester, so eventually the whole
+// planner (not just notes) crossed Firestore's 1MB-per-document cap and
+// *everything* silently stopped syncing, notes or not. Splitting notes out
+// means the core doc (courses, assignments, calendar, settings, decks, etc.)
+// stays small regardless of how many notes someone writes.
+// Seeded by cloudPull() with whatever Firestore already has, so a note
+// deleted locally after that gets deleted there too instead of resurfacing
+// on another device.
+let _lastSyncedNoteIds = new Set();
 
 function queueCloudSync() {
   if (!_fbUser || _applyingRemote) return;
@@ -222,13 +234,53 @@ function queueCloudSync() {
   setTimeout(async () => {
     _syncQueued = false;
     try {
-      const data = JSON.stringify(state);
-      if (data.length > FIRESTORE_DOC_SAFE_BYTES) {
-        toast('Your planner is getting large — some recent changes may not sync. Try removing old flashcard decks or attachments.', 'error', 6000);
-        console.warn('Cloud sync skipped: payload too large', data.length);
+      const { notes, ...coreState } = state;
+      const coreData = JSON.stringify(coreState);
+      if (coreData.length > FIRESTORE_DOC_SAFE_BYTES) {
+        // Every edit while still oversized re-enters this branch — only the
+        // first one should actually interrupt the user, not one toast per
+        // keystroke while they're still over the limit.
+        if (!_syncTooLargeShown) {
+          _syncTooLargeShown = true;
+          toast('Your planner is getting large — recent changes aren’t syncing to the cloud (still saved on this device). Try removing old flashcard decks or attachments.', 'error', 6000);
+        }
+        console.warn('Cloud sync skipped: core payload too large', coreData.length);
         return;
       }
-      await _fbDb.collection('planners').doc(_fbUser.uid).set({ data, updatedAt: Date.now() });
+      _syncTooLargeShown = false;
+
+      const planner = _fbDb.collection('planners').doc(_fbUser.uid);
+      const notesCol = planner.collection('notes');
+      const currentIds = new Set((notes || []).map(n => n.id));
+      const deletedIds = [..._lastSyncedNoteIds].filter(id => !currentIds.has(id));
+
+      // Firestore batches cap at 500 writes — chunk defensively, though no
+      // real user is likely to ever come close to that many notes.
+      const ops = [
+        { type: 'core' },
+        ...deletedIds.map(id => ({ type: 'delete', id })),
+        ...(notes || []).map(n => ({ type: 'note', note: n })),
+      ];
+      for (let i = 0; i < ops.length; i += 500) {
+        const batch = _fbDb.batch();
+        for (const op of ops.slice(i, i + 500)) {
+          if (op.type === 'core') batch.set(planner, { data: coreData, updatedAt: Date.now() });
+          else if (op.type === 'delete') batch.delete(notesCol.doc(op.id));
+          else {
+            // A single note this large is very unlikely, but skip just that
+            // one rather than let it block every other note and the core
+            // doc from syncing.
+            const noteJson = JSON.stringify(op.note);
+            if (noteJson.length > FIRESTORE_DOC_SAFE_BYTES) {
+              console.warn('Cloud sync skipped one oversized note', op.note.id, noteJson.length);
+              continue;
+            }
+            batch.set(notesCol.doc(op.note.id), op.note);
+          }
+        }
+        await batch.commit();
+      }
+      _lastSyncedNoteIds = currentIds;
       _syncFailureShown = false;
     } catch (e) {
       console.warn('Cloud sync failed', e);
@@ -243,14 +295,25 @@ function queueCloudSync() {
 async function cloudPull() {
   if (!_fbUser) return;
   try {
-    const doc = await _fbDb.collection('planners').doc(_fbUser.uid).get();
+    const planner = _fbDb.collection('planners').doc(_fbUser.uid);
+    const [doc, notesSnap] = await Promise.all([planner.get(), planner.collection('notes').get()]);
     if (doc.exists && doc.data().data) {
       _applyingRemote = true;
       state = migrate(JSON.parse(doc.data().data));
+      // Notes live in their own subcollection now (see queueCloudSync above).
+      // An account that hasn't synced since this shipped still has them
+      // inline in the core doc, restored by migrate() above as always; once
+      // the subcollection actually has documents, it's the source of truth.
+      if (!notesSnap.empty) state.notes = notesSnap.docs.map(d => d.data());
+      _lastSyncedNoteIds = new Set(state.notes.map(n => n.id));
       _suspendSave = true;
       dataStore.setItem(storeKey, JSON.stringify(state));
       _suspendSave = false;
       _applyingRemote = false;
+      // First pull for an account whose notes are still inline (pre-
+      // migration) — push once now so they land on their own documents
+      // right away instead of waiting for the next edit.
+      if (notesSnap.empty && state.notes.length) queueCloudSync();
     } else {
       queueCloudSync();
     }
