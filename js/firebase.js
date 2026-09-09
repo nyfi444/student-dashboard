@@ -49,6 +49,10 @@ function bootFirebase() {
         }
         window._licenseChecked = true;
         if (window._licensed) {
+          // Must happen before cloudPull() — cloudPull writes straight to
+          // dataStore, so switching it to real localStorage has to land
+          // first or that write silently goes to the in-memory store instead.
+          if (typeof enablePersistentStorage === 'function') enablePersistentStorage();
           if (typeof clearCheckoutReturnParam === 'function') clearCheckoutReturnParam();
           await cloudPull();
           // cloudPull can replace `state` wholesale, so only backfill after it —
@@ -60,9 +64,15 @@ function bootFirebase() {
             touch();
           }
           toast(justPurchased ? 'Your HQ is ready — welcome in.' : `Synced as ${user.displayName || user.email}`, 'success');
+        } else {
+          // Signed in but not on a paid plan — the paywall screen already
+          // blocks real use of the app in this state, so nothing should
+          // persist here either.
+          if (typeof disablePersistentStorage === 'function') disablePersistentStorage();
         }
       } else {
         window._licenseChecked = true;
+        if (typeof disablePersistentStorage === 'function') disablePersistentStorage();
       }
       if (typeof render === 'function') render();
     });

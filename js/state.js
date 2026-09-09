@@ -12,16 +12,15 @@ const legacyKeys = [];
 // practice that's just the marketing site's live "try it" demo.
 function isEmbedded() { try { return window.self !== window.top; } catch { return true; } }
 
-// Embedded demo visitors get a plain in-memory store instead of real
-// localStorage/sessionStorage — deliberately not persisted anywhere. Two
-// reasons: (1) GitHub Pages serves every project under one
-// nyfi444.github.io origin, so the demo and the real product would
-// otherwise share one localStorage bucket (paths differ, origin doesn't) —
-// a visitor playing with the demo could read/write the same data as a
-// real signed-in user on that device; (2) the demo is meant to showcase
-// the product, not stand in for actually signing up — every reload starts
-// from a clean seed so it can't be used as a free, ongoing substitute for
-// a real (paid) account.
+// Anyone without a paid, signed-in account gets a plain in-memory store
+// instead of real localStorage/sessionStorage — deliberately not persisted
+// anywhere. Clicking around, adding a class, trying a feature all work
+// fine; refreshing or closing the tab wipes it, the same as the marketing
+// site's embedded demo. That's intentional, not a bug: using the app
+// without paying is a look at the interface, not a free ongoing tier —
+// only a licensed account gets real persistence. See enablePersistentStorage
+// / disablePersistentStorage below, called from firebase.js once a license
+// check actually confirms that.
 function makeMemoryStore() {
   const mem = {};
   return {
@@ -30,7 +29,36 @@ function makeMemoryStore() {
     removeItem: (k) => { delete mem[k]; },
   };
 }
-const dataStore = isEmbedded() ? makeMemoryStore() : localStorage;
+// Sanity-checked synchronously at boot, before Firebase's async auth check
+// resolves, so a *returning* licensed user still gets an instant load from
+// their local cache instead of a flash of empty state. Firebase re-verifies
+// moments later regardless — this flag is only ever a fast-path guess, never
+// the source of truth for who's actually licensed.
+const LICENSE_DEVICE_FLAG = 'shq_licensed_device';
+let dataStore = (!isEmbedded() && localStorage.getItem(LICENSE_DEVICE_FLAG) === '1') ? localStorage : makeMemoryStore();
+
+// Called from firebase.js the moment a signed-in user's license check comes
+// back paid. Switches future saves to real localStorage (as an offline
+// mirror of their cloud data) and persists the fast-path flag above.
+function enablePersistentStorage() {
+  if (dataStore === localStorage) return;
+  dataStore = localStorage;
+  try { localStorage.setItem(LICENSE_DEVICE_FLAG, '1'); } catch {}
+  save();
+}
+// Called on sign-out so a shared or public computer doesn't leave a paid
+// account's data sitting in localStorage for the next anonymous visitor —
+// their real data still lives in Firestore, this only clears the local
+// mirror. Also fires whenever a signed-in session turns out not to be
+// licensed, so an expired subscription can't keep reading a stale local copy.
+function disablePersistentStorage() {
+  try {
+    localStorage.removeItem(LICENSE_DEVICE_FLAG);
+    localStorage.removeItem(storeKey);
+    localStorage.removeItem(storeKey + '.bak');
+  } catch {}
+  dataStore = makeMemoryStore();
+}
 
 const ASSIGNMENT_TYPES = ['assignment', 'reading', 'discussion', 'quiz', 'exam', 'project', 'paper', 'lab'];
 const ASSIGNMENT_STATUSES = ['not-started', 'in-progress', 'waiting', 'submitted', 'done'];
