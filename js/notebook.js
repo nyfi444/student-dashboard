@@ -112,7 +112,7 @@ function wireBubbleToolbar() {
     bar.style.left = Math.max(8, rect.left + rect.width / 2 - barW / 2) + 'px';
     bar.style.top = Math.max(8, rect.top - barH - 8) + 'px';
   };
-  const positionAndUpdate = () => { positionBubble(); updateNbFormatState(); };
+  const positionAndUpdate = () => { positionBubble(); updateNbFormatState(); updateCaretLineHighlight(editor); };
   // Only capture the range from genuine interaction inside the editor (mouseup/keyup
   // there) — never from the document-wide selectionchange event, which also fires
   // (with an already-collapsed selection) the instant a toolbar button steals focus,
@@ -147,6 +147,21 @@ function updateNbFormatState() {
     try { active = document.queryCommandState(cmd); } catch { }
     $$(`[data-nb-cmd="${cmd}"]`).forEach(btn => btn.classList.toggle('active', active));
   });
+}
+// The "Type '/' for commands" hint should only ever show on the one line the
+// caret is actually on — same as Notion, which this is modeled after — not on
+// every empty-looking line in the note at once. Marks that single block with
+// .nb-caret-line so the CSS :empty rule (see styles.css) has something
+// specific to key off instead of matching every empty block in the editor.
+function updateCaretLineHighlight(editor) {
+  const prev = editor.querySelector('.nb-caret-line');
+  if (prev) prev.classList.remove('nb-caret-line');
+  const sel = window.getSelection();
+  if (!sel || !sel.anchorNode || !editor.contains(sel.anchorNode)) return;
+  let node = sel.anchorNode;
+  if (node.nodeType === 3) node = node.parentElement; // text node -> its element
+  while (node && node.parentElement !== editor && node !== editor) node = node.parentElement;
+  if (node && node !== editor) node.classList.add('nb-caret-line');
 }
 // Restores the last-known editor selection (captured on selectionchange) before
 // running a format command — clicking a toolbar button can otherwise collapse
@@ -319,6 +334,7 @@ function notebookTree(parentId, depth, search, sort) {
           <span class="flex-gap">${icon(n.open || forceOpen ? 'folder-open' : 'folder', 14)}</span>
           <span class="nb-folder-name">${esc(n.name)}</span>
           ${count ? `<span class="nb-count">${count}</span>` : ''}
+          <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();createFolder('${n.id}')" title="New subfolder" aria-label="New subfolder in ${esc(n.name)}">${icon('folder', 13)}</button>
           <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();createNote('${n.id}')" title="New note" aria-label="New note in ${esc(n.name)}">${icon('plus', 13, 2.2)}</button>
           ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();shareFolderToGroup('${n.id}')" title="Share this notebook with a group" aria-label="Share ${esc(n.name)} with a group">${icon('users', 13)}</button>` : ''}
           ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(n.name)}" onclick="event.stopPropagation();deleteNoteItem('${n.id}')">${icon('trash', 14)}</button>` : ''}
@@ -344,6 +360,10 @@ function selectNote(id) { setState({ notebookSelected: id }); }
 function createFolder(parentId) {
   const name = prompt('Folder name?'); if (!name) return;
   state.notes.push({ id: uid(), type: 'folder', name, parentId, courseId: null, open: true });
+  // Expand the parent too, so a subfolder created inside a currently-collapsed
+  // folder is actually visible right away instead of looking like nothing happened.
+  const parent = state.notes.find(n => n.id === parentId);
+  if (parent) parent.open = true;
   touch();
 }
 function createNote(parentId) {

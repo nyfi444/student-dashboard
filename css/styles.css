@@ -453,14 +453,12 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-editor-body:empty::before { content: attr(data-placeholder); color: var(--text-faint); }
 /* Notion-style per-line hint: an empty paragraph mid-document otherwise renders as
    nothing at all — no text, no outline — so it reads as dead space even though
-   it's a real, clickable block. Only shown while actively editing (not on every
-   idle view of the note) so it doesn't look cluttered when just reading. */
-.nb-editor-body:focus p:empty::before,
-.nb-editor-body:focus div:empty::before,
-.nb-editor-body:focus li:empty::before,
-.nb-editor-body:focus p:has(> br:only-child)::before,
-.nb-editor-body:focus div:has(> br:only-child)::before,
-.nb-editor-body:focus li:has(> br:only-child)::before {
+   it's a real, clickable block. Only shown on the one line the caret is
+   currently on (.nb-caret-line, tracked in notebook.js) — not on every empty
+   line in the note at once — and only while actively editing, not on every
+   idle view of the note. */
+.nb-editor-body:focus .nb-caret-line:empty::before,
+.nb-editor-body:focus .nb-caret-line:has(> br:only-child)::before {
   content: "Type '/' for commands, or just start typing";
   color: var(--text-faint);
   pointer-events: none;
