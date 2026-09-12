@@ -50,3 +50,15 @@ id = "c159c4afb7cc45619d6db5fd2fcde97d"
 #   RESEND_API_KEY         — optional. From https://resend.com/api-keys (free tier is
 #                            plenty for a contact form). Without this set, contact-form
 #                            submissions still save to Firestore, just without an email.
+#   ADMIN_TOKEN            — bearer token gating /admin/errors and /admin/business-summary
+#                            (the private business dashboard's data feed). Make up any
+#                            long random string; paste the same value into the dashboard's
+#                            Settings → Connectors panel.
+#   CLOUDFLARE_API_TOKEN   — optional. A Cloudflare API token scoped to "Zone → Analytics →
+#                            Read" for semester-hq.com only (create at
+#                            https://dash.cloudflare.com/profile/api-tokens). Powers the
+#                            Cloudflare traffic numbers on the business dashboard; the
+#                            dashboard just shows "not connected" without it.
+#   CLOUDFLARE_ZONE_ID     — optional, required alongside CLOUDFLARE_API_TOKEN above. Find
+#                            it on the semester-hq.com zone's Overview page in the
+#                            Cloudflare dashboard (right sidebar, "Zone ID").

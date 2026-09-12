@@ -32,6 +32,14 @@
       it free, Upgrade, Subscribe, checkout errors) so which buttons
       actually convert isn't a guess. Same rate-limited, server-only
       pattern as error logging.
+   8. Business summary (/admin/business-summary) — read-only, token-gated
+      (same ADMIN_TOKEN as job 6) feed for Nyla's private business
+      dashboard (dashboard/semester-hq-biz.html). Computes Stripe active-
+      subscriber count + MRR server-side (the dashboard can't call Stripe
+      directly — Stripe blocks browser CORS on purpose) and, only if
+      CLOUDFLARE_API_TOKEN + CLOUDFLARE_ZONE_ID secrets are set, last-24h
+      Cloudflare traffic stats for semester-hq.com. Cloudflare section is
+      simply omitted (not faked) when those secrets aren't set.
 ──────────────────────────────────────────────────────────────── */
 
 const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
@@ -47,7 +55,7 @@ export default {
     // /admin/errors needs GET + an Authorization header, unlike every other
     // route here (POST + content-type only) — handle its preflight separately
     // so the browser doesn't reject the real request for a disallowed method/header.
-    if (request.method === 'OPTIONS' && url.pathname === '/admin/errors') {
+    if (request.method === 'OPTIONS' && (url.pathname === '/admin/errors' || url.pathname === '/admin/business-summary')) {
       return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
     }
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env, origin) });
@@ -57,6 +65,7 @@ export default {
 
     // Token-gated, not origin-restricted (see job 6 above).
     if (url.pathname === '/admin/errors' && request.method === 'GET') return handleAdminErrors(request, env);
+    if (url.pathname === '/admin/business-summary' && request.method === 'GET') return handleAdminBusinessSummary(request, env);
 
     if (request.method !== 'POST') return jsonError('Method not allowed', 405, env, origin);
 
@@ -221,10 +230,23 @@ async function handleCreatePortalSession(request, env, origin) {
   try { license = await readFirestoreDoc(env, 'licenses', payload.sub); }
   catch (e) { return jsonError('Could not look up your subscription: ' + e.message, 500, env, origin); }
 
-  if (!license?.stripeCustomerId) return jsonError('No active subscription found for this account.', 404, env, origin);
+  // licenses/{uid}.stripeCustomerId can be missing even for a genuinely paying
+  // account: anyone who bought from the marketing site before creating an
+  // account gets their license via /claim-license copying licensesByEmail over,
+  // and older claims didn't carry stripeCustomerId across (see handleClaimLicense).
+  // Fall back to the email-keyed doc — written by the same webhook — rather than
+  // telling a paying customer they have no subscription.
+  let stripeCustomerId = license?.stripeCustomerId;
+  if (!stripeCustomerId && payload.email) {
+    try {
+      const byEmail = await readFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(payload.email.toLowerCase().trim()));
+      if (byEmail?.paid) stripeCustomerId = byEmail.stripeCustomerId;
+    } catch (e) { console.error('licensesByEmail fallback lookup failed', e); }
+  }
+  if (!stripeCustomerId) return jsonError('No active subscription found for this account.', 404, env, origin);
 
   const params = new URLSearchParams();
-  params.set('customer', license.stripeCustomerId);
+  params.set('customer', stripeCustomerId);
   params.set('return_url', appUrl);
 
   const res = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
@@ -324,7 +346,17 @@ async function handleClaimLicense(request, env, origin) {
     if (email) {
       const byEmail = await readFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email));
       if (byEmail?.paid) {
-        await writeFirestoreDoc(env, 'licenses', uid, { paid: true, stripeSessionId: byEmail.stripeSessionId || '', purchasedAt: new Date() });
+        // Carry the Stripe IDs over too, not just `paid` — without these,
+        // "Manage subscription" (needs stripeCustomerId) and account deletion's
+        // auto-cancel (needs stripeSubscriptionId) both silently fail later for
+        // anyone who bought from the marketing site before signing in.
+        await writeFirestoreDoc(env, 'licenses', uid, {
+          paid: true,
+          stripeSessionId: byEmail.stripeSessionId || '',
+          stripeSubscriptionId: byEmail.stripeSubscriptionId || '',
+          stripeCustomerId: byEmail.stripeCustomerId || '',
+          purchasedAt: new Date(),
+        });
         return jsonOk({ paid: true }, env, origin);
       }
     }
@@ -381,9 +413,21 @@ async function handleDeleteAccount(request, env, origin) {
 
   try {
     const license = await readFirestoreDoc(env, 'licenses', uid);
+    // Same fallback as handleCreatePortalSession: an account whose license was
+    // claimed via email (bought before signing up) may be missing this field on
+    // the uid-keyed doc even from before that path was fixed to copy it over —
+    // without this, deleting the account leaves the Stripe subscription running
+    // and the person gets billed forever after being told their account is gone.
+    let stripeSubscriptionId = license?.stripeSubscriptionId;
+    if (!stripeSubscriptionId && email) {
+      try {
+        const byEmail = await readFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email));
+        if (byEmail?.paid) stripeSubscriptionId = byEmail.stripeSubscriptionId;
+      } catch (e) { console.error('licensesByEmail fallback lookup failed', e); }
+    }
 
-    if (license?.stripeSubscriptionId && env.STRIPE_SECRET_KEY) {
-      const res = await fetch(`https://api.stripe.com/v1/subscriptions/${license.stripeSubscriptionId}`, {
+    if (stripeSubscriptionId && env.STRIPE_SECRET_KEY) {
+      const res = await fetch(`https://api.stripe.com/v1/subscriptions/${stripeSubscriptionId}`, {
         method: 'DELETE',
         headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
       });
@@ -544,6 +588,113 @@ async function handleAdminErrors(request, env) {
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Could not load errors: ' + e.message }), { status: 500, headers: adminCors });
   }
+}
+
+/* ── 8. Business summary (dashboard read-only feed) ─────────────
+   Backs Nyla's private business command-center dashboard
+   (dashboard/semester-hq-biz.html), which is a static file that can't
+   safely hold a real Stripe key (Stripe blocks direct browser CORS to
+   api.stripe.com anyway) — so it calls this instead, same bearer-token
+   pattern as /admin/errors, reusing the ADMIN_TOKEN secret. Returns
+   Stripe subscription counts/MRR computed server-side, plus Cloudflare
+   zone analytics IF CLOUDFLARE_API_TOKEN + CLOUDFLARE_ZONE_ID secrets are
+   set — omitted (not faked) otherwise, so the dashboard can show an
+   honest "not connected yet" state. */
+async function handleAdminBusinessSummary(request, env) {
+  const adminCors = { 'Access-Control-Allow-Origin': '*', 'content-type': 'application/json', 'X-Content-Type-Options': 'nosniff' };
+  if (!env.ADMIN_TOKEN) return new Response(JSON.stringify({ error: 'Server misconfigured: ADMIN_TOKEN not set.' }), { status: 500, headers: adminCors });
+
+  const authHeader = request.headers.get('Authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  if (!token || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: adminCors });
+  }
+
+  const out = { stripe: null, cloudflare: null };
+
+  if (env.STRIPE_SECRET_KEY) {
+    try {
+      out.stripe = await fetchStripeSummary(env);
+    } catch (e) {
+      out.stripe = { error: 'Could not load Stripe data: ' + e.message };
+    }
+  }
+
+  if (env.CLOUDFLARE_API_TOKEN && env.CLOUDFLARE_ZONE_ID) {
+    try {
+      out.cloudflare = await fetchCloudflareSummary(env);
+    } catch (e) {
+      out.cloudflare = { error: 'Could not load Cloudflare data: ' + e.message };
+    }
+  }
+
+  return new Response(JSON.stringify(out), { headers: adminCors });
+}
+
+// Lists subscriptions (any status, most-recently-created first) and computes
+// active count + MRR from ones actually in `active`/`trialing` status. Also
+// returns the raw recent list so the dashboard can surface "new today" /
+// "canceled today" itself by comparing created/canceled_at to local time.
+async function fetchStripeSummary(env) {
+  const res = await fetch('https://api.stripe.com/v1/subscriptions?limit=100&status=all&expand[]=data.items.data.price', {
+    headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || `Stripe returned ${res.status}`);
+
+  const subs = data.data || [];
+  let activeCount = 0, mrrCents = 0;
+  const recent = [];
+  for (const sub of subs) {
+    const isActive = sub.status === 'active' || sub.status === 'trialing';
+    if (isActive) {
+      activeCount++;
+      const amount = sub.items?.data?.[0]?.price?.unit_amount || 0;
+      mrrCents += amount;
+    }
+    recent.push({
+      id: sub.id,
+      status: sub.status,
+      created: sub.created ? sub.created * 1000 : null,
+      canceled_at: sub.canceled_at ? sub.canceled_at * 1000 : null,
+      amount_cents: sub.items?.data?.[0]?.price?.unit_amount || null,
+    });
+  }
+  recent.sort((a, b) => (b.created || 0) - (a.created || 0));
+  return { activeCount, mrrCents, recent: recent.slice(0, 30), fetchedAt: Date.now() };
+}
+
+// Cloudflare's GraphQL Analytics API (zone-scoped, read-only token) — last 24h
+// requests/uniques for semester-hq.com. Only called when both secrets are set.
+async function fetchCloudflareSummary(env) {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const until = new Date().toISOString();
+  const query = `query {
+    viewer {
+      zones(filter: { zoneTag: "${env.CLOUDFLARE_ZONE_ID}" }) {
+        httpRequests1dGroups(limit: 1, filter: { date_geq: "${since.slice(0, 10)}", date_leq: "${until.slice(0, 10)}" }) {
+          sum { requests, pageViews, threats }
+          uniq { uniques }
+        }
+      }
+    }
+  }`;
+  const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+  const data = await res.json();
+  if (!res.ok || data.errors?.length) throw new Error(data.errors?.[0]?.message || `Cloudflare returned ${res.status}`);
+  const group = data?.data?.viewer?.zones?.[0]?.httpRequests1dGroups?.[0];
+  if (!group) return { requests: 0, pageViews: 0, threats: 0, uniques: 0, fetchedAt: Date.now() };
+  return {
+    requests: group.sum?.requests || 0,
+    pageViews: group.sum?.pageViews || 0,
+    threats: group.sum?.threats || 0,
+    uniques: group.uniq?.uniques || 0,
+    fetchedAt: Date.now(),
+  };
 }
 
 /* ── Stripe signature verification ───────────────────────────── */
