@@ -178,7 +178,7 @@ function attachmentRow(att, i) {
   </div>`;
 }
 // Attachments added to an assignment that already exists in state are persisted
-// immediately, not just staged on the draft — otherwise closing the modal any way
+// immediately, not just staged on the draft, otherwise closing the modal any way
 // other than clicking "Save" (the X button, Escape, clicking outside) silently
 // discarded whatever was just uploaded.
 function syncAssignmentAttachmentsIfExisting() {
@@ -200,7 +200,7 @@ async function addAttachmentFile(files) {
     const dataUrl = 'data:' + (file.type || 'application/octet-stream') + ';base64,' + (await fileToBase64(file));
     _assignDraft.attachments.push({ id: uid(), kind: 'other', name: file.name, url: dataUrl, dataUrl });
   }
-  if (skipped) toast(`${skipped} file${skipped > 1 ? 's' : ''} too large to store in the browser (max ~3MB) — add ${skipped > 1 ? 'them' : 'it'} as a link instead`, 'error', 4000);
+  if (skipped) toast(`${skipped} file${skipped > 1 ? 's' : ''} too large to store in the browser (max ~3MB). Add ${skipped > 1 ? 'them' : 'it'} as a link instead`, 'error', 4000);
   syncAssignmentAttachmentsIfExisting();
   renderAssignmentModal(state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null);
   const input = $('#af-attach-file');
@@ -301,7 +301,7 @@ async function handleAssignUploadImage(files) {
   if (!files || !files.length) return;
   $('#au-image-status').textContent = 'Loading…';
   window._auImages = await Promise.all(Array.from(files).map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
-  $('#au-image-status').textContent = `${window._auImages.length} photo${window._auImages.length > 1 ? 's' : ''} loaded — ready to parse.`;
+  $('#au-image-status').textContent = `${window._auImages.length} photo${window._auImages.length > 1 ? 's' : ''} loaded, ready to parse.`;
   const input = $('#au-image-input');
   if (input) input.value = '';
 }
@@ -332,7 +332,7 @@ function renderAssignmentReviewModal() {
   openModal(`
     <div class="modal-head"><h3>Review & add <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
-      <div class="small muted mb-8">Double-check what the AI pulled out before adding it — edit anything that's off, then pick which course these belong to.</div>
+      <div class="small muted mb-8">Double-check what the AI pulled out before adding it. Edit anything that's off, then pick which course these belong to.</div>
       <div class="field"><label>Add to course</label><select class="select" id="au-review-course" onchange="window._auCourseId=this.value">${activeCourses().map(c => `<option value="${c.id}" ${c.id === window._auCourseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Assignments found (${window._auParsed.length})</label>
         <div id="au-review-list" style="max-height:320px;overflow-y:auto">

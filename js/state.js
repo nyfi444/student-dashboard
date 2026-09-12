@@ -1,23 +1,23 @@
 /* ── Central data store ──────────────────────────────────────────
    One global `state` object, persisted to localStorage, optionally
    synced to Firestore when signed in (see firebase.js).
-   NEVER change storeKey — it would erase all user data. If a schema
+   NEVER change storeKey: it would erase all user data. If a schema
    migration is ever needed, bump storeKey and add the old one to
    legacyKeys so data auto-migrates on next load.
 ──────────────────────────────────────────────────────────────── */
 const storeKey = 'studentPlanner.v1';
 const legacyKeys = [];
 
-// True only when this page is loaded inside another page's iframe — in
+// True only when this page is loaded inside another page's iframe, in
 // practice that's just the marketing site's live "try it" demo.
 function isEmbedded() { try { return window.self !== window.top; } catch { return true; } }
 
 // Anyone without a paid, signed-in account gets a plain in-memory store
-// instead of real localStorage/sessionStorage — deliberately not persisted
+// instead of real localStorage/sessionStorage, deliberately not persisted
 // anywhere. Clicking around, adding a class, trying a feature all work
 // fine; refreshing or closing the tab wipes it, the same as the marketing
 // site's embedded demo. That's intentional, not a bug: using the app
-// without paying is a look at the interface, not a free ongoing tier —
+// without paying is a look at the interface, not a free ongoing tier;
 // only a licensed account gets real persistence. See enablePersistentStorage
 // / disablePersistentStorage below, called from firebase.js once a license
 // check actually confirms that.
@@ -32,7 +32,7 @@ function makeMemoryStore() {
 // Sanity-checked synchronously at boot, before Firebase's async auth check
 // resolves, so a *returning* licensed user still gets an instant load from
 // their local cache instead of a flash of empty state. Firebase re-verifies
-// moments later regardless — this flag is only ever a fast-path guess, never
+// moments later regardless. This flag is only ever a fast-path guess, never
 // the source of truth for who's actually licensed.
 const LICENSE_DEVICE_FLAG = 'shq_licensed_device';
 let dataStore = (!isEmbedded() && localStorage.getItem(LICENSE_DEVICE_FLAG) === '1') ? localStorage : makeMemoryStore();
@@ -47,7 +47,7 @@ function enablePersistentStorage() {
   save();
 }
 // Called on sign-out so a shared or public computer doesn't leave a paid
-// account's data sitting in localStorage for the next anonymous visitor —
+// account's data sitting in localStorage for the next anonymous visitor;
 // their real data still lives in Firestore, this only clears the local
 // mirror. Also fires whenever a signed-in session turns out not to be
 // licensed, so an expired subscription can't keep reading a stale local copy.
@@ -71,7 +71,7 @@ const RESOURCE_KINDS = [
   { key: 'canvas', label: 'Canvas page' }, { key: 'office-hours', label: 'Office hours' }, { key: 'tutoring', label: 'Tutoring center' },
   { key: 'syllabus', label: 'Syllabus' }, { key: 'drive', label: 'Google Drive' }, { key: 'groupme', label: 'Class GroupMe' }, { key: 'other', label: 'Other' },
 ];
-// Fixed, curated set — no free-form picker. Every value is a pale, pre-tinted
+// Fixed, curated set, no free-form picker. Every value is a pale, pre-tinted
 // solid so the background can never go saturated/overbearing.
 const BACKGROUND_PRESETS = [
   { color: '#fafafa', label: 'Default' },
@@ -83,7 +83,7 @@ const BACKGROUND_PRESETS = [
   { color: '#f0f5fb', label: 'Sky' },
   { color: '#f3f0fb', label: 'Lavender' },
   { color: '#fdf1f4', label: 'Blush' },
-  // 30-hue wheel — light but visibly colorful, not just near-white pastel
+  // 30-hue wheel: light but visibly colorful, not just near-white pastel
   { color: '#f0dbdb', label: 'Rose' },
   { color: '#f0dfdb', label: 'Watermelon' },
   { color: '#f0e3db', label: 'Coral' },
@@ -114,7 +114,7 @@ const BACKGROUND_PRESETS = [
   { color: '#f0dbe8', label: 'Fuchsia' },
   { color: '#f0dbe3', label: 'Magenta' },
   { color: '#f0dbdf', label: 'Raspberry' },
-  // Jewel-light accents — a touch more saturated, still light enough to stay soft
+  // Jewel-light accents: a touch more saturated, still light enough to stay soft
   { color: '#eec4cb', label: 'Ruby' },
   { color: '#eee0c4', label: 'Amber' },
   { color: '#eeeac4', label: 'Citrine' },
@@ -163,7 +163,7 @@ function hslToHex(h, s, l) {
   return rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
 }
 // Neutral presets (near-zero saturation) fall through to plain dark gray/white,
-// same as classic dark mode — only picking an actual color shifts these.
+// same as classic dark mode; only picking an actual color shifts these.
 function darkBgFromPreset(hex) { const { h, s } = hexToHsl(hex || '#fafafa'); return hslToHex(h, Math.min(s, 0.4), 0.13); }
 function darkTextFromPreset(hex) { const { h, s } = hexToHsl(hex || '#fafafa'); return hslToHex(h, Math.min(s, 0.5), 0.88); }
 
@@ -272,7 +272,7 @@ function load() {
       if (backup) { try { return migrate(JSON.parse(backup)); } catch {} }
     }
   }
-  // Legacy-key migration only ever applies to a real device's localStorage —
+  // Legacy-key migration only ever applies to a real device's localStorage;
   // an embedded demo tab has no history to migrate, it always starts fresh.
   if (!isEmbedded()) {
     for (const old of legacyKeys) {
@@ -296,14 +296,14 @@ function migrate(parsed) {
   const base = seedData();
   const merged = { ...base, ...parsed };
   merged.settings = { ...base.settings, ...(parsed.settings || {}) };
-  // Older saves used a two-color gradient {color1,color2,angle} — collapse to the new solid {color}.
+  // Older saves used a two-color gradient {color1,color2,angle}: collapse to the new solid {color}.
   if (merged.settings.background?.color1 && !merged.settings.background.color) {
     merged.settings.background = { color: merged.settings.background.color1 };
   }
   const cutoff = Date.now() - TRASH_RETENTION_DAYS * 86400000;
   merged.trash = (merged.trash || []).filter(t => t.deletedAt >= cutoff);
   // Before "no due date" was a real option, clearing the date field saved ''
-  // rather than null — and '' < todayIso() is true (plain string comparison),
+  // rather than null, and '' < todayIso() is true (plain string comparison),
   // so those assignments/to-dos silently miscounted as overdue everywhere.
   // Heal it once here rather than requiring every read site to guard for it.
   (merged.assignments || []).forEach(a => {

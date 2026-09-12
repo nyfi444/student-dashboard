@@ -1,5 +1,5 @@
 /* ── Color math + a reusable hue/saturation wheel picker ─────────
-   Powers course colors and calendar event colors — the app's own
+   Powers course colors and calendar event colors, the app's own
    chrome stays fixed black/white, but tagging colors are wide open
    to any hex. Wheel is pure CSS (conic-gradient hue ring + radial
    white center) with pointer math for angle/distance → hue/sat.
@@ -11,7 +11,7 @@ function hexToRgb(hex) {
 }
 function rgbToHex(r, g, b) { return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join(''); }
 // document.queryCommandValue('foreColor'/'hiliteColor') returns an rgb(...) string
-// (or a bare color name/'transparent'), never a hex — this bridges that back to hex
+// (or a bare color name/'transparent'), never a hex. This bridges that back to hex
 // for feeding into colorWheelHtml, falling back when there's nothing usable to parse.
 function rgbStringToHex(str, fallback) {
   const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(str || '');

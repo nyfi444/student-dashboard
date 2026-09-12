@@ -10,14 +10,14 @@
 <meta name="theme-color" content="#171512">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- Same font pairing as the marketing site (semester-hq.com) — Playfair
-     Display + Inter — not the app's own Instrument Serif/General Sans, so
+<!-- Same font pairing as the marketing site (semester-hq.com): Playfair
+     Display + Inter, not the app's own Instrument Serif/General Sans, so
      this page reads as the front door of the same brand rather than a
      sudden switch to app chrome. -->
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
 
-<!-- Firebase (sign-in only — the full sync bundle loads once inside the app) -->
+<!-- Firebase (sign-in only; the full sync bundle loads once inside the app) -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 
@@ -25,7 +25,7 @@
   html, body { height: 100%; }
   body { margin: 0; }
 
-  /* Self-contained editorial palette for this page only — deliberately
+  /* Self-contained editorial palette for this page only, deliberately
      fixed regardless of the app's light/dark preference, since this is a
      brand moment, not app chrome. */
   .login-page {
@@ -47,7 +47,7 @@
     --lp-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
-  /* A real two-panel page filling the viewport — not a card floating on
+  /* A real two-panel page filling the viewport, not a card floating on
      empty space, which reads as a popup/modal rather than a page. */
   .login-page { min-height: 100vh; display: flex; background: var(--lp-paper); font-family: var(--lp-font-sans); }
   .login-page input, .login-page button, .login-page .btn { font-family: var(--lp-font-sans); }
@@ -78,7 +78,7 @@
 
   .login-brand-logo {
     position: relative; z-index: 1;
-    /* Upright, not italic — Playfair Display's italic Q has such an exaggerated
+    /* Upright, not italic: Playfair Display's italic Q has such an exaggerated
        swash tail it reads as a "2" rather than a Q at this size. */
     font-family: var(--lp-font-serif); font-style: normal; font-size: 16px; font-weight: 400;
     display: flex; align-items: baseline; gap: 6px; letter-spacing: .02em;
@@ -207,7 +207,7 @@
       <div class="login-eyebrow"><span class="dot"></span>Everything your semester needs</div>
       <h1>Your entire semester,<br><em>finally</em> in one place.</h1>
     </div>
-    <p class="login-brand-foot">Calendar, assignments, notes, and study groups — synced across every device.</p>
+    <p class="login-brand-foot">Calendar, assignments, notes, and study groups, synced across every device.</p>
     <div class="login-preview" aria-hidden="true">
       <div class="lp-card">
         <div class="lp-card-head"><span></span><span></span><span></span></div>
@@ -228,7 +228,7 @@
         <div id="login-body">
           <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
         </div>
-        <p class="login-foot">New to Semester HQ? Enter your email above — if it's new, we'll take you straight to checkout instead of an inbox.</p>
+        <p class="login-foot">New to Semester HQ? Enter your email above. If it's new, we'll take you straight to checkout instead of an inbox.</p>
       </div>
     </div>
     <div class="login-sitefoot">
@@ -247,7 +247,7 @@ const FB_CONFIG = {
   messagingSenderId: '191691583510',
   appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
 };
-// Same Worker used everywhere else in the app (js/ai.js, js/checkout.js) —
+// Same Worker used everywhere else in the app (js/ai.js, js/checkout.js);
 // login.html is intentionally dependency-light so it doesn't load the rest
 // of the app's JS just to check one email against Stripe/Firestore.
 const WORKER_BASE_URL = 'https://student-planner-ai-proxy.semesterhq.workers.dev';
@@ -274,12 +274,12 @@ function renderSignInButton() {
     </form>
     <div class="login-divider"><span>or</span></div>
     <button class="btn btn-google" style="width:100%" onclick="startSignIn()">Continue with Google</button>
-    <p class="login-note">Students use Google to securely access their Semester HQ account. Any email works too — existing subscribers get a sign-in link, new ones go straight to checkout.</p>
+    <p class="login-note">Students use Google to securely access their Semester HQ account. Any email works too: existing subscribers get a sign-in link, new ones go straight to checkout.</p>
   `;
 }
 function renderEmailSent(email) {
   document.getElementById('login-body').innerHTML = `
-    <div class="login-sent"><strong>Check your inbox.</strong>We sent a sign-in link to ${escapeHtml(email)} — open it on this device to finish logging in.</div>
+    <div class="login-sent"><strong>Check your inbox.</strong>We sent a sign-in link to ${escapeHtml(email)}. Open it on this device to finish logging in.</div>
     <button class="btn btn-sm mt-8" style="width:100%" onclick="renderSignInButton()">Use a different email</button>
   `;
 }
@@ -291,11 +291,11 @@ function startSignIn() {
   runSignIn();
 }
 // Checks whether this email already has a paid plan before doing anything
-// else — a brand-new email skips the magic-link round trip entirely and
+// else: a brand-new email skips the magic-link round trip entirely and
 // goes straight to Stripe, instead of making someone dig a sign-in email out
 // of their inbox just to land on a "no plan yet, subscribe" screen. Returns
-// null (not false) on any failure, so a flaky network never blocks sign-in —
-// it just falls back to the original verified-link path.
+// null (not false) on any failure, so a flaky network never blocks sign-in.
+// It just falls back to the original verified-link path.
 async function checkEmailHasPlan(email) {
   try {
     const res = await fetch(`${WORKER_BASE_URL}/check-email`, {
@@ -324,7 +324,7 @@ async function startEmailSignIn() {
   clearError();
   const email = document.getElementById('login-email-input')?.value.trim();
   if (!email) { showError('Enter your email to continue.'); return; }
-  // Must happen before checkEmailHasPlan below, not after — a brand-new email
+  // Must happen before checkEmailHasPlan below, not after. A brand-new email
   // (the common case for a first-time signup) skips straight to Stripe from
   // the branch below and never reaches a later gate check, which was letting
   // new sign-ups through without ever confirming they're 13+ / agreed to the
@@ -342,7 +342,7 @@ async function continueEmailSignIn(email) {
     if (!started) renderSignInButton();
     return;
   }
-  // Existing subscriber, or the check itself failed — either way, fall back
+  // Existing subscriber, or the check itself failed. Either way, fall back
   // to the real sign-in flow rather than guessing.
   runEmailSignIn(email);
 }
@@ -364,7 +364,7 @@ function confirmAgeGate() {
     const email = _pendingEmail;
     _pendingEmail = null;
     // Resume the full email flow (which re-checks whether this email already
-    // has a plan) rather than jumping straight to a magic-link email — a new
+    // has a plan) rather than jumping straight to a magic-link email. A new
     // signup still needs to land on Stripe, not an inbox.
     continueEmailSignIn(email);
   } else {
@@ -375,7 +375,7 @@ async function runSignIn() {
   document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Signing in&hellip;</button>';
   try {
     // Always show the account chooser, even if this browser already has a
-    // Google session — so picking the wrong account once never traps someone
+    // Google session, so picking the wrong account once never traps someone
     // into reusing it silently on every later sign-in attempt.
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -386,7 +386,7 @@ async function runSignIn() {
     if (e.code !== 'auth/popup-closed-by-user') showError('Sign-in failed: ' + e.message);
   }
 }
-// Passwordless email link — works with any address (iCloud, Outlook,
+// Passwordless email link: works with any address (iCloud, Outlook,
 // a plain .com inbox, whatever), not just Google accounts. Requires
 // "Email Link" turned on in the Firebase console under Authentication →
 // Sign-in method; this is a one-time setup step, not something code can do.
@@ -427,7 +427,7 @@ async function tryCompleteEmailLink() {
 
 (async function init() {
   if (!FB_CONFIG.apiKey || typeof firebase === 'undefined') {
-    showError('Sign-in isn’t available right now — try again in a moment.');
+    showError('Sign-in isn’t available right now. Try again in a moment.');
     renderSignInButton();
     return;
   }

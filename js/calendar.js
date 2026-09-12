@@ -31,7 +31,7 @@ function openBreaksModal() {
   openModal(`
     <div class="modal-head"><h3>School breaks / no-class days</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
-      <div class="small muted mb-8">Class meetings are hidden on these dates — Labor Day, Fall Break, Thanksgiving, Reading Day, etc.</div>
+      <div class="small muted mb-8">Class meetings are hidden on these dates: Labor Day, Fall Break, Thanksgiving, Reading Day, etc.</div>
       <div id="brk-list">${state.breaks.map((b, i) => breakRow(b, i)).join('') || '<div class="small muted mb-8">No breaks added yet.</div>'}</div>
       <div class="field-row mt-8">
         <input class="input" id="brk-name" placeholder="Thanksgiving Break">
@@ -209,7 +209,7 @@ function dayView() {
   const brk = breakOnDate(dIso);
   return `
     <div class="card card-pad">
-      ${brk ? `<div class="small muted mb-8" style="font-style:italic">${icon('flag',12,2)} ${esc(brk.name)} — no classes</div>` : ''}
+      ${brk ? `<div class="small muted mb-8" style="font-style:italic">${icon('flag',12,2)} ${esc(brk.name)} (no classes)</div>` : ''}
       <div class="cal-week-grid" style="grid-template-columns:52px 1fr;position:relative">
         <div>${CAL_HOURS.map(h => `<div class="cal-hour-label">${h > 12 ? h - 12 : h}${h >= 12 ? 'pm' : 'am'}</div>`).join('')}</div>
         <div class="cal-day-col" onclick="openEventModal(null,'${dIso}')" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">

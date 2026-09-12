@@ -2,7 +2,7 @@
    Catches uncaught errors and unhandled promise rejections and reports
    them to the Worker's /log-error route, which is the only writer of
    Firestore's `errors` collection (see firestore.rules). Same Worker as
-   AI_PROXY_URL (js/ai.js) — no separate URL to configure.
+   AI_PROXY_URL (js/ai.js), no separate URL to configure.
    Throttled client-side so a loop of repeated errors doesn't spam the
    endpoint; the Worker also rate-limits per IP as a backstop.
 ──────────────────────────────────────────────────────────────── */

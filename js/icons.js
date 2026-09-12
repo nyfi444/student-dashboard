@@ -1,4 +1,4 @@
-/* ── Minimal line-icon set — replaces all emoji/glyphs app-wide ──
+/* ── Minimal line-icon set, replaces all emoji/glyphs app-wide ──
    Hand-drawn 24x24 stroke icons so the whole app reads as one
    consistent design system instead of mixed emoji + text symbols.
 ──────────────────────────────────────────────────────────────── */

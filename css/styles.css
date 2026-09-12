@@ -1,7 +1,7 @@
 /* ────────────────────────────────────────────────────────────────
-   Student Planner — Design System
+   Student Planner: Design System
    Theming: CSS custom properties on :root, strictly black/white/gray.
-   Dark mode (.dark class) inverts the same neutral palette — there
+   Dark mode (.dark class) inverts the same neutral palette; there
    is no other color option anywhere in the app.
 ──────────────────────────────────────────────────────────────── */
 * , *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -37,7 +37,7 @@ html { -webkit-text-size-adjust: 100%; }
 
   --radius: 16px;
   --radius-sm: 10px;
-  /* Signature shape: one soft corner, three tight — sharpens on interaction. */
+  /* Signature shape: one soft corner, three tight, sharpens on interaction. */
   --r-soft: 26px;
   --r-tight: 9px;
   --r-tight-active: 6px;
@@ -74,7 +74,7 @@ html.dark {
 /* ── Signature shape: the one asymmetric corner ───────────────────
    Applied to every contained shape (cards, buttons, nav, modals,
    calendar cells, icon badges). Default state has one soft corner;
-   on hover/focus/active that corner sharpens toward a point — a
+   on hover/focus/active that corner sharpens toward a point, a
    tactile response tied to real interaction, not decoration. */
 .card, .stat-card, .btn, .modal, .cal-cell, .empty .ic, .avatar, .nav-item {
   border-radius: var(--r-soft) var(--r-tight) var(--r-tight) var(--r-tight);
@@ -85,7 +85,7 @@ html.dark {
   border-radius: var(--r-tight-active);
 }
 
-/* Accent presets — applied by writing inline vars from JS, these are fallbacks */
+/* Accent presets, applied by writing inline vars from JS; these are fallbacks */
 body {
   font-family: var(--font);
   background: var(--bg);
@@ -186,7 +186,7 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .grid-4 { grid-template-columns: repeat(4, 1fr); }
 @media (max-width: 900px) { .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); } }
 
-/* Settings uses a masonry-style column flow instead of a strict grid — a
+/* Settings uses a masonry-style column flow instead of a strict grid. A
    CSS grid row locks its height to the tallest card in it, which left an
    awkward gap under short cards (e.g. Appearance next to the much taller
    Background card). Columns pack independently, so no wasted space. */
@@ -259,8 +259,8 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .progress > div { height: 100%; border-radius: 6px; background: var(--accent); transition: width .3s ease; }
 
 /* ── Tables/lists ──────────────────────────────────────────── */
-/* Each row reads as its own bordered card — not filled gray, which just made
-   the whole list look like one solid gray block with thin cracks in it — with
+/* Each row reads as its own bordered card, not filled gray, which just made
+   the whole list look like one solid gray block with thin cracks in it, with
    real whitespace between them so a list of rows never looks like one fused
    slab, even once titles wrap to two lines. */
 .list-row { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border-radius: 12px; margin-bottom: 10px; background: var(--surface); border: 1px solid var(--border); transition: background .12s, border-color .12s; }
@@ -274,7 +274,7 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .row-check {
   width: 24px; height: 24px; border-radius: 6px; border: 1.5px solid var(--border); flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--accent-text); transition: all .15s;
-  /* .row-check is a <button> so it needs its own reset — it's not a plain div */
+  /* .row-check is a <button> so it needs its own reset (it's not a plain div) */
   background: transparent; padding: 0; margin: 0; font: inherit; cursor: pointer; appearance: none;
 }
 .row-check.checked { background: var(--accent); border-color: var(--accent); }
@@ -423,7 +423,7 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-count { font-size: 9.5px; color: var(--text-faint); background: var(--surface-2); border-radius: 8px; padding: 1px 6px; flex-shrink: 0; font-weight: 600; text-transform: none; }
 /* The per-folder action buttons only matter on hover, but they used to sit
    inline in the flex row at all times (invisible via opacity:0, not removed
-   from layout) — permanently reserving ~100px+ and squeezing .nb-folder-name
+   from layout), permanently reserving ~100px+ and squeezing .nb-folder-name
    down to a handful of visible characters even for short names. Taking them
    out of flow entirely (absolute, overlaid on the row's right edge) gives the
    name the row's full width normally, and the gradient fade only masks the
@@ -463,10 +463,10 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-editor-body:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: 4px; }
 .nb-editor-body:empty::before { content: attr(data-placeholder); color: var(--text-faint); }
 /* Notion-style per-line hint: an empty paragraph mid-document otherwise renders as
-   nothing at all — no text, no outline — so it reads as dead space even though
+   nothing at all (no text, no outline), so it reads as dead space even though
    it's a real, clickable block. Only shown on the one line the caret is
-   currently on (.nb-caret-line, tracked in notebook.js) — not on every empty
-   line in the note at once — and only while actively editing, not on every
+   currently on (.nb-caret-line, tracked in notebook.js), not on every empty
+   line in the note at once, and only while actively editing, not on every
    idle view of the note. */
 .nb-editor-body:focus .nb-caret-line:empty::before,
 .nb-editor-body:focus .nb-caret-line:has(> br:only-child)::before {
@@ -483,7 +483,7 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-bubble button.active { background: var(--cloud); color: var(--ink); }
 .nb-bubble-sep { width: 1px; height: 18px; background: color-mix(in srgb, var(--cloud) 22%, transparent); margin: 0 3px; flex-shrink: 0; }
 
-/* Persistent formatting toolbar above the editor — an elevated card, not bare buttons */
+/* Persistent formatting toolbar above the editor: an elevated card, not bare buttons */
 .nb-toolbar { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-soft) var(--r-tight) var(--r-tight) var(--r-tight); box-shadow: var(--shadow); padding: 5px; margin: 20px 0 6px; }
 .nb-toolbar button { background: transparent; border: none; min-width: 30px; height: 30px; padding: 0 7px; border-radius: var(--r-tight); display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--text-dim); cursor: pointer; transition: background .12s, color .12s; }
 .nb-toolbar button:hover { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
@@ -498,7 +498,7 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-color-swatch { position: absolute; left: 6px; right: 6px; bottom: 4px; height: 3px; border-radius: 2px; background: #000; }
 .nb-bubble .nb-color-swatch { left: 5px; right: 5px; bottom: 3px; }
 
-/* Text/highlight color popover — gradient wheel (colorwheel.js), not a fixed swatch */
+/* Text/highlight color popover: gradient wheel (colorwheel.js), not a fixed swatch */
 .nb-color-popover { position: fixed; display: none; z-index: 260; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-soft) var(--r-tight) var(--r-tight) var(--r-tight); box-shadow: var(--shadow-lg); padding: 12px; width: 182px; }
 .nb-color-pop-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-dim); }
 .nb-color-pop-clear { background: transparent; border: none; color: var(--accent); font-size: 11.5px; font-weight: 600; cursor: pointer; padding: 0; }
@@ -545,7 +545,7 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .faq-item[open] summary::after { transform: rotate(45deg); color: var(--accent-dark); }
 .faq-item p { margin-top: 8px; line-height: 1.6; }
 
-/* ── Collapsible sub-sections elsewhere in Settings — same accordion
+/* ── Collapsible sub-sections elsewhere in Settings, same accordion
    language as the FAQ, used to keep long option grids out of the way
    until asked for (e.g. background presets, Recently Deleted). ────── */
 .settings-collapse { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
@@ -565,7 +565,7 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .print-meta { font-size: 12px; color: #666; margin-bottom: 20px; }
 @media print {
   /* html/body inherit --bg, which is whatever background preset (or dark
-     mode) is currently active in the app — without forcing white here, an
+     mode) is currently active in the app. Without forcing white here, an
      exported/printed note comes out tinted or black-background instead of a
      clean page, since #print-area never overrode it. */
   html, body { background: #fff !important; }

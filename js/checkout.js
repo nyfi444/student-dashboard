@@ -2,11 +2,11 @@
    Local-only usage (no sign-in) is always free. Signing in unlocks
    cross-device sync + AI upload, gated behind this subscription. The only
    thing that can ever mark a user as "paid" is the backend Worker (via
-   Stripe webhook, using a service account) — see worker/README.md and
+   Stripe webhook, using a service account); see worker/README.md and
    firestore.rules. This file just talks to that Worker and reflects
    whatever it decides; it never sets license state itself.
 ──────────────────────────────────────────────────────────────── */
-// Same Worker as AI_PROXY_URL (js/ai.js) — no separate URL to configure.
+// Same Worker as AI_PROXY_URL (js/ai.js), no separate URL to configure.
 const CHECKOUT_PROXY_URL = (typeof AI_PROXY_URL !== 'undefined' ? AI_PROXY_URL : '').replace(/\/v1\/messages$/, '');
 function checkoutEnabled() { return !!CHECKOUT_PROXY_URL; }
 
@@ -36,7 +36,7 @@ async function redirectToCheckout() {
 }
 
 // Sends the user to Stripe's own hosted billing portal, where they can
-// update payment info or cancel — Stripe handles the UI and the resulting
+// update payment info or cancel. Stripe handles the UI and the resulting
 // webhook event (customer.subscription.deleted) updates licenses/{uid}.
 async function redirectToPortal() {
   if (!checkoutEnabled() || !_fbUser) return;
@@ -57,7 +57,7 @@ async function redirectToPortal() {
 
 // A hung Firestore read or fetch here would otherwise stall pollForLicense
 // forever, leaving the "Finishing up your purchase…" screen stuck with no
-// way out — so every network call in this function is capped.
+// way out, so every network call in this function is capped.
 function withTimeout(promise, ms) {
   return Promise.race([
     promise,
@@ -67,10 +67,10 @@ function withTimeout(promise, ms) {
 
 // Asks the Worker: does `licenses/{uid}` already say paid, or is there an
 // unclaimed purchase under this account's email (bought before signing up)?
-// The Worker is the only thing that can WRITE a license (see firestore.rules)
-// — this never writes anything itself, only reads/claims via the Worker.
+// The Worker is the only thing that can WRITE a license (see firestore.rules).
+// This never writes anything itself, only reads/claims via the Worker.
 async function resolveLicenseStatus() {
-  if (!checkoutEnabled()) return true; // payments not configured on this deployment — don't gate
+  if (!checkoutEnabled()) return true; // payments not configured on this deployment, don't gate
   if (!_fbUser) return false;
   try {
     const doc = await withTimeout(_fbDb.collection('licenses').doc(_fbUser.uid).get(), 8000);
@@ -109,7 +109,7 @@ function shouldShowPaywall() {
     // re-verifies the license over the network before window._licenseChecked
     // flips true. Without this fast-path, that round trip showed the "No plan
     // on this account yet" paywall screen on literally every app open for a
-    // paying user — reading as "I have to log in / subscribe again each
+    // paying user, reading as "I have to log in / subscribe again each
     // time." LICENSE_DEVICE_FLAG (see state.js) is exactly this browser's own
     // record of "the last check here came back paid," so trust it optimistically
     // and show real content while the check confirms in the background; if it
@@ -135,7 +135,7 @@ function pagePaywall() {
       <div class="paywall-wrap">
         <div class="paywall-card">
           <h2>Payment received 🎉</h2>
-          <p class="small muted mb-16">Sign in to activate your account — it'll be linked to this purchase automatically. Use whichever you paid with; any email works, not just Google.</p>
+          <p class="small muted mb-16">Sign in to activate your account. It'll be linked to this purchase automatically. Use whichever you paid with; any email works, not just Google.</p>
           <button class="btn btn-primary" style="width:100%" onclick="signIn()">${icon('sparkles', 13, 1.6)} Continue with Google</button>
           <button class="btn btn-sm mt-8" style="width:100%" onclick="openEmailSignInModal()">Continue with email instead</button>
         </div>
@@ -147,20 +147,20 @@ function pagePaywall() {
       <div class="paywall-card">
         <h2>No plan on this account yet</h2>
         ${signedInEmail ? `<p class="small muted mb-8">Signed in as <strong>${esc(signedInEmail)}</strong></p>` : ''}
-        <p class="small muted mb-16">If you already subscribed, this is probably just the wrong account — switch below and it'll unlock right away. Otherwise, $7.99/mo unlocks cross-device sync and AI syllabus upload for this account. Billed monthly, cancel anytime.</p>
+        <p class="small muted mb-16">If you already subscribed, this is probably just the wrong account. Switch below and it'll unlock right away. Otherwise, $7.99/mo unlocks cross-device sync and AI syllabus upload for this account. Billed monthly, cancel anytime.</p>
         <div class="paywall-price">$7.99<span class="paywall-price-period">/mo</span></div>
         <button class="btn btn-primary" style="width:100%" onclick="redirectToCheckout()">Subscribe</button>
         ${checkoutReturnPending() ? `<p class="small mt-16" style="color:var(--warn)">We received a payment but couldn't confirm it's linked to this account yet. If you just paid, try <a href="#" onclick="event.preventDefault();retryLicenseCheck()">checking again</a>, or contact <a href="mailto:hello@semester-hq.com">hello@semester-hq.com</a>.</p>` : ''}
         <p class="small muted mt-16">Already bought on another device? <a href="#" onclick="event.preventDefault();retryLicenseCheck()">Check again</a>.</p>
         <button class="btn btn-sm mt-8" style="width:100%" onclick="switchGoogleAccount()">Wrong account? Switch Google account</button>
         <button class="btn btn-sm mt-8" style="width:100%" onclick="openEmailSignInModal()">Or log in with a different email</button>
-        <button class="btn btn-ghost btn-sm mt-8" onclick="signOutUser()">Not now — use local only on this device</button>
+        <button class="btn btn-ghost btn-sm mt-8" onclick="signOutUser()">Not now, use local only on this device</button>
       </div>
     </div>`;
 }
 // Self-serve "Delete my account": cancels any active subscription and erases
 // every server-side record (license, planner doc, Auth user) via the Worker.
-// Local-only data in this browser is untouched — export a backup first if
+// Local-only data in this browser is untouched. Export a backup first if
 // the user wants to keep it, same as any other sign-out.
 async function deleteAccountFully() {
   if (!_fbUser) return;

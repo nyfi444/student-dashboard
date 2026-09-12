@@ -57,7 +57,7 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 // Backs the "No due date" checkbox next to a date <input> (assignments, to-dos):
 // disables + clears the field when checked, hands it back when unchecked. The
 // field's own value (now always '' when disabled) is what save handlers read,
-// via `.value || null` — this just makes clearing it an explicit, visible option
+// via `.value || null`. This just makes clearing it an explicit, visible option
 // instead of something only discoverable by knowing a date input can be blanked.
 function toggleNoDueDate(inputId, checked) {
   const input = $('#' + inputId);
@@ -66,7 +66,7 @@ function toggleNoDueDate(inputId, checked) {
   if (checked) input.value = '';
 }
 // Some PDFs (scanned, malformed, or stuck behind a slow/blocked CDN worker
-// fetch) make pdf.js hang indefinitely with no error — this races it against
+// fetch) make pdf.js hang indefinitely with no error, so this races it against
 // a timer so upload UIs can always surface something instead of hanging forever.
 function withTimeout(promise, ms, message) {
   return Promise.race([
@@ -88,7 +88,7 @@ function lighten(hex, amt) {
   const b = clamp(parseInt(c.substr(4, 2), 16) + amt, 0, 255);
   return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
 }
-/* Blends toward white by a fraction (0-1) — unlike lighten()'s flat channel
+/* Blends toward white by a fraction (0-1). Unlike lighten()'s flat channel
    add, this never clips to pure white for colors that are already light
    (e.g. the Petal/Sage accents), so tinted badges/pills stay visibly tinted. */
 function tint(hex, pct) {

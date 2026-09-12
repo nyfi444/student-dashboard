@@ -47,7 +47,7 @@ function pageNotebook() {
           </div>
         </div>
         <div class="notebook-tree">
-          ${allNotes.length ? notebookTree('root', 0, search, sort) || `<div class="small muted" style="padding:14px 10px">No notes match “${esc(state._notebookSearch)}”.</div>` : `<div class="small muted" style="padding:14px 10px">No notes yet — create your first one.</div>`}
+          ${allNotes.length ? notebookTree('root', 0, search, sort) || `<div class="small muted" style="padding:14px 10px">No notes match “${esc(state._notebookSearch)}”.</div>` : `<div class="small muted" style="padding:14px 10px">No notes yet. Create your first one.</div>`}
         </div>
       </div>
       <div class="notebook-resize-handle" onmousedown="startNotebookTreeResize(event)" title="Drag to resize"></div>
@@ -83,7 +83,7 @@ function pageNotebook() {
 }
 
 // touch() does a full innerHTML re-render, which swaps in a brand-new <input>
-// element — on a plain oninput="...;touch()" (which is what this used to be)
+// element. On a plain oninput="...;touch()" (which is what this used to be)
 // that steals focus after every single character, so typing a second letter
 // requires clicking back into the box first. That's what "search doesn't
 // work" actually was: not that filtering was broken, but that you couldn't
@@ -97,7 +97,7 @@ function onNotebookSearchInput(el) {
   if (fresh) { fresh.focus(); fresh.setSelectionRange(pos, pos); }
 }
 
-// Obsidian-style resizable notebook sidebar — dragging updates the live DOM
+// Obsidian-style resizable notebook sidebar: dragging updates the live DOM
 // directly (no touch()/render() per pixel, which would thrash the whole page
 // and the rich-text editor on every mousemove) and only persists once, on
 // release.
@@ -160,7 +160,7 @@ function wireBubbleToolbar() {
   };
   const positionAndUpdate = () => { positionBubble(); updateNbFormatState(); updateCaretLineHighlight(editor); };
   // Only capture the range from genuine interaction inside the editor (mouseup/keyup
-  // there) — never from the document-wide selectionchange event, which also fires
+  // there), never from the document-wide selectionchange event, which also fires
   // (with an already-collapsed selection) the instant a toolbar button steals focus,
   // and would otherwise clobber the good range right before the click handler runs.
   const captureAndPosition = () => {
@@ -177,7 +177,7 @@ function wireBubbleToolbar() {
   editor.addEventListener('mouseup', window._nbEditorMouseup);
   editor.addEventListener('keyup', window._nbEditorKeyup);
   // Document-level listener only hides the bubble when the selection collapses or
-  // moves elsewhere (e.g. clicking away) — it must never touch the saved range.
+  // moves elsewhere (e.g. clicking away); it must never touch the saved range.
   if (window._nbBubbleUpdate) document.removeEventListener('selectionchange', window._nbBubbleUpdate);
   window._nbBubbleUpdate = positionBubble;
   document.addEventListener('selectionchange', window._nbBubbleUpdate);
@@ -195,7 +195,7 @@ function updateNbFormatState() {
   });
 }
 // The "Type '/' for commands" hint should only ever show on the one line the
-// caret is actually on — same as Notion, which this is modeled after — not on
+// caret is actually on (same as Notion, which this is modeled after), not on
 // every empty-looking line in the note at once. Marks that single block with
 // .nb-caret-line so the CSS :empty rule (see styles.css) has something
 // specific to key off instead of matching every empty block in the editor.
@@ -210,7 +210,7 @@ function updateCaretLineHighlight(editor) {
   if (node && node !== editor) node.classList.add('nb-caret-line');
 }
 // Restores the last-known editor selection (captured on selectionchange) before
-// running a format command — clicking a toolbar button can otherwise collapse
+// running a format command: clicking a toolbar button can otherwise collapse
 // the selection to the document body before the click handler runs.
 function restoreNbSelection() {
   const editor = $('#note-editor');
@@ -260,7 +260,7 @@ function updateNbColorSwatches() {
   $$('.nb-textcolor-swatch').forEach(el => el.style.background = window._nbLastTextColor || '#000000');
   $$('.nb-highlightcolor-swatch').forEach(el => el.style.background = window._nbLastHighlightColor || '#fde68a');
 }
-/* ── Text/highlight color popover — a gradient color wheel (see colorwheel.js,
+/* ── Text/highlight color popover: a gradient color wheel (see colorwheel.js,
    also used for course/event colors) instead of the browser's native picker
    or a single fixed highlight shade. ── */
 function openNbColorPopover(anchorEl, mode) {
@@ -325,7 +325,7 @@ function promptInsertLink() {
   if (url) runNbCommand('createLink', url);
 }
 
-/* ── Font family / size / color — the editor otherwise had no way to change
+/* ── Font family / size / color: the editor otherwise had no way to change
    how text looks beyond bold/italic/headings, unlike a normal word processor. ── */
 const NB_FONT_FAMILIES = [
   { label: 'Default font', value: '' },
@@ -345,11 +345,11 @@ function runNbFontFamily(family) {
   if (window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
 }
 // execCommand('fontSize') only understands the legacy 1–7 scale, so it's used as a
-// marker (size 7) and then swapped for a real pixel value via inline style — the
+// marker (size 7) and then swapped for a real pixel value via inline style. This is the
 // standard workaround since there's no execCommand for an arbitrary font size.
 // Chrome's fontSize command replaces (rather than extends) an existing <font
 // face> wrapper around the same selection, so the chosen font family is
-// re-applied onto the resulting span — otherwise picking a size after a family
+// re-applied onto the resulting span, otherwise picking a size after a family
 // silently threw the family away.
 function runNbFontSize(px) {
   const editor = $('#note-editor');
@@ -433,7 +433,7 @@ function runSlashCommand(key) {
   if (window._nbCurrentNoteId && editor) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
 }
 
-// A folder has no updatedAt of its own — for the "Edited" sort this stands in
+// A folder has no updatedAt of its own. For the "Edited" sort this stands in
 // for one, so folder-heavy notebooks (the Obsidian-style setup this is meant
 // to support) actually reorder when sort changes, instead of only ever
 // reordering the notes inside a folder while the folders themselves stay
@@ -542,7 +542,7 @@ function moveNoteTo(id) {
 }
 function deleteNoteItem(id) {
   const root = state.notes.find(n => n.id === id);
-  confirmDialog('Delete this? Folders delete everything inside them — you can restore it from Recently Deleted for 30 days.', () => {
+  confirmDialog('Delete this? Folders delete everything inside them. You can restore it from Recently Deleted for 30 days.', () => {
     const toDelete = new Set([id]);
     let grew = true;
     while (grew) { grew = false; state.notes.forEach(n => { if (n.parentId && toDelete.has(n.parentId) && !toDelete.has(n.id)) { toDelete.add(n.id); grew = true; } }); }
@@ -641,7 +641,7 @@ function notePrintHtml(note, crumbs, courseName) {
     <div class="rich-editor" style="color:#000">${note.content || '<p><em>This note is empty.</em></p>'}</div>
   `;
 }
-// Falls back to the browser's own print dialog — still produces a real PDF via
+// Falls back to the browser's own print dialog: still produces a real PDF via
 // "Save as PDF"/"Print to PDF", just without a direct file to hand to
 // navigator.share(). Used when html2pdf isn't available (e.g. the CDN was
 // blocked) or actually generating the PDF below threw.
@@ -661,7 +661,7 @@ async function exportNoteToPdf(id) {
 
   const filename = (note.name || 'Untitled note').replace(/[\\/:*?"<>|]/g, '-').trim() + '.pdf';
   // Rendered off-screen with an explicit white background, independent of
-  // whatever background preset or dark mode is active in the app right now —
+  // whatever background preset or dark mode is active in the app right now,
   // otherwise the exported PDF's page color follows the theme instead of
   // being a clean white page (see the @media print fix in styles.css, which
   // this shares the same white-background reasoning with).
@@ -697,7 +697,7 @@ async function shareOrDownloadPdf(blob, filename, title) {
       return;
     }
   } catch (e) {
-    if (e?.name === 'AbortError') return; // person dismissed the share sheet — not a failure
+    if (e?.name === 'AbortError') return; // person dismissed the share sheet, not a failure
     console.warn('Share failed, falling back to download', e);
   }
   const url = URL.createObjectURL(blob);
@@ -712,7 +712,7 @@ function shareNoteToGroup(id) {
   if (!note) return;
   openShareToGroupModal('note', note.name || 'Untitled note', { content: note.content || '' });
 }
-// Shares a whole folder (every note directly inside it — including anything
+// Shares a whole folder (every note directly inside it, including anything
 // pulled in via Upload PDF) as one bundle, instead of only being able to
 // share notes one at a time.
 function shareFolderToGroup(id) {
@@ -738,7 +738,7 @@ async function handleNotePdfUpload(files) {
   for (const file of files) {
     if (status) status.textContent = `Rendering ${file.name}…`;
     try {
-      // Each page is rendered to an actual image and dropped in — the real
+      // Each page is rendered to an actual image and dropped in: the real
       // document (figures, layout, handwriting) rather than a stripped text
       // reflow. See extractPdfPageImages in ai.js for the size/page caps.
       // Wrapped in a timeout: a scanned/malformed PDF, or a slow/blocked CDN
@@ -756,8 +756,8 @@ async function handleNotePdfUpload(files) {
   note.updatedAt = Date.now();
   touch();
   if (markerId) requestAnimationFrame(() => document.getElementById(markerId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  if (failed) toast(`Imported ${files.length - failed} of ${files.length} PDFs — ${failed} couldn't be read`, failed === files.length ? 'error' : 'info', 4000);
+  if (failed) toast(`Imported ${files.length - failed} of ${files.length} PDFs, ${failed} couldn't be read`, failed === files.length ? 'error' : 'info', 4000);
   else toast(files.length > 1 ? `${files.length} PDFs imported into note` : 'PDF imported into note');
-  if (truncatedAny) toast('One PDF had more pages than could be imported — only the first 20 pages of it were added', 'info', 5000);
+  if (truncatedAny) toast('One PDF had more pages than could be imported. Only the first 20 pages of it were added', 'info', 5000);
   if (input) input.value = '';
 }

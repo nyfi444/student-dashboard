@@ -63,8 +63,8 @@ function emptyState(icon, text, actionHtml = '', sub = '') {
 function pageHead(title, sub, actionsHtml = '') {
   return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions">${signInHeaderButton()}${actionsHtml}</div></div>`;
 }
-// A persistent, always-visible way to log in — not just buried in a modal or
-// Settings — since it's the same click for a brand-new account or an existing
+// A persistent, always-visible way to log in, not just buried in a modal or
+// Settings, since it's the same click for a brand-new account or an existing
 // paid one (Google sign-in / resolveLicenseStatus handles both, see
 // firebase.js). Links to the dedicated login.html page rather than opening
 // an in-app modal, so logging in or signing up is always a real page, never

@@ -193,14 +193,14 @@ async function handleSyllabusPdf(file) {
   $('#syl-pdf-status').textContent = 'Reading PDF…';
   try {
     // A scanned/malformed PDF, or a slow/blocked CDN fetch of the pdf.js
-    // worker, can otherwise hang forever with no error — this makes sure the
+    // worker, can otherwise hang forever with no error, so this makes sure the
     // status text always resolves to something instead of hanging silently.
     const text = await withTimeout(extractPdfText(file), 30000, 'Timed out reading this PDF');
-    if (!text.trim()) { $('#syl-pdf-status').textContent = 'No text found in that PDF — try the "Upload photo" tab instead.'; return; }
+    if (!text.trim()) { $('#syl-pdf-status').textContent = 'No text found in that PDF. Try the "Upload photo" tab instead.'; return; }
     $('#syl-text').value = text;
     sylTab('paste');
-    $('#syl-paste-status').textContent = `📄 ${file.name} — extracted ${text.length.toLocaleString()} characters.`;
-  } catch (e) { $('#syl-pdf-status').textContent = 'Could not read that PDF — try again or use the "Upload photo" tab instead.'; }
+    $('#syl-paste-status').textContent = `📄 ${file.name}: extracted ${text.length.toLocaleString()} characters.`;
+  } catch (e) { $('#syl-pdf-status').textContent = 'Could not read that PDF. Try again or use the "Upload photo" tab instead.'; }
   const input = $('#syl-pdf-input');
   if (input) input.value = '';
 }
@@ -208,7 +208,7 @@ async function handleSyllabusImage(files) {
   if (!files || !files.length) return;
   $('#syl-image-status').textContent = 'Loading…';
   window._sylImages = await Promise.all(Array.from(files).map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
-  $('#syl-image-status').textContent = `${window._sylImages.length} photo${window._sylImages.length > 1 ? 's' : ''} loaded — ready to parse.`;
+  $('#syl-image-status').textContent = `${window._sylImages.length} photo${window._sylImages.length > 1 ? 's' : ''} loaded, ready to parse.`;
   const input = $('#syl-image-input');
   if (input) input.value = '';
 }
@@ -245,7 +245,7 @@ function openSyllabusReviewModal(data) {
   openModal(`
     <div class="modal-head"><h3>Review & confirm <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
-      <div class="small muted mb-8">Double-check what the AI pulled out before adding it — edit anything that's off.</div>
+      <div class="small muted mb-8">Double-check what the AI pulled out before adding it. Edit anything that's off.</div>
       <div class="field-row">
         <div class="field"><label>Course name</label><input class="input" id="cf-name" value="${esc(draft.name)}"></div>
         <div class="field"><label>Code</label><input class="input" id="cf-code" value="${esc(draft.code)}"></div>
@@ -261,7 +261,7 @@ function openSyllabusReviewModal(data) {
               <button type="button" class="row-check ${a._include ? 'checked' : ''}" role="checkbox" aria-checked="${a._include}" aria-label="${a._include ? 'Exclude' : 'Include'} ${esc(a.title)}" onclick="toggleSylAssignment(${i})">${a._include ? checkGlyph(true) : ''}</button>
               <div class="row-title">${esc(a.title)} ${typeTag(a.type || 'assignment')}</div>
               <div class="row-meta">${a.dueDate ? fmtDate(a.dueDate) : 'no date'}</div>
-            </div>`).join('') || '<div class="small muted">None detected — you can add assignments manually later.</div>'}
+            </div>`).join('') || '<div class="small muted">None detected. You can add assignments manually later.</div>'}
         </div>
       </div>
     </div>

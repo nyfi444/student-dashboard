@@ -52,7 +52,7 @@ function pageTodos() {
       <div class="flex-between mb-8"><h3 style="font-size:14.5px">Recurring templates</h3><button class="btn btn-sm" onclick="openRecurringModal()">+ New template</button></div>
       ${state.recurringTemplates.length ? state.recurringTemplates.map(rt => `
         <div class="list-row">
-          <div class="row-title">${esc(rt.title)} <span class="small muted">— every ${DOW_NAMES[rt.dayOfWeek]}</span></div>
+          <div class="row-title">${esc(rt.title)} <span class="small muted">(every ${DOW_NAMES[rt.dayOfWeek]})</span></div>
           ${rt.courseId ? courseChip(rt.courseId) : ''}
           <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(rt.title)} template" onclick="deleteRecurringTemplate('${rt.id}')">${icon('trash',14)}</button>
         </div>

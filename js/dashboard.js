@@ -174,7 +174,7 @@ function pageDashboardToday() {
         <div style="font-size:17px;font-weight:600">${esc(priority.title)}</div>
         ${priorityDot(priority.priority)}
       </div>
-    </div>` : emptyState(icon('check-square', 24, 1.4), "Nothing overdue or urgent — you're caught up.")}
+    </div>` : emptyState(icon('check-square', 24, 1.4), "Nothing overdue or urgent, you're caught up.")}
 
     <div class="grid grid-2 mb-16" style="align-items:start">
       <div class="card card-pad">
@@ -245,7 +245,7 @@ function openDashboardCustomizeModal() {
           <button class="${size === 'lg' ? 'active' : ''}" onclick="setStickyNoteSize('lg')">Large</button>
         </div>
       </div>
-      <div class="field" style="margin-bottom:0"><label>Widgets — show/hide and reorder</label>
+      <div class="field" style="margin-bottom:0"><label>Widgets: show/hide and reorder</label>
         <div id="dash-widget-list">${order.map((id, i) => dashWidgetRow(id, i, order.length)).join('')}</div>
       </div>
     </div>

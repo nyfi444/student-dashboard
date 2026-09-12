@@ -50,7 +50,7 @@ async function createGroup() {
   const g = { id: uid(), name, code: genGroupCode(), courseId: $('#gf-course').value || null, events: [], members: [state.settings.displayName || 'Me'], sharedItems: [] };
   state.studyGroups.push(g);
   touch(); closeModal();
-  toast(`Group created — share code ${g.code}`);
+  toast(`Group created, share code ${g.code}`);
   if (fbConfigured() && _fbUser) pushGroupToCloud(g);
 }
 function openJoinGroupModal() {
@@ -58,7 +58,7 @@ function openJoinGroupModal() {
     <div class="modal-head"><h3>Join a group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Group code</label><input class="input" id="jf-code" placeholder="ABC123" style="text-transform:uppercase"></div>
-      ${!fbConfigured() ? `<div class="small muted">Sync isn't set up on this device, so joining only works once it is — ask whoever created the group to enable it in Settings.</div>` : ''}
+      ${!fbConfigured() ? `<div class="small muted">Sync isn't set up on this device, so joining only works once it is. Ask whoever created the group to enable it in Settings.</div>` : ''}
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="joinGroup()" ${fbConfigured() ? '' : 'disabled'}>Join</button></div>
   `);
@@ -70,7 +70,7 @@ async function joinGroup() {
     const doc = await _fbDb.collection('studyGroups').doc(code).get();
     if (!doc.exists) { toast('No group found with that code', 'error'); return; }
     const g = doc.data();
-    // The creator's push only ever wrote their own name into `members` — joining
+    // The creator's push only ever wrote their own name into `members`, joining
     // never added the joiner, so rosters (and cross-account visibility) never grew.
     const me = state.settings.displayName || 'Me';
     g.members = g.members || [];
@@ -79,7 +79,7 @@ async function joinGroup() {
     if (i >= 0) state.studyGroups[i] = g; else state.studyGroups.push(g);
     touch(); closeModal(); toast(`Joined ${g.name}`);
     pushGroupToCloud(g);
-  } catch (e) { toast('Could not join — ' + e.message, 'error'); }
+  } catch (e) { toast('Could not join: ' + e.message, 'error'); }
 }
 function pushGroupToCloud(g, onError) {
   if (!fbConfigured() || !_fbUser) return;
@@ -133,7 +133,7 @@ function renderGroupPeopleTab(g) {
   const members = g.members || [];
   const activity = groupActivityFeed(g).slice(0, 15);
   return `
-    <div class="small muted mb-8">${members.length} member${members.length === 1 ? '' : 's'} — anyone with the code ${g.code} who's joined shows up here.</div>
+    <div class="small muted mb-8">${members.length} member${members.length === 1 ? '' : 's'}. Anyone with the code ${g.code} who's joined shows up here.</div>
     ${members.map(m => `
       <div class="list-row">
         <div class="avatar">${esc((m || '?').trim()[0]?.toUpperCase() || '?')}</div>
@@ -146,7 +146,7 @@ function renderGroupPeopleTab(g) {
         <span class="nb-note-ic">${icon(a.icon, 14)}</span>
         <div class="row-title">${esc(a.text)}</div>
         <div class="row-meta">${fmtRelativeTime(a.at)}</div>
-      </div>`).join('') : emptyState(icon('users', 22, 1.4), 'No activity yet — share something or assign a task.')}
+      </div>`).join('') : emptyState(icon('users', 22, 1.4), 'No activity yet, share something or assign a task.')}
   `;
 }
 function groupActivityFeed(g) {
@@ -200,7 +200,7 @@ function fmtFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 const GROUP_FILE_MAX_BYTES = 2 * 1024 * 1024; // group docs sync as a single Firestore doc (1MB cap) alongside sessions/tasks/etc, so keep files smaller than assignment attachments
-// Lets you link something into a group without leaving it — otherwise sharing
+// Lets you link something into a group without leaving it. Otherwise sharing
 // only worked by navigating to Notebook/Flashcards/Projects and hunting for the
 // Share button there. A note that came from Notebook → Upload PDF works here too,
 // since the extracted text just lives in the note's content like anything else.
@@ -245,14 +245,14 @@ async function handleShareFromGroupFile(file) {
   if (!file) return;
   const status = $('#sfg-file-status');
   if (file.size > GROUP_FILE_MAX_BYTES) {
-    if (status) status.textContent = `Too large — max ${fmtFileSize(GROUP_FILE_MAX_BYTES)}`;
+    if (status) status.textContent = `Too large, max ${fmtFileSize(GROUP_FILE_MAX_BYTES)}`;
     window._sfgFile = null;
     return;
   }
   if (status) status.textContent = 'Reading…';
   const dataUrl = 'data:' + (file.type || 'application/octet-stream') + ';base64,' + (await fileToBase64(file));
   window._sfgFile = { name: file.name, size: file.size, dataUrl };
-  if (status) status.textContent = `${file.name} (${fmtFileSize(file.size)}) — ready to share`;
+  if (status) status.textContent = `${file.name} (${fmtFileSize(file.size)}), ready to share`;
   const input = $('#sfg-file-input');
   if (input) input.value = '';
 }
@@ -286,12 +286,12 @@ function confirmShareFromGroup(groupId) {
   g.sharedItems = g.sharedItems || [];
   g.sharedItems.push({ id: uid(), kind, title, sharedBy: state.settings.displayName || 'Me', sharedAt: Date.now(), ...payload });
   touch();
-  pushGroupToCloud(g, () => toast(`Shared "${title}" with ${g.name}, but it may be too large to sync to other members — try a smaller file.`, 'error', 5000));
+  pushGroupToCloud(g, () => toast(`Shared "${title}" with ${g.name}, but it may be too large to sync to other members. Try a smaller file.`, 'error', 5000));
   toast(`Shared "${title}" with ${g.name}`);
   renderGroupDetail(g);
 }
 
-/* ── Group task list — separate from personal to-dos ─────────── */
+/* ── Group task list, separate from personal to-dos ─────────── */
 function renderGroupTasksTab(g) {
   const me = state.settings.displayName || 'Me';
   const mineOnly = !!window._groupTasksMineOnly;
@@ -345,20 +345,20 @@ function removeGroupTask(groupId, taskId) {
   touch(); renderGroupDetail(g); pushGroupToCloud(g);
 }
 
-/* ── Shared availability — mark blocks, highlight overlaps ─────── */
+/* ── Shared availability: mark blocks, highlight overlaps ─────── */
 const AVAIL_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function renderGroupAvailabilityTab(g) {
   const me = state.settings.displayName || 'Me';
   const availability = g.availability || {};
   const mine = availability[me] || [];
   const overlaps = computeAvailabilityOverlap(availability);
-  // Show every member's blocks (grouped by member), not just your own — otherwise
+  // Show every member's blocks (grouped by member), not just your own, otherwise
   // there was no way to actually see when your groupmates are free, only the
   // computed 2+-way overlap, which stays empty until someone else has also added
   // blocks and can look like availability "isn't showing up" for anyone else.
   const others = (g.members || []).filter(m => m !== me && (availability[m] || []).length);
   return `
-    <div class="small muted mb-8">Add blocks when you're free — everyone in the group can see them here, and Semester HQ highlights times everyone overlaps.</div>
+    <div class="small muted mb-8">Add blocks when you're free. Everyone in the group can see them here, and Semester HQ highlights times everyone overlaps.</div>
     <div class="field-row">
       <select class="select" id="av-day" style="max-width:110px">${AVAIL_DAYS.map((d, i) => `<option value="${i}">${d}</option>`).join('')}</select>
       <input class="input" type="time" id="av-start" value="17:00">
@@ -373,10 +373,10 @@ function renderGroupAvailabilityTab(g) {
     ${others.length ? others.map(m => `
       <div class="small" style="font-weight:600;margin:8px 0 2px">${esc(m)}</div>
       ${(availability[m] || []).map(b => `<div class="list-row"><div class="row-title">${AVAIL_DAYS[b.day]} ${fmtTime(b.start)}–${fmtTime(b.end)}</div></div>`).join('')}
-    `).join('') : `<div class="small muted">No one else has added their availability yet — share the group code ${g.code} so they can.</div>`}
+    `).join('') : `<div class="small muted">No one else has added their availability yet. Share the group code ${g.code} so they can.</div>`}
     <div class="divider"></div>
     <div class="small dim mb-8" style="font-weight:600">Everyone's overlap</div>
-    ${overlaps.length ? overlaps.map(o => `<div class="list-row"><div class="row-title">${AVAIL_DAYS[o.day]} ${fmtTime(o.start)}–${fmtTime(o.end)}</div><span class="small muted">${o.members.join(', ')}</span></div>`).join('') : emptyState(icon('users',22,1.4), 'No overlapping availability yet — add your blocks above.')}
+    ${overlaps.length ? overlaps.map(o => `<div class="list-row"><div class="row-title">${AVAIL_DAYS[o.day]} ${fmtTime(o.start)}–${fmtTime(o.end)}</div><span class="small muted">${o.members.join(', ')}</span></div>`).join('') : emptyState(icon('users',22,1.4), 'No overlapping availability yet, add your blocks above.')}
   `;
 }
 function addAvailability(groupId) {
@@ -416,7 +416,7 @@ function computeAvailabilityOverlap(availability) {
 function toMin(hhmm) { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; }
 function fromMin(min) { return `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`; }
 
-/* ── Shared project workspace — beyond study sessions ────────── */
+/* ── Shared project workspace, beyond study sessions ────────── */
 function renderGroupProjectsTab(g) {
   const projects = g.projects || [];
   return `
@@ -518,7 +518,7 @@ async function addGroupProjectFileUpload(groupId, projectId, file) {
   const { g, p } = findGroupProject(groupId, projectId);
   const status = $(`#gpf-upload-status-${projectId}`);
   if (!file) return;
-  if (file.size > GROUP_FILE_MAX_BYTES) { if (status) status.textContent = `Too large — max ${fmtFileSize(GROUP_FILE_MAX_BYTES)}`; return; }
+  if (file.size > GROUP_FILE_MAX_BYTES) { if (status) status.textContent = `Too large, max ${fmtFileSize(GROUP_FILE_MAX_BYTES)}`; return; }
   if (status) status.textContent = 'Uploading…';
   const dataUrl = 'data:' + (file.type || 'application/octet-stream') + ';base64,' + (await fileToBase64(file));
   p.files.push({ id: uid(), name: file.name, url: dataUrl, dataUrl, size: file.size });

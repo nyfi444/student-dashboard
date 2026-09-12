@@ -1,9 +1,9 @@
 /* ── Student Planner backend Worker ───────────────────────────────
    Four jobs, all server-side so secrets never reach the browser:
-   1. AI proxy (/v1/messages) — holds ANTHROPIC_API_KEY, forwards to Claude.
-   2. Checkout (/create-checkout-session) — starts a $7.99/month Stripe
+   1. AI proxy (/v1/messages): holds ANTHROPIC_API_KEY, forwards to Claude.
+   2. Checkout (/create-checkout-session): starts a $7.99/month Stripe
       subscription for sign-in and sync.
-   3. Licensing (/stripe-webhook, /claim-license, /check-email) — the ONLY
+   3. Licensing (/stripe-webhook, /claim-license, /check-email): the ONLY
       writer of Firestore's `licenses` collection. Clients can only read
       their own license (see firestore.rules); this Worker is the sole
       trusted authority that marks someone as paid, using a Firebase service
@@ -11,32 +11,32 @@
       payment failures, and cancellations all flow through the webhook too
       (customer.subscription.updated/deleted), so `paid` always reflects
       whether the subscription is currently active. /check-email is the one
-      unauthenticated read here — a bare "has this email paid?" boolean,
+      unauthenticated read here, a bare "has this email paid?" boolean,
       used by login.html to skip the magic-link step entirely for emails
       with no plan yet and send them straight to Checkout.
-   4. Contact form (/contact-message) — the ONLY writer of Firestore's
+   4. Contact form (/contact-message): the ONLY writer of Firestore's
       `feedback` collection. Rate-limited and validated server-side since
       it's reachable by anyone, signed in or not. Also emails the site
-      owner a copy via Resend if RESEND_API_KEY is set (optional — see
+      owner a copy via Resend if RESEND_API_KEY is set (optional, see
       worker/README.md), since the Firestore write alone never showed up
       anywhere a person would actually notice it.
-   5. Error logging (/log-error) — the ONLY writer of Firestore's `errors`
+   5. Error logging (/log-error): the ONLY writer of Firestore's `errors`
       collection. Client-side crash reporter for both the app and the
       marketing site; rate-limited since it's reachable by anyone.
-   6. Error viewer (/admin/errors) — read-only, token-gated (ADMIN_TOKEN
+   6. Error viewer (/admin/errors): read-only, token-gated (ADMIN_TOKEN
       secret) endpoint for admin/errors.html to list recent crash reports.
       Not origin-restricted like the rest, since the viewer page isn't
       served from ALLOWED_ORIGIN; the bearer token is the security boundary.
-   7. Event tracking (/track-event) — the ONLY writer of Firestore's
+   7. Event tracking (/track-event): the ONLY writer of Firestore's
       `events` collection. Records marketing-site CTA clicks (Log in, Try
       it free, Upgrade, Subscribe, checkout errors) so which buttons
       actually convert isn't a guess. Same rate-limited, server-only
       pattern as error logging.
-   8. Business summary (/admin/business-summary) — read-only, token-gated
+   8. Business summary (/admin/business-summary): read-only, token-gated
       (same ADMIN_TOKEN as job 6) feed for Nyla's private business
       dashboard (dashboard/semester-hq-biz.html). Computes Stripe active-
       subscriber count + MRR server-side (the dashboard can't call Stripe
-      directly — Stripe blocks browser CORS on purpose) and, only if
+      directly, Stripe blocks browser CORS on purpose) and, only if
       CLOUDFLARE_API_TOKEN + CLOUDFLARE_ZONE_ID secrets are set, last-24h
       Cloudflare traffic stats for semester-hq.com. Cloudflare section is
       simply omitted (not faked) when those secrets aren't set.
@@ -45,7 +45,7 @@
 const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
 const MAX_TOKENS_CAP = 4000;
 const ANTHROPIC_VERSION = '2023-06-01';
-const PLUS_PRICE_CENTS = 799; // $7.99/month — bump the marketing copy too if this changes
+const PLUS_PRICE_CENTS = 799; // $7.99/month, bump the marketing copy too if this changes
 
 export default {
   async fetch(request, env) {
@@ -53,14 +53,14 @@ export default {
     const origin = request.headers.get('Origin') || '';
 
     // /admin/errors needs GET + an Authorization header, unlike every other
-    // route here (POST + content-type only) — handle its preflight separately
+    // route here (POST + content-type only), handle its preflight separately
     // so the browser doesn't reject the real request for a disallowed method/header.
     if (request.method === 'OPTIONS' && (url.pathname === '/admin/errors' || url.pathname === '/admin/business-summary')) {
       return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
     }
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env, origin) });
 
-    // Stripe calls this server-to-server — no Origin header, verified by signature instead of CORS.
+    // Stripe calls this server-to-server, no Origin header, verified by signature instead of CORS.
     if (url.pathname === '/stripe-webhook' && request.method === 'POST') return handleStripeWebhook(request, env);
 
     // Token-gated, not origin-restricted (see job 6 above).
@@ -69,46 +69,46 @@ export default {
 
     if (request.method !== 'POST') return jsonError('Method not allowed', 405, env, origin);
 
-    // Defense in depth beyond CORS (CORS only stops browser JS from reading the response —
-    // it doesn't stop a direct request — so also reject disallowed origins server-side).
+    // Defense in depth beyond CORS (CORS only stops browser JS from reading the response;
+    // it doesn't stop a direct request), so also reject disallowed origins server-side.
     if (!isAllowedOrigin(env, origin)) return jsonError('Origin not allowed', 403, env, origin);
 
     const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
 
     if (url.pathname === '/v1/messages') {
-      if (!(await checkRateLimit(env, ip, 'ai', 20))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      if (!(await checkRateLimit(env, ip, 'ai', 20))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handleAiProxy(request, env, origin);
     }
     if (url.pathname === '/create-checkout-session') {
-      if (!(await checkRateLimit(env, ip, 'checkout', 10))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      if (!(await checkRateLimit(env, ip, 'checkout', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handleCreateCheckoutSession(request, env, origin);
     }
     if (url.pathname === '/create-portal-session') {
-      if (!(await checkRateLimit(env, ip, 'portal', 10))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      if (!(await checkRateLimit(env, ip, 'portal', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handleCreatePortalSession(request, env, origin);
     }
     if (url.pathname === '/claim-license') {
-      if (!(await checkRateLimit(env, ip, 'claim', 15))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      if (!(await checkRateLimit(env, ip, 'claim', 15))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handleClaimLicense(request, env, origin);
     }
     if (url.pathname === '/check-email') {
-      if (!(await checkRateLimit(env, ip, 'check-email', 20))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      if (!(await checkRateLimit(env, ip, 'check-email', 20))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handleCheckEmail(request, env, origin);
     }
     if (url.pathname === '/delete-account') {
-      if (!(await checkRateLimit(env, ip, 'delete-account', 5))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      if (!(await checkRateLimit(env, ip, 'delete-account', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handleDeleteAccount(request, env, origin);
     }
     if (url.pathname === '/contact-message') {
-      if (!(await checkRateLimit(env, ip, 'contact', 5))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      if (!(await checkRateLimit(env, ip, 'contact', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handleContactMessage(request, env, origin);
     }
     if (url.pathname === '/log-error') {
-      if (!(await checkRateLimit(env, ip, 'log-error', 30))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      if (!(await checkRateLimit(env, ip, 'log-error', 30))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handleLogError(request, env, origin);
     }
     if (url.pathname === '/track-event') {
-      if (!(await checkRateLimit(env, ip, 'track-event', 60))) return jsonError('Too many requests — try again in a minute.', 429, env, origin);
+      if (!(await checkRateLimit(env, ip, 'track-event', 60))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handleTrackEvent(request, env, origin);
     }
     return jsonError('Not found', 404, env, origin);
@@ -116,7 +116,7 @@ export default {
 };
 
 /* ── 1. AI proxy ──────────────────────────────────────────────── */
-// Gated behind a paid subscription — every caller must prove (via a fresh Firebase
+// Gated behind a paid subscription: every caller must prove (via a fresh Firebase
 // ID token) that they're signed in AND that licenses/{uid}.paid is true. This
 // check has to live here, not just in the client (js/ai.js): anyone can call
 // this endpoint directly with curl, bypassing whatever the UI does.
@@ -130,7 +130,7 @@ async function handleAiProxy(request, env, origin) {
   if (!body.idToken) return jsonError('Sign in and subscribe to use AI upload.', 402, env, origin);
   let payload;
   try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
-  catch { return jsonError('Your session expired — sign in again.', 401, env, origin); }
+  catch { return jsonError('Your session expired, sign in again.', 401, env, origin); }
 
   try {
     const license = await readFirestoreDoc(env, 'licenses', payload.sub);
@@ -177,8 +177,8 @@ async function handleCreateCheckoutSession(request, env, origin) {
   params.set('line_items[0][price_data][unit_amount]', String(PLUS_PRICE_CENTS));
   params.set('line_items[0][price_data][recurring][interval]', 'month');
   params.set('line_items[0][price_data][product_data][name]', 'Semester HQ');
-  params.set('line_items[0][price_data][product_data][description]', 'Sign-in & sync across every device — cross-device access, AI syllabus upload, and study groups. Cancel anytime.');
-  // Same square mark set as the account's Stripe branding (settings/branding) —
+  params.set('line_items[0][price_data][product_data][description]', 'Sign-in & sync across every device: cross-device access, AI syllabus upload, and study groups. Cancel anytime.');
+  // Same square mark set as the account's Stripe branding (settings/branding),
   // shows up as the line-item thumbnail in the checkout Details dropdown.
   params.set('line_items[0][price_data][product_data][images][0]', 'https://semester-hq.com/assets/icon-512.png');
   params.set('line_items[0][quantity]', '1');
@@ -186,7 +186,7 @@ async function handleCreateCheckoutSession(request, env, origin) {
   params.set('cancel_url', `${appUrl}?checkout=cancel`);
   // Shows a "promotion code" box on the Stripe checkout page, so comped
   // accounts (content partnerships, gifted access, etc.) can be handled
-  // entirely via Stripe Coupons — see SEMESTER_HQ_COUPON_PROCESS.md.
+  // entirely via Stripe Coupons, see SEMESTER_HQ_COUPON_PROCESS.md.
   params.set('allow_promotion_codes', 'true');
   if (body.uid) params.set('client_reference_id', String(body.uid));
   if (body.email) params.set('customer_email', String(body.email));
@@ -209,7 +209,7 @@ async function handleCreateCheckoutSession(request, env, origin) {
 
 /* ── 2b. Billing portal ───────────────────────────────────────── */
 // Lets a signed-in, paying user manage payment info or cancel their
-// subscription through Stripe's own hosted portal — no custom cancel UI
+// subscription through Stripe's own hosted portal, no custom cancel UI
 // to build, and Stripe (not us) handles confirming/processing it. The
 // webhook (below) picks up the resulting cancellation automatically.
 async function handleCreatePortalSession(request, env, origin) {
@@ -224,7 +224,7 @@ async function handleCreatePortalSession(request, env, origin) {
 
   let payload;
   try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
-  catch { return jsonError('Your session expired — sign in again.', 401, env, origin); }
+  catch { return jsonError('Your session expired, sign in again.', 401, env, origin); }
 
   let license;
   try { license = await readFirestoreDoc(env, 'licenses', payload.sub); }
@@ -234,7 +234,7 @@ async function handleCreatePortalSession(request, env, origin) {
   // account: anyone who bought from the marketing site before creating an
   // account gets their license via /claim-license copying licensesByEmail over,
   // and older claims didn't carry stripeCustomerId across (see handleClaimLicense).
-  // Fall back to the email-keyed doc — written by the same webhook — rather than
+  // Fall back to the email-keyed doc (written by the same webhook) rather than
   // telling a paying customer they have no subscription.
   let stripeCustomerId = license?.stripeCustomerId;
   if (!stripeCustomerId && payload.email) {
@@ -297,7 +297,7 @@ async function handleStripeWebhook(request, env) {
     }
   }
 
-  // Subscription lifecycle — renewals, payment failures, and cancellations
+  // Subscription lifecycle: renewals, payment failures, and cancellations
   // all land here as the subscription's `status` changes. uid/email come
   // from the metadata stamped on the subscription at checkout time (see
   // handleCreateCheckoutSession), not from a separate lookup table.
@@ -346,7 +346,7 @@ async function handleClaimLicense(request, env, origin) {
     if (email) {
       const byEmail = await readFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email));
       if (byEmail?.paid) {
-        // Carry the Stripe IDs over too, not just `paid` — without these,
+        // Carry the Stripe IDs over too, not just `paid`. Without these,
         // "Manage subscription" (needs stripeCustomerId) and account deletion's
         // auto-cancel (needs stripeSubscriptionId) both silently fail later for
         // anyone who bought from the marketing site before signing in.
@@ -368,8 +368,8 @@ async function handleClaimLicense(request, env, origin) {
 
 // Unauthenticated, pre-signin lookup: lets login.html skip the magic-link
 // round trip for an email with no paid plan and send it straight to Stripe
-// Checkout instead. Only ever returns a bare boolean — never stripeCustomerId,
-// uid, or anything else from the license doc — so this can't be used to pull
+// Checkout instead. Only ever returns a bare boolean, never stripeCustomerId,
+// uid, or anything else from the license doc, so this can't be used to pull
 // anything more than "has this email paid," which is the same fact anyone
 // could already confirm by going through the real sign-in flow. Rate-limited
 // (see router) since, unlike /claim-license, it doesn't require proving you
@@ -394,7 +394,7 @@ async function handleCheckEmail(request, env, origin) {
 // Firebase Auth user itself. Requires the service account's OAuth token to
 // carry the Identity Toolkit scope (see getFirebaseAccessToken) and the
 // underlying GCP service account to have the "Firebase Authentication Admin"
-// role — without that role the Auth-user deletion step fails and is reported
+// role. Without that role the Auth-user deletion step fails and is reported
 // back to the client rather than silently ignored, since the rest of the
 // erasure still succeeded and shouldn't be treated as a full failure the
 // user needs to retry.
@@ -406,7 +406,7 @@ async function handleDeleteAccount(request, env, origin) {
 
   let payload;
   try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
-  catch { return jsonError('Your session expired — sign in again.', 401, env, origin); }
+  catch { return jsonError('Your session expired, sign in again.', 401, env, origin); }
 
   const uid = payload.sub;
   const email = (payload.email || '').toLowerCase().trim();
@@ -415,8 +415,8 @@ async function handleDeleteAccount(request, env, origin) {
     const license = await readFirestoreDoc(env, 'licenses', uid);
     // Same fallback as handleCreatePortalSession: an account whose license was
     // claimed via email (bought before signing up) may be missing this field on
-    // the uid-keyed doc even from before that path was fixed to copy it over —
-    // without this, deleting the account leaves the Stripe subscription running
+    // the uid-keyed doc even from before that path was fixed to copy it over.
+    // Without this, deleting the account leaves the Stripe subscription running
     // and the person gets billed forever after being told their account is gone.
     let stripeSubscriptionId = license?.stripeSubscriptionId;
     if (!stripeSubscriptionId && email) {
@@ -431,17 +431,17 @@ async function handleDeleteAccount(request, env, origin) {
         method: 'DELETE',
         headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
       });
-      // Already-canceled subscriptions 404/410 here — not an error for our purposes.
+      // Already-canceled subscriptions 404/410 here, not an error for our purposes.
       if (!res.ok && res.status !== 404) {
         const data = await res.json().catch(() => ({}));
-        return jsonError('Could not cancel your subscription: ' + (data.error?.message || 'unknown error') + '. Your account was not deleted — try again or email hello@semester-hq.com.', 500, env, origin);
+        return jsonError('Could not cancel your subscription: ' + (data.error?.message || 'unknown error') + '. Your account was not deleted, try again or email hello@semester-hq.com.', 500, env, origin);
       }
     }
 
     await deleteFirestoreDoc(env, 'licenses', uid);
     if (email) await deleteFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email));
     // Notes live in their own subcollection (planners/{uid}/notes/{id}), not
-    // inline in the planner doc — deleting the parent doc below does NOT
+    // inline in the planner doc. Deleting the parent doc below does NOT
     // cascade-delete those, Firestore never does that automatically. Delete
     // them explicitly first or "delete my account" leaves every note behind.
     await deleteFirestoreSubcollection(env, `planners/${uid}`, 'notes');
@@ -458,7 +458,7 @@ async function handleDeleteAccount(request, env, origin) {
 }
 
 /* ── 4. Contact form ──────────────────────────────────────────── */
-// Writes to Firestore's `feedback` collection — clients can never read or
+// Writes to Firestore's `feedback` collection. Clients can never read or
 // write it directly (see firestore.rules), only this route, using the same
 // service account as licensing. Reachable by anyone (signed in or not), so
 // this is the one route that needs its own input validation and a honeypot
@@ -470,7 +470,7 @@ async function handleContactMessage(request, env, origin) {
   try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
 
   // Honeypot: a field real users never see or fill in. Bots that blindly
-  // fill every field trip it — report success anyway so they don't learn
+  // fill every field trip it, report success anyway so they don't learn
   // to leave it blank.
   if (body.website) return jsonOk({ ok: true }, env, origin);
 
@@ -485,7 +485,7 @@ async function handleContactMessage(request, env, origin) {
   try {
     const id = crypto.randomUUID();
     await writeFirestoreDoc(env, 'feedback', id, { name, email, category, message, createdAt: new Date() });
-    // Best-effort — the Firestore write above is what actually preserves the
+    // Best-effort: the Firestore write above is what actually preserves the
     // message, so a flaky email provider must never fail the submission itself.
     // Without this, the ONLY way to see a new message was to go check the
     // Firestore console by hand.
@@ -498,7 +498,7 @@ async function handleContactMessage(request, env, origin) {
 // Sends the site owner an email via Resend (https://resend.com) so a new
 // contact-form/group-pricing submission shows up in an inbox instead of only
 // the Firestore `feedback` collection. Silently no-ops if RESEND_API_KEY
-// isn't set, so this stays optional — see worker/README.md to enable it.
+// isn't set, so this stays optional. See worker/README.md to enable it.
 async function notifyNewContactMessage(env, { name, email, category, message }) {
   if (!env.RESEND_API_KEY) return;
   const to = env.NOTIFY_EMAIL || 'hello@semester-hq.com';
@@ -514,7 +514,7 @@ async function notifyNewContactMessage(env, { name, email, category, message }) 
 }
 
 /* ── 5. Error logging ─────────────────────────────────────────── */
-// Writes to Firestore's `errors` collection — same server-only pattern as
+// Writes to Firestore's `errors` collection, same server-only pattern as
 // `feedback` (see firestore.rules). Reachable by anyone, so payload sizes
 // are capped and fields coerced to strings rather than trusted as-is.
 const ERROR_SOURCES = ['app', 'marketing'];
@@ -536,7 +536,7 @@ async function handleLogError(request, env, origin) {
     await writeFirestoreDoc(env, 'errors', id, { source, message, stack, url, userAgent, createdAt: new Date() });
     return jsonOk({ ok: true }, env, origin);
   } catch (e) {
-    // Don't fail loudly back to the client over a logging endpoint — just
+    // Don't fail loudly back to the client over a logging endpoint, just
     // report success so a broken error-reporter doesn't itself spam retries.
     console.error('Error log write failed', e);
     return jsonOk({ ok: true }, env, origin);
@@ -544,7 +544,7 @@ async function handleLogError(request, env, origin) {
 }
 
 /* ── 7. Event tracking ────────────────────────────────────────── */
-// Writes to Firestore's `events` collection — same server-only, rate-limited
+// Writes to Firestore's `events` collection, same server-only, rate-limited
 // pattern as error logging. Intentionally minimal (no cookies, no per-user
 // identity): just which CTA fired, from which page, so conversion is
 // measurable without turning this into a full analytics/tracking pipeline.
@@ -594,11 +594,11 @@ async function handleAdminErrors(request, env) {
    Backs Nyla's private business command-center dashboard
    (dashboard/semester-hq-biz.html), which is a static file that can't
    safely hold a real Stripe key (Stripe blocks direct browser CORS to
-   api.stripe.com anyway) — so it calls this instead, same bearer-token
+   api.stripe.com anyway), so it calls this instead, same bearer-token
    pattern as /admin/errors, reusing the ADMIN_TOKEN secret. Returns
    Stripe subscription counts/MRR computed server-side, plus Cloudflare
    zone analytics IF CLOUDFLARE_API_TOKEN + CLOUDFLARE_ZONE_ID secrets are
-   set — omitted (not faked) otherwise, so the dashboard can show an
+   set (omitted, not faked, otherwise), so the dashboard can show an
    honest "not connected yet" state. */
 async function handleAdminBusinessSummary(request, env) {
   const adminCors = { 'Access-Control-Allow-Origin': '*', 'content-type': 'application/json', 'X-Content-Type-Options': 'nosniff' };
@@ -664,7 +664,7 @@ async function fetchStripeSummary(env) {
   return { activeCount, mrrCents, recent: recent.slice(0, 30), fetchedAt: Date.now() };
 }
 
-// Cloudflare's GraphQL Analytics API (zone-scoped, read-only token) — last 24h
+// Cloudflare's GraphQL Analytics API (zone-scoped, read-only token): last 24h
 // requests/uniques for semester-hq.com. Only called when both secrets are set.
 async function fetchCloudflareSummary(env) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -716,7 +716,7 @@ function timingSafeEqual(a, b) {
   return diff === 0;
 }
 
-/* ── Firebase ID token verification (manual — no Admin SDK in Workers) ─
+/* ── Firebase ID token verification (manual, no Admin SDK in Workers) ─
    Mirrors what the Admin SDK does: check standard claims, then verify the
    RS256 signature against Google's public JWK set for Firebase Auth. ─── */
 async function verifyFirebaseIdToken(idToken, projectId) {
@@ -807,7 +807,7 @@ async function deleteFirestoreDoc(env, collection, docId) {
   if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed: ' + await res.text());
 }
 // Firestore never cascade-deletes a subcollection when its parent document
-// is deleted — has to be done by hand: list every doc, delete each one,
+// is deleted; has to be done by hand: list every doc, delete each one,
 // page through if there are more than one page's worth.
 async function deleteFirestoreSubcollection(env, parentPath, subcollectionId) {
   const token = await getFirebaseAccessToken(env);

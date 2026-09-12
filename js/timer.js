@@ -74,8 +74,8 @@ function startTimer() {
     if (t.mode === 'pomodoro') {
       const limit = t.isBreak ? POMODORO_BREAK : POMODORO_WORK;
       if (t.seconds >= limit) {
-        if (!t.isBreak) { logSession(Math.round(limit / 60)); toast('Focus block done — take a break'); t.isBreak = true; t.seconds = 0; }
-        else { toast('Break over — ready for another round'); t.isBreak = false; t.seconds = 0; t.running = false; clearInterval(t.intervalId); }
+        if (!t.isBreak) { logSession(Math.round(limit / 60)); toast('Focus block done, take a break'); t.isBreak = true; t.seconds = 0; }
+        else { toast('Break over, ready for another round'); t.isBreak = false; t.seconds = 0; t.running = false; clearInterval(t.intervalId); }
       }
     }
     const el = $('#timer-display');

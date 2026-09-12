@@ -1,8 +1,8 @@
-/* ── AI layer — Claude API calls for syllabus & assignment parsing ──
+/* ── AI layer: Claude API calls for syllabus & assignment parsing ──
    Calls go through a Cloudflare Worker proxy (see /worker) that holds
    the real Anthropic API key server-side, so students never see or
    supply their own key. Fill in AI_PROXY_URL with your deployed
-   Worker's URL (see worker/README.md for deploy steps) — until then,
+   Worker's URL (see worker/README.md for deploy steps); until then,
    AI features show as unavailable rather than erroring.
 ──────────────────────────────────────────────────────────────── */
 const AI_PROXY_URL = 'https://student-planner-ai-proxy.semesterhq.workers.dev/v1/messages';
@@ -13,10 +13,10 @@ class AiError extends Error {}
 
 async function callClaude({ system, userContent, maxTokens = 2000 }) {
   if (!aiEnabled()) throw new AiError('AI features aren’t set up on this deployment yet.');
-  // AI upload is part of the paid subscription, not the free local tier — see
+  // AI upload is part of the paid subscription, not the free local tier, see
   // checkout.js. This client-side check just avoids a wasted round trip and
   // gives a clear message; the Worker enforces the real gate server-side.
-  if (!_fbUser) throw new AiError('Sign in to use AI upload — it’s included with your subscription ($7.99/month).');
+  if (!_fbUser) throw new AiError('Sign in to use AI upload. It’s included with your subscription ($7.99/month).');
   if (!window._licensed) throw new AiError('AI upload requires a subscription ($7.99/month). Subscribe from the pricing page, then sign in.');
   const idToken = await _fbUser.getIdToken();
   const res = await fetch(AI_PROXY_URL, {
@@ -71,8 +71,8 @@ async function extractPdfText(file) {
 }
 
 // Renders each PDF page to an actual page image (instead of just pulling text out)
-// so an upload looks like the real document — figures, handwriting, layout and
-// all — not a stripped-down text reflow. Capped in page count/resolution/quality
+// so an upload looks like the real document: figures, handwriting, layout and
+// all, not a stripped-down text reflow. Capped in page count/resolution/quality
 // since every image is stored inline as a data URL alongside the rest of the
 // planner (see FIRESTORE_DOC_SAFE_BYTES in firebase.js).
 async function extractPdfPageImages(file, { scale = 1.3, quality = 0.78, maxPages = 20 } = {}) {
@@ -102,7 +102,7 @@ const SYLLABUS_SYSTEM = `You extract structured course information from a syllab
 }
 Infer the current or nearest upcoming year for dates when the syllabus only gives month/day. If a field is unknown, use an empty string, null, or empty array. Do not invent assignments that aren't mentioned.`;
 
-// `images` is an array of {base64, mediaType} — multiple photos of one syllabus
+// `images` is an array of {base64, mediaType}: multiple photos of one syllabus
 // (e.g. a multi-page handout shot page by page) get sent as one message so the
 // model can read them together instead of parsing each page in isolation.
 function imageBlocks(images) {

@@ -20,12 +20,12 @@ function renderWizardStep() {
   openModal(`
     <div class="modal-head"><h3>Semester setup</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
-      <div class="small muted mb-16">Step ${w.step + 1} of ${WIZARD_STEPS.length} — ${WIZARD_STEPS[w.step]}</div>
+      <div class="small muted mb-16">Step ${w.step + 1} of ${WIZARD_STEPS.length}: ${WIZARD_STEPS[w.step]}</div>
       ${stepBody}
     </div>
     <div class="modal-foot">
       ${w.step > 0 && !isLast ? `<button class="btn" onclick="wizBack()">Back</button>` : ''}
-      ${!isLast ? `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="wizNext()">Next</button>` : `<button class="btn btn-primary" onclick="wizFinish()">Done — go to dashboard</button>`}
+      ${!isLast ? `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="wizNext()">Next</button>` : `<button class="btn btn-primary" onclick="wizFinish()">Done, go to dashboard</button>`}
     </div>
   `, { wide: true });
   if (w.step === 4) w.courses.forEach((c, i) => wireColorWheel(`wiz-color-${i}`, () => window._wizard.courses[i].color, (hex) => { window._wizard.courses[i].color = hex; }));
@@ -56,7 +56,7 @@ function wizStep0() {
 function wizStep1() {
   const w = window._wizard;
   return `
-    <div class="small muted mb-8">Add each course you're taking — you can fill in details like grading later.</div>
+    <div class="small muted mb-8">Add each course you're taking. You can fill in details like grading later.</div>
     <div id="wiz-courses">${w.courses.map((c, i) => `
       <div class="field-row" style="align-items:center;margin-bottom:6px">
         <input class="input" placeholder="Course name" value="${esc(c.name)}" oninput="window._wizard.courses[${i}].name=this.value">
@@ -70,7 +70,7 @@ function wizStep1() {
 }
 function wizStep2() {
   const w = window._wizard;
-  if (!w.courses.length) return `<div class="small muted">No courses to schedule yet — go back and add some, or skip ahead.</div>`;
+  if (!w.courses.length) return `<div class="small muted">No courses to schedule yet. Go back and add some, or skip ahead.</div>`;
   return w.courses.map((c, ci) => `
     <div class="card card-pad mb-16">
       <div style="font-weight:600;margin-bottom:8px">${esc(c.name || 'Untitled course')}</div>
@@ -88,7 +88,7 @@ function wizStep2() {
 }
 function wizStep3() {
   const w = window._wizard;
-  if (!w.courses.length) return `<div class="small muted">No courses yet — go back and add some, or skip ahead.</div>`;
+  if (!w.courses.length) return `<div class="small muted">No courses yet. Go back and add some, or skip ahead.</div>`;
   if (!aiEnabled()) return `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px">AI syllabus parsing isn’t set up on this deployment yet. You can skip this step and add syllabi later from Courses.</div>`;
   return w.courses.map((c, ci) => `
     <div class="card card-pad mb-16">
@@ -126,7 +126,7 @@ async function wizUploadSyllabus(ci, file) {
 }
 function wizStep4() {
   const w = window._wizard;
-  if (!w.courses.length) return `<div class="small muted">No courses yet — go back and add some, or skip ahead.</div>`;
+  if (!w.courses.length) return `<div class="small muted">No courses yet. Go back and add some, or skip ahead.</div>`;
   return w.courses.map((c, i) => `
     <div class="field-row mb-16" style="align-items:center">
       <div style="width:100px;font-weight:600">${esc(c.name || 'Untitled')}</div>
