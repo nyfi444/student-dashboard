@@ -324,7 +324,16 @@ async function startEmailSignIn() {
   clearError();
   const email = document.getElementById('login-email-input')?.value.trim();
   if (!email) { showError('Enter your email to continue.'); return; }
-
+  // Must happen before checkEmailHasPlan below, not after — a brand-new email
+  // (the common case for a first-time signup) skips straight to Stripe from
+  // the branch below and never reaches a later gate check, which was letting
+  // new sign-ups through without ever confirming they're 13+ / agreed to the
+  // ToS. showAgeGate() replaces #login-body (removing the email input), so the
+  // pending email is stashed here for confirmAgeGate() to resume with.
+  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { _pendingEmail = email; showAgeGate(); return; }
+  await continueEmailSignIn(email);
+}
+async function continueEmailSignIn(email) {
   document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Checking&hellip;</button>';
   const hasPlan = await checkEmailHasPlan(email);
 
@@ -335,8 +344,6 @@ async function startEmailSignIn() {
   }
   // Existing subscriber, or the check itself failed — either way, fall back
   // to the real sign-in flow rather than guessing.
-  _pendingEmail = email;
-  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { showAgeGate(); return; }
   runEmailSignIn(email);
 }
 function showAgeGate() {
@@ -356,7 +363,10 @@ function confirmAgeGate() {
   if (_pendingEmail) {
     const email = _pendingEmail;
     _pendingEmail = null;
-    runEmailSignIn(email);
+    // Resume the full email flow (which re-checks whether this email already
+    // has a plan) rather than jumping straight to a magic-link email — a new
+    // signup still needs to land on Stripe, not an inbox.
+    continueEmailSignIn(email);
   } else {
     runSignIn();
   }
