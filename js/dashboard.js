@@ -11,7 +11,7 @@ function pageDashboard() {
   const dueThisWeek = state.assignments
     .filter(a => activeCourses().some(c => c.id === a.courseId) && !isAssignmentDone(a) && a.dueDate >= todayIso() && a.dueDate <= weekEnd)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  const overdue = state.assignments.filter(a => activeCourses().some(c => c.id === a.courseId) && !isAssignmentDone(a) && a.dueDate < todayIso());
+  const overdue = state.assignments.filter(a => activeCourses().some(c => c.id === a.courseId) && !isAssignmentDone(a) && a.dueDate && a.dueDate < todayIso());
 
   const upcomingExams = state.assignments
     .filter(a => a.type === 'exam' && activeCourses().some(c => c.id === a.courseId) && daysBetween(a.dueDate) >= 0 && daysBetween(a.dueDate) <= 21)
@@ -34,9 +34,9 @@ function pageDashboard() {
   const DASH_WIDGETS = {
     stats: () => `
       <div class="grid grid-3 mb-16">
-        <div class="stat-card"><div class="flex-between"><div class="num">${dueThisWeek.length}</div><span>${icon('clipboard-list', 15)}</span></div><div class="lbl">Due this week</div></div>
-        <div class="stat-card"><div class="flex-between"><div class="num" style="color:${overdue.length ? 'var(--danger)' : 'inherit'}">${overdue.length}</div><span>${icon('file-text', 15)}</span></div><div class="lbl">Overdue</div></div>
-        <div class="stat-card"><div class="flex-between"><div class="num">${fmtDuration(weekMinutes)}</div><span>${icon('timer', 15)}</span></div><div class="lbl">Study time this week</div></div>
+        <div class="stat-card stat-card-link" onclick="setState({route:'assignments'})" title="View assignments"><div class="flex-between"><div class="num">${dueThisWeek.length}</div><span>${icon('clipboard-list', 15)}</span></div><div class="lbl">Due this week</div></div>
+        <div class="stat-card stat-card-link" onclick="setState({route:'assignments'})" title="View overdue assignments"><div class="flex-between"><div class="num" style="color:${overdue.length ? 'var(--danger)' : 'inherit'}">${overdue.length}</div><span>${icon('file-text', 15)}</span></div><div class="lbl">Overdue</div></div>
+        <div class="stat-card stat-card-link" onclick="setState({route:'timer'})" title="View study timer"><div class="flex-between"><div class="num">${fmtDuration(weekMinutes)}</div><span>${icon('timer', 15)}</span></div><div class="lbl">Study time this week</div></div>
       </div>`,
     semesterProgress: () => sem ? `
       <div class="card card-pad mb-16">

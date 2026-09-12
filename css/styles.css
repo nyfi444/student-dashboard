@@ -197,6 +197,7 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .stat-card { padding: 17px 19px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
 .stat-card .num { font-family: var(--font-serif); font-style: italic; font-size: 30px; font-weight: 400; letter-spacing: -.2px; color: var(--text); }
 .stat-card .lbl { font-size: 11.5px; color: var(--text-faint); margin-top: 3px; }
+.stat-card-link { cursor: pointer; }
 
 .empty { text-align: center; padding: 46px 20px; color: var(--text-faint); }
 .empty .ic {
@@ -400,7 +401,10 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 
 /* ── Notebook ──────────────────────────────────────────────────── */
 .notebook-layout { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.notebook-tree-panel { width: 264px; flex-shrink: 0; min-height: 0; padding: 18px 12px; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border); }
+.notebook-tree-panel { width: var(--nb-tree-w, 264px); flex-shrink: 0; min-height: 0; padding: 18px 12px; display: flex; flex-direction: column; background: var(--surface); }
+.notebook-resize-handle { width: 5px; flex-shrink: 0; cursor: col-resize; background: var(--border); }
+.notebook-resize-handle:hover { background: var(--accent); }
+@media (max-width: 900px) { .notebook-resize-handle { display: none; } }
 .notebook-search-wrap { position: relative; margin-bottom: 8px; flex-shrink: 0; padding: 0 4px; }
 .notebook-search-ic { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-faint); pointer-events: none; }
 .notebook-search { width: 100%; background: var(--surface-2); border: none; border-radius: 8px; padding: 7px 10px 7px 30px; font-size: 12.5px; color: var(--text); }
@@ -411,14 +415,21 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-sort-row .segmented button { padding: 4px 8px; font-size: 11px; }
 .notebook-tree { overflow-y: auto; flex: 1; padding: 0 4px; }
 .nb-branch { margin-bottom: 1px; }
-.nb-folder-row { display: flex; align-items: center; gap: 6px; padding: 6px 6px; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .02em; }
+.nb-folder-row { display: flex; align-items: center; gap: 6px; padding: 6px 6px; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .02em; position: relative; }
 .nb-folder-row:hover { background: var(--surface-2); }
 .nb-chevron { display: flex; color: var(--text-faint); transition: transform .15s; flex-shrink: 0; }
 .nb-chevron.open { transform: rotate(90deg); }
 .nb-folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nb-count { font-size: 9.5px; color: var(--text-faint); background: var(--surface-2); border-radius: 8px; padding: 1px 6px; flex-shrink: 0; font-weight: 600; text-transform: none; }
-.nb-folder-row .btn-icon { opacity: 0; flex-shrink: 0; }
-.nb-folder-row:hover .btn-icon { opacity: 1; }
+/* The per-folder action buttons only matter on hover, but they used to sit
+   inline in the flex row at all times (invisible via opacity:0, not removed
+   from layout) — permanently reserving ~100px+ and squeezing .nb-folder-name
+   down to a handful of visible characters even for short names. Taking them
+   out of flow entirely (absolute, overlaid on the row's right edge) gives the
+   name the row's full width normally, and the gradient fade only masks the
+   last ~12px on hover, when the buttons are actually showing. */
+.nb-folder-actions { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 2px; opacity: 0; padding-left: 16px; background: linear-gradient(to right, transparent, var(--surface-2) 14px); pointer-events: none; }
+.nb-folder-row:hover .nb-folder-actions { opacity: 1; pointer-events: auto; }
 .nb-children { margin-left: 8px; }
 .nb-note-row { display: flex; align-items: center; gap: 8px; padding: 6px 7px; border-radius: 16px var(--r-tight) var(--r-tight) var(--r-tight); cursor: pointer; transition: border-radius .16s cubic-bezier(.4,0,.2,1), background .15s; }
 .nb-note-row:hover { background: var(--surface-2); border-radius: var(--r-tight-active); }
@@ -553,8 +564,13 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .print-title { font-family: var(--font); font-size: 26px; font-weight: 700; margin-bottom: 4px; }
 .print-meta { font-size: 12px; color: #666; margin-bottom: 20px; }
 @media print {
+  /* html/body inherit --bg, which is whatever background preset (or dark
+     mode) is currently active in the app — without forcing white here, an
+     exported/printed note comes out tinted or black-background instead of a
+     clean page, since #print-area never overrode it. */
+  html, body { background: #fff !important; }
   body > *:not(#print-area) { display: none !important; }
-  #print-area { display: block !important; padding: 30px 40px; color: #000; }
+  #print-area { display: block !important; padding: 30px 40px; background: #fff; color: #000; }
   #print-area .rich-editor { font-size: 13px; line-height: 1.6; color: #000; }
   #print-area .rich-editor h1, #print-area .rich-editor h2, #print-area .rich-editor h3 { color: #000; }
   #print-area .rich-editor pre { border: 1px solid #ccc; }

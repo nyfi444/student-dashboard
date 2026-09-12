@@ -302,6 +302,15 @@ function migrate(parsed) {
   }
   const cutoff = Date.now() - TRASH_RETENTION_DAYS * 86400000;
   merged.trash = (merged.trash || []).filter(t => t.deletedAt >= cutoff);
+  // Before "no due date" was a real option, clearing the date field saved ''
+  // rather than null — and '' < todayIso() is true (plain string comparison),
+  // so those assignments/to-dos silently miscounted as overdue everywhere.
+  // Heal it once here rather than requiring every read site to guard for it.
+  (merged.assignments || []).forEach(a => {
+    if (a.dueDate === '') a.dueDate = null;
+    if (a.startByDate === '') a.startByDate = null;
+  });
+  (merged.todos || []).forEach(t => { if (t.dueDate === '') t.dueDate = null; });
   return merged;
 }
 

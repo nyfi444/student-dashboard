@@ -104,7 +104,19 @@ async function pollForLicense(maxTries = 8, delayMs = 2500) {
 function shouldShowPaywall() {
   if (!checkoutEnabled()) return false;
   if (!_fbUser) return checkoutReturnPending(); // free/local mode, unless returning from a fresh purchase to sign in
-  if (!window._licenseChecked) return true;
+  if (!window._licenseChecked) {
+    // Every sign-in (even a returning one Firebase already kept logged in)
+    // re-verifies the license over the network before window._licenseChecked
+    // flips true. Without this fast-path, that round trip showed the "No plan
+    // on this account yet" paywall screen on literally every app open for a
+    // paying user — reading as "I have to log in / subscribe again each
+    // time." LICENSE_DEVICE_FLAG (see state.js) is exactly this browser's own
+    // record of "the last check here came back paid," so trust it optimistically
+    // and show real content while the check confirms in the background; if it
+    // comes back negative, window._licenseChecked/_licensed flip and a normal
+    // render() afterward shows the paywall same as always.
+    try { return localStorage.getItem(LICENSE_DEVICE_FLAG) !== '1'; } catch { return true; }
+  }
   return !window._licensed;
 }
 

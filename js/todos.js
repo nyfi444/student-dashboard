@@ -170,7 +170,10 @@ function openTodoModal(id) {
         <div class="field"><label>Section</label><select class="select" id="tf-section"><option value="">No section</option>${state.todoSections.map(s => `<option value="${s.id}" ${s.id === t.sectionId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Due date</label><input class="input" type="date" id="tf-date" value="${t.dueDate || ''}"></div>
+        <div class="field"><label>Due date</label>
+          <input class="input" type="date" id="tf-date" value="${t.dueDate || ''}" ${t.dueDate ? '' : 'disabled'}>
+          <label class="checkbox-row small mt-4" style="font-weight:400"><input type="checkbox" ${t.dueDate ? '' : 'checked'} onchange="toggleNoDueDate('tf-date',this.checked)"><span>No due date</span></label>
+        </div>
         <div class="field"><label>Priority</label><select class="select" id="tf-priority">${['low', 'medium', 'high'].map(p => `<option value="${p}" ${p === t.priority ? 'selected' : ''}>${p[0].toUpperCase() + p.slice(1)}</option>`).join('')}</select></div>
       </div>
     </div>

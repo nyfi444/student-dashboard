@@ -15,6 +15,11 @@ const FB_CONFIG = {
 };
 
 let _fbAuth = null, _fbDb = null, _fbStorage = null, _fbUser = null, _syncQueued = false, _applyingRemote = false;
+// Guards the realtime listeners below against replaying our own writes back
+// onto ourselves (see startRealtimeSync). Set from whichever of cloudPull()
+// or queueCloudSync() most recently established what Firestore holds.
+let _lastKnownUpdatedAt = 0;
+let _plannerUnsub = null, _notesUnsub = null;
 
 function fbConfigured() { return !!FB_CONFIG.apiKey; }
 
@@ -30,6 +35,7 @@ function bootFirebase() {
     // the app itself, complete it here instead of leaving it inert.
     completeEmailLinkSignInIfPresent();
     _fbAuth.onAuthStateChanged(async (user) => {
+      stopRealtimeSync(); // never let a listener from a previous account/session keep running into this one
       _fbUser = user;
       window._licenseChecked = false;
       window._licensed = false;
@@ -318,6 +324,12 @@ function queueCloudSync() {
       const currentIds = new Set((notes || []).map(n => n.id));
       const deletedIds = [..._lastSyncedNoteIds].filter(id => !currentIds.has(id));
 
+      // Stamped on the core doc and remembered locally so the realtime listener
+      // (see startRealtimeSync) can recognize the echo of this exact write and
+      // skip re-applying it — otherwise it would periodically stomp on whatever
+      // got typed in the moment between sending this write and hearing it back.
+      const myUpdatedAt = Date.now();
+
       // Firestore batches cap at 500 writes — chunk defensively, though no
       // real user is likely to ever come close to that many notes.
       const ops = [
@@ -328,7 +340,7 @@ function queueCloudSync() {
       for (let i = 0; i < ops.length; i += 500) {
         const batch = _fbDb.batch();
         for (const op of ops.slice(i, i + 500)) {
-          if (op.type === 'core') batch.set(planner, { data: coreData, updatedAt: Date.now() });
+          if (op.type === 'core') batch.set(planner, { data: coreData, updatedAt: myUpdatedAt });
           else if (op.type === 'delete') batch.delete(notesCol.doc(op.id));
           else {
             // A single note this large is very unlikely, but skip just that
@@ -344,6 +356,7 @@ function queueCloudSync() {
         }
         await batch.commit();
       }
+      _lastKnownUpdatedAt = myUpdatedAt;
       _lastSyncedNoteIds = currentIds;
       _syncFailureShown = false;
     } catch (e) {
@@ -364,6 +377,7 @@ async function cloudPull() {
     if (doc.exists && doc.data().data) {
       _applyingRemote = true;
       state = migrate(JSON.parse(doc.data().data));
+      _lastKnownUpdatedAt = doc.data().updatedAt || 0;
       // Notes live in their own subcollection now (see queueCloudSync above).
       // An account that hasn't synced since this shipped still has them
       // inline in the core doc, restored by migrate() above as always; once
@@ -385,4 +399,80 @@ async function cloudPull() {
     console.warn('Cloud pull failed', e);
     toast('Couldn’t load your synced data — showing what’s saved on this device instead.', 'error', 5000);
   }
+  // This one-time pull only ever reflects the moment the app opened — without
+  // a live listener, a device left open in another tab/window keeps whatever
+  // it loaded at that moment, and its *own* next edit (a full-document write,
+  // see queueCloudSync) then silently overwrites newer changes made anywhere
+  // else in the meantime. That mismatch — "my other device doesn't have my
+  // latest changes" — is the sync problem people keep running into. Starting
+  // a realtime listener here means every open tab hears about a change within
+  // about a second of it happening, instead of only at the next full reload.
+  startRealtimeSync();
+}
+
+// Keeps this session's planner doc + notes live-synced with Firestore instead
+// of only ever reading it once at boot. Guards against reacting to the echo
+// of our own writes (via _lastKnownUpdatedAt / per-note updatedAt) so an
+// incoming snapshot can never stomp on something typed moments ago — see the
+// comment on _lastKnownUpdatedAt above for why that matters.
+function startRealtimeSync() {
+  stopRealtimeSync();
+  if (!_fbUser) return;
+  const planner = _fbDb.collection('planners').doc(_fbUser.uid);
+
+  _plannerUnsub = planner.onSnapshot((doc) => {
+    // A local edit is either mid-debounce or already in flight — let it land
+    // (and update _lastKnownUpdatedAt itself) rather than race it here.
+    if (_syncQueued || _applyingRemote) return;
+    if (!doc.exists || !doc.data()?.data) return;
+    const remoteUpdatedAt = doc.data().updatedAt || 0;
+    if (remoteUpdatedAt <= _lastKnownUpdatedAt) return; // our own echo, or nothing newer than what we have
+    let incoming;
+    try { incoming = migrate(JSON.parse(doc.data().data)); }
+    catch (e) { console.warn('Bad realtime planner snapshot, ignoring', e); return; }
+    _lastKnownUpdatedAt = remoteUpdatedAt;
+    _applyingRemote = true;
+    const keepNotes = state.notes; // notes sync independently below — never inline in this doc's payload
+    state = incoming;
+    state.notes = keepNotes;
+    _suspendSave = true;
+    dataStore.setItem(storeKey, JSON.stringify(state));
+    _suspendSave = false;
+    _applyingRemote = false;
+    if (typeof render === 'function') render();
+  }, (e) => console.warn('Planner realtime listener failed', e));
+
+  _notesUnsub = planner.collection('notes').onSnapshot((snap) => {
+    if (_syncQueued || _applyingRemote) return;
+    let changed = false;
+    snap.docChanges().forEach((change) => {
+      if (change.type === 'removed') {
+        const before = state.notes.length;
+        state.notes = state.notes.filter(n => n.id !== change.doc.id);
+        if (state.notes.length !== before) changed = true;
+        return;
+      }
+      const incomingNote = change.doc.data();
+      const i = state.notes.findIndex(n => n.id === incomingNote.id);
+      const localNote = i !== -1 ? state.notes[i] : null;
+      // Same principle as the planner listener: a note we already have an
+      // equal-or-newer local edit for is either our own echo or already
+      // stale by the time it arrived — keep ours rather than overwrite it.
+      if (localNote && (localNote.updatedAt || 0) >= (incomingNote.updatedAt || 0)) return;
+      if (i !== -1) state.notes[i] = incomingNote; else state.notes.push(incomingNote);
+      changed = true;
+    });
+    if (!changed) return;
+    _lastSyncedNoteIds = new Set(state.notes.map(n => n.id));
+    _applyingRemote = true;
+    _suspendSave = true;
+    dataStore.setItem(storeKey, JSON.stringify(state));
+    _suspendSave = false;
+    _applyingRemote = false;
+    if (typeof render === 'function') render();
+  }, (e) => console.warn('Notes realtime listener failed', e));
+}
+function stopRealtimeSync() {
+  if (_plannerUnsub) { _plannerUnsub(); _plannerUnsub = null; }
+  if (_notesUnsub) { _notesUnsub(); _notesUnsub = null; }
 }

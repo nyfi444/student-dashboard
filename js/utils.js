@@ -54,6 +54,17 @@ function fmtDuration(mins) {
   return `${h}h ${m}m`;
 }
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+// Backs the "No due date" checkbox next to a date <input> (assignments, to-dos):
+// disables + clears the field when checked, hands it back when unchecked. The
+// field's own value (now always '' when disabled) is what save handlers read,
+// via `.value || null` — this just makes clearing it an explicit, visible option
+// instead of something only discoverable by knowing a date input can be blanked.
+function toggleNoDueDate(inputId, checked) {
+  const input = $('#' + inputId);
+  if (!input) return;
+  input.disabled = checked;
+  if (checked) input.value = '';
+}
 // Some PDFs (scanned, malformed, or stuck behind a slow/blocked CDN worker
 // fetch) make pdf.js hang indefinitely with no error — this races it against
 // a timer so upload UIs can always surface something instead of hanging forever.

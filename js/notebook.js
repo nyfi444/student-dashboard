@@ -26,10 +26,10 @@ function pageNotebook() {
       <button class="btn btn-primary" onclick="createNote('root')">${icon('plus', 13, 2.2)} Note</button>
     `)}
     <div class="notebook-layout">
-      <div class="notebook-tree-panel">
+      <div class="notebook-tree-panel" id="notebook-tree-panel" style="--nb-tree-w:${state.settings.notebookTreeWidth || 264}px">
         <div class="notebook-search-wrap">
           <span class="notebook-search-ic">${icon('file-text', 13)}</span>
-          <input class="notebook-search" placeholder="Search notes & content…" value="${esc(state._notebookSearch || '')}" oninput="state._notebookSearch=this.value;touch()">
+          <input class="notebook-search" id="nb-search-input" placeholder="Search notes & content…" value="${esc(state._notebookSearch || '')}" oninput="onNotebookSearchInput(this)">
         </div>
         ${pinned.length ? `
         <div class="nb-pinned-section">
@@ -50,6 +50,7 @@ function pageNotebook() {
           ${allNotes.length ? notebookTree('root', 0, search, sort) || `<div class="small muted" style="padding:14px 10px">No notes match “${esc(state._notebookSearch)}”.</div>` : `<div class="small muted" style="padding:14px 10px">No notes yet — create your first one.</div>`}
         </div>
       </div>
+      <div class="notebook-resize-handle" onmousedown="startNotebookTreeResize(event)" title="Drag to resize"></div>
       <div class="notebook-page">
         ${note ? renderNoteEditor(note) : `<div class="nb-blank">${allNotes.length
           ? emptyState(icon('book-open', 26, 1.4), 'Select a note from the list.')
@@ -79,6 +80,49 @@ function pageNotebook() {
   `;
   setTimeout(() => { wireBubbleToolbar(); wireSlashMenu(); updateNbColorSwatches(); }, 0);
   return html;
+}
+
+// touch() does a full innerHTML re-render, which swaps in a brand-new <input>
+// element — on a plain oninput="...;touch()" (which is what this used to be)
+// that steals focus after every single character, so typing a second letter
+// requires clicking back into the box first. That's what "search doesn't
+// work" actually was: not that filtering was broken, but that you couldn't
+// type more than one character into it. Saving + restoring the caret position
+// around the re-render keeps focus in the (new) input across every keystroke.
+function onNotebookSearchInput(el) {
+  const pos = el.selectionStart;
+  state._notebookSearch = el.value;
+  touch();
+  const fresh = $('#nb-search-input');
+  if (fresh) { fresh.focus(); fresh.setSelectionRange(pos, pos); }
+}
+
+// Obsidian-style resizable notebook sidebar — dragging updates the live DOM
+// directly (no touch()/render() per pixel, which would thrash the whole page
+// and the rich-text editor on every mousemove) and only persists once, on
+// release.
+function startNotebookTreeResize(e) {
+  e.preventDefault();
+  const panel = $('#notebook-tree-panel');
+  if (!panel) return;
+  const startX = e.clientX;
+  const startWidth = panel.getBoundingClientRect().width;
+  const prevUserSelect = document.body.style.userSelect;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+  function onMove(ev) {
+    panel.style.setProperty('--nb-tree-w', clamp(startWidth + (ev.clientX - startX), 200, 520) + 'px');
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = prevUserSelect;
+    state.settings.notebookTreeWidth = panel.getBoundingClientRect().width;
+    save();
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 }
 
 function notePath(note) {
@@ -389,11 +433,32 @@ function runSlashCommand(key) {
   if (window._nbCurrentNoteId && editor) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
 }
 
+// A folder has no updatedAt of its own — for the "Edited" sort this stands in
+// for one, so folder-heavy notebooks (the Obsidian-style setup this is meant
+// to support) actually reorder when sort changes, instead of only ever
+// reordering the notes inside a folder while the folders themselves stay
+// fixed in creation order (which read as "the sort button doesn't do anything"
+// to anyone whose top level is mostly folders).
+function folderLatestActivity(folderId) {
+  let latest = 0;
+  state.notes.forEach(n => {
+    if (n.parentId !== folderId) return;
+    if (n.type === 'note') latest = Math.max(latest, n.updatedAt || 0);
+    else if (n.type === 'folder') latest = Math.max(latest, folderLatestActivity(n.id));
+  });
+  return latest;
+}
 function notebookTree(parentId, depth, search, sort) {
   const children = state.notes.filter(n => n.parentId === parentId);
-  const folders = children.filter(n => n.type === 'folder');
+  let folders = children.filter(n => n.type === 'folder');
   let notes = children.filter(n => n.type === 'note');
-  notes = sort === 'alpha' ? [...notes].sort((a, b) => a.name.localeCompare(b.name)) : [...notes].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  if (sort === 'alpha') {
+    folders = [...folders].sort((a, b) => a.name.localeCompare(b.name));
+    notes = [...notes].sort((a, b) => a.name.localeCompare(b.name));
+  } else {
+    folders = [...folders].sort((a, b) => folderLatestActivity(b.id) - folderLatestActivity(a.id));
+    notes = [...notes].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  }
 
   const rows = [...folders, ...notes].map(n => {
     if (n.type === 'folder') {
@@ -405,12 +470,14 @@ function notebookTree(parentId, depth, search, sort) {
         <div class="nb-folder-row" onclick="toggleFolder('${n.id}')">
           <span class="nb-chevron ${n.open || forceOpen ? 'open' : ''}">${icon('chevron-right', 12, 2.4)}</span>
           <span class="flex-gap">${icon(n.open || forceOpen ? 'folder-open' : 'folder', 14)}</span>
-          <span class="nb-folder-name">${esc(n.name)}</span>
+          <span class="nb-folder-name" title="${esc(n.name)}">${esc(n.name)}</span>
           ${count ? `<span class="nb-count">${count}</span>` : ''}
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();createFolder('${n.id}')" title="New subfolder" aria-label="New subfolder in ${esc(n.name)}">${icon('folder', 13)}</button>
-          <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();createNote('${n.id}')" title="New note" aria-label="New note in ${esc(n.name)}">${icon('plus', 13, 2.2)}</button>
-          ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();shareFolderToGroup('${n.id}')" title="Share this notebook with a group" aria-label="Share ${esc(n.name)} with a group">${icon('users', 13)}</button>` : ''}
-          ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(n.name)}" onclick="event.stopPropagation();deleteNoteItem('${n.id}')">${icon('trash', 14)}</button>` : ''}
+          <span class="nb-folder-actions">
+            <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();createFolder('${n.id}')" title="New subfolder" aria-label="New subfolder in ${esc(n.name)}">${icon('folder', 13)}</button>
+            <button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();createNote('${n.id}')" title="New note" aria-label="New note in ${esc(n.name)}">${icon('plus', 13, 2.2)}</button>
+            ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" onclick="event.stopPropagation();shareFolderToGroup('${n.id}')" title="Share this notebook with a group" aria-label="Share ${esc(n.name)} with a group">${icon('users', 13)}</button>` : ''}
+            ${n.id !== 'root' ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(n.name)}" onclick="event.stopPropagation();deleteNoteItem('${n.id}')">${icon('trash', 14)}</button>` : ''}
+          </span>
         </div>
         ${(n.open || forceOpen) ? `<div class="nb-children">${inner}</div>` : ''}
       </div>`;
@@ -420,7 +487,7 @@ function notebookTree(parentId, depth, search, sort) {
     return `<div class="nb-note-row ${selected ? 'selected' : ''}" onclick="selectNote('${n.id}')">
       <span class="nb-note-ic">${icon('file-text', 14)}</span>
       <div class="nb-note-meta">
-        <div class="nb-note-title">${esc(n.name)}</div>
+        <div class="nb-note-title" title="${esc(n.name)}">${esc(n.name)}</div>
         <div class="nb-note-sub">${n.courseId ? `<span class="pill-dot" style="background:${getCourseColor(n.courseId)}"></span>${esc(getCourse(n.courseId)?.code || '')} · ` : ''}${fmtRelativeTime(n.updatedAt)}</div>
       </div>
       <button class="btn btn-ghost btn-icon btn-sm nb-note-del" aria-label="Delete ${esc(n.name)}" onclick="event.stopPropagation();deleteNoteItem('${n.id}')">${icon('trash', 14)}</button>
@@ -566,22 +633,79 @@ const saveNoteContentDebounced = debounce((id, html) => {
 
 function plainTextOfNote(note) { const d = document.createElement('div'); d.innerHTML = note.content || ''; return d.textContent || ''; }
 
-function exportNoteToPdf(id) {
-  const note = state.notes.find(n => n.id === id);
-  if (!note) return;
-  const courseName = note.courseId ? getCourse(note.courseId)?.name : '';
-  const crumbs = notePath(note);
-  const area = $('#print-area');
-  area.innerHTML = `
+function notePrintHtml(note, crumbs, courseName) {
+  return `
     ${crumbs.length ? `<div class="print-meta">${crumbs.map(esc).join(' / ')}</div>` : ''}
     <div class="print-title">${esc(note.name || 'Untitled')}</div>
     <div class="print-meta">${courseName ? esc(courseName) + ' · ' : ''}${fmtDateLong(todayIso())}</div>
-    <div class="rich-editor">${note.content || '<p><em>This note is empty.</em></p>'}</div>
+    <div class="rich-editor" style="color:#000">${note.content || '<p><em>This note is empty.</em></p>'}</div>
   `;
+}
+// Falls back to the browser's own print dialog — still produces a real PDF via
+// "Save as PDF"/"Print to PDF", just without a direct file to hand to
+// navigator.share(). Used when html2pdf isn't available (e.g. the CDN was
+// blocked) or actually generating the PDF below threw.
+function legacyPrintNote(note, crumbs, courseName) {
+  $('#print-area').innerHTML = notePrintHtml(note, crumbs, courseName);
   const restoreTitle = document.title;
   document.title = note.name || 'Untitled note';
   window.print();
   document.title = restoreTitle;
+}
+async function exportNoteToPdf(id) {
+  const note = state.notes.find(n => n.id === id);
+  if (!note) return;
+  const courseName = note.courseId ? getCourse(note.courseId)?.name : '';
+  const crumbs = notePath(note);
+  if (typeof html2pdf === 'undefined') { legacyPrintNote(note, crumbs, courseName); return; }
+
+  const filename = (note.name || 'Untitled note').replace(/[\\/:*?"<>|]/g, '-').trim() + '.pdf';
+  // Rendered off-screen with an explicit white background, independent of
+  // whatever background preset or dark mode is active in the app right now —
+  // otherwise the exported PDF's page color follows the theme instead of
+  // being a clean white page (see the @media print fix in styles.css, which
+  // this shares the same white-background reasoning with).
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:680px;background:#fff;color:#000;padding:30px 40px;';
+  container.innerHTML = notePrintHtml(note, crumbs, courseName);
+  document.body.appendChild(container);
+  try {
+    const blob = await html2pdf().set({
+      margin: 0,
+      filename,
+      html2canvas: { backgroundColor: '#ffffff', scale: 2, useCORS: true },
+      jsPDF: { unit: 'pt', format: 'letter' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+    }).from(container).outputPdf('blob');
+    await shareOrDownloadPdf(blob, filename, note.name || 'Untitled note');
+  } catch (e) {
+    console.warn('PDF generation failed, falling back to print dialog', e);
+    legacyPrintNote(note, crumbs, courseName);
+  } finally {
+    container.remove();
+  }
+}
+// Hands the generated PDF to the OS share sheet (Save to Files, Mail,
+// Messages, AirDrop, etc.) where supported; otherwise downloads it directly,
+// which is still strictly better than before (there was no PDF file at all,
+// only the print dialog).
+async function shareOrDownloadPdf(blob, filename, title) {
+  try {
+    const file = new File([blob], filename, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title });
+      return;
+    }
+  } catch (e) {
+    if (e?.name === 'AbortError') return; // person dismissed the share sheet — not a failure
+    console.warn('Share failed, falling back to download', e);
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast('PDF downloaded');
 }
 function shareNoteToGroup(id) {
   const note = state.notes.find(n => n.id === id);

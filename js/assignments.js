@@ -8,6 +8,7 @@ function pageAssignments() {
   const selectMode = !!state._assignSelectMode;
   const selected = new Set(state._assignSelectedIds || []);
   const all = state.assignments.filter(a => activeCourses().some(c => c.id === a.courseId) || !a.courseId);
+  const overdue = all.filter(a => !isAssignmentDone(a) && a.dueDate && a.dueDate < todayIso()).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   let items = all;
   if (courseFilter !== 'all') items = items.filter(a => a.courseId === courseFilter);
   if (statusFilter !== 'all') items = items.filter(a => a.status === statusFilter);
@@ -24,11 +25,16 @@ function pageAssignments() {
       <button class="btn btn-sm ${selectMode ? 'btn-primary' : ''}" onclick="toggleAssignSelectMode()">${icon('check-square', 13, 2)} ${selectMode ? 'Cancel' : 'Select'}</button>
       <button class="btn btn-primary" onclick="openAssignmentModal()">+ Add assignment</button>
     `)}
-    <div class="grid grid-3 mb-16">
+    <div class="grid grid-4 mb-16">
       <div class="stat-card"><div class="num">${counts['not-started']}</div><div class="lbl">Not started</div></div>
       <div class="stat-card"><div class="num">${counts['in-progress'] + counts.waiting}</div><div class="lbl">In progress / waiting</div></div>
       <div class="stat-card"><div class="num">${counts.submitted + counts.done}</div><div class="lbl">Submitted</div></div>
+      <div class="stat-card ${overdue.length ? 'stat-card-link' : ''}" ${overdue.length ? `onclick="document.getElementById('assign-overdue-section')?.scrollIntoView({behavior:'smooth',block:'start'})" title="Jump to overdue"` : ''}><div class="num" style="color:${overdue.length ? 'var(--danger)' : 'inherit'}">${overdue.length}</div><div class="lbl">Overdue</div></div>
     </div>
+    ${overdue.length ? `<div class="card card-pad mb-16" id="assign-overdue-section" style="border:1.5px solid var(--danger)">
+      <div class="small" style="font-weight:600;color:var(--danger);margin-bottom:6px">${icon('flag',13,2)} Overdue</div>
+      ${overdue.map(a => `<div class="list-row" onclick="openAssignmentModal('${a.id}')"><button type="button" class="row-check" role="checkbox" aria-checked="false" aria-label="Mark ${esc(a.title)} as done" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')"></button><div class="row-title">${esc(a.title)} ${typeTag(a.type)}</div>${courseChip(a.courseId)}<div class="row-meta" style="color:var(--danger)">${relativeDay(a.dueDate)}</div></div>`).join('')}
+    </div>` : ''}
     ${startSoon.length ? `<div class="card card-pad mb-16" style="border:1.5px solid var(--warn)">
       <div class="small" style="font-weight:600;color:var(--warn);margin-bottom:6px">${icon('flag',13,2)} Start these soon</div>
       ${startSoon.map(a => `<div class="list-row" onclick="openAssignmentModal('${a.id}')"><div class="row-title">${esc(a.title)}</div>${courseChip(a.courseId)}<div class="row-meta">due ${relativeDay(a.dueDate)}</div></div>`).join('')}
@@ -126,7 +132,10 @@ function renderAssignmentModal(id) {
         <div class="field"><label>Type</label><select class="select" id="af-type">${ASSIGNMENT_TYPES.map(t => `<option value="${t}" ${t === a.type ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Due date</label><input class="input" type="date" id="af-date" value="${a.dueDate || ''}"></div>
+        <div class="field"><label>Due date</label>
+          <input class="input" type="date" id="af-date" value="${a.dueDate || ''}" ${a.dueDate ? '' : 'disabled'}>
+          <label class="checkbox-row small mt-4" style="font-weight:400"><input type="checkbox" ${a.dueDate ? '' : 'checked'} onchange="toggleNoDueDate('af-date',this.checked)"><span>No due date</span></label>
+        </div>
         <div class="field"><label>Due time</label><input class="input" type="time" id="af-time" value="${a.dueTime || ''}"></div>
         <div class="field"><label>Status</label><select class="select" id="af-status">${Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       </div>
@@ -213,7 +222,7 @@ function saveAssignmentModal(id) {
   if (!d.title) { toast('Give it a title', 'error'); return; }
   d.courseId = $('#af-course').value;
   d.type = $('#af-type').value;
-  d.dueDate = $('#af-date').value;
+  d.dueDate = $('#af-date').value || null;
   d.dueTime = $('#af-time').value;
   d.status = $('#af-status').value;
   d.startByDate = $('#af-startby').value || null;
