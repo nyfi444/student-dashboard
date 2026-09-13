@@ -21,6 +21,7 @@ function pageDashboard() {
   const todaysItems = [
     ...activeCourses().flatMap(c => c.meetings.filter(m => m.day === dow).map(m => ({ start: m.start, end: m.end, title: c.name, color: c.color }))),
     ...state.events.filter(e => e.date === todayIso()).map(e => ({ start: e.startTime, end: e.endTime, title: e.title, color: e.color })),
+    ...groupSessionsOnDate(todayIso()).map(s => ({ start: s.start, end: s.end, title: `${s.title} (${s.groupName})`, color: s.color, code: s.code })),
   ].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 
   const weekMinutes = state.timerSessions.filter(s => s.date >= startOfWeek(todayIso())).reduce((sum, s) => sum + s.minutes, 0);
@@ -82,8 +83,8 @@ function pageDashboard() {
       <div class="card card-pad mb-16">
         <h3 style="font-size:15px" class="mb-8">Today's schedule</h3>
         ${todaysItems.length ? todaysItems.map(m => `
-          <div class="list-row">
-            <div class="pill-dot" style="background:${m.color}"></div>
+          <div class="list-row" ${m.code ? `style="cursor:pointer" onclick="openGroup('${m.code}','schedule')"` : ''}>
+            ${m.code ? `<span class="nb-note-ic">${icon('users', 13)}</span>` : `<div class="pill-dot" style="background:${m.color}"></div>`}
             <div class="row-title">${esc(m.title)}</div>
             <div class="row-meta">${m.start ? fmtTime(m.start) + (m.end ? ' – ' + fmtTime(m.end) : '') : ''}</div>
           </div>`).join('') : emptyState(icon('book-open', 26, 1.4), 'No classes today.')}
@@ -96,6 +97,7 @@ function pageDashboard() {
             <div class="row-meta">${daysBetween(a.dueDate)}d away</div>
           </div>`).join('') : emptyState(icon('check-square', 26, 1.4), 'No exams in the next 3 weeks.')}
       </div>`,
+    studyGroups: () => dashboardGroupsWidget(),
     projects: () => `
       <div class="card card-pad mb-16">
         <div class="flex-between mb-8"><h3 style="font-size:15px">Active projects</h3><a class="small" style="color:var(--accent);cursor:pointer" onclick="setState({route:'projects'})">View all →</a></div>
@@ -222,6 +224,7 @@ const DASH_WIDGET_LABELS = {
   quickNote: 'Quick note',
   dueThisWeek: 'What\'s due this week / overdue',
   todaySchedule: 'Today\'s schedule & upcoming exams',
+  studyGroups: 'Study groups: sessions, your tasks, new messages',
   projects: 'Active projects',
   notes: 'Recent notes',
   quickAdd: 'Quick add to-do',

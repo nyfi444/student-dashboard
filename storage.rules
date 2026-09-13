@@ -11,9 +11,16 @@ service firebase.storage {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Study group files — shared by code among members, same permissive
-    // model as the studyGroups Firestore collection (membership is enforced
-    // at the app layer via the join-by-code flow, not here).
+    // Study group files, current format: uploaded when someone shares a file
+    // (see addCloudGroupItem). Signed-in only, capped at 10MB to match the
+    // app's limit. Members open them through the download URL stored in the
+    // group's items subcollection, which firestore.rules keeps members-only.
+    match /studyGroups/{code}/files/{fileId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (request.resource == null || request.resource.size < 10 * 1024 * 1024);
+    }
+
+    // First-version study group files. Kept so existing links keep working.
     match /studyGroups/{groupId}/{fileId} {
       allow read, write: if request.auth != null;
     }

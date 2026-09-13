@@ -20,6 +20,7 @@ let _fbAuth = null, _fbDb = null, _fbStorage = null, _fbUser = null, _syncQueued
 // or queueCloudSync() most recently established what Firestore holds.
 let _lastKnownUpdatedAt = 0;
 let _plannerUnsub = null, _notesUnsub = null;
+const DEVICE_LOCAL_VIEW_KEYS = ['route', 'subRoute', 'groupTab', 'groupTaskFilter', 'calView', 'calDate', 'todoFilter', 'notebookSelected', 'todayMode'];
 
 function fbConfigured() { return !!FB_CONFIG.apiKey; }
 
@@ -82,6 +83,7 @@ function bootFirebase() {
         if (typeof disablePersistentStorage === 'function') disablePersistentStorage();
       }
       if (typeof render === 'function') render();
+      if (typeof onGroupsAuthResolved === 'function') onGroupsAuthResolved();
     });
   } catch (e) { console.warn('Firebase init failed', e); }
 }
@@ -269,30 +271,8 @@ async function migrateInlineAttachmentsToStorage() {
       }
     }
   }
-  for (const g of state.studyGroups || []) {
-    for (const item of g.sharedItems || []) {
-      if (item.kind === 'file' && item.dataUrl && item.dataUrl.startsWith('data:')) {
-        jobs.push((async () => {
-          try {
-            const url = await uploadDataUrlToStorage(`studyGroups/${g.id}/${item.id}`, item.dataUrl);
-            item.url = url; item.dataUrl = null;
-          } catch (e) { console.warn('Shared file upload failed, staying local-only for now', item.id, e); }
-        })());
-      }
-    }
-    for (const p of g.projects || []) {
-      for (const f of p.files || []) {
-        if (f.dataUrl && f.dataUrl.startsWith('data:')) {
-          jobs.push((async () => {
-            try {
-              const url = await uploadDataUrlToStorage(`studyGroups/${g.id}/${f.id}`, f.dataUrl);
-              f.url = url; f.dataUrl = null;
-            } catch (e) { console.warn('Project file upload failed, staying local-only for now', f.id, e); }
-          })());
-        }
-      }
-    }
-  }
+  // Study group files upload straight to Storage when shared (see
+  // addCloudGroupItem in studygroups.js), so they never sit inline here.
   if (jobs.length) await Promise.all(jobs);
 }
 
@@ -408,6 +388,7 @@ async function cloudPull() {
   // a realtime listener here means every open tab hears about a change within
   // about a second of it happening, instead of only at the next full reload.
   startRealtimeSync();
+  if (typeof startGroupSync === 'function') startGroupSync();
 }
 
 // Keeps this session's planner doc + notes live-synced with Firestore instead
@@ -433,13 +414,20 @@ function startRealtimeSync() {
     _lastKnownUpdatedAt = remoteUpdatedAt;
     _applyingRemote = true;
     const keepNotes = state.notes; // notes sync independently below, never inline in this doc's payload
+    // Which page/tab/date each device is looking at is that device's own
+    // business. Without this, navigating on your phone yanked your laptop
+    // to the same page a second later.
+    const keepView = Object.fromEntries(DEVICE_LOCAL_VIEW_KEYS.map(k => [k, state[k]]));
     state = incoming;
     state.notes = keepNotes;
+    Object.assign(state, keepView);
     _suspendSave = true;
     dataStore.setItem(storeKey, JSON.stringify(state));
     _suspendSave = false;
     _applyingRemote = false;
-    if (typeof render === 'function') render();
+    if (typeof reconcileGroupSubscriptions === 'function') reconcileGroupSubscriptions(); // joined/left a group on another device
+    if (typeof adoptStrayGroupEntries === 'function') adoptStrayGroupEntries({ throttle: true });
+    if (typeof renderRemote === 'function') renderRemote(); else if (typeof render === 'function') render();
   }, (e) => console.warn('Planner realtime listener failed', e));
 
   _notesUnsub = planner.collection('notes').onSnapshot((snap) => {
@@ -475,4 +463,5 @@ function startRealtimeSync() {
 function stopRealtimeSync() {
   if (_plannerUnsub) { _plannerUnsub(); _plannerUnsub = null; }
   if (_notesUnsub) { _notesUnsub(); _notesUnsub = null; }
+  if (typeof stopGroupSync === 'function') stopGroupSync();
 }

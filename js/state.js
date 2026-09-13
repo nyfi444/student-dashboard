@@ -56,6 +56,7 @@ function disablePersistentStorage() {
     localStorage.removeItem(LICENSE_DEVICE_FLAG);
     localStorage.removeItem(storeKey);
     localStorage.removeItem(storeKey + '.bak');
+    localStorage.removeItem(storeKey + '.groups'); // study group cache, see GROUP_CACHE_KEY
   } catch {}
   dataStore = makeMemoryStore();
 }
@@ -235,7 +236,7 @@ function seedData() {
       aiModel: 'claude-sonnet-4-6',
       displayName: '',
       weeklyStudyGoalMinutes: 300,
-      dashboardWidgets: ['stats', 'semesterProgress', 'workload', 'quickNote', 'dueThisWeek', 'todaySchedule', 'projects', 'notes', 'quickAdd'],
+      dashboardWidgets: ['stats', 'semesterProgress', 'workload', 'quickNote', 'dueThisWeek', 'todaySchedule', 'studyGroups', 'projects', 'notes', 'quickAdd'],
       hiddenWidgets: [],
     },
     currentSemesterId: semId,
@@ -299,6 +300,17 @@ function migrate(parsed) {
   // Older saves used a two-color gradient {color1,color2,angle}: collapse to the new solid {color}.
   if (merged.settings.background?.color1 && !merged.settings.background.color) {
     merged.settings.background = { color: merged.settings.background.color1 };
+  }
+  // A widget added after someone customized their dashboard would otherwise
+  // never appear for them, since their saved order predates it. Slot each
+  // missing one in after the widget it follows by default.
+  if (Array.isArray(merged.settings.dashboardWidgets)) {
+    const order = merged.settings.dashboardWidgets;
+    base.settings.dashboardWidgets.forEach((id, i) => {
+      if (order.includes(id)) return;
+      const after = order.indexOf(base.settings.dashboardWidgets[i - 1]);
+      order.splice(after >= 0 ? after + 1 : order.length, 0, id);
+    });
   }
   const cutoff = Date.now() - TRASH_RETENTION_DAYS * 86400000;
   merged.trash = (merged.trash || []).filter(t => t.deletedAt >= cutoff);

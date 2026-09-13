@@ -108,8 +108,8 @@ function meetingsOnDate(dateIso) {
 function customEventsOnDate(dateIso) { return state.events.filter(e => e.date === dateIso).map(e => ({ ...e, kind: 'custom' })); }
 function examsOnDate(dateIso) { return state.assignments.filter(a => a.type === 'exam' && a.dueDate === dateIso && activeCourses().some(c => c.id === a.courseId)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || '09:00', end: null, color: getCourseColor(a.courseId), kind: 'exam' })); }
 function deadlinesOnDate(dateIso) { return state.assignments.filter(a => a.type !== 'exam' && a.dueDate === dateIso && activeCourses().some(c => c.id === a.courseId)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || null, end: null, color: getCourseColor(a.courseId), kind: 'deadline' })); }
-function itemsOnDate(dateIso) { return [...meetingsOnDate(dateIso), ...customEventsOnDate(dateIso), ...examsOnDate(dateIso), ...deadlinesOnDate(dateIso)].sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
-const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list' };
+function itemsOnDate(dateIso) { return [...meetingsOnDate(dateIso), ...customEventsOnDate(dateIso), ...examsOnDate(dateIso), ...deadlinesOnDate(dateIso), ...groupSessionsOnDate(dateIso)].sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
+const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list', group: 'users' };
 
 function yearView() {
   const year = new Date(state.calDate + 'T00:00:00').getFullYear();
@@ -199,8 +199,8 @@ function positionedBlock(it, dIso) {
   const top = ((startMin - CAL_HOURS[0] * 60) / 60) * 48;
   const endMin = it.end ? (() => { const [eh, em] = it.end.split(':').map(Number); return eh * 60 + em; })() : startMin + 45;
   const height = Math.max(22, ((endMin - startMin) / 60) * 48 - 2);
-  const clickable = it.kind === 'custom' ? `onclick="event.stopPropagation();openEventModal('${it.id}')"` : (it.kind === 'exam' || it.kind === 'deadline') ? `onclick="event.stopPropagation();openAssignmentModal('${it.id}')"` : `onclick="event.stopPropagation()"`;
-  return `<div class="cal-block kind-${it.kind}" style="top:${top}px;height:${height}px;background:${it.color}" ${clickable} title="${esc(it.title)}">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 10, 2.2)}</span>` : ''}${esc(it.title)}</div>`;
+  const clickable = it.kind === 'custom' ? `onclick="event.stopPropagation();openEventModal('${it.id}')"` : (it.kind === 'exam' || it.kind === 'deadline') ? `onclick="event.stopPropagation();openAssignmentModal('${it.id}')"` : it.kind === 'group' ? `onclick="event.stopPropagation();openGroupSession('${it.code}')"` : `onclick="event.stopPropagation()"`;
+  return `<div class="cal-block kind-${it.kind}" style="top:${top}px;height:${height}px;background:${it.color}" ${clickable} title="${esc(it.kind === 'group' ? `${it.title} (${it.groupName})` : it.title)}">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 10, 2.2)}</span>` : ''}${esc(it.title)}</div>`;
 }
 
 function dayView() {

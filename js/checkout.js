@@ -147,7 +147,8 @@ function pagePaywall() {
       <div class="paywall-card">
         <h2>No plan on this account yet</h2>
         ${signedInEmail ? `<p class="small muted mb-8">Signed in as <strong>${esc(signedInEmail)}</strong></p>` : ''}
-        <p class="small muted mb-16">If you already subscribed, this is probably just the wrong account. Switch below and it'll unlock right away. Otherwise, $7.99/mo unlocks cross-device sync and AI syllabus upload for this account. Billed monthly, cancel anytime.</p>
+        ${typeof pendingInviteBanner === 'function' ? pendingInviteBanner() : ''}
+        <p class="small muted mb-16">If you already subscribed, this is probably just the wrong account. Switch below and it'll unlock right away. Otherwise, $7.99/mo unlocks cross-device sync, AI syllabus upload, and study groups for this account. Billed monthly, cancel anytime.</p>
         <div class="paywall-price">$7.99<span class="paywall-price-period">/mo</span></div>
         <button class="btn btn-primary" style="width:100%" onclick="redirectToCheckout()">Subscribe</button>
         ${checkoutReturnPending() ? `<p class="small mt-16" style="color:var(--warn)">We received a payment but couldn't confirm it's linked to this account yet. If you just paid, try <a href="#" onclick="event.preventDefault();retryLicenseCheck()">checking again</a>, or contact <a href="mailto:hello@semester-hq.com">hello@semester-hq.com</a>.</p>` : ''}
