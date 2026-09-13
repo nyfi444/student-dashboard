@@ -34,12 +34,14 @@
       pattern as error logging.
    8. Business summary (/admin/business-summary): read-only, token-gated
       (same ADMIN_TOKEN as job 6) feed for Nyla's private business
-      dashboard (dashboard/semester-hq-biz.html). Computes Stripe active-
-      subscriber count + MRR server-side (the dashboard can't call Stripe
-      directly, Stripe blocks browser CORS on purpose) and, only if
-      CLOUDFLARE_API_TOKEN + CLOUDFLARE_ZONE_ID secrets are set, last-24h
-      Cloudflare traffic stats for semester-hq.com. Cloudflare section is
-      simply omitted (not faked) when those secrets aren't set.
+      dashboard (semester-hq-dashboard/semester-hq-biz.html). Computes Stripe
+      subscriber breakdown (paying vs. comped, past due, canceling), list and
+      net MRR, 30-day movement and collected revenue server-side (the
+      dashboard can't call Stripe directly, Stripe blocks browser CORS on
+      purpose); CTA-event funnel counts, recent contact-form messages, and
+      crash-report counts from Firestore; and, only if CLOUDFLARE_API_TOKEN +
+      CLOUDFLARE_ZONE_ID secrets are set, 7 days of Cloudflare traffic for
+      semester-hq.com. Sections are omitted (not faked) when not configured.
 ──────────────────────────────────────────────────────────────── */
 
 const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
@@ -628,51 +630,134 @@ async function handleAdminBusinessSummary(request, env) {
     }
   }
 
+  // Firestore-backed signals the Worker already collects (CTA events, contact
+  // form, crash reports). Each part fails independently so one bad query
+  // doesn't blank the others; the whole section is omitted without creds.
+  if (env.FIREBASE_PROJECT_ID && env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY) {
+    out.firebase = {};
+    const [funnel, feedback, errors] = await Promise.allSettled([
+      fetchEventFunnel(env), queryRecentDocs(env, 'feedback', 25), fetchErrorSummary(env),
+    ]);
+    out.firebase.funnel = funnel.status === 'fulfilled' ? funnel.value : { error: funnel.reason?.message || 'failed' };
+    out.firebase.feedback = feedback.status === 'fulfilled' ? feedback.value : { error: feedback.reason?.message || 'failed' };
+    out.firebase.errors = errors.status === 'fulfilled' ? errors.value : { error: errors.reason?.message || 'failed' };
+  }
+
   return new Response(JSON.stringify(out), { headers: adminCors });
 }
 
-// Lists subscriptions (any status, most-recently-created first) and computes
-// active count + MRR from ones actually in `active`/`trialing` status. Also
-// returns the raw recent list so the dashboard can surface "new today" /
-// "canceled today" itself by comparing created/canceled_at to local time.
+// Walks every subscription (any status) and splits "active" into what's
+// actually earning money vs. comped: a 100%-off Stripe Coupon still leaves
+// the price's unit_amount at 799, so counting unit_amount alone overstates
+// MRR for every comped account. The latest invoice's total is what the
+// customer was really charged this period, so that's the net figure.
+// `activeCount`/`mrrCents` keep their original meaning (active+trialing,
+// list price) so older dashboard builds reading them don't change.
+const STRIPE_SUB_PAGE_CAP = 10; // 1,000 subscriptions, well past current scale
 async function fetchStripeSummary(env) {
-  const res = await fetch('https://api.stripe.com/v1/subscriptions?limit=100&status=all&expand[]=data.items.data.price', {
-    headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || `Stripe returned ${res.status}`);
+  const subs = [];
+  let startingAfter = '';
+  let truncated = false;
+  for (let page = 0; page < STRIPE_SUB_PAGE_CAP; page++) {
+    const qs = `limit=100&status=all&expand[]=data.items.data.price&expand[]=data.latest_invoice${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+    const res = await fetch(`https://api.stripe.com/v1/subscriptions?${qs}`, {
+      headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || `Stripe returned ${res.status}`);
+    subs.push(...(data.data || []));
+    if (!data.has_more || !data.data?.length) break;
+    startingAfter = data.data[data.data.length - 1].id;
+    if (page === STRIPE_SUB_PAGE_CAP - 1) truncated = true;
+  }
 
-  const subs = data.data || [];
-  let activeCount = 0, mrrCents = 0;
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+  let activeCount = 0, mrrCents = 0, netMrrCents = 0;
+  let payingCount = 0, compedCount = 0, pastDueCount = 0, cancelingCount = 0;
+  let new7d = 0, new30d = 0, canceled30d = 0;
   const recent = [];
   for (const sub of subs) {
+    const listCents = sub.items?.data?.[0]?.price?.unit_amount || 0;
+    const invoice = typeof sub.latest_invoice === 'object' ? sub.latest_invoice : null;
+    const chargedCents = invoice && typeof invoice.total === 'number' ? invoice.total : listCents;
     const isActive = sub.status === 'active' || sub.status === 'trialing';
+    const created = sub.created ? sub.created * 1000 : null;
+    const endedAt = (sub.ended_at || sub.canceled_at) ? (sub.ended_at || sub.canceled_at) * 1000 : null;
+
     if (isActive) {
       activeCount++;
-      const amount = sub.items?.data?.[0]?.price?.unit_amount || 0;
-      mrrCents += amount;
+      mrrCents += listCents;
+      netMrrCents += Math.max(0, chargedCents);
+      if (chargedCents > 0) payingCount++; else compedCount++;
+      if (sub.cancel_at_period_end) cancelingCount++;
     }
+    if (sub.status === 'past_due' || sub.status === 'unpaid') pastDueCount++;
+    if (created && now - created <= 7 * DAY) new7d++;
+    if (created && now - created <= 30 * DAY) new30d++;
+    if (sub.status === 'canceled' && endedAt && now - endedAt <= 30 * DAY) canceled30d++;
+
     recent.push({
       id: sub.id,
       status: sub.status,
-      created: sub.created ? sub.created * 1000 : null,
+      created,
       canceled_at: sub.canceled_at ? sub.canceled_at * 1000 : null,
-      amount_cents: sub.items?.data?.[0]?.price?.unit_amount || null,
+      ended_at: sub.ended_at ? sub.ended_at * 1000 : null,
+      cancel_at_period_end: !!sub.cancel_at_period_end,
+      amount_cents: listCents || null,
+      charged_cents: chargedCents,
     });
   }
   recent.sort((a, b) => (b.created || 0) - (a.created || 0));
-  return { activeCount, mrrCents, recent: recent.slice(0, 30), fetchedAt: Date.now() };
+
+  let revenue30d = null;
+  try { revenue30d = await fetchStripeRevenue30d(env); }
+  catch (e) { revenue30d = { error: e.message }; }
+
+  return {
+    activeCount, mrrCents, netMrrCents, payingCount, compedCount, pastDueCount, cancelingCount,
+    new7d, new30d, canceled30d, totalSubscriptions: subs.length, truncated,
+    revenue30d, recent: recent.slice(0, 30), fetchedAt: now,
+  };
 }
 
-// Cloudflare's GraphQL Analytics API (zone-scoped, read-only token): last 24h
-// requests/uniques for semester-hq.com. Only called when both secrets are set.
+// Actual money collected in the last 30 days (succeeded charges), plus
+// refunds and disputes, so the dashboard can show cash, not just run-rate.
+async function fetchStripeRevenue30d(env) {
+  const since = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
+  let grossCents = 0, refundedCents = 0, count = 0, disputed = 0;
+  let startingAfter = '';
+  for (let page = 0; page < 5; page++) {
+    const qs = `limit=100&created[gte]=${since}${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+    const res = await fetch(`https://api.stripe.com/v1/charges?${qs}`, {
+      headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || `Stripe returned ${res.status}`);
+    for (const c of data.data || []) {
+      if (c.status !== 'succeeded') continue;
+      count++;
+      grossCents += c.amount || 0;
+      refundedCents += c.amount_refunded || 0;
+      if (c.disputed) disputed++;
+    }
+    if (!data.has_more || !data.data?.length) break;
+    startingAfter = data.data[data.data.length - 1].id;
+  }
+  return { grossCents, refundedCents, count, disputed };
+}
+
+// Cloudflare's GraphQL Analytics API (zone-scoped, read-only token): the last
+// 7 days of requests/uniques for semester-hq.com, one row per day, plus the
+// most recent day as top-level fields (what older dashboard builds read).
 async function fetchCloudflareSummary(env) {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const until = new Date().toISOString();
   const query = `query {
     viewer {
       zones(filter: { zoneTag: "${env.CLOUDFLARE_ZONE_ID}" }) {
-        httpRequests1dGroups(limit: 1, filter: { date_geq: "${since.slice(0, 10)}", date_leq: "${until.slice(0, 10)}" }) {
+        httpRequests1dGroups(limit: 8, orderBy: [date_ASC], filter: { date_geq: "${since.slice(0, 10)}", date_leq: "${until.slice(0, 10)}" }) {
+          dimensions { date }
           sum { requests, pageViews, threats }
           uniq { uniques }
         }
@@ -686,14 +771,57 @@ async function fetchCloudflareSummary(env) {
   });
   const data = await res.json();
   if (!res.ok || data.errors?.length) throw new Error(data.errors?.[0]?.message || `Cloudflare returned ${res.status}`);
-  const group = data?.data?.viewer?.zones?.[0]?.httpRequests1dGroups?.[0];
-  if (!group) return { requests: 0, pageViews: 0, threats: 0, uniques: 0, fetchedAt: Date.now() };
+  const groups = data?.data?.viewer?.zones?.[0]?.httpRequests1dGroups || [];
+  const days = groups.map(g => ({
+    date: g.dimensions?.date || '',
+    requests: g.sum?.requests || 0,
+    pageViews: g.sum?.pageViews || 0,
+    threats: g.sum?.threats || 0,
+    uniques: g.uniq?.uniques || 0,
+  }));
+  const last = days[days.length - 1] || { requests: 0, pageViews: 0, threats: 0, uniques: 0 };
   return {
-    requests: group.sum?.requests || 0,
-    pageViews: group.sum?.pageViews || 0,
-    threats: group.sum?.threats || 0,
-    uniques: group.uniq?.uniques || 0,
+    requests: last.requests, pageViews: last.pageViews, threats: last.threats, uniques: last.uniques,
+    days,
+    week: days.reduce((s, d) => ({ requests: s.requests + d.requests, pageViews: s.pageViews + d.pageViews, uniques: s.uniques + d.uniques }), { requests: 0, pageViews: 0, uniques: 0 }),
     fetchedAt: Date.now(),
+  };
+}
+
+// Counts of the marketing-site CTA events (see TRACKED_EVENTS) over the last
+// 7 and 30 days, i.e. the top of the conversion funnel.
+async function fetchEventFunnel(env) {
+  const now = Date.now();
+  const since = new Date(now - 30 * 24 * 60 * 60 * 1000);
+  const rows = await runFirestoreQuery(env, {
+    from: [{ collectionId: 'events' }],
+    where: { fieldFilter: { field: { fieldPath: 'createdAt' }, op: 'GREATER_THAN_OR_EQUAL', value: { timestampValue: since.toISOString() } } },
+    orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
+    limit: 5000,
+  });
+  const d7 = {}, d30 = {};
+  for (const r of rows) {
+    const t = Date.parse(r.createdAt || '');
+    d30[r.event] = (d30[r.event] || 0) + 1;
+    if (t && now - t <= 7 * 24 * 60 * 60 * 1000) d7[r.event] = (d7[r.event] || 0) + 1;
+  }
+  return { d7, d30, capped: rows.length >= 5000 };
+}
+
+async function fetchErrorSummary(env) {
+  const now = Date.now();
+  const since = new Date(now - 7 * 24 * 60 * 60 * 1000);
+  const rows = await runFirestoreQuery(env, {
+    from: [{ collectionId: 'errors' }],
+    where: { fieldFilter: { field: { fieldPath: 'createdAt' }, op: 'GREATER_THAN_OR_EQUAL', value: { timestampValue: since.toISOString() } } },
+    orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
+    limit: 1000,
+  });
+  const count24h = rows.filter(r => now - Date.parse(r.createdAt || '') <= 24 * 60 * 60 * 1000).length;
+  return {
+    count24h,
+    count7d: rows.length,
+    latest: rows.slice(0, 8).map(r => ({ source: r.source, message: r.message, url: r.url, createdAt: r.createdAt })),
   };
 }
 
@@ -833,26 +961,29 @@ async function deleteFirebaseAuthUser(env, uid) {
   });
   if (!res.ok) throw new Error('Identity Toolkit delete failed: ' + await res.text());
 }
-async function queryRecentErrors(env, limit) {
+async function runFirestoreQuery(env, structuredQuery) {
   const token = await getFirebaseAccessToken(env);
   const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery`;
-  const body = {
-    structuredQuery: {
-      from: [{ collectionId: 'errors' }],
-      orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
-      limit,
-    },
-  };
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ structuredQuery }),
   });
   if (!res.ok) throw new Error('Firestore query failed: ' + await res.text());
   const rows = await res.json();
   return rows
     .filter(r => r.document)
     .map(r => ({ id: r.document.name.split('/').pop(), ...fromFirestoreFields(r.document.fields || {}) }));
+}
+async function queryRecentDocs(env, collectionId, limit) {
+  return runFirestoreQuery(env, {
+    from: [{ collectionId }],
+    orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
+    limit,
+  });
+}
+async function queryRecentErrors(env, limit) {
+  return queryRecentDocs(env, 'errors', limit);
 }
 function toFirestoreFields(obj) {
   const fields = {};
