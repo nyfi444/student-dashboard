@@ -60,5 +60,15 @@ service cloud.firestore {
     match /events/{id} {
       allow read, write: if false;
     }
+
+    // Nyla's private Business OS (semester-hq-dashboard repo) syncs one
+    // document per owner account. Not part of the student app: only her own
+    // verified Google accounts can read or write, and only their own doc.
+    match /semesterhq_biz/{uid} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == uid
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in ['nnylabrown111@gmail.com', 'semesterhq@gmail.com'];
+    }
   }
 }
