@@ -4,82 +4,128 @@ function isAssignmentDone(a) { return a.status === 'done' || a.status === 'submi
 
 function pageAssignments() {
   const courseFilter = state._assignCourseFilter || 'all';
-  const statusFilter = state._assignStatusFilter || 'all';
+  const view = ['todo', 'done', 'all'].includes(state._assignView) ? state._assignView : 'todo';
   const selectMode = !!state._assignSelectMode;
   const selected = new Set(state._assignSelectedIds || []);
   const all = state.assignments.filter(a => activeCourses().some(c => c.id === a.courseId) || !a.courseId);
-  const overdue = all.filter(a => !isAssignmentDone(a) && a.dueDate && a.dueDate < todayIso()).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  let items = all;
-  if (courseFilter !== 'all') items = items.filter(a => a.courseId === courseFilter);
-  if (statusFilter !== 'all') items = items.filter(a => a.status === statusFilter);
-  items = items.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
-  window._assignVisibleIds = items.map(a => a.id);
-  const counts = { 'not-started': 0, 'in-progress': 0, waiting: 0, submitted: 0, done: 0 };
-  all.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
-  const startSoon = all.filter(a => a.startByDate && a.status !== 'done' && a.status !== 'submitted' && a.startByDate <= todayIso() && a.dueDate >= todayIso());
-  const allSelected = items.length > 0 && items.every(a => selected.has(a.id));
+  const scoped = courseFilter === 'all' ? all : all.filter(a => a.courseId === courseFilter);
+  const t = todayIso(), tomorrow = addDays(t, 1), weekEnd = addDays(t, 7);
+  const open = scoped.filter(a => !isAssignmentDone(a));
+  const done = scoped.filter(isAssignmentDone).sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''));
+  const byDue = (a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999') || (a.dueTime || '').localeCompare(b.dueTime || '');
+  const groups = [
+    ['overdue', 'Overdue', open.filter(a => a.dueDate && a.dueDate < t)],
+    ['today', 'Today', open.filter(a => a.dueDate === t)],
+    ['tomorrow', 'Tomorrow', open.filter(a => a.dueDate === tomorrow)],
+    ['week', 'This week', open.filter(a => a.dueDate > tomorrow && a.dueDate <= weekEnd)],
+    ['later', 'Later', open.filter(a => a.dueDate > weekEnd)],
+    ['nodate', 'No due date', open.filter(a => !a.dueDate)],
+  ].map(([k, label, items]) => [k, label, items.sort(byDue)]).filter(([, , items]) => items.length);
+  const visible = view === 'done' ? done : view === 'all' ? [...open.sort(byDue), ...done] : open;
+  window._assignVisibleIds = visible.map(a => a.id);
+  const allSelected = visible.length > 0 && visible.every(a => selected.has(a.id));
+  const total = scoped.length;
+  const pctDone = total ? Math.round((done.length / total) * 100) : 0;
+  const overdueCount = open.filter(a => a.dueDate && a.dueDate < t).length;
+  const weekCount = open.filter(a => a.dueDate >= t && a.dueDate <= weekEnd).length;
+  const startSoon = open.filter(a => a.startByDate && a.startByDate <= t && a.dueDate >= t);
 
   return `
-    ${pageHead('Assignment Tracker', `${all.length} assignment${all.length === 1 ? '' : 's'}`, `
+    ${pageHead('Assignments', `${open.length} to do · ${weekCount} due this week${overdueCount ? ` · ${overdueCount} overdue` : ''}`, `
       ${aiButton('Upload PDF', 'openAssignmentUploadModal()')}
       <button class="btn btn-sm ${selectMode ? 'btn-primary' : ''}" onclick="toggleAssignSelectMode()">${icon('check-square', 13, 2)} ${selectMode ? 'Cancel' : 'Select'}</button>
-      <button class="btn btn-primary" onclick="openAssignmentModal()">+ Add assignment</button>
+      <button class="btn btn-primary" onclick="openAssignmentModal(null, state._assignCourseFilter !== 'all' ? state._assignCourseFilter : null)">+ Add assignment</button>
     `)}
-    <div class="grid grid-4 mb-16">
-      <div class="stat-card"><div class="num">${counts['not-started']}</div><div class="lbl">Not started</div></div>
-      <div class="stat-card"><div class="num">${counts['in-progress'] + counts.waiting}</div><div class="lbl">In progress / waiting</div></div>
-      <div class="stat-card"><div class="num">${counts.submitted + counts.done}</div><div class="lbl">Submitted</div></div>
-      <div class="stat-card ${overdue.length ? 'stat-card-link' : ''}" ${overdue.length ? `onclick="document.getElementById('assign-overdue-section')?.scrollIntoView({behavior:'smooth',block:'start'})" title="Jump to overdue"` : ''}><div class="num" style="color:${overdue.length ? 'var(--danger)' : 'inherit'}">${overdue.length}</div><div class="lbl">Overdue</div></div>
+    <div class="assign-toolbar">
+      <div class="chip-row" role="group" aria-label="Filter by course">
+        <button class="chip ${courseFilter === 'all' ? 'active' : ''}" onclick="state._assignCourseFilter='all';touch()">All courses</button>
+        ${activeCourses().map(c => `<button class="chip ${courseFilter === c.id ? 'active' : ''}" style="--course:${esc(c.color || '#5a6b7b')}" onclick="state._assignCourseFilter='${c.id}';touch()"><span class="course-dot"></span>${esc(c.code || c.name)}</button>`).join('')}
+      </div>
+      <div class="assign-toolbar-right">
+        ${total ? `<div class="assign-progress" title="${done.length} of ${total} finished"><div class="progress"><div style="width:${pctDone}%"></div></div><span class="small muted">${pctDone}% done</span></div>` : ''}
+        <div class="segmented">${[['todo', 'To do'], ['done', 'Done'], ['all', 'All']].map(([k, l]) => `<button class="${view === k ? 'active' : ''}" onclick="state._assignView='${k}';touch()">${l}</button>`).join('')}</div>
+      </div>
     </div>
-    ${overdue.length ? `<div class="card card-pad mb-16" id="assign-overdue-section" style="border:1.5px solid var(--danger)">
-      <div class="small" style="font-weight:600;color:var(--danger);margin-bottom:6px">${icon('flag',13,2)} Overdue</div>
-      ${overdue.map(a => `<div class="list-row" onclick="openAssignmentModal('${a.id}')"><button type="button" class="row-check" role="checkbox" aria-checked="false" aria-label="Mark ${esc(a.title)} as done" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')"></button><div class="row-title">${esc(a.title)} ${typeTag(a.type)}</div>${courseChip(a.courseId)}<div class="row-meta" style="color:var(--danger)">${relativeDay(a.dueDate)}</div></div>`).join('')}
+
+    ${activeCourses().length ? `
+    <div class="quick-add card">
+      <span class="quick-add-ic">${icon('plus', 15, 2)}</span>
+      <input class="quick-add-input" id="qa-assign-title" placeholder="Add an assignment and press Enter" onkeydown="if(event.key==='Enter')quickAddAssignment()">
+      <select class="select" id="qa-assign-course" aria-label="Course">${activeCourses().map(c => `<option value="${c.id}" ${c.id === courseFilter ? 'selected' : ''}>${esc(c.code || c.name)}</option>`).join('')}</select>
+      <input class="input" type="date" id="qa-assign-date" aria-label="Due date" value="${addDays(t, 7)}">
     </div>` : ''}
-    ${startSoon.length ? `<div class="card card-pad mb-16" style="border:1.5px solid var(--warn)">
-      <div class="small" style="font-weight:600;color:var(--warn);margin-bottom:6px">${icon('flag',13,2)} Start these soon</div>
-      ${startSoon.map(a => `<div class="list-row" onclick="openAssignmentModal('${a.id}')"><div class="row-title">${esc(a.title)}</div>${courseChip(a.courseId)}<div class="row-meta">due ${relativeDay(a.dueDate)}</div></div>`).join('')}
-    </div>` : ''}
-    <div class="flex-gap wrap mb-16">
-      <select class="select" style="max-width:200px" onchange="state._assignCourseFilter=this.value;touch()">
-        <option value="all">All courses</option>${activeCourses().map(c => `<option value="${c.id}" ${courseFilter === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
-      </select>
-      <select class="select" style="max-width:170px" onchange="state._assignStatusFilter=this.value;touch()">
-        <option value="all">All statuses</option>${Object.entries(STATUS_LABELS).filter(([k]) => k !== 'done').map(([k, v]) => `<option value="${k}" ${statusFilter === k ? 'selected' : ''}>${v}</option>`).join('')}
-      </select>
-    </div>
+
     ${selectMode ? `
     <div class="card card-pad mb-16 select-bar">
-      <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAssignSelectAll()"><span>Select all${items.length ? ` (${items.length})` : ''}</span></label>
+      <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAssignSelectAll()"><span>Select all${visible.length ? ` (${visible.length})` : ''}</span></label>
       <div class="flex-gap" style="align-items:center">
         <span class="small muted">${selected.size} selected</span>
-        <button class="btn btn-danger btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkDeleteAssignments()">${icon('trash', 13)} Delete selected</button>
+        <button class="btn btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkMarkAssignmentsDone()">${icon('check', 13, 2.2)} Mark done</button>
+        <button class="btn btn-danger btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkDeleteAssignments()">${icon('trash', 13)} Delete</button>
       </div>
     </div>` : ''}
-    <div class="card" style="padding:${items.length ? '8px' : '0'}">
-      ${items.length ? items.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list',26,1.4), 'No assignments match.')}</div>`}
-    </div>
+
+    ${view === 'todo' && startSoon.length ? `<div class="sg-callout mb-16"><span>${icon('flag', 14, 1.8)}</span><div class="small"><span class="sg-strong">Start soon:</span> ${startSoon.map(a => `<button class="sg-link" style="font-size:12.5px" onclick="openAssignmentModal('${a.id}')">${esc(a.title)}</button>`).join(', ')}</div></div>` : ''}
+
+    ${view === 'todo' ? (groups.length ? groups.map(([k, label, items]) => `
+      <section class="assign-group ${k === 'overdue' ? 'is-overdue' : ''}">
+        <div class="assign-group-head"><span>${label}</span><span class="assign-count">${items.length}</span></div>
+        <div class="card assign-list">${items.map(a => assignmentRow(a, selectMode, selected)).join('')}</div>
+      </section>`).join('') : emptyState(icon('cloud-sun', 26, 1.4), total ? 'All caught up' : 'No assignments yet', total ? '' : `<button class="btn btn-primary mt-8" onclick="openAssignmentUploadModal()">${icon('sparkles', 13, 1.6)} Upload a syllabus or assignment sheet</button>`, total ? 'Nothing left to do here. Nice work.' : 'Add one above, or upload a document and Semester HQ pulls out every deadline.'))
+      : `<div class="card assign-list">${visible.length ? visible.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list', 26, 1.4), view === 'done' ? 'Nothing finished yet.' : 'No assignments match.')}</div>`}</div>`}
   `;
 }
 function assignmentRow(a, selectMode, selected) {
-  const rubricDone = a.rubric.length ? a.rubric.filter(r => r.done).length : 0;
-  const isDone = a.status === 'done' || a.status === 'submitted';
+  const isDone = isAssignmentDone(a);
   const isSelected = !!(selected && selected.has(a.id));
+  const overdue = !isDone && a.dueDate && a.dueDate < todayIso();
   const rowClick = selectMode ? `toggleAssignSelected('${a.id}')` : `openAssignmentModal('${a.id}')`;
-  return `<div class="list-row ${isSelected ? 'selected' : ''}" onclick="${rowClick}" draggable="${selectMode ? 'false' : 'true'}" ondragstart="event.stopPropagation();dragStartItem(event,'assignment','${a.id}')" title="${selectMode ? '' : 'Drag onto Calendar to reschedule or time-block'}">
+  const rubricDone = (a.rubric || []).filter(r => r.done).length;
+  const c = getCourse(a.courseId);
+  return `<div class="assign-row ${isSelected ? 'selected' : ''} ${isDone ? 'is-done' : ''}" style="--course:${esc(c?.color || '#8a8a8a')}" onclick="${rowClick}" draggable="${selectMode ? 'false' : 'true'}" ondragstart="event.stopPropagation();dragStartItem(event,'assignment','${a.id}')" title="${selectMode ? '' : 'Drag onto the Calendar to reschedule or plan work time'}">
     ${selectMode
       ? `<button type="button" class="row-check ${isSelected ? 'checked' : ''}" role="checkbox" aria-checked="${isSelected}" aria-label="${isSelected ? 'Deselect' : 'Select'} ${esc(a.title)}" onclick="event.stopPropagation();toggleAssignSelected('${a.id}')">${isSelected ? checkGlyph(true) : ''}</button>`
       : `<button type="button" class="row-check ${isDone ? 'checked' : ''}" role="checkbox" aria-checked="${isDone}" aria-label="Mark ${esc(a.title)} as ${isDone ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isDone ? checkGlyph(true) : ''}</button>`}
-    <div class="row-title ${isDone ? 'done' : ''}">${esc(a.title)} ${typeTag(a.type)} ${a.attachments && a.attachments.length ? icon('paperclip', 12, 1.8) : ''}</div>
-    ${courseChip(a.courseId)}
-    ${a.rubric.length ? `<span class="small muted">${rubricDone}/${a.rubric.length} rubric</span>` : ''}
-    <span class="small ${a.status === 'in-progress' ? 'dim' : 'muted'}">${STATUS_LABELS[a.status]}</span>
-    <div class="row-meta" style="color:${daysBetween(a.dueDate) < 0 && !isDone ? 'var(--danger)' : 'inherit'}">${a.dueDate ? relativeDay(a.dueDate) : 'no date'}</div>
+    <div class="assign-main">
+      <div class="assign-title">${esc(a.title)}${a.attachments && a.attachments.length ? ` <span class="muted">${icon('paperclip', 12, 1.8)}</span>` : ''}</div>
+      <div class="assign-meta">
+        <span class="assign-course"><span class="course-dot"></span>${esc(c ? (c.code || c.name) : 'No course')}</span>
+        <span>${esc(a.type)}</span>
+        ${a.status === 'in-progress' || a.status === 'waiting' ? `<span class="assign-status">${esc(STATUS_LABELS[a.status])}</span>` : ''}
+        ${(a.rubric || []).length ? `<span>${rubricDone}/${a.rubric.length} steps</span>` : ''}
+      </div>
+    </div>
+    <div class="assign-due ${overdue ? 'sg-overdue' : ''}">${a.dueDate ? `${esc(isDone ? fmtDate(a.dueDate) : relativeDay(a.dueDate).replace(' (overdue)', ''))}${a.dueTime && a.dueTime !== '23:59' && !isDone ? `<span>${fmtTime(a.dueTime)}</span>` : ''}` : '<span class="muted">No date</span>'}</div>
   </div>`;
+}
+function quickAddAssignment() {
+  const input = $('#qa-assign-title');
+  const title = input.value.trim();
+  if (!title) return;
+  const lower = title.toLowerCase();
+  const type = /exam|midterm|final\b/.test(lower) ? 'exam' : /quiz/.test(lower) ? 'quiz' : /\blab\b/.test(lower) ? 'lab' : /read|chapter|ch\./.test(lower) ? 'reading' : /discussion|post/.test(lower) ? 'discussion' : /paper|essay/.test(lower) ? 'paper' : /project|presentation/.test(lower) ? 'project' : 'assignment';
+  state.assignments.push({
+    id: uid(), courseId: $('#qa-assign-course').value, title, type, dueDate: $('#qa-assign-date').value || null, dueTime: '23:59',
+    startByDate: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
+  });
+  touch();
+  toast(`Added “${title}”`);
+  setTimeout(() => $('#qa-assign-title')?.focus(), 30);
+}
+function bulkMarkAssignmentsDone() {
+  const ids = state._assignSelectedIds || [];
+  state.assignments.forEach(a => { if (ids.includes(a.id)) a.status = 'done'; });
+  state._assignSelectedIds = []; state._assignSelectMode = false;
+  touch();
+  toast(`Marked ${ids.length} done`);
 }
 function toggleAssignmentDone(id) {
   const a = state.assignments.find(x => x.id === id);
-  a.status = (a.status === 'done' || a.status === 'submitted') ? 'not-started' : 'done';
+  if (!a) return;
+  const before = a.status;
+  a.status = isAssignmentDone(a) ? 'not-started' : 'done';
   touch();
+  if (a.status === 'done') toast(`Finished “${a.title}”`, 'success', 4000, { label: 'Undo', run: () => { a.status = before; touch(); } });
 }
 function toggleAssignSelectMode() {
   state._assignSelectMode = !state._assignSelectMode;
@@ -115,8 +161,8 @@ function bulkDeleteAssignments() {
   }, `Delete ${ids.length}`);
 }
 
-function openAssignmentModal(id) {
-  const a = id ? state.assignments.find(x => x.id === id) : { id: uid(), courseId: activeCourses()[0]?.id || null, title: '', type: 'assignment', dueDate: todayIso(), dueTime: '23:59', startByDate: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
+function openAssignmentModal(id, presetCourseId) {
+  const a = id ? state.assignments.find(x => x.id === id) : { id: uid(), courseId: presetCourseId || activeCourses()[0]?.id || null, title: '', type: 'assignment', dueDate: todayIso(), dueTime: '23:59', startByDate: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
   window._assignDraft = JSON.parse(JSON.stringify(a));
   if (!_assignDraft.attachments) _assignDraft.attachments = [];
   renderAssignmentModal(id);
@@ -128,9 +174,10 @@ function renderAssignmentModal(id) {
     <div class="modal-body">
       <div class="field"><label>Title</label><input class="input" id="af-title" value="${esc(a.title)}"></div>
       <div class="field-row">
-        <div class="field"><label>Course</label><select class="select" id="af-course">${activeCourses().map(c => `<option value="${c.id}" ${c.id === a.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-        <div class="field"><label>Type</label><select class="select" id="af-type">${ASSIGNMENT_TYPES.map(t => `<option value="${t}" ${t === a.type ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div class="field"><label>Course</label><select class="select" id="af-course" onchange="_assignDraft.courseId=this.value">${activeCourses().map(c => `<option value="${c.id}" ${c.id === a.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Type</label><select class="select" id="af-type" onchange="_assignDraft.type=this.value">${ASSIGNMENT_TYPES.map(t => `<option value="${t}" ${t === a.type ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       </div>
+
       <div class="field-row">
         <div class="field"><label>Due date</label>
           <input class="input" type="date" id="af-date" value="${a.dueDate || ''}" ${a.dueDate ? '' : 'disabled'}>
@@ -238,6 +285,7 @@ function deleteAssignment(id) {
     if (a) trashItem('assignment', a.title || 'Untitled assignment', a);
     state.assignments = state.assignments.filter(a => a.id !== id);
     touch(); closeModal();
+    if (a) toast(`Deleted “${a.title}”`, 'success', 5000, { label: 'Undo', run: () => { const t = (state.trash || []).find(x => x.kind === 'assignment' && x.data.id === a.id); if (t) restoreTrashItem(t.id); } });
   });
 }
 

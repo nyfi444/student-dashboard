@@ -23,6 +23,11 @@ function render() {
   $('#content').classList.toggle('content-notebook', state.route === 'notebook');
   $('#content').innerHTML = `<div class="fade-in">${fn()}</div>`;
   if (typeof afterGroupPageRender === 'function') afterGroupPageRender();
+  if (typeof updateTimerChrome === 'function') updateTimerChrome();
+}
+function bellButton(cls) {
+  const n = typeof attentionCount === 'function' ? attentionCount() : 0;
+  return `<button class="btn btn-icon bell-btn ${cls}" onclick="openHeadsUp()" aria-label="Heads up${n ? `, ${n} item${n === 1 ? '' : 's'} need attention` : ''}" title="Heads up">${icon('bell', 15, 1.8)}${n ? `<span class="bell-count">${n > 9 ? '9+' : n}</span>` : ''}</button>`;
 }
 function bindPage() { /* reserved for pages needing post-render DOM wiring beyond inline handlers */ }
 
@@ -73,11 +78,15 @@ function renderSidebar() {
       <div><h1>Semester HQ</h1><p>${esc(activeSemesterName())}</p></div>
       <button class="btn btn-ghost btn-icon btn-sm" onclick="toggleSidebar()" title="Hide sidebar" aria-label="Hide sidebar">${icon('panel-left', 16, 1.6)}</button>
     </div>
-    <div style="flex:1;overflow-y:auto">
+    <div class="sidebar-tools">
+      <button class="sidebar-search" onclick="openCommandPalette()" aria-label="Search and commands">${searchIcon()}<span>Search</span><kbd>${isMac() ? '⌘' : 'Ctrl '}K</kbd></button>
+      ${bellButton('sidebar-bell')}
+    </div>
+    <div class="sidebar-nav" style="flex:1;overflow-y:auto">
       ${NAV.map(([label, items]) => `
         <div class="nav-group">
           <div class="nav-group-label">${label}</div>
-          ${items.map(([id, iconName, name]) => `<div class="nav-item ${state.route === id ? 'active' : ''}" onclick="setState({route:'${id}',subRoute:null})"><span class="ic">${icon(iconName)}</span>${name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}</div>`).join('')}
+          ${items.map(([id, iconName, name]) => `<div class="nav-item ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" onclick="setState({route:'${id}',subRoute:null})"><span class="ic">${icon(iconName)}</span>${name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}</div>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
         </div>
       `).join('')}
     </div>
@@ -90,6 +99,12 @@ function renderSidebar() {
     </div>
   `;
 }
+// Each class links straight to its own page, right under Courses.
+function sidebarClasses() {
+  const courses = activeCourses();
+  if (!courses.length) return '';
+  return `<div class="sidebar-classes">${courses.map(c => `<div class="nav-class ${state.route === 'courses' && state.subRoute === c.id ? 'active' : ''}" style="--course:${esc(c.color || '#5a6b7b')}" onclick="openCourse('${c.id}')" title="${esc(c.name)}"><span class="course-dot"></span><span>${esc(c.code || c.name)}</span></div>`).join('')}</div>`;
+}
 function activeSemesterName() { return state.semesters.find(s => s.id === state.currentSemesterId)?.name || 'My Planner'; }
 
 function initApp() {
@@ -98,6 +113,8 @@ function initApp() {
   captureJoinParam();
   save();
   bootFirebase();
+  if (typeof startReminderLoop === 'function') startReminderLoop();
+  if (typeof registerServiceWorker === 'function') registerServiceWorker();
   $('.sidebar-expand-fab').innerHTML = icon('panel-left', 16, 1.6);
   render();
 }

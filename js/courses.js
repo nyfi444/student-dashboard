@@ -1,55 +1,198 @@
 /* ── Courses + Syllabus Upload/AI Auto-fill ──────────────────────── */
 const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// Distinct, muted course colors. New courses take the first one not already
+// used this semester, so a fresh schedule never starts as all-black blocks.
+const COURSE_PALETTE = ['#3b6ea5', '#b5534a', '#4f8a5b', '#8a6bb5', '#c0892f', '#2f8b8b', '#b0507e', '#5a6b7b', '#7a8c3a', '#a0613a'];
+function nextCourseColor(taken = activeCourses().map(c => (c.color || '').toLowerCase())) {
+  return COURSE_PALETTE.find(p => !taken.includes(p.toLowerCase())) || COURSE_PALETTE[taken.length % COURSE_PALETTE.length];
+}
+
+// The next time this class meets (or the meeting happening right now).
+function nextMeeting(course, from = new Date()) {
+  const nowMin = from.getHours() * 60 + from.getMinutes();
+  const sem = currentSemester();
+  for (let i = 0; i < 8; i++) {
+    const dIso = addDays(todayIso(), i);
+    if (typeof isBreakDate === 'function' && isBreakDate(dIso)) continue;
+    if (sem && (dIso < sem.startDate || dIso > sem.endDate)) continue;
+    const dow = new Date(dIso + 'T00:00:00').getDay();
+    const m = (course.meetings || [])
+      .filter(x => x.day === dow && (i > 0 || toMin(x.end || x.start) > nowMin))
+      .sort((a, b) => a.start.localeCompare(b.start))[0];
+    if (m) return { ...m, date: dIso, inProgress: i === 0 && toMin(m.start) <= nowMin };
+  }
+  return null;
+}
+function fmtNextMeeting(m) {
+  if (!m) return '';
+  if (m.inProgress) return `In class now, until ${fmtTime(m.end)}`;
+  const n = daysBetween(m.date);
+  return `${n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : fmtDate(m.date, { weekday: 'long' })} ${fmtTime(m.start)}`;
+}
+
 function pageCourses() {
+  if (state.subRoute) {
+    const c = getCourse(state.subRoute);
+    if (c) return pageCourseHub(c);
+  }
   const courses = activeCourses();
-  const credits = courses.reduce((s, c) => s + (c.credits || 0), 0);
+  const credits = courses.reduce((s, c) => s + (Number(c.credits) || 0), 0);
   return `
-    ${pageHead('Courses', `${courses.length} course${courses.length === 1 ? '' : 's'} this semester`, `
+    ${pageHead('Courses', `${courses.length} course${courses.length === 1 ? '' : 's'} · ${credits} credits · Click a class to open its page`, `
       ${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}
       <button class="btn btn-primary" onclick="openCourseModal()">+ Add course</button>
     `)}
-    <div class="grid grid-2 mb-16">
-      <div class="stat-card"><div class="num">${courses.length}</div><div class="lbl">Active courses</div></div>
-      <div class="stat-card"><div class="num">${credits}</div><div class="lbl">Total credits</div></div>
-    </div>
-    ${courses.length ? `<div class="grid grid-3">${courses.map(courseCard).join('')}</div>` : emptyState(icon('graduation-cap',26,1.4), 'Your courses will live here', `<button class="btn btn-primary mt-8" onclick="openCourseModal()">+ Add course</button>`, 'Add one by hand or upload a syllabus and let AI fill in the schedule and assignments.')}
+    ${courses.length ? `<div class="grid grid-2 course-grid">${courses.map(courseCard).join('')}</div>` : `
+      <div class="card welcome-inline">
+        <div class="sg-feature-ic">${icon('graduation-cap', 18, 1.7)}</div>
+        <div style="flex:1;min-width:220px">
+          <div class="sg-strong">Add your classes</div>
+          <div class="small muted">Upload a syllabus and Semester HQ fills in meeting times, assignments, and exam dates. Or add a class by hand.</div>
+        </div>
+        <div class="flex-gap wrap">${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}<button class="btn btn-primary btn-sm" onclick="openCourseModal()">+ Add course</button></div>
+      </div>`}
   `;
 }
 
+function courseWork(c) {
+  const items = state.assignments.filter(a => a.courseId === c.id);
+  const done = items.filter(isAssignmentDone);
+  const open = items.filter(a => !isAssignmentDone(a));
+  return { items, done, open, pct: items.length ? (done.length / items.length) * 100 : null };
+}
 function courseCard(c) {
-  const meetStr = c.meetings.length ? c.meetings.map(m => `${DOW_NAMES[m.day]} ${fmtTime(m.start)}`).join(', ') : 'No scheduled meetings';
-  const resources = c.resources || [];
-  const pinnedNotes = state.notes.filter(n => n.type === 'note' && n.courseId === c.id && n.pinned);
+  const w = courseWork(c);
+  const next = nextMeeting(c);
+  const overdue = w.open.filter(a => a.dueDate && a.dueDate < todayIso()).length;
+  const nextDue = w.open.filter(a => a.dueDate && a.dueDate >= todayIso()).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+  const due = typeof srsDueCount === 'function' ? state.decks.filter(d => d.courseId === c.id).reduce((s, d) => s + srsDueCount(d), 0) : 0;
   return `
-    <div class="card card-pad" style="border-top:3px solid ${c.color}">
-      <div class="flex-between">
-        <div>
-          <div style="font-weight:700;font-size:14.5px">${esc(c.name)}</div>
-          <div class="small muted">${esc(c.code || '')}${c.instructor ? ' · ' + esc(c.instructor) : ''}</div>
+    <div class="card course-card" role="button" tabindex="0" onclick="openCourse('${c.id}')" onkeydown="if(event.key==='Enter')openCourse('${c.id}')" style="--course:${esc(c.color || '#5a6b7b')}">
+      <div class="course-card-top">
+        <div style="min-width:0">
+          <div class="course-code"><span class="course-dot"></span>${esc(c.code || 'Course')}${c.instructor ? ` · ${esc(c.instructor)}` : ''}</div>
+          <div class="course-name">${esc(c.name)}</div>
         </div>
-        <div class="flex-gap">
-          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit ${esc(c.name)}" onclick="openCourseModal('${c.id}')">${icon('pencil',14)}</button>
-          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(c.name)}" onclick="deleteCourse('${c.id}')">${icon('trash',14)}</button>
+        <div class="course-ring" title="${w.done.length} of ${w.items.length} assignments finished">
+          ${progressRing(w.pct, c.color, 58)}
+          <div class="course-ring-num">${w.items.length ? `<strong>${Math.round(w.pct)}%</strong><span>done</span>` : `<span class="muted">No<br>work yet</span>`}</div>
         </div>
       </div>
-      <div class="flex-gap wrap mt-8">
-        <span class="tag" style="background:var(--surface-2);color:var(--text-dim)">${COURSE_STATUS_LABELS[c.status] || COURSE_STATUS_LABELS['in-progress']}</span>
-        ${c.requirementType ? `<span class="tag" style="background:var(--surface-2);color:var(--text-dim)">${c.requirementType[0].toUpperCase() + c.requirementType.slice(1)}</span>` : ''}
+      <div class="course-lines">
+        <div><span class="course-ic">${icon('clock', 13, 1.8)}</span><span>${next ? esc(fmtNextMeeting(next)) + (c.location ? ` · ${esc(c.location)}` : '') : '<span class="muted">No class times added</span>'}</span></div>
+        <div><span class="course-ic">${icon('clipboard-list', 13, 1.8)}</span><span>${nextDue ? `Next due: <span class="sg-strong">${esc(nextDue.title)}</span>, ${esc(relativeDay(nextDue.dueDate))}` : '<span class="muted">Nothing due soon</span>'}</span></div>
       </div>
-      <div class="small muted mt-8">${esc(meetStr)}</div>
-      ${c.location ? `<div class="small muted flex-gap">${icon('map-pin', 12)} ${esc(c.location)}</div>` : ''}
-      ${resources.length ? `<div class="divider"></div><div class="small dim" style="margin-bottom:4px">Resources</div><div class="flex-gap wrap">${resources.map(r => `<a class="btn btn-sm" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.label)}</a>`).join('')}</div>` : ''}
-      ${pinnedNotes.length ? `<div class="divider"></div><div class="small dim" style="margin-bottom:4px">${icon('pin',12,2)} Pinned</div>${pinnedNotes.map(n => `<div class="small" style="cursor:pointer;padding:2px 0" onclick="setState({route:'notebook',notebookSelected:'${n.id}'})">${esc(n.name)}</div>`).join('')}` : ''}
-      <div class="flex-between mt-16">
-        <span class="small dim">${c.credits || 0} credits</span>
+      <div class="course-foot small muted">
+        <span>${w.open.length} open${overdue ? ` · <span class="sg-overdue">${overdue} overdue</span>` : ''}${due ? ` · ${due} card${due === 1 ? '' : 's'} to review` : ''}</span>
+        <span class="course-open">Open class page ${icon('chevron-right', 12, 2)}</span>
+      </div>
+    </div>`;
+}
+function openCourse(id) { setState({ route: 'courses', subRoute: id }); window.scrollTo(0, 0); }
+
+/* ── Class page: one page for everything about a class ─────────── */
+function pageCourseHub(c) {
+  const w = courseWork(c);
+  const t = todayIso();
+  const next = nextMeeting(c);
+  const open = [...w.open].sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
+  const finished = [...w.done].sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''));
+  const overdue = open.filter(a => a.dueDate && a.dueDate < t).length;
+  const dueWeek = open.filter(a => a.dueDate >= t && a.dueDate <= addDays(t, 7)).length;
+  const notes = state.notes.filter(n => n.type === 'note' && n.courseId === c.id).sort((a, b) => (b.pinned - a.pinned) || (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 5);
+  const decks = state.decks.filter(d => d.courseId === c.id);
+  const weekMin = state.timerSessions.filter(s => s.courseId === c.id && s.date >= startOfWeek(t)).reduce((s, x) => s + x.minutes, 0);
+  const exams = w.items.filter(a => a.type === 'exam' && a.dueDate && a.dueDate >= t).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  return `
+    <div style="--course:${esc(c.color || '#5a6b7b')}">
+    <button class="btn btn-ghost btn-sm sg-back" onclick="setState({subRoute:null})">${icon('arrow-left', 14, 1.9)} All courses</button>
+    <div class="sg-head">
+      <div style="min-width:0">
+        <div class="sg-eyebrow"><span class="course-dot"></span>${[c.code, c.instructor, `${Number(c.credits) || 0} credits`].filter(Boolean).map(esc).join(' · ')}</div>
+        <h2 class="sg-title">${esc(c.name)}</h2>
+        <p class="small muted sg-desc">${next ? `${icon('clock', 12, 1.8)} ${esc(fmtNextMeeting(next))}` : 'No class times yet'}${c.location ? ` · ${icon('map-pin', 12, 1.8)} ${esc(c.location)}` : ''}</p>
+      </div>
+      <div class="sg-head-actions">
+        ${signInHeaderButton()}
+        <button class="btn" onclick="openAssignmentModal(null,'${c.id}')">+ Assignment</button>
+        <button class="btn btn-icon" aria-label="Edit course" title="Edit course" onclick="openCourseModal('${c.id}')">${icon('pencil', 15, 1.7)}</button>
       </div>
     </div>
-  `;
+
+    <div class="sg-overview">
+      <div class="sg-col">
+        <div class="card card-pad hub-progress">
+          <div class="hub-ring">${progressRing(w.pct, c.color, 104)}<div class="hub-ring-label">${w.items.length ? `<strong>${Math.round(w.pct)}%</strong><span>finished</span>` : '<span class="muted small">No work<br>added yet</span>'}</div></div>
+          <div class="hub-stats">
+            <div class="hub-stat"><strong>${open.length}</strong><span>Open</span></div>
+            <div class="hub-stat ${overdue ? 'is-alert' : ''}"><strong>${overdue}</strong><span>Overdue</span></div>
+            <div class="hub-stat"><strong>${dueWeek}</strong><span>Due this week</span></div>
+            <div class="hub-stat"><strong>${fmtDuration(weekMin)}</strong><span>Focus this week</span></div>
+          </div>
+        </div>
+
+        <div class="card card-pad">
+          <div class="flex-between mb-8"><h3 class="sg-h3">Coming up</h3><button class="sg-link" onclick="state._assignCourseFilter='${c.id}';setState({route:'assignments',subRoute:null})">All assignments →</button></div>
+          ${open.length ? open.slice(0, 8).map(hubAssignmentRow).join('') : `<p class="small muted">Nothing open for this class. <button class="sg-link" onclick="openAssignmentModal(null,'${c.id}')">Add an assignment</button></p>`}
+        </div>
+
+        ${finished.length ? `<div class="card card-pad">
+          <details class="hub-finished">
+            <summary class="flex-between"><h3 class="sg-h3">Finished</h3><span class="small muted">${finished.length} done</span></summary>
+            <div class="mt-8">${finished.slice(0, 25).map(a => `
+              <div class="list-row sg-task compact" onclick="openAssignmentModal('${a.id}')">
+                <button type="button" class="row-check checked" role="checkbox" aria-checked="true" aria-label="Mark ${esc(a.title)} as not done" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${checkGlyph(true)}</button>
+                <div class="row-title"><div class="sg-done">${esc(a.title)}</div></div>
+                <div class="row-meta">${a.dueDate ? fmtDate(a.dueDate) : ''}</div>
+              </div>`).join('')}</div>
+          </details>
+        </div>` : ''}
+      </div>
+
+      <div class="sg-col">
+        ${exams.length ? `<div class="card card-pad hub-exam">
+          <div class="sg-eyebrow">Next exam</div>
+          <div class="hub-exam-row"><div class="hub-exam-days"><strong>${daysBetween(exams[0].dueDate)}</strong><span>day${daysBetween(exams[0].dueDate) === 1 ? '' : 's'}</span></div>
+          <div style="min-width:0"><div class="sg-strong">${esc(exams[0].title)}</div><div class="small muted">${esc(fmtDateLong(exams[0].dueDate))}</div></div></div>
+        </div>` : ''}
+        <div class="card card-pad">
+          <h3 class="sg-h3 mb-8">Class schedule</h3>
+          ${(c.meetings || []).length ? [...c.meetings].sort((a, b) => a.day - b.day || a.start.localeCompare(b.start)).map(m => `<div class="sg-person"><span class="hub-day">${DOW_NAMES[m.day]}</span><div class="row-title small">${fmtTime(m.start)} – ${fmtTime(m.end)}</div></div>`).join('') : `<p class="small muted">No meeting times. <button class="sg-link" onclick="openCourseModal('${c.id}')">Add them</button></p>`}
+          ${(c.resources || []).length ? `<div class="divider"></div><div class="flex-gap wrap">${c.resources.map(r => `<a class="btn btn-sm" href="${esc(r.url)}" target="_blank" rel="noopener">${icon('link', 12, 1.8)} ${esc(r.label)}</a>`).join('')}</div>` : ''}
+        </div>
+        <div class="card card-pad">
+          <div class="flex-between mb-8"><h3 class="sg-h3">Notes</h3><button class="sg-link" onclick="createCourseNote('${c.id}')">+ New note</button></div>
+          ${notes.length ? notes.map(n => `<div class="sg-person hub-link" onclick="setState({route:'notebook',notebookSelected:'${n.id}',subRoute:null})"><span class="sg-activity-ic">${icon(n.pinned ? 'pin' : 'file-text', 13, 1.8)}</span><div class="row-title small">${esc(n.name || 'Untitled note')}</div><span class="small muted">${fmtRelativeTime(n.updatedAt)}</span></div>`).join('') : `<p class="small muted">Notes you tag with this class collect here.</p>`}
+        </div>
+        <div class="card card-pad">
+          <div class="flex-between mb-8"><h3 class="sg-h3">Study</h3><button class="sg-link" onclick="startCourseFocus('${c.id}')">${icon('play', 11, 1.5)} Focus session</button></div>
+          ${decks.length ? decks.map(d => { const due = srsDueCount(d); return `<div class="sg-person"><span class="sg-activity-ic">${icon('layers', 13, 1.8)}</span><div class="row-title small">${esc(d.name)} <span class="muted">· ${due ? `${due} to review` : `${d.cards.length} cards`}</span></div><button class="btn btn-sm ${due ? 'btn-primary' : ''}" onclick="openReview(['${d.id}'])" ${d.cards.length ? '' : 'disabled'}>${due ? 'Review' : 'Study'}</button></div>`; }).join('') : `<p class="small muted">No flashcard decks for this class. <button class="sg-link" onclick="setState({route:'studytools',subRoute:null});openDeckModal(null,'${c.id}')">Make one</button></p>`}
+        </div>
+      </div>
+    </div>
+    </div>`;
+}
+function hubAssignmentRow(a) {
+  const overdue = a.dueDate && a.dueDate < todayIso();
+  return `<div class="list-row sg-task compact" onclick="openAssignmentModal('${a.id}')">
+    <button type="button" class="row-check" role="checkbox" aria-checked="false" aria-label="Mark ${esc(a.title)} as done" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')"></button>
+    <div class="row-title"><div>${esc(a.title)} ${typeTag(a.type)}</div></div>
+    <div class="row-meta ${overdue ? 'sg-overdue' : ''}">${a.dueDate ? esc(relativeDay(a.dueDate)) : 'No date'}</div>
+  </div>`;
+}
+function createCourseNote(courseId) {
+  const id = uid();
+  state.notes.push({ id, type: 'note', name: 'Untitled note', parentId: 'root', courseId, pinned: false, content: '', updatedAt: Date.now() });
+  setState({ route: 'notebook', notebookSelected: id, subRoute: null });
+}
+function startCourseFocus(courseId) {
+  window._timer.courseId = courseId;
+  setState({ route: 'timer', subRoute: null });
 }
 
 function openCourseModal(id) {
-  const c = id ? getCourse(id) : { id: uid(), semesterId: state.currentSemesterId, name: '', code: '', instructor: '', color: '#000000', credits: 3, location: '', status: 'in-progress', requirementType: 'elective', meetings: [], resources: [], syllabusRaw: '' };
+  const c = id ? getCourse(id) : { id: uid(), semesterId: state.currentSemesterId, name: '', code: '', instructor: '', color: nextCourseColor(), credits: 3, location: '', status: 'in-progress', requirementType: 'elective', meetings: [], resources: [], syllabusRaw: '' };
   const draft = JSON.parse(JSON.stringify(c));
   if (!draft.status) draft.status = 'in-progress';
   if (!draft.resources) draft.resources = [];
@@ -86,6 +229,7 @@ function openCourseModal(id) {
       </div>
     </div>
     <div class="modal-foot">
+      ${id ? `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteCourse('${id}')">Delete</button>` : ''}
       <button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveCourseModal(${id ? `'${id}'` : 'null'})">Save course</button>
     </div>
@@ -140,6 +284,7 @@ function deleteCourse(id) {
     state.courses = state.courses.filter(c => c.id !== id);
     state.assignments.forEach(a => { if (a.courseId === id) a.courseId = null; });
     state.todos.forEach(t => { if (t.courseId === id) t.courseId = null; });
+    if (state.subRoute === id) state.subRoute = null;
     touch();
     toast('Course deleted');
   });
@@ -235,8 +380,9 @@ function openSyllabusReviewModal(data) {
   const draft = {
     id: uid(), semesterId: state.currentSemesterId,
     name: data.name || '', code: data.code || '', instructor: data.instructor || '', location: data.location || '',
-    credits: data.credits || 3, color: '#000000',
+    credits: data.credits || 3, color: nextCourseColor(),
     meetings: Array.isArray(data.meetings) ? data.meetings : [],
+    status: 'in-progress', requirementType: 'required', resources: [],
     syllabusRaw: '',
   };
   window._courseDraft = draft;
@@ -298,4 +444,5 @@ function commitSyllabusCourse() {
   touch();
   closeModal();
   toast(`Added ${d.name} with ${(window._sylAssignments || []).filter(a => a._include).length} assignments`);
+  openCourse(d.id);
 }

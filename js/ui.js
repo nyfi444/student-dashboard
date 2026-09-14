@@ -1,12 +1,16 @@
 /* ── Shared UI primitives: toast, modal, small render helpers ───── */
-function toast(msg, type = 'success', duration = 2600) {
+// action: optional { label, run } shown as a button (e.g. Undo).
+function toast(msg, type = 'success', duration = 2600, action = null) {
   const stack = $('#toast-stack');
   const icons = { success: icon('check', 11, 2.6), error: icon('x', 11, 2.6), info: icon('sparkles', 11, 1.9) };
   const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.innerHTML = `<span class="ic">${icons[type] || icons.info}</span><span>${esc(msg)}</span>`;
+  el.className = `toast ${type}${action ? ' has-action' : ''}`;
+  el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  el.innerHTML = `<span class="ic">${icons[type] || icons.info}</span><span>${esc(msg)}</span>${action ? `<button class="toast-action">${esc(action.label)}</button>` : ''}`;
+  const dismiss = () => { el.style.opacity = '0'; el.style.transition = 'opacity .25s'; setTimeout(() => el.remove(), 250); };
+  if (action) el.querySelector('.toast-action').onclick = () => { action.run(); dismiss(); };
   stack.appendChild(el);
-  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .25s'; setTimeout(() => el.remove(), 250); }, duration);
+  setTimeout(dismiss, action ? Math.max(duration, 5000) : duration);
 }
 
 let _modalCloseHandler = null;
@@ -61,7 +65,7 @@ function emptyState(icon, text, actionHtml = '', sub = '') {
   return `<div class="empty"><div class="ic">${icon}</div><p>${esc(text)}</p>${sub ? `<div class="empty-sub">${esc(sub)}</div>` : ''}${actionHtml}</div>`;
 }
 function pageHead(title, sub, actionsHtml = '') {
-  return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions">${signInHeaderButton()}${actionsHtml}</div></div>`;
+  return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions"><button class="btn btn-icon btn-sm mobile-search" aria-label="Search" onclick="openCommandPalette()">${typeof searchIcon === 'function' ? searchIcon() : ''}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}${signInHeaderButton()}${actionsHtml}</div></div>`;
 }
 // A persistent, always-visible way to log in, not just buried in a modal or
 // Settings, since it's the same click for a brand-new account or an existing
@@ -72,6 +76,16 @@ function pageHead(title, sub, actionsHtml = '') {
 function signInHeaderButton() {
   if (!fbConfigured() || _fbUser) return '';
   return `<a class="btn btn-sm" href="login.html">${icon('sparkles', 13, 2)} Log in</a>`;
+}
+// Circular progress indicator (0-100, or null for an empty ring).
+function progressRing(pct, color, size = 76) {
+  const r = (size - 8) / 2, circ = 2 * Math.PI * r;
+  const frac = pct == null ? 0 : clamp(pct, 0, 100) / 100;
+  return `<svg class="progress-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="6"/>
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color || 'var(--accent)'}" stroke-width="6" stroke-linecap="round"
+      stroke-dasharray="${(circ * frac).toFixed(2)} ${circ.toFixed(2)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+  </svg>`;
 }
 function aiButton(label, onclick, id) {
   return `<button class="btn btn-sm" ${id ? `id="${id}"` : ''} onclick="${onclick}" style="background:var(--badge);color:var(--ink);border:none">${icon('sparkles', 13, 1.5)} ${esc(label)}</button>`;

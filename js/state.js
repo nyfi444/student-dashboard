@@ -44,7 +44,7 @@ function enablePersistentStorage() {
   if (dataStore === localStorage) return;
   dataStore = localStorage;
   try { localStorage.setItem(LICENSE_DEVICE_FLAG, '1'); } catch {}
-  save();
+  save({ localOnly: true });
 }
 // Called on sign-out so a shared or public computer doesn't leave a paid
 // account's data sitting in localStorage for the next anonymous visitor;
@@ -57,6 +57,8 @@ function disablePersistentStorage() {
     localStorage.removeItem(storeKey);
     localStorage.removeItem(storeKey + '.bak');
     localStorage.removeItem(storeKey + '.groups'); // study group cache, see GROUP_CACHE_KEY
+    localStorage.removeItem('shq_unsynced');
+    localStorage.removeItem('shq_timer');
   } catch {}
   dataStore = makeMemoryStore();
 }
@@ -236,7 +238,7 @@ function seedData() {
       aiModel: 'claude-sonnet-4-6',
       displayName: '',
       weeklyStudyGoalMinutes: 300,
-      dashboardWidgets: ['stats', 'semesterProgress', 'workload', 'quickNote', 'dueThisWeek', 'todaySchedule', 'studyGroups', 'projects', 'notes', 'quickAdd'],
+      dashboardWidgets: ['dueThisWeek', 'studyGroups', 'exams', 'focus', 'workload', 'quickNote', 'projects', 'notes', 'quickAdd'],
       hiddenWidgets: [],
     },
     currentSemesterId: semId,
@@ -305,7 +307,9 @@ function migrate(parsed) {
   // never appear for them, since their saved order predates it. Slot each
   // missing one in after the widget it follows by default.
   if (Array.isArray(merged.settings.dashboardWidgets)) {
-    const order = merged.settings.dashboardWidgets;
+    // Widgets that were folded into the dashboard's top section (stats,
+    // today's schedule, semester progress) are dropped from saved layouts.
+    const order = merged.settings.dashboardWidgets = merged.settings.dashboardWidgets.filter(id => base.settings.dashboardWidgets.includes(id));
     base.settings.dashboardWidgets.forEach((id, i) => {
       if (order.includes(id)) return;
       const after = order.indexOf(base.settings.dashboardWidgets[i - 1]);
@@ -327,11 +331,13 @@ function migrate(parsed) {
 }
 
 let _suspendSave = false;
-function save() {
+function save({ localOnly = false } = {}) {
   if (_suspendSave) return;
   const json = JSON.stringify(state);
   dataStore.setItem(storeKey + '.bak', dataStore.getItem(storeKey) || json);
   dataStore.setItem(storeKey, json);
+  if (localOnly) return;
+  if (typeof markLocalUnsynced === 'function') markLocalUnsynced();
   if (typeof queueCloudSync === 'function') queueCloudSync();
 }
 

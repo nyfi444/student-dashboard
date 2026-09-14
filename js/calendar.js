@@ -105,7 +105,10 @@ function meetingsOnDate(dateIso) {
   if (sem && (dateIso < sem.startDate || dateIso > sem.endDate)) return [];
   return activeCourses().flatMap(c => c.meetings.filter(m => m.day === dow).map(m => ({ ...m, course: c, id: `m-${c.id}-${m.day}-${m.start}`, title: c.name, color: c.color, kind: 'class' })));
 }
-function customEventsOnDate(dateIso) { return state.events.filter(e => e.date === dateIso).map(e => ({ ...e, kind: 'custom' })); }
+// Time blocks are stored with startTime/endTime, but the week and day views
+// position everything by start/end. Without mapping them, a time block never
+// appeared on either view (only in Month, which doesn't need a time).
+function customEventsOnDate(dateIso) { return state.events.filter(e => e.date === dateIso).map(e => ({ ...e, start: e.startTime || null, end: e.endTime || null, color: e.color || getCourseColor(e.courseId), kind: 'custom' })); }
 function examsOnDate(dateIso) { return state.assignments.filter(a => a.type === 'exam' && a.dueDate === dateIso && activeCourses().some(c => c.id === a.courseId)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || '09:00', end: null, color: getCourseColor(a.courseId), kind: 'exam' })); }
 function deadlinesOnDate(dateIso) { return state.assignments.filter(a => a.type !== 'exam' && a.dueDate === dateIso && activeCourses().some(c => c.id === a.courseId)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || null, end: null, color: getCourseColor(a.courseId), kind: 'deadline' })); }
 function itemsOnDate(dateIso) { return [...meetingsOnDate(dateIso), ...customEventsOnDate(dateIso), ...examsOnDate(dateIso), ...deadlinesOnDate(dateIso), ...groupSessionsOnDate(dateIso)].sort((a, b) => (a.start || '').localeCompare(b.start || '')); }

@@ -117,7 +117,13 @@ function todoRow(t, selectMode, selected) {
     <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(t.title)}" onclick="deleteTodo('${t.id}')">${icon('trash',14)}</button>
   </div>`;
 }
-function toggleTodo(id) { const t = state.todos.find(x => x.id === id); t.done = !t.done; touch(); }
+function toggleTodo(id) {
+  const t = state.todos.find(x => x.id === id);
+  if (!t) return;
+  t.done = !t.done;
+  touch();
+  if (t.done) toast(`Checked off “${t.title}”`, 'success', 4000, { label: 'Undo', run: () => { t.done = false; touch(); } });
+}
 function deleteTodo(id) {
   const t = state.todos.find(x => x.id === id);
   if (t) trashItem('todo', t.title || 'Untitled to-do', t);

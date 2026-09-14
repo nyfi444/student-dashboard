@@ -39,3 +39,7 @@ Quick version:
 5. Create the Stripe webhook pointing at `<worker URL>/stripe-webhook`, set `STRIPE_WEBHOOK_SECRET`
 
 Reload the app once all of this is done: Settings → AI should show "Ready to use," and signing in will prompt for the $7.99/month subscription before unlocking sync.
+
+## Deploying updates
+
+The app works offline through a service worker (`sw.js`). When you deploy a change, bump `VERSION` at the top of `sw.js` (any new string works, e.g. the date). That tells people with the app already open that "a new version is ready" and clears out old cached files. App files are always fetched fresh when online, so forgetting this won't serve stale code, it just skips the refresh prompt.

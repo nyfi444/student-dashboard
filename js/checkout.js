@@ -69,11 +69,18 @@ function withTimeout(promise, ms) {
 // unclaimed purchase under this account's email (bought before signing up)?
 // The Worker is the only thing that can WRITE a license (see firestore.rules).
 // This never writes anything itself, only reads/claims via the Worker.
+// Returns true/false, or null when it couldn't reach anything (offline, or
+// the network is down). A null must never be treated as "not paid": that used
+// to wipe a paying student's device copy and show the paywall the moment they
+// opened the app without a connection.
 async function resolveLicenseStatus() {
   if (!checkoutEnabled()) return true; // payments not configured on this deployment, don't gate
   if (!_fbUser) return false;
+  if (!navigator.onLine) return null;
+  let reachedFirestore = false;
   try {
     const doc = await withTimeout(_fbDb.collection('licenses').doc(_fbUser.uid).get(), 8000);
+    reachedFirestore = !doc.metadata?.fromCache;
     if (doc.exists && doc.data().paid) return true;
   } catch (e) { console.warn('License check failed', e); }
   try {
@@ -85,7 +92,7 @@ async function resolveLicenseStatus() {
     }), 8000);
     const data = await res.json();
     return !!data.paid;
-  } catch (e) { console.warn('License claim failed', e); return false; }
+  } catch (e) { console.warn('License claim failed', e); return reachedFirestore && navigator.onLine ? false : null; }
 }
 
 // Stripe's webhook can lag a few seconds behind the redirect back to the app,
@@ -179,7 +186,9 @@ async function deleteAccountFully() {
 
 async function retryLicenseCheck() {
   toast('Checking…', 'info', 1500);
-  window._licensed = await resolveLicenseStatus();
+  const status = await resolveLicenseStatus();
+  if (status === null) { toast('Can’t reach Semester HQ right now. Check your connection and try again.', 'error'); return; }
+  window._licensed = status;
   window._licenseChecked = true;
   if (window._licensed) { clearCheckoutReturnParam(); await cloudPull(); toast('You’re all set!', 'success'); }
   if (typeof render === 'function') render();

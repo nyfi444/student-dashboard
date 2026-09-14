@@ -24,6 +24,20 @@ const DEVICE_LOCAL_VIEW_KEYS = ['route', 'subRoute', 'groupTab', 'groupTaskFilte
 
 function fbConfigured() { return !!FB_CONFIG.apiKey; }
 
+// Marks "this device has edits the cloud hasn't confirmed yet," so a reload
+// (or reopening after being offline) can tell local edits apart from a stale
+// copy. See cloudPull.
+const UNSYNCED_KEY = 'shq_unsynced';
+function markLocalUnsynced() {
+  if (!_fbUser || !window._licensed || _applyingRemote) return;
+  try { localStorage.setItem(UNSYNCED_KEY, JSON.stringify({ uid: _fbUser.uid, at: Date.now() })); } catch {}
+}
+function readUnsyncedMarker() { try { return JSON.parse(localStorage.getItem(UNSYNCED_KEY) || 'null'); } catch { return null; } }
+function clearUnsyncedMarker(upTo) {
+  const m = readUnsyncedMarker();
+  if (m && m.at <= upTo) try { localStorage.removeItem(UNSYNCED_KEY); } catch {}
+}
+
 function bootFirebase() {
   if (!fbConfigured() || typeof firebase === 'undefined') return;
   try {
@@ -47,7 +61,11 @@ function bootFirebase() {
         // this moment is "just paid" to show "Your HQ is ready" instead of the
         // routine returning-user toast.
         const justPurchased = typeof checkoutReturnPending === 'function' && checkoutReturnPending();
-        window._licensed = await resolveLicenseStatus();
+        const status = await resolveLicenseStatus();
+        // Offline (or the network's down): keep trusting this device's last
+        // confirmed answer, and re-check once the connection comes back.
+        window._licenseOffline = status === null;
+        window._licensed = status === null ? localStorage.getItem(LICENSE_DEVICE_FLAG) === '1' : status;
         // Just came back from Stripe and the webhook may still be catching up, so retry a bit before giving up.
         if (!window._licensed && justPurchased) {
           window._checkoutPending = true;
@@ -286,6 +304,7 @@ function queueCloudSync() {
       await migrateInlineAttachmentsToStorage();
       const { notes, ...coreState } = state;
       const coreData = JSON.stringify(coreState);
+      const capturedAt = Date.now();
       if (coreData.length > FIRESTORE_DOC_SAFE_BYTES) {
         // Every edit while still oversized re-enters this branch. Only the
         // first one should actually interrupt the user, not one toast per
@@ -337,11 +356,12 @@ function queueCloudSync() {
         await batch.commit();
       }
       _lastKnownUpdatedAt = myUpdatedAt;
+      clearUnsyncedMarker(capturedAt);
       _lastSyncedNoteIds = currentIds;
       _syncFailureShown = false;
     } catch (e) {
       console.warn('Cloud sync failed', e);
-      if (!_syncFailureShown) {
+      if (!_syncFailureShown && navigator.onLine) {
         _syncFailureShown = true;
         toast('Sync failed. Your changes are saved on this device and will retry.', 'error', 5000);
       }
@@ -354,7 +374,16 @@ async function cloudPull() {
   try {
     const planner = _fbDb.collection('planners').doc(_fbUser.uid);
     const [doc, notesSnap] = await Promise.all([planner.get(), planner.collection('notes').get()]);
-    if (doc.exists && doc.data().data) {
+    const pending = readUnsyncedMarker();
+    if (doc.exists && doc.data().data && pending && pending.uid === _fbUser.uid && pending.at > (doc.data().updatedAt || 0)) {
+      // Changes were made on this device (probably offline) after the cloud
+      // copy was last written, and never made it up. Keep them and push,
+      // instead of replacing them with the older cloud version.
+      _lastKnownUpdatedAt = doc.data().updatedAt || 0;
+      _lastSyncedNoteIds = new Set(notesSnap.docs.map(d => d.id));
+      queueCloudSync();
+      toast('Synced the changes you made while offline.', 'success');
+    } else if (doc.exists && doc.data().data) {
       _applyingRemote = true;
       state = migrate(JSON.parse(doc.data().data));
       _lastKnownUpdatedAt = doc.data().updatedAt || 0;
@@ -377,7 +406,7 @@ async function cloudPull() {
     }
   } catch (e) {
     console.warn('Cloud pull failed', e);
-    toast('Couldn’t load your synced data. Showing what’s saved on this device instead.', 'error', 5000);
+    if (navigator.onLine) toast('Couldn’t load your synced data. Showing what’s saved on this device instead.', 'error', 5000);
   }
   // This one-time pull only ever reflects the moment the app opened. Without
   // a live listener, a device left open in another tab/window keeps whatever

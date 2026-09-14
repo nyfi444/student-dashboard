@@ -1,6 +1,6 @@
 /* ── Settings: theme, account/sync, AI, grading, data, semesters ─── */
 const FAQ_ITEMS = [
-  { q: 'How does AI syllabus upload work?', a: 'Go to Courses → Upload syllabus and paste, upload a PDF, or upload a photo of your syllabus. Claude reads it and fills in the course name, meeting times, grading breakdown, and assignments. You review and edit everything before it’s added. No API key needed: AI requests are proxied through a server that holds the key, so you never see or manage one.' },
+  { q: 'How does AI syllabus upload work?', a: 'Go to Courses → Upload syllabus and paste, upload a PDF, or upload a photo of your syllabus. Claude reads it and fills in the course name, meeting times, and assignments. You review and edit everything before it’s added. No API key needed: AI requests are proxied through a server that holds the key, so you never see or manage one.' },
   { q: 'Where is my data stored, and is it private?', a: 'Everything lives in your browser’s local storage by default. Nothing is sent anywhere unless you turn on cross-device sync or use an AI feature (which sends only the text/image you’re asking about, routed through our AI proxy, never directly to Anthropic from your browser).' },
   { q: 'How do I sync across devices?', a: 'Sign in with Google under Settings → Account & Sync to turn it on. If this deployment has payments configured, signing in unlocks a $7.99/month subscription that activates sync, AI upload, and cross-device Study Groups for that account. Without it, everything still works great locally on one device. If payments aren’t configured on this deployment, signing in alone is enough. Either way, the app owner sets sync up once by adding a Firebase project to FB_CONFIG in js/firebase.js (see README.md).' },
   { q: 'What happens when I start a new semester?', a: 'Settings → Semester reset archives your current semester (nothing is deleted, you can still view it from the semester dropdown) and sets up a fresh one, optionally carrying over your course names and instructors as a starting point.' },
@@ -63,6 +63,8 @@ function pageSettings() {
         </details>
       </div>
 
+      ${remindersSettingsCard()}
+
       <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">Account & Sync</h3>
         ${_fbUser ? `
@@ -94,8 +96,8 @@ function pageSettings() {
         </div>
         <div class="field mt-8" style="margin-bottom:0"><label>Weekly study goal (min)</label><input class="input" type="number" value="${state.settings.weeklyStudyGoalMinutes ?? ''}" oninput="state.settings.weeklyStudyGoalMinutes=Number(this.value)||0;touch()"></div>
         <div class="flex-gap wrap mt-8">
-          <button class="btn" onclick="openSemesterResetWizard()">${icon('refresh-cw', 13, 2)} Semester reset</button>
-          <button class="btn" onclick="openSemesterSetupWizard()">${icon('sparkles', 13, 1.6)} Semester setup</button>
+          <button class="btn" onclick="openSemesterReset()">${icon('refresh-cw', 13, 2)} Semester reset</button>
+          <button class="btn" onclick="openSemesterSetup()">${icon('sparkles', 13, 1.6)} Semester setup</button>
         </div>
       </div>
 
@@ -205,7 +207,7 @@ function resetAllData() {
   }, 'Erase everything');
 }
 
-function openSemesterResetWizard() {
+function openSemesterReset() {
   openModal(`
     <div class="modal-head"><h3>Semester reset</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">

@@ -13,6 +13,7 @@ class AiError extends Error {}
 
 async function callClaude({ system, userContent, maxTokens = 2000 }) {
   if (!aiEnabled()) throw new AiError('AI features aren’t set up on this deployment yet.');
+  if (!navigator.onLine) throw new AiError('You’re offline. This needs an internet connection.');
   // AI upload is part of the paid subscription, not the free local tier, see
   // checkout.js. This client-side check just avoids a wasted round trip and
   // gives a clear message; the Worker enforces the real gate server-side.

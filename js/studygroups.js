@@ -111,11 +111,44 @@ function availFromRanges(ranges) {
 }
 
 /* ── People ────────────────────────────────────────────────────── */
-const AVATAR_SHADES = ['#141414', '#3a3a3a', '#5a5a5a', '#767676', '#2b2b2b', '#4a4a4a'];
-function personShade(id) { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return AVATAR_SHADES[h % AVATAR_SHADES.length]; }
-function personAvatar(id, name, size = 26) {
+// Everyone in a group has a color (they can pick their own), used for their
+// avatar and their stripe in the Find a time grid, so you can tell people
+// apart at a glance. Stored per group at people.<uid>.color.
+const PERSON_COLORS = ['#3b6ea5', '#c0503f', '#3f8a55', '#8a5cc2', '#d08a1e', '#2a9396', '#c24f8a', '#6b7a2e', '#5a6b7b', '#a0613a'];
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const _groupColorCache = new WeakMap();
+function groupColorMap(g) {
+  if (!g) return {};
+  if (_groupColorCache.has(g)) return _groupColorCache.get(g);
+  const map = {};
+  Object.entries(g.people || {}).forEach(([id, p]) => { if (HEX_COLOR.test(p?.color || '')) map[id] = p.color; });
+  // Nobody picked yet: hand out unused palette colors in the order people joined.
+  const taken = new Set(Object.values(map));
+  const free = PERSON_COLORS.filter(c => !taken.has(c));
+  const unpicked = [
+    ...Object.entries(g.people || {}).filter(([id]) => !map[id]).sort((a, b) => (a[1]?.joinedAt || 0) - (b[1]?.joinedAt || 0)).map(([id]) => id),
+    ...Object.keys(g.avail || {}).filter(id => !map[id] && !(g.people || {})[id]),
+  ];
+  unpicked.forEach((id, i) => { map[id] = (free.length ? free : PERSON_COLORS)[i % (free.length || PERSON_COLORS.length)]; });
+  _groupColorCache.set(g, map);
+  return map;
+}
+function personColor(g, id) { return groupColorMap(g)[id] || '#6b6b6b'; }
+function personAvatar(id, name, size = 26, color = '#6b6b6b') {
   const initial = esc((String(name || '?').trim()[0] || '?').toUpperCase());
-  return `<span class="avatar sg-avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px;--shade:${personShade(id)}" title="${esc(name)}">${initial}</span>`;
+  return `<span class="avatar sg-avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px;--shade:${HEX_COLOR.test(color) ? color : '#6b6b6b'}" title="${esc(name)}">${initial}</span>`;
+}
+function setMyGroupColor(code, color) {
+  if (!PERSON_COLORS.includes(color)) return;
+  const g = findGroup(code);
+  if (!g) return;
+  groupWrite(code, { [`people.${myUidFor(g)}.color`]: color });
+}
+function colorSwatches(g, onPickJs) {
+  const mine = personColor(g, myUidFor(g));
+  const takenBy = {};
+  groupPeople(g).forEach(p => { if (p.uid !== myUidFor(g) && HEX_COLOR.test(g.people?.[p.uid]?.color || '')) takenBy[g.people[p.uid].color] = p.name; });
+  return `<div class="sg-swatches" role="radiogroup" aria-label="Your color">${PERSON_COLORS.map(c => `<button class="sg-swatch ${c === mine ? 'active' : ''}" role="radio" aria-checked="${c === mine}" style="background:${c}" title="${takenBy[c] ? `Also used by ${esc(takenBy[c])}` : 'Use this color'}" aria-label="Color ${c}${takenBy[c] ? `, used by ${esc(takenBy[c])}` : ''}" onclick="${onPickJs}('${g.code}','${c}')">${takenBy[c] ? '<span class="sg-swatch-taken"></span>' : ''}</button>`).join('')}</div>`;
 }
 function groupPeople(g) {
   const members = new Set(g.memberUids || []);
@@ -128,7 +161,7 @@ function personName(g, id) { return g.people?.[id]?.name || g.avail?.[id]?.name 
 function avatarStack(g, max = 4, size = 26, uids) {
   const list = uids ? uids.map(u => ({ uid: u, name: personName(g, u) })) : groupPeople(g);
   if (!list.length) return '';
-  return `<span class="sg-stack">${list.slice(0, max).map(p => personAvatar(p.uid, p.name, size)).join('')}${list.length > max ? `<span class="avatar sg-avatar sg-avatar-more" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.38)}px">+${list.length - max}</span>` : ''}</span>`;
+  return `<span class="sg-stack">${list.slice(0, max).map(p => personAvatar(p.uid, p.name, size, personColor(g, p.uid))).join('')}${list.length > max ? `<span class="avatar sg-avatar sg-avatar-more" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.38)}px">+${list.length - max}</span>` : ''}</span>`;
 }
 
 /* ── Group data: entries, live copies, normalized views ───────── */
@@ -666,12 +699,12 @@ function groupOverviewTab(g) {
       <div class="sg-col">
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Members</h3><button class="sg-link" onclick="openInviteModal('${g.code}')">${icon('user-plus', 13, 1.8)} Invite</button></div>
-          ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28)}<div class="row-title">${esc(p.name)}${p.uid === u ? ' <span class="small muted">(you)</span>' : ''}</div>${p.role === 'owner' ? '<span class="small muted">Owner</span>' : ''}</div>`).join('')}
+          ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, personColor(g, p.uid))}<div class="row-title">${esc(p.name)}${p.uid === u ? ' <span class="small muted">(you)</span>' : ''}</div>${p.role === 'owner' ? '<span class="small muted">Owner</span>' : ''}</div>`).join('')}
           ${legacyNames.length ? `<div class="small muted mt-8">From before the update: ${legacyNames.map(esc).join(', ')}. They’ll appear here once they open the group.</div>` : ''}
         </div>
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Chat</h3><button class="sg-link" onclick="setGroupTab('chat')">Open chat →</button></div>
-          ${msgs.length ? msgs.map(m => `<div class="sg-mini-msg">${personAvatar(m.uid, m.name, 22)}<div class="small"><span class="sg-strong">${esc(m.uid === u ? 'You' : m.name)}</span> <span class="muted">${fmtRelativeTime(m.at)}</span><div class="sg-mini-text">${esc(m.text)}</div></div></div>`).join('') : `<p class="small muted">No messages yet. <button class="sg-link" onclick="setGroupTab('chat')">Say hi</button></p>`}
+          ${msgs.length ? msgs.map(m => `<div class="sg-mini-msg">${personAvatar(m.uid, m.name, 22, personColor(g, m.uid))}<div class="small"><span class="sg-strong">${esc(m.uid === u ? 'You' : m.name)}</span> <span class="muted">${fmtRelativeTime(m.at)}</span><div class="sg-mini-text">${esc(m.text)}</div></div></div>`).join('') : `<p class="small muted">No messages yet. <button class="sg-link" onclick="setGroupTab('chat')">Say hi</button></p>`}
         </div>
         <div class="card card-pad">
           <h3 class="sg-h3 mb-8">Recent activity</h3>
@@ -844,24 +877,34 @@ function downloadSessionIcs(code, sid) {
 function groupAvailabilityTab(g) {
   const u = myUidFor(g);
   const days = availDayOrder();
-  const contributors = Object.entries(g.avail || {}).filter(([, a]) => availHasAny(a));
+  const contributors = Object.entries(g.avail || {}).filter(([id, a]) => safeId(id) && availHasAny(a));
   const people = groupPeople(g);
   const best = groupBestTimes(g);
   const mineAdded = availHasAny(g.avail?.[u]);
   const missing = people.filter(p => !availHasAny(g.avail?.[p.uid]));
+  const view = window._availView === 'heat' || contributors.length > 8 ? 'heat' : 'people';
+  const focus = contributors.some(([id]) => id === window._availFocus) ? window._availFocus : null;
   return `
     <div class="sg-toolbar">
-      <div class="small muted">Click and drag to mark when you’re usually free each week. Everyone’s answers combine into the heatmap, where darker means more people are free.</div>
+      <div class="small muted">Click and drag to mark when you’re usually free each week. Everyone has their own color, so the group grid shows exactly who’s free when.</div>
     </div>
     <div class="sg-avail-wrap">
-      <div class="card card-pad">
+      <div class="card card-pad" style="--me-color:${personColor(g, u)}">
         <div class="flex-between mb-8"><h3 class="sg-h3">Your weekly availability</h3>${mineAdded ? `<button class="btn btn-ghost btn-sm" onclick="clearMyAvailability('${g.code}')">Clear</button>` : '<span class="small muted">Drag to paint</span>'}</div>
+        <div class="sg-mycolor"><span class="small muted">Your color</span>${colorSwatches(g, 'setMyGroupColor')}</div>
         ${availGrid(g, days, 'mine')}
       </div>
       <div class="card card-pad">
-        <div class="flex-between mb-8"><h3 class="sg-h3">Group heatmap</h3><span class="small muted">${contributors.length} of ${people.length} added</span></div>
-        ${availGrid(g, days, 'heat')}
-        <div class="sg-legend small muted"><span>Fewer free</span><span class="sg-legend-bar"></span><span>Everyone</span></div>
+        <div class="flex-between mb-8">
+          <h3 class="sg-h3">Group availability</h3>
+          ${contributors.length <= 8 ? `<div class="segmented sg-view-toggle"><button class="${view === 'people' ? 'active' : ''}" onclick="window._availView='people';render()">People</button><button class="${view === 'heat' ? 'active' : ''}" onclick="window._availView='heat';render()">Heatmap</button></div>` : `<span class="small muted">${contributors.length} of ${people.length} added</span>`}
+        </div>
+        ${view === 'people' ? `
+          <div class="sg-legend-people" role="group" aria-label="Highlight one person">
+            ${contributors.length ? contributors.map(([id]) => `<button class="sg-legend-person ${focus === id ? 'active' : ''} ${focus && focus !== id ? 'dim' : ''}" style="--p:${personColor(g, id)}" aria-pressed="${focus === id}" onclick="window._availFocus=${focus === id ? 'null' : `'${id}'`};render()"><span class="sg-legend-dot"></span>${esc(id === u ? 'You' : personName(g, id))}</button>`).join('') : '<span class="small muted">No one has added availability yet.</span>'}
+          </div>` : ''}
+        ${availGrid(g, days, view, focus)}
+        ${view === 'heat' ? `<div class="sg-legend small muted"><span>Fewer free</span><span class="sg-legend-bar"></span><span>Everyone</span></div>` : `<div class="small muted mt-8">${focus ? `Showing only ${esc(focus === u ? 'you' : personName(g, focus))}. Click again to show everyone.` : 'Click a name to highlight just that person.'}</div>`}
       </div>
     </div>
     <div class="grid grid-2 mt-16" style="align-items:start">
@@ -871,15 +914,15 @@ function groupAvailabilityTab(g) {
       </div>
       <div class="card card-pad">
         <h3 class="sg-h3 mb-8">Who’s added theirs</h3>
-        ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 24)}<div class="row-title small">${esc(p.name)}${p.uid === u ? ' <span class="muted">(you)</span>' : ''}</div>${availHasAny(g.avail?.[p.uid]) ? `<span class="small">${icon('check', 13, 2.2)} Added</span>` : '<span class="small muted">Not yet</span>'}</div>`).join('')}
+        ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, personColor(g, p.uid))}<div class="row-title small">${esc(p.name)}${p.uid === u ? ' <span class="muted">(you)</span>' : ''}</div>${availHasAny(g.avail?.[p.uid]) ? `<span class="small">${icon('check', 13, 2.2)} Added</span>` : '<span class="small muted">Not yet</span>'}</div>`).join('')}
         ${missing.length && !g.local ? `<button class="btn btn-sm mt-8" onclick="copyAvailabilityNudge('${g.code}')">${icon('copy', 13, 1.8)} Copy a reminder for the group</button>` : ''}
       </div>
     </div>
   `;
 }
-function availGrid(g, days, mode) {
+function availGrid(g, days, mode, focus = null) {
   const u = myUidFor(g);
-  const contributors = Object.entries(g.avail || {}).filter(([, a]) => availHasAny(a));
+  const contributors = Object.entries(g.avail || {}).filter(([id, a]) => safeId(id) && availHasAny(a));
   const mine = g.avail?.[u];
   const rows = [];
   rows.push(`<div class="sg-grid-corner"></div>${days.map(d => `<div class="sg-grid-day">${AVAIL_DAYS[d]}</div>`).join('')}`);
@@ -892,13 +935,22 @@ function availGrid(g, days, mode) {
       }
       const free = contributors.filter(([, a]) => availDay(a, d)[i] === '1').map(([id]) => id);
       const everyone = contributors.length >= 2 && free.length === contributors.length;
-      const pct = contributors.length ? Math.round((free.length / contributors.length) * 100) : 0;
       const label = `${AVAIL_DAYS_LONG[d]} ${fmtTime(slotTime(i))}: ${free.length ? free.map(id => personName(g, id)).join(', ') : 'nobody'} free`;
+      if (mode === 'people') {
+        // One thin stripe per person, in the same order in every cell, so each
+        // person's free time lines up into a colored column you can follow.
+        const stripes = contributors.map(([id]) => {
+          const on = free.includes(id) && (!focus || focus === id);
+          return `<i style="${on ? `background:${personColor(g, id)}` : ''}"></i>`;
+        }).join('');
+        return `<div class="sg-cell sg-cell-people ${hourRow ? 'hr' : ''} ${everyone && !focus ? 'all' : ''}" title="${esc(label)}">${stripes}</div>`;
+      }
+      const pct = contributors.length ? Math.round((free.length / contributors.length) * 100) : 0;
       return `<div class="sg-cell ${hourRow ? 'hr' : ''} ${everyone ? 'all' : ''}" style="--heat:${pct}%" title="${esc(label)}"></div>`;
     }).join(''));
   }
-  const attrs = mode === 'mine' ? `id="sg-avail-mine" data-code="${g.code}" aria-label="Your weekly availability. Click and drag to mark free time."` : `aria-label="Group availability heatmap"`;
-  return `<div class="sg-grid-scroll"><div class="sg-grid ${mode === 'mine' ? 'sg-grid-mine' : 'sg-grid-heat'}" ${attrs} style="--sg-cols:${days.length}">${rows.join('')}</div></div>`;
+  const attrs = mode === 'mine' ? `id="sg-avail-mine" data-code="${g.code}" aria-label="Your weekly availability. Click and drag to mark free time."` : `aria-label="Group availability, ${mode === 'people' ? 'one color per person' : 'heatmap'}"`;
+  return `<div class="sg-grid-scroll"><div class="sg-grid ${mode === 'mine' ? 'sg-grid-mine' : mode === 'people' ? 'sg-grid-people' : 'sg-grid-heat'}" ${attrs} style="--sg-cols:${days.length}">${rows.join('')}</div></div>`;
 }
 let _availPaint = null;
 function bindAvailabilityPainting() {
@@ -999,7 +1051,7 @@ function bestTimeRow(g, w) {
   return `
     <div class="sg-best">
       <div class="sg-best-when"><div class="sg-strong">${AVAIL_DAYS_LONG[w.day]}s, ${fmtTime(slotTime(w.start))}–${fmtTime(slotTime(w.end))}</div>
-        <div class="small muted">${everyone ? 'Everyone who’s added availability' : `${w.uids.length} of ${total}`}: ${w.uids.map(id => esc(personName(g, id))).join(', ')}</div></div>
+        <div class="small muted">${everyone ? 'Everyone who’s added availability' : `${w.uids.length} of ${total}`}: ${w.uids.map(id => `<span class="sg-name-dot" style="--p:${personColor(g, id)}"></span>${esc(personName(g, id))}`).join(', ')}</div></div>
       <button class="btn btn-sm" onclick="scheduleFromBestTime('${g.code}',${w.day},${w.start},${w.end})">Schedule</button>
     </div>`;
 }
@@ -1308,7 +1360,7 @@ function groupChatTab(g) {
     const mine = m.uid === u;
     return `${sep}
       <div class="sg-msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''}">
-        ${mine ? '' : grouped ? '<span class="sg-msg-spacer"></span>' : personAvatar(m.uid, m.name, 28)}
+        ${mine ? '' : grouped ? '<span class="sg-msg-spacer"></span>' : personAvatar(m.uid, m.name, 28, personColor(g, m.uid))}
         <div class="sg-msg-body">
           ${!mine && !grouped ? `<div class="sg-msg-name">${esc(m.name)} <span class="muted">${new Date(m.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></div>` : ''}
           <div class="sg-bubble" title="${esc(new Date(m.at).toLocaleString())}">${linkifyText(m.text)}</div>
@@ -1375,7 +1427,7 @@ function openCreateGroupModal() {
   openModal(`
     <div class="modal-head"><h3>New study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
-      <div class="field"><label for="gf-name">Group name</label><input class="input" id="gf-name" maxlength="80" placeholder="Calc II study crew" onkeydown="if(event.key==='Enter')submitCreateGroup()"></div>
+      <div class="field"><label for="gf-name">Group name</label><input class="input" id="gf-name" maxlength="80" placeholder="Calc II group" onkeydown="if(event.key==='Enter')submitCreateGroup()"></div>
       <div class="field"><label for="gf-course">Class <span class="muted">(optional)</span></label>
         <input class="input" id="gf-course" maxlength="60" list="gf-course-list" placeholder="MATH 152">
         <datalist id="gf-course-list">${courses.map(c => `<option value="${esc(c.code || c.name)}">`).join('')}</datalist>
@@ -1549,11 +1601,12 @@ function openGroupSettingsModal(code) {
       <div class="field"><label for="gs-name">Group name</label><input class="input" id="gs-name" value="${esc(g.name)}" maxlength="80"></div>
       <div class="field"><label for="gs-course">Class</label><input class="input" id="gs-course" value="${esc(g.courseLabel || '')}" maxlength="60" list="gs-course-list" placeholder="Optional"><datalist id="gs-course-list">${activeCourses().map(c => `<option value="${esc(c.code || c.name)}">`).join('')}</datalist></div>
       <div class="field"><label for="gs-desc">Description</label><input class="input" id="gs-desc" value="${esc(g.description || '')}" maxlength="200" placeholder="Optional"></div>
+      <div class="field"><label>Your color in this group</label>${colorSwatches(g, 'pickGroupColorFromSettings')}</div>
       <div class="divider"></div>
       <div class="small dim mb-8" style="font-weight:600">Members (${people.length})</div>
       ${people.map(p => `
         <div class="sg-person">
-          ${personAvatar(p.uid, p.name, 26)}
+          ${personAvatar(p.uid, p.name, 26, personColor(g, p.uid))}
           <div class="row-title small">${esc(p.name)}${p.uid === u ? ' <span class="muted">(you)</span>' : ''}</div>
           ${p.role === 'owner' ? '<span class="small muted">Owner</span>' : isOwner && !g.local && p.uid !== u ? `<button class="btn btn-ghost btn-sm" onclick="confirmRemoveMember('${code}','${esc(p.uid)}')">Remove</button>` : ''}
         </div>`).join('')}
@@ -1565,6 +1618,10 @@ function openGroupSettingsModal(code) {
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveGroupSettings('${code}')">Save</button></div>
   `);
+}
+function pickGroupColorFromSettings(code, color) {
+  setMyGroupColor(code, color);
+  setTimeout(() => { if ($('#gs-name')) openGroupSettingsModal(code); }, 60);
 }
 async function saveGroupSettings(code) {
   const name = $('#gs-name').value.trim();
@@ -1752,13 +1809,13 @@ function createSampleGroup() {
   const reviewId = uid(), swapId = uid(), pastId = uid();
   const entry = {
     v: 2, code, local: true, sample: true,
-    name: 'BIO 201 Study Squad', courseLabel: 'BIO 201', description: 'Weekly review before exams. Usually Wednesdays in the library.',
+    name: 'BIO 201 Group', courseLabel: 'BIO 201', description: 'Weekly review before exams. Usually Wednesdays in the library.',
     createdBy: maya, createdAt: now - 20 * D, updatedAt: now,
     memberUids: [maya, jordan, priya, me],
     people: {
-      [maya]: { name: 'Maya', role: 'owner', joinedAt: now - 20 * D },
-      [jordan]: { name: 'Jordan', role: 'member', joinedAt: now - 19 * D },
-      [priya]: { name: 'Priya', role: 'member', joinedAt: now - 12 * D },
+      [maya]: { name: 'Maya', role: 'owner', joinedAt: now - 20 * D, color: '#c0503f' },
+      [jordan]: { name: 'Jordan', role: 'member', joinedAt: now - 19 * D, color: '#3f8a55' },
+      [priya]: { name: 'Priya', role: 'member', joinedAt: now - 12 * D, color: '#8a5cc2' },
       [me]: { name: myGroupName(), role: 'member', joinedAt: now - 2 * D },
     },
     members: ['Maya', 'Jordan', 'Priya', myGroupName()], events: [],

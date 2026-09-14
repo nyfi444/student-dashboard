@@ -568,6 +568,7 @@ function renderNoteEditor(note) {
           <button class="btn btn-ghost btn-sm" onclick="openMoveNoteModal('${note.id}')">${icon('folder', 13)} Move</button>
           <button class="btn btn-ghost btn-sm" onclick="exportNoteToPdf('${note.id}')">${icon('download', 13)} Export PDF</button>
           <button class="btn btn-ghost btn-sm" onclick="triggerNotePdfUpload('${note.id}')">${icon('upload', 13)} Upload PDF</button>
+          <button class="btn btn-ghost btn-sm" onclick="openGenerateDeckModal('${note.id}')">${icon('layers', 13)} Flashcards</button>
           <button class="btn btn-ghost btn-sm" onclick="shareNoteToGroup('${note.id}')">${icon('users', 13)} Share</button>
         </div>
       </div>
