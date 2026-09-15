@@ -61,6 +61,8 @@ function pageSettings() {
 
       ${remindersSettingsCard()}
 
+      ${installSettingsCard()}
+
       <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">Account & Sync</h3>
         ${_fbUser ? `

@@ -129,6 +129,7 @@ function initApp() {
   bootFirebase();
   if (typeof startReminderLoop === 'function') startReminderLoop();
   if (typeof registerServiceWorker === 'function') registerServiceWorker();
+  if (typeof initInstallPrompt === 'function') initInstallPrompt();
   if (typeof handleSharedContent === 'function') handleSharedContent();
   if (new URLSearchParams(location.search).has('capture')) { history.replaceState({}, '', location.pathname); setTimeout(() => openQuickCapture(), 300); }
   $('.sidebar-expand-fab').innerHTML = icon('panel-left', 16, 1.6);

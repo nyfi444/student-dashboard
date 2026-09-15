@@ -212,7 +212,7 @@ function remindersSettingsCard() {
     <div class="card card-pad" id="settings-reminders">
       <h3 style="font-size:15px" class="mb-8">Reminders</h3>
       <p class="small muted mb-16">Get a heads-up before things are due${typeof pushSupported === 'function' && pushSupported() && cloudGroupsEnabled() ? ', even when Semester HQ is closed' : ''}.</p>
-      ${typeof isIosBrowserNotInstalled === 'function' && isIosBrowserNotInstalled() ? `<div class="sg-callout small mb-16"><span>${icon('share', 14, 1.8)}</span><div>On iPhone, reminders work once Semester HQ is on your Home Screen. Tap Share, then <strong>Add to Home Screen</strong>, and turn reminders on from there.</div></div>` : ''}
+      ${typeof isIosBrowserNotInstalled === 'function' && isIosBrowserNotInstalled() ? `<div class="sg-callout small mb-16"><span>${icon('share', 14, 1.8)}</span><div>On iPhone, reminders work once Semester HQ is on your Home Screen. Tap Share, then <strong>Add to Home Screen</strong>, and turn reminders on from there. <button class="sg-link" onclick="openInstallHelp()">Show me how</button></div></div>` : ''}
       ${perm === 'unsupported' ? `<p class="small muted mb-16">This browser doesn’t support notifications. Use the calendar export below instead.</p>`
         : perm === 'denied' ? `<p class="small mb-16">Notifications are blocked for this site. Allow them in your browser’s site settings to turn reminders on.</p>`
         : `<div class="checkbox-row mb-16"><input type="checkbox" id="st-reminders" ${on ? 'checked' : ''} onchange="enableReminders(this.checked)"><label for="st-reminders" style="font-weight:600">Send me reminders</label></div>`}

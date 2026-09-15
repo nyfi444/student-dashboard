@@ -1631,3 +1631,15 @@ textarea.input.ex-topic-input { resize: none; min-height: 36px; height: 36px; li
   .todo-list-actions { margin-left: 4px; }
 }
 .seg-count { margin-left: 3px; font-weight: 500; }
+
+/* ── Add to home screen / bookmark ─────────────────────────────── */
+.install-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.install-icon { width: 46px; height: 46px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.14); flex-shrink: 0; }
+.install-copy { flex: 1; min-width: 220px; }
+.install-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.install-steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 14px; }
+.install-step { display: flex; gap: 12px; align-items: flex-start; font-size: 14px; line-height: 1.5; }
+.install-num { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.install-glyph { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 4px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--border); vertical-align: -6px; font-weight: 700; }
+.install-steps kbd { font-family: inherit; font-size: 12px; font-weight: 600; padding: 1px 7px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); box-shadow: 0 1px 0 var(--border); }
+@media (max-width: 760px) { .install-actions { width: 100%; } .install-actions .btn { flex: 1; justify-content: center; } }

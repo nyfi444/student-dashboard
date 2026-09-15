@@ -17,6 +17,7 @@ function paletteItems() {
   add('Actions', 'Add a time block', '', 'calendar', () => { setState({ route: 'calendar', subRoute: null }); openEventModal(null, todayIso()); }, 'event schedule');
   add('Actions', 'Join a shared class', 'Get every deadline for a class in one tap', 'graduation-cap', () => { setState({ route: 'courses', subRoute: null }); openJoinClassModal(); }, 'class code section syllabus classmates');
   add('Actions', 'Start a study group', '', 'users', () => { setState({ route: 'studygroups', subRoute: null }); openCreateGroupModal(); }, 'create group');
+  if (!isStandaloneApp()) add('Actions', installPlatform() === 'desktop' ? 'Bookmark or install Semester HQ' : 'Add Semester HQ to your home screen', 'One tap away, works offline', 'download', () => startInstall(), 'install app home screen bookmark pwa dock');
   add('Actions', 'Semester Wrapped', 'Your semester in shareable cards', 'sparkles', () => openWrapped(), 'recap story share instagram stats');
   add('Actions', 'Add an application', 'Internship, job, or scholarship', 'briefcase', () => { setState({ route: 'career', subRoute: null }); openApplicationModal(); }, 'career job internship scholarship');
   add('Actions', 'Join a study group', 'With a code', 'user-plus', () => { setState({ route: 'studygroups', subRoute: null }); openJoinGroupModal(); }, 'code invite');

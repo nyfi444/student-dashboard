@@ -67,6 +67,7 @@ function pageDashboard() {
   return `
     ${head}
     ${gettingStartedCard()}
+    ${installPromptCard()}
     ${wrappedDashboardBanner()}
     ${dashHero()}
     <div class="dash-grid">
