@@ -66,6 +66,7 @@ function pageDashboard() {
   const renderCol = (col) => shown.filter(id => DASH_WIDGET_DEFS[id].col === col).map(id => DASH_WIDGETS[id]()).filter(Boolean).join('');
   return `
     ${head}
+    ${policyUpdateNotice()}
     ${gettingStartedCard()}
     ${installPromptCard()}
     ${wrappedDashboardBanner()}
@@ -264,6 +265,20 @@ const DASH_WIDGETS = {
   },
   quickAdd: () => quickAddBar('dash', { mode: 'auto' }),
 };
+
+/* ── Policy updates ────────────────────────────────────────────────
+   The Privacy Policy and Terms promise an in-app heads-up for material
+   changes. Bump POLICY_VERSION with a new date when they change again. */
+const POLICY_VERSION = '2026-09-15';
+function policyUpdateNotice() {
+  if (!_fbUser || isEmbedded() || state.settings.policySeen === POLICY_VERSION) return '';
+  return `
+    <div class="sg-callout mb-16 policy-notice" role="status">
+      <span>${icon('file-text', 14, 1.8)}</span>
+      <div class="small" style="flex:1">We updated our <a href="https://semester-hq.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://semester-hq.com/terms.html" target="_blank" rel="noopener">Terms</a> for shared classes, clubs and teams, study groups, and reminders: what gets shared with whom, and how reminders work when the app is closed.</div>
+      <button class="btn btn-sm" onclick="state.settings.policySeen=POLICY_VERSION;touch()">Got it</button>
+    </div>`;
+}
 
 /* ── Getting started ───────────────────────────────────────────── */
 function onboardingSteps() {
