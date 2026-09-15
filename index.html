@@ -8,6 +8,18 @@
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#141414">
+<script>
+  // Paint the chosen theme and app icon before anything else loads, so a
+  // themed app never flashes the default colors (see applyTheme).
+  try {
+    var b = JSON.parse(localStorage.getItem('shq_boot_look') || 'null');
+    if (b) {
+      if (b.dark) document.documentElement.classList.add('dark');
+      if (b.vars) for (var k in b.vars) document.documentElement.style.setProperty(k, b.vars[k]);
+      if (b.icon) document.write('<link rel="apple-touch-icon" href="assets/icons/' + b.icon + '-180.png"><link rel="icon" type="image/png" href="assets/icons/' + b.icon + '-192.png">');
+    }
+  } catch (e) {}
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Semester HQ">
@@ -23,22 +35,21 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
-<!-- PDF text extraction for syllabus uploads -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<!-- PDF generation for Notebook export -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.14.0/html2pdf.bundle.min.js"></script>
+<!-- PDF reading/export and file storage libraries load on demand (see loadScriptOnce in js/utils.js) -->
 </head>
 <body>
+<a class="skip-link" href="#content" onclick="event.preventDefault();document.getElementById('content').focus()">Skip to content</a>
 <div id="app">
-  <nav class="sidebar" id="sidebar"></nav>
-  <main class="content" id="content"></main>
+  <nav class="sidebar" id="sidebar" aria-label="Main"></nav>
+  <main class="content" id="content" tabindex="-1">
+    <div class="boot-screen" aria-label="Loading Semester HQ"><div class="boot-mark">Semester HQ</div><div class="boot-bar"><span></span></div></div>
+  </main>
 </div>
 <button class="btn btn-icon sidebar-expand-fab" onclick="toggleSidebar()" title="Show sidebar" aria-label="Show sidebar"></button>
 
 <div class="overlay" id="overlay" onclick="closeModal()"></div>
-<div class="modal-wrap" id="modal-wrap"><div class="modal" id="modal"></div></div>
-<div class="toast-stack" id="toast-stack"></div>
+<div class="modal-wrap" id="modal-wrap"><div class="modal" id="modal" role="dialog" aria-modal="true" tabindex="-1"></div></div>
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 <input type="file" id="hidden-file-input" style="display:none">
 <div id="print-area"></div>
 
@@ -62,7 +73,16 @@
 <script src="js/projects.js"></script>
 <script src="js/studytools.js"></script>
 <script src="js/studygroups.js"></script>
+<script src="js/career.js"></script>
+<script src="js/capture.js"></script>
+<script src="js/wrapped.js"></script>
+<script src="js/classes.js"></script>
+<script src="js/quickparse.js"></script>
+<script src="js/syllabus.js"></script>
+<script src="js/orgs.js"></script>
+<script src="js/appearance.js"></script>
 <script src="js/reminders.js"></script>
+<script src="js/push.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/palette.js"></script>
 <script src="js/offline.js"></script>

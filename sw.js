@@ -8,14 +8,14 @@
    Bump VERSION whenever you deploy, so open tabs can offer "Refresh to
    update" and old cached files get cleaned up.
 ──────────────────────────────────────────────────────────────── */
-const VERSION = 'shq-2026-09-14-release1';
+const VERSION = 'shq-2026-09-14-release3';
 const APP_SHELL = [
   './', 'index.html', 'login.html', 'manifest.json', 'css/styles.css',
   'assets/favicon.png', 'assets/apple-touch-icon.png', 'assets/icon-192.png', 'assets/icon-512.png',
   'js/utils.js', 'js/icons.js', 'js/colorwheel.js', 'js/state.js', 'js/firebase.js', 'js/ai.js', 'js/errortracking.js',
   'js/checkout.js', 'js/ui.js', 'js/dashboard.js', 'js/courses.js', 'js/semestersetup.js', 'js/calendar.js', 'js/todos.js',
   'js/assignments.js', 'js/notebook.js', 'js/timer.js', 'js/exams.js', 'js/projects.js', 'js/studytools.js',
-  'js/studygroups.js', 'js/reminders.js', 'js/settings.js', 'js/palette.js', 'js/offline.js', 'js/app.js',
+  'js/studygroups.js', 'js/career.js', 'js/capture.js', 'js/wrapped.js', 'js/classes.js', 'js/quickparse.js', 'js/syllabus.js', 'js/orgs.js', 'js/appearance.js', 'js/reminders.js', 'js/push.js', 'js/settings.js', 'js/palette.js', 'js/offline.js', 'js/app.js',
 ];
 const CDN_HOSTS = ['www.gstatic.com', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'fonts.gstatic.com', 'api.fontshare.com', 'cdn.fontshare.com'];
 
@@ -39,6 +39,11 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+  // Android share sheet → Semester HQ: stash what was shared, then open the app.
+  if (req.method === 'POST' && new URL(req.url).pathname === '/share-target') {
+    event.respondWith(receiveShare(req));
+    return;
+  }
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
@@ -51,6 +56,18 @@ self.addEventListener('fetch', (event) => {
   // Everything else (Firestore, Auth, Storage, Stripe, the Worker): straight to the network.
 });
 
+async function receiveShare(req) {
+  try {
+    const form = await req.formData();
+    const cache = await caches.open('shq-share');
+    await Promise.all((await cache.keys()).map(k => cache.delete(k)));
+    const files = form.getAll('files').filter(f => f && typeof f === 'object' && f.size);
+    await Promise.all(files.slice(0, 8).map((f, i) => cache.put(`/share-target/file-${i}`, new Response(f, { headers: { 'content-type': f.type || 'application/octet-stream' } }))));
+    const meta = { title: form.get('title') || '', text: form.get('text') || '', url: form.get('url') || '', files: files.slice(0, 8).map(f => ({ name: f.name, type: f.type })) };
+    await cache.put('/share-target/meta', new Response(JSON.stringify(meta), { headers: { 'content-type': 'application/json' } }));
+  } catch (e) {}
+  return Response.redirect('/?shared=1', 303);
+}
 async function networkFirst(req) {
   const cache = await caches.open(VERSION);
   try {
@@ -79,6 +96,15 @@ function fetchWithTimeout(req, ms) {
     fetch(req).then(r => { clearTimeout(timer); resolve(r); }, e => { clearTimeout(timer); reject(e); });
   });
 }
+
+// Reminders sent by the Worker while the app is closed (see js/push.js).
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { title: 'Semester HQ', body: event.data?.text() || '' }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'Semester HQ', {
+    body: data.body || '', tag: data.tag || 'semester-hq', icon: 'assets/icon-192.png', badge: 'assets/icon-192.png', data: { route: data.route || null },
+  }));
+});
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();

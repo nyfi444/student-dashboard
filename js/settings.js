@@ -33,14 +33,10 @@ function pageSettings() {
   return `
     ${pageHead('Settings', 'Customize your planner')}
     <div class="settings-columns">
-      <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Appearance</h3>
-        <div class="checkbox-row"><input type="checkbox" id="st-dark" ${state.settings.dark ? 'checked' : ''} onchange="toggleDark(this.checked)"><label for="st-dark">Dark mode</label></div>
-        <div class="field mt-16"><label>Display name</label><input class="input" value="${esc(state.settings.displayName)}" oninput="state.settings.displayName=this.value" onchange="touch()"></div>
-      </div>
+      ${appearanceSettingsCard()}
 
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Background</h3>
+        <h3 style="font-size:15px" class="mb-8">Custom background</h3>
         <p class="small muted mb-8">Changes the light-mode page background behind the sidebar and content. Text stays black either way, so it always stays legible no matter which background you pick.</p>
         <div class="bg-preview mb-8" style="background:${bgCssValue(state.settings.background)}"></div>
         <details class="settings-collapse">
@@ -153,18 +149,6 @@ function pageRecentlyDeleted() {
   `;
 }
 function toggleDark(on) { state.settings.dark = on; applyTheme(); touch(); }
-function applyTheme() {
-  document.documentElement.classList.toggle('dark', state.settings.dark);
-  if (state.settings.dark) {
-    const darkColor = state.settings.darkBackground?.color;
-    document.documentElement.style.setProperty('--bg', darkBgFromPreset(darkColor));
-    document.documentElement.style.setProperty('--bg-text', darkTextFromPreset(darkColor));
-  } else {
-    document.documentElement.style.removeProperty('--bg-text');
-    document.documentElement.style.setProperty('--bg', bgCssValue(state.settings.background));
-  }
-}
-
 function setBackgroundPreset(i) {
   state.settings.background = { ...BACKGROUND_PRESETS[i] };
   applyTheme();

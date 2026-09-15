@@ -109,10 +109,13 @@ function meetingsOnDate(dateIso) {
 // position everything by start/end. Without mapping them, a time block never
 // appeared on either view (only in Month, which doesn't need a time).
 function customEventsOnDate(dateIso) { return state.events.filter(e => e.date === dateIso).map(e => ({ ...e, start: e.startTime || null, end: e.endTime || null, color: e.color || getCourseColor(e.courseId), kind: 'custom' })); }
-function examsOnDate(dateIso) { return state.assignments.filter(a => a.type === 'exam' && a.dueDate === dateIso && activeCourses().some(c => c.id === a.courseId)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || '09:00', end: null, color: getCourseColor(a.courseId), kind: 'exam' })); }
+function examsOnDate(dateIso) { return state.assignments.filter(a => a.type === 'exam' && a.dueDate === dateIso && activeCourses().some(c => c.id === a.courseId)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || '09:00', end: null, color: getCourseColor(a.courseId), kind: 'exam', action: `openExamPrep('${a.id}')` })); }
 function deadlinesOnDate(dateIso) { return state.assignments.filter(a => a.type !== 'exam' && a.dueDate === dateIso && activeCourses().some(c => c.id === a.courseId)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || null, end: null, color: getCourseColor(a.courseId), kind: 'deadline' })); }
-function itemsOnDate(dateIso) { return [...meetingsOnDate(dateIso), ...customEventsOnDate(dateIso), ...examsOnDate(dateIso), ...deadlinesOnDate(dateIso), ...groupSessionsOnDate(dateIso)].sort((a, b) => (a.start || '').localeCompare(b.start || '')); }
-const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list', group: 'users' };
+function itemsOnDate(dateIso) {
+  return [...meetingsOnDate(dateIso), ...customEventsOnDate(dateIso), ...examsOnDate(dateIso), ...deadlinesOnDate(dateIso), ...groupSessionsOnDate(dateIso), ...careerItemsOnDate(dateIso),
+    ...officeHoursOnDate(dateIso), ...projectMilestonesOnDate(dateIso), ...orgEventsOnDate(dateIso)].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+}
+const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list', group: 'users', career: 'briefcase', office: 'clock', milestone: 'folder', org: 'shield' };
 
 function yearView() {
   const year = new Date(state.calDate + 'T00:00:00').getFullYear();
@@ -162,7 +165,7 @@ function monthView() {
         return `<div class="cal-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''}" onclick="openDayFromMonth('${dIso}')" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
           <div class="d-num">${d.getDate()}</div>
           ${brk ? `<div class="small muted" style="font-style:italic">${esc(brk.name)}</div>` : ''}
-          ${items.slice(0, 3).map(it => `<div class="cal-evt kind-${it.kind}" style="background:${it.color}22;color:${it.color}">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 9, 2.2)}</span>` : ''}${esc(it.title)}</div>`).join('')}
+          ${items.slice(0, 3).map(it => `<div class="cal-evt kind-${it.kind}" style="--c:${it.color}">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 9, 2.2)}</span>` : ''}${esc(it.title)}</div>`).join('')}
           ${items.length > 3 ? `<div class="small muted">+${items.length - 3} more</div>` : ''}
         </div>`;
       }).join('')}
@@ -202,8 +205,11 @@ function positionedBlock(it, dIso) {
   const top = ((startMin - CAL_HOURS[0] * 60) / 60) * 48;
   const endMin = it.end ? (() => { const [eh, em] = it.end.split(':').map(Number); return eh * 60 + em; })() : startMin + 45;
   const height = Math.max(22, ((endMin - startMin) / 60) * 48 - 2);
-  const clickable = it.kind === 'custom' ? `onclick="event.stopPropagation();openEventModal('${it.id}')"` : (it.kind === 'exam' || it.kind === 'deadline') ? `onclick="event.stopPropagation();openAssignmentModal('${it.id}')"` : it.kind === 'group' ? `onclick="event.stopPropagation();openGroupSession('${it.code}')"` : `onclick="event.stopPropagation()"`;
-  return `<div class="cal-block kind-${it.kind}" style="top:${top}px;height:${height}px;background:${it.color}" ${clickable} title="${esc(it.kind === 'group' ? `${it.title} (${it.groupName})` : it.title)}">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 10, 2.2)}</span>` : ''}${esc(it.title)}</div>`;
+  const clickable = it.action ? `onclick="event.stopPropagation();${it.action}"` : it.kind === 'custom' ? `onclick="event.stopPropagation();openEventModal('${it.id}')"` : (it.kind === 'exam' || it.kind === 'deadline') ? `onclick="event.stopPropagation();openAssignmentModal('${it.id}')"` : it.kind === 'group' ? `onclick="event.stopPropagation();openGroupSession('${it.code}')"` : it.kind === 'career' ? `onclick="event.stopPropagation();openApplicationModal('${it.id}')"` : `onclick="event.stopPropagation()"`;
+  // Deepened a little so white text stays readable; very light custom colors get dark text instead.
+  const hex = /^#[0-9a-f]{6}$/i.test(it.color || '') ? it.color : '#5a6b7b';
+  const bg = '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.78).toString(16).padStart(2, '0')).join('');
+  return `<div class="cal-block kind-${it.kind}" style="top:${top}px;height:${height}px;background-color:${bg};color:${inkOnColor(bg)}" ${clickable} title="${esc(it.kind === 'group' ? `${it.title} (${it.groupName})` : it.title)}">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 10, 2.2)}</span>` : ''}${esc(it.title)}</div>`;
 }
 
 function dayView() {

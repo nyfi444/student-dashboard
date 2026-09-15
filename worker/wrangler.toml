@@ -27,6 +27,10 @@ NOTIFY_EMAIL = "semesterhq@gmail.com"
 # Must be "onboarding@resend.dev" (Resend's shared sandbox sender) unless
 # you've verified your own sending domain in Resend, see worker/README.md.
 NOTIFY_FROM = "Semester HQ <onboarding@resend.dev>"
+# Web Push (reminders when the app is closed). The matching private key is the
+# VAPID_PRIVATE_JWK secret: wrangler secret put VAPID_PRIVATE_JWK
+VAPID_PUBLIC_KEY = "BKX_rScAJRN3xqruCKzrr6dD9zL9fhp6vP6yb3QCFC9duVTsr8r4PsMQUwueCBQyjV-H28AA1Uh2VYLQ0euhA1s"
+VAPID_SUBJECT = "mailto:hello@semester-hq.com"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
@@ -62,3 +66,7 @@ id = "c159c4afb7cc45619d6db5fd2fcde97d"
 #   CLOUDFLARE_ZONE_ID:    optional, required alongside CLOUDFLARE_API_TOKEN above. Find
 #                            it on the semester-hq.com zone's Overview page in the
 #                            Cloudflare dashboard (right sidebar, "Zone ID").
+
+# Sends due push reminders every 5 minutes (see sendDueReminders in src/index.js).
+[triggers]
+crons = ["*/5 * * * *"]

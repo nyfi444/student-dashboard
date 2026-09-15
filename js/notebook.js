@@ -658,6 +658,7 @@ async function exportNoteToPdf(id) {
   if (!note) return;
   const courseName = note.courseId ? getCourse(note.courseId)?.name : '';
   const crumbs = notePath(note);
+  if (typeof html2pdf === 'undefined') { try { await loadScriptOnce(HTML2PDF_SRC); } catch {} }
   if (typeof html2pdf === 'undefined') { legacyPrintNote(note, crumbs, courseName); return; }
 
   const filename = (note.name || 'Untitled note').replace(/[\\/:*?"<>|]/g, '-').trim() + '.pdf';

@@ -134,9 +134,18 @@ function groupColorMap(g) {
   return map;
 }
 function personColor(g, id) { return groupColorMap(g)[id] || '#6b6b6b'; }
+// White initials where they're readable on the member's color, dark ones on
+// the lighter colors (amber, green, teal), so every avatar meets 4.5:1.
+function inkOnColor(hex) {
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return 1.05 / (L + 0.05) >= 4.5 ? '#fff' : '#141414';
+}
 function personAvatar(id, name, size = 26, color = '#6b6b6b') {
   const initial = esc((String(name || '?').trim()[0] || '?').toUpperCase());
-  return `<span class="avatar sg-avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px;--shade:${HEX_COLOR.test(color) ? color : '#6b6b6b'}" title="${esc(name)}">${initial}</span>`;
+  const shade = HEX_COLOR.test(color) ? color : '#6b6b6b';
+  return `<span class="avatar sg-avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px;--shade:${shade};color:${inkOnColor(shade)}" title="${esc(name)}">${initial}</span>`;
 }
 function setMyGroupColor(code, color) {
   if (!PERSON_COLORS.includes(color)) return;
@@ -339,6 +348,9 @@ async function startGroupSync() {
   Object.keys(_liveGroups).forEach(c => { if (!codes.has(c)) delete _liveGroups[c]; });
   reconcileGroupSubscriptions();
   handlePendingJoin();
+  if (typeof syncSharedClasses === 'function') syncSharedClasses();
+  if (typeof startOrgSync === 'function') startOrgSync();
+  if (typeof ensurePushSubscription === 'function') ensurePushSubscription();
   if (typeof render === 'function') render();
 }
 // Anything in the planner that isn't a cloud membership entry: first-version
@@ -362,6 +374,7 @@ async function adoptStrayGroupEntries({ throttle = false } = {}) {
   reconcileGroupSubscriptions();
 }
 function stopGroupSync() {
+  if (typeof stopOrgSync === 'function') stopOrgSync();
   Object.keys(_groupDocUnsubs).forEach(code => { _groupDocUnsubs[code](); delete _groupDocUnsubs[code]; });
   closeGroupDetailListeners();
 }
@@ -1313,7 +1326,7 @@ function removeGroupResource(code, itemId) {
     const item = (_groupItems[code] || []).find(x => x.id === itemId);
     try {
       await _fbDb.collection('studyGroups').doc(code).collection('items').doc(itemId).delete();
-      if (item?.kind === 'file' && String(item.url || '').includes('firebasestorage')) _fbStorage.refFromURL(item.url).delete().catch(() => {});
+      if (item?.kind === 'file' && String(item.url || '').includes('firebasestorage')) fbStorage().then(st => st.refFromURL(item.url).delete()).catch(() => {});
     } catch (e) { toast('Couldn’t remove that: ' + e.message, 'error'); }
   }, 'Remove');
 }
@@ -1401,6 +1414,7 @@ async function sendGroupMessage(code) {
     await _fbDb.collection('studyGroups').doc(code).collection('messages').doc(msg.id).set(msg);
     groupWrite(code, { lastMessage });
     markChatSeen(code, msg.at);
+    playUiSound('send');
   } catch (e) {
     console.warn('Message failed', e);
     if (input.isConnected && !input.value) input.value = text;
@@ -1678,7 +1692,7 @@ async function deleteGroupEverywhere(code) {
         snap.docs.slice(i, i + 400).forEach(d => {
           batch.delete(d.ref);
           const url = d.data().url;
-          if (sub === 'items' && String(url || '').includes('firebasestorage')) _fbStorage.refFromURL(url).delete().catch(() => {});
+          if (sub === 'items' && String(url || '').includes('firebasestorage')) fbStorage().then(st => st.refFromURL(url).delete()).catch(() => {});
         });
         await batch.commit();
       }
@@ -1753,7 +1767,7 @@ function pendingInviteBanner() {
 }
 // Called at the end of every auth state change (see firebase.js).
 function onGroupsAuthResolved() {
-  if (!_fbUser) handlePendingJoin();
+  if (!_fbUser) { handlePendingJoin(); if (typeof handlePendingClass === 'function' && !pendingJoinCode()) handlePendingClass(); if (typeof handlePendingOrg === 'function' && !pendingJoinCode() && !pendingClassCode()) handlePendingOrg(); }
 }
 
 /* ── Calendar + dashboard ──────────────────────────────────────── */
@@ -1821,7 +1835,7 @@ function createSampleGroup() {
     members: ['Maya', 'Jordan', 'Priya', myGroupName()], events: [],
     sessions: {
       [reviewId]: { id: reviewId, title: 'Midterm 2 review', date: addDays(t, 1), start: '18:00', end: '19:30', where: 'Main library, room 204', notes: 'Bring your practice problems from chapters 7–9. Maya is bringing the Quizlet.', createdBy: maya, createdByName: 'Maya', createdAt: now - 3 * D, rsvp: { [maya]: 'yes', [jordan]: 'yes', [priya]: 'maybe' } },
-      [swapId]: { id: swapId, title: 'Practice exam swap', date: nextDow(4), start: '17:30', end: '19:00', where: 'https://zoom.us/j/0000000000', notes: 'Everyone writes 5 questions, we swap and grade.', createdBy: priya, createdByName: 'Priya', createdAt: now - 1 * D, rsvp: { [priya]: 'yes' } },
+      [swapId]: { id: swapId, title: 'Practice exam swap', date: nextDow(4), start: '17:30', end: '19:00', where: 'https://zoom.us/j/0000000000', notes: 'Everyone writes 5 questions, then we swap and check answers.', createdBy: priya, createdByName: 'Priya', createdAt: now - 1 * D, rsvp: { [priya]: 'yes' } },
       [pastId]: { id: pastId, title: 'Chapter 7 problem set', date: addDays(t, -6), start: '18:00', end: '19:00', where: 'Main library, room 204', notes: '', createdBy: maya, createdByName: 'Maya', createdAt: now - 9 * D, rsvp: { [maya]: 'yes', [jordan]: 'yes', [priya]: 'yes' } },
     },
     taskItems: Object.fromEntries([

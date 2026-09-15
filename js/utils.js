@@ -53,6 +53,25 @@ function fmtDuration(mins) {
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
 }
+// Big libraries (PDF reading/export, file storage) load the first time
+// they're needed instead of on every app open.
+const _scriptLoads = {};
+function loadScriptOnce(src) {
+  if (!_scriptLoads[src]) {
+    _scriptLoads[src] = new Promise((resolve, reject) => {
+      const el = document.createElement('script');
+      el.src = src; el.async = true;
+      el.onload = resolve;
+      el.onerror = () => { delete _scriptLoads[src]; reject(new Error('Couldn’t load a needed file. Check your connection and try again.')); };
+      document.head.appendChild(el);
+    });
+  }
+  return _scriptLoads[src];
+}
+const PDFJS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const HTML2PDF_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.14.0/html2pdf.bundle.min.js';
+const FIREBASE_STORAGE_SRC = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js';
+async function ensurePdfJs() { if (typeof pdfjsLib === 'undefined') await loadScriptOnce(PDFJS_SRC); }
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 // Backs the "No due date" checkbox next to a date <input> (assignments, to-dos):
 // disables + clears the field when checked, hands it back when unchecked. The

@@ -8,13 +8,14 @@ function toggleTodayMode() { state.todayMode = !state.todayMode; touch(); }
 const DASH_WIDGET_DEFS = {
   dueThisWeek: { col: 'main', label: 'Due this week' },
   studyGroups: { col: 'main', label: 'Study groups: sessions, your tasks, new messages' },
+  orgs: { col: 'side', label: 'Clubs & teams: events and announcements' },
   exams: { col: 'side', label: 'Exam countdown' },
   focus: { col: 'side', label: 'Focus time and weekly goal' },
   workload: { col: 'main', label: 'Two-week workload' },
   quickNote: { col: 'side', label: 'Quick note' },
   projects: { col: 'main', label: 'Active projects' },
   notes: { col: 'side', label: 'Recent notes' },
-  quickAdd: { col: 'main', label: 'Quick add to-do' },
+  quickAdd: { col: 'main', label: 'Quick add' },
 };
 const DASH_WIDGET_LABELS = Object.fromEntries(Object.entries(DASH_WIDGET_DEFS).map(([k, v]) => [k, v.label]));
 
@@ -35,6 +36,7 @@ function todayTimeline() {
     ...meetingsOnDate(t).map(m => ({ kind: 'class', start: m.start, end: m.end, title: m.course.name, sub: [m.course.code, m.course.location].filter(Boolean).join(' · '), color: m.course.color, action: `openCourse('${m.course.id}')` })),
     ...customEventsOnDate(t).filter(e => e.start).map(e => ({ kind: 'block', start: e.start, end: e.end, title: e.title, sub: e.courseId ? (getCourse(e.courseId)?.code || '') : 'Time block', color: e.color || '#5a6b7b', action: `openEventModal('${e.id}')` })),
     ...groupSessionsOnDate(t).filter(s => s.start).map(s => ({ kind: 'group', start: s.start, end: s.end, title: s.title, sub: s.groupName, color: '#6b6b6b', action: `openGroup('${s.code}','schedule')` })),
+    ...orgEventsOnDate(t).filter(e => e.start).map(e => ({ kind: 'org', start: e.start, end: e.end, title: e.title, sub: e.orgName, color: e.color, action: e.action })),
     ...state.assignments.filter(a => a.dueDate === t && !isAssignmentDone(a) && dashCourseScope(a) && a.dueTime && a.dueTime !== '23:59')
       .map(a => ({ kind: 'due', start: a.dueTime, end: null, title: a.title, sub: `Due · ${getCourse(a.courseId)?.code || ''}`, color: getCourseColor(a.courseId), action: `openAssignmentModal('${a.id}')` })),
   ].sort((a, b) => a.start.localeCompare(b.start));
@@ -52,6 +54,7 @@ function pageDashboard() {
   const sub = `${fmtDateLong(todayIso())}${sem && activeCourses().length ? ` · Week ${sem.week} of ${sem.totalWeeks}` : ''}`;
   const head = pageHead(`${greeting}${name}`, sub, `
     ${state.settings.sampleData ? `<button class="btn btn-sm" onclick="removeSampleSemester()">${icon('x', 12, 2.2)} Clear sample data</button>` : ''}
+    <button class="btn btn-sm" onclick="openQuickCapture()">${icon('camera', 13, 1.8)} Capture</button>
     <button class="btn btn-sm" onclick="toggleTodayMode()">${icon('sun', 13, 2)} Focus on today</button>
     <button class="btn btn-icon btn-sm" onclick="openDashboardCustomizeModal()" title="Customize dashboard" aria-label="Customize dashboard">${icon('settings', 16, 1.6)}</button>
   `);
@@ -64,6 +67,7 @@ function pageDashboard() {
   return `
     ${head}
     ${gettingStartedCard()}
+    ${wrappedDashboardBanner()}
     ${dashHero()}
     <div class="dash-grid">
       <div class="dash-col">${renderCol('main')}</div>
@@ -119,7 +123,7 @@ function dashHero() {
               <span class="dash-tl-time">${i.start ? fmtTime(i.start).replace(':00', '') : 'Tonight'}</span>
               <span class="dash-tl-bar"></span>
               <span class="dash-tl-body"><span class="dash-tl-title">${esc(i.title)}</span><span class="dash-tl-sub">${esc(i.sub || '')}</span></span>
-              ${i.kind === 'due' ? `<span class="dash-tl-tag">Due</span>` : i.kind === 'group' ? `<span class="dash-tl-tag">${icon('users', 11, 1.8)}</span>` : ''}
+              ${i.kind === 'due' ? `<span class="dash-tl-tag">Due</span>` : i.kind === 'group' ? `<span class="dash-tl-tag">${icon('users', 11, 1.8)}</span>` : i.kind === 'org' ? `<span class="dash-tl-tag">${icon('shield', 11, 1.8)}</span>` : ''}
             </button>`;
           }).join('') : `<div class="small muted dash-tl-empty">No classes or events today.</div>`}
         </div>
@@ -146,6 +150,8 @@ const DASH_WIDGETS = {
     const rows = [
       ...state.assignments.filter(a => !isAssignmentDone(a) && dashCourseScope(a) && a.dueDate && a.dueDate <= weekEnd).map(a => ({ kind: 'a', id: a.id, title: a.title, date: a.dueDate, time: a.dueTime, course: getCourse(a.courseId), type: a.type })),
       ...state.todos.filter(td => !td.done && td.dueDate && td.dueDate <= weekEnd).map(td => ({ kind: 't', id: td.id, title: td.title, date: td.dueDate, course: getCourse(td.courseId), type: 'to-do' })),
+      ...appDueItems(addDays(t, -30), weekEnd).map(i => ({ kind: 'app', id: i.app.id, title: i.label, date: i.date, time: i.time, course: null, type: i.app.type.toLowerCase() })),
+      ...milestoneDueItems(addDays(t, -30), weekEnd).map(({ p, m }) => ({ kind: 'ms', id: m.id, pid: p.id, title: m.title, date: m.dueDate, course: getCourse(p.courseId), type: `milestone · ${p.title}` })),
     ].sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
     const groups = [];
     rows.forEach(r => {
@@ -161,15 +167,16 @@ const DASH_WIDGETS = {
           <div class="dash-day ${g.key === 'overdue' ? 'is-overdue' : ''}">
             <div class="dash-day-label">${esc(g.label)}</div>
             ${g.items.map(r => `
-              <div class="dash-due-row" style="--course:${esc(r.course?.color || '#8a8a8a')}" onclick="${r.kind === 'a' ? `openAssignmentModal('${r.id}')` : `openTodoModal('${r.id}')`}">
-                <button type="button" class="row-check" role="checkbox" aria-checked="false" aria-label="Mark ${esc(r.title)} as done" onclick="event.stopPropagation();${r.kind === 'a' ? `toggleAssignmentDone('${r.id}')` : `toggleTodo('${r.id}')`}"></button>
-                <div class="row-title"><div>${esc(r.title)}</div><div class="assign-meta"><span class="assign-course"><span class="course-dot"></span>${esc(r.course ? (r.course.code || r.course.name) : 'General')}</span><span>${esc(r.type)}</span></div></div>
+              <div class="dash-due-row" data-item-id="${r.id}" style="--course:${esc(r.course?.color || '#8a8a8a')}" onclick="${r.kind === 'a' ? `openAssignmentModal('${r.id}')` : r.kind === 'app' ? `openApplicationModal('${r.id}')` : r.kind === 'ms' ? `openProject('${r.pid}')` : `openTodoModal('${r.id}')`}">
+                ${r.kind === 'app' ? `<span class="row-check dash-app-ic" aria-hidden="true">${icon('briefcase', 12, 1.8)}</span>` : `<button type="button" class="row-check" role="checkbox" aria-checked="false" aria-label="Mark ${esc(r.title)} as done" onclick="event.stopPropagation();${r.kind === 'a' ? `toggleAssignmentDone('${r.id}')` : r.kind === 'ms' ? `toggleMilestone('${r.pid}','${r.id}')` : `toggleTodo('${r.id}')`}"></button>`}
+                <div class="row-title"><div>${esc(r.title)}</div><div class="assign-meta"><span class="assign-course">${r.kind === 'app' ? 'Applications' : `<span class="course-dot"></span>${esc(r.course ? (r.course.code || r.course.name) : 'Personal')}`}</span><span>${esc(r.type)}</span></div></div>
                 ${r.time && r.time !== '23:59' && g.key !== 'overdue' ? `<span class="row-meta">${fmtTime(r.time)}</span>` : ''}
               </div>`).join('')}
           </div>`).join('') : `<div class="dash-clear">${icon('cloud-sun', 20, 1.5)}<span>Nothing due in the next 7 days.</span></div>`}
       </div>`;
   },
   studyGroups: () => dashboardGroupsWidget(),
+  orgs: () => dashboardOrgsWidget(),
   exams: () => {
     const exams = state.assignments.filter(a => a.type === 'exam' && dashCourseScope(a) && a.dueDate && a.dueDate >= todayIso())
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 3);
@@ -179,9 +186,10 @@ const DASH_WIDGETS = {
         ${exams.length ? exams.map(e => {
           const d = daysBetween(e.dueDate);
           const c = getCourse(e.courseId);
-          return `<button class="dash-exam-row" style="--course:${esc(c?.color || '#5a6b7b')}" onclick="openAssignmentModal('${e.id}')">
+          const prep = examPrep(e);
+          return `<button class="dash-exam-row" style="--course:${esc(c?.color || '#5a6b7b')}" onclick="openExamPrep('${e.id}')">
             <span class="dash-exam-days ${d <= 3 ? 'soon' : ''}"><strong>${d === 0 ? 'Today' : d}</strong>${d === 0 ? '' : `<span>day${d === 1 ? '' : 's'}</span>`}</span>
-            <span style="min-width:0;text-align:left"><span class="sg-strong dash-ellipsis">${esc(e.title)}</span><span class="small muted dash-ellipsis"><span class="course-dot"></span> ${esc(c ? (c.code || c.name) : '')} · ${fmtDate(e.dueDate, { weekday: 'short', month: 'short', day: 'numeric' })}</span></span>
+            <span style="min-width:0;text-align:left"><span class="sg-strong dash-ellipsis">${esc(e.title)}</span><span class="small muted dash-ellipsis"><span class="course-dot"></span> ${esc(c ? (c.code || c.name) : '')} · ${fmtDate(e.dueDate, { weekday: 'short', month: 'short', day: 'numeric' })}${prep != null ? ` · ${prep}% prepped` : ''}</span></span>
           </button>`;
         }).join('') : `<p class="small muted">No exams on your list. Syllabus upload adds them automatically.</p>`}
       </div>`;
@@ -227,15 +235,16 @@ const DASH_WIDGETS = {
       <textarea class="sticky-note-input" id="dash-quick-note" placeholder="Jot something down…" oninput="saveQuickNoteDebounced(this.value)">${esc(state.quickNote || '')}</textarea>
     </div>`,
   projects: () => {
-    const projects = state.projects.filter(p => !p.courseId || activeCourses().some(c => c.id === p.courseId)).slice(0, 3);
+    const projects = visibleProjects().filter(p => !projectIsDone(p)).sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999')).slice(0, 3);
     if (!projects.length) return '';
     return `
       <div class="card card-pad">
         <div class="flex-between mb-8"><h3 class="sg-h3">Projects</h3><button class="sg-link" onclick="setState({route:'projects',subRoute:null})">All →</button></div>
         ${projects.map(p => `
-          <div class="mb-8" style="cursor:pointer" onclick="openProjectModal('${p.id}')">
-            <div class="flex-between small" style="margin-bottom:4px"><span>${esc(p.title)}</span><span class="muted">${p.dueDate ? `${relativeDay(p.dueDate)} · ` : ''}${projectProgress(p)}%</span></div>
+          <div class="mb-8 hub-link" style="cursor:pointer" onclick="openProject('${p.id}')">
+            <div class="flex-between small" style="margin-bottom:4px"><span class="sg-strong">${esc(p.title)}</span><span class="muted">${p.dueDate ? `${esc(daysLeftLabel(p.dueDate))} · ` : ''}${projectProgress(p)}%</span></div>
             <div class="progress"><div style="width:${projectProgress(p)}%"></div></div>
+            ${nextMilestone(p) ? `<div class="small muted mt-4">Next: ${esc(nextMilestone(p).title)}${nextMilestone(p).dueDate ? ` · ${esc(relativeDay(nextMilestone(p).dueDate).replace(' (overdue)', ''))}` : ''}</div>` : ''}
           </div>`).join('')}
       </div>`;
   },
@@ -252,12 +261,7 @@ const DASH_WIDGETS = {
           </div>`).join('') : `<p class="small muted">No notes yet.</p>`}
       </div>`;
   },
-  quickAdd: () => `
-    <div class="quick-add card">
-      <span class="quick-add-ic">${icon('plus', 15, 2)}</span>
-      <input class="quick-add-input" id="quick-add-input" placeholder="Quick add a to-do and press Enter" onkeydown="if(event.key==='Enter')quickAddTodo()">
-      <select class="select" id="quick-add-course" aria-label="Course"><option value="">No course</option>${courseOptions()}</select>
-    </div>`,
+  quickAdd: () => quickAddBar('dash', { mode: 'auto' }),
 };
 
 /* ── Getting started ───────────────────────────────────────────── */
@@ -307,6 +311,7 @@ function welcomeHero() {
         <div class="sg-hero-actions">
           <button class="btn btn-primary" onclick="openSemesterSetup()">${icon('sparkles', 13, 1.7)} Set up my semester</button>
           <button class="btn" onclick="openSyllabusUploadModal()">${icon('upload', 13, 1.8)} Upload a syllabus</button>
+          <button class="btn" onclick="openJoinClassModal()">${icon('users', 13, 1.8)} Join a class a classmate shared</button>
         </div>
         <button class="btn btn-ghost btn-sm sg-sample-btn" onclick="loadSampleSemester()">${icon('eye', 13, 1.8)} Look around with a sample semester first</button>
       </div>
@@ -398,14 +403,25 @@ const saveQuickNoteDebounced = debounce((v) => { state.quickNote = v; save(); },
 function openDashboardCustomizeModal() {
   const size = state.settings.stickyNoteSize || 'md';
   const order = (state.settings.dashboardWidgets || Object.keys(DASH_WIDGET_DEFS)).filter(id => DASH_WIDGET_DEFS[id]);
+  // Re-opened after every pick, so keep the scroll position and the focused control.
+  const reopening = !!$('#modal .customize-body') && $('#modal-wrap').classList.contains('show');
+  const keepScroll = reopening ? $('#modal').scrollTop : 0;
+  const keepFocus = reopening && document.activeElement?.closest('#modal') ? [...$('#modal').querySelectorAll('button')].indexOf(document.activeElement) : -1;
   openModal(`
     <div class="modal-head"><h3>Customize dashboard</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
-    <div class="modal-body">
-      <div class="field"><label>Theme</label>
-        <div class="segmented">
-          <button class="${!state.settings.dark ? 'active' : ''}" onclick="toggleDark(false);openDashboardCustomizeModal()">${icon('sun', 13, 2)} Light</button>
-          <button class="${state.settings.dark ? 'active' : ''}" onclick="toggleDark(true);openDashboardCustomizeModal()">${icon('moon', 13, 2)} Dark</button>
+    <div class="modal-body customize-body">
+      <div class="field">
+        <div class="flex-between mb-8"><label style="margin:0">Colors</label>
+          <div class="segmented" role="group" aria-label="Light or dark">
+            <button class="${!state.settings.dark ? 'active' : ''}" aria-pressed="${!state.settings.dark}" onclick="toggleDark(false);openDashboardCustomizeModal()">${icon('sun', 13, 2)} Light</button>
+            <button class="${state.settings.dark ? 'active' : ''}" aria-pressed="${!!state.settings.dark}" onclick="toggleDark(true);openDashboardCustomizeModal()">${icon('moon', 13, 2)} Dark</button>
+          </div>
         </div>
+        ${themeTilesHtml('openDashboardCustomizeModal()')}
+      </div>
+      <div class="field"><label>Page color <span class="muted">(${state.settings.dark ? 'dark' : 'light'} mode)</span></label>
+        ${pageColorSwatchesHtml('openDashboardCustomizeModal()')}
+        <button class="sg-link small mt-8" onclick="closeModal();setState({route:'settings',subRoute:null})">More colors and app icons in Settings →</button>
       </div>
       <div class="field"><label>Quick note size</label>
         <div class="segmented">
@@ -420,7 +436,11 @@ function openDashboardCustomizeModal() {
       </div>
     </div>
     <div class="modal-foot"><button class="btn btn-primary" onclick="closeModal()">Done</button></div>
-  `);
+  `, { wide: true });
+  if (reopening) {
+    $('#modal').scrollTop = keepScroll;
+    if (keepFocus >= 0) $('#modal').querySelectorAll('button')[keepFocus]?.focus({ preventScroll: true });
+  }
 }
 function dashWidgetRow(id, i, total) {
   const on = !(state.settings.hiddenWidgets || []).includes(id);
@@ -446,16 +466,6 @@ function moveDashWidget(i, dir) {
 }
 function setStickyNoteSize(size) { state.settings.stickyNoteSize = size; touch(); openDashboardCustomizeModal(); }
 
-function quickAddTodo() {
-  const input = $('#quick-add-input');
-  const title = input.value.trim();
-  if (!title) return;
-  const courseId = $('#quick-add-course').value || null;
-  state.todos.unshift({ id: uid(), courseId, title, done: false, dueDate: todayIso(), priority: 'medium', recurring: null });
-  touch();
-  toast('Added to your to-do list');
-  setTimeout(() => $('#quick-add-input')?.focus(), 30);
-}
 
 function computeSemesterProgress() {
   const sem = state.semesters.find(s => s.id === state.currentSemesterId);

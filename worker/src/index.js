@@ -1,3 +1,5 @@
+import { sendWebPush, isPushEndpoint } from './push.js';
+
 /* ── Student Planner backend Worker ───────────────────────────────
    Four jobs, all server-side so secrets never reach the browser:
    1. AI proxy (/v1/messages): holds ANTHROPIC_API_KEY, forwards to Claude.
@@ -113,9 +115,99 @@ export default {
       if (!(await checkRateLimit(env, ip, 'track-event', 60))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handleTrackEvent(request, env, origin);
     }
+    if (url.pathname === '/push-test') {
+      if (!(await checkRateLimit(env, ip, 'push-test', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+      return handlePushTest(request, env, origin);
+    }
     return jsonError('Not found', 404, env, origin);
   },
+
+  // Cron trigger (wrangler.toml [triggers]): sends reminders that are due.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(sendDueReminders(env).catch(e => console.error('sendDueReminders failed', e)));
+  },
 };
+
+/* ── Push reminders ───────────────────────────────────────────────
+   Each student's app uploads a push/{uid} doc: their browser push
+   subscriptions (subsJson) and their upcoming reminder schedule for the
+   next ~10 days (itemsJson: [{key, at, title, body, route}]), plus nextAt,
+   the earliest unsent reminder. Every few minutes this finds docs whose
+   nextAt has passed, checks the license, sends what's due to every
+   device, records what was sent (sentJson), and drops dead subscriptions.
+   The schedule is computed in the app, in the student's own time zone,
+   so this never has to read or understand anyone's planner. */
+function vapidConfig(env) {
+  return { publicKey: env.VAPID_PUBLIC_KEY, privateJwk: env.VAPID_PRIVATE_JWK, subject: env.VAPID_SUBJECT || 'mailto:hello@semester-hq.com' };
+}
+function parseJsonField(v, fallback) { try { const x = JSON.parse(v || ''); return x ?? fallback; } catch { return fallback; } }
+function cleanSubs(list) {
+  return (Array.isArray(list) ? list : []).filter(s => s && isPushEndpoint(s.endpoint) && s.keys?.p256dh && s.keys?.auth).slice(0, 8);
+}
+async function sendDueReminders(env) {
+  if (!env.VAPID_PRIVATE_JWK || !env.VAPID_PUBLIC_KEY || !env.FIREBASE_PROJECT_ID) return;
+  const now = Date.now();
+  const docs = await runFirestoreQuery(env, {
+    from: [{ collectionId: 'push' }],
+    where: { fieldFilter: { field: { fieldPath: 'nextAt' }, op: 'LESS_THAN_OR_EQUAL', value: { integerValue: String(now) } } },
+    limit: 250,
+  });
+  for (const doc of docs) {
+    try { await sendRemindersForUser(env, doc, now); }
+    catch (e) { console.error('push for user failed', doc.id, e); }
+  }
+}
+async function sendRemindersForUser(env, doc, now) {
+  const uid = doc.id;
+  const subs = cleanSubs(parseJsonField(doc.subsJson, []));
+  const items = (parseJsonField(doc.itemsJson, []) || []).filter(i => i && typeof i.key === 'string' && Number.isFinite(i.at)).slice(0, 120);
+  const sent = parseJsonField(doc.sentJson, {}) || {};
+  const license = await readFirestoreDoc(env, 'licenses', uid);
+  if (!license?.paid || !subs.length) {
+    await patchFirestoreDoc(env, `push/${uid}`, { nextAt: now + 12 * 3600 * 1000 });
+    return;
+  }
+  // Anything more than 6 hours late (phone was off, cron hiccup) is skipped rather than sent stale.
+  const due = items.filter(i => i.at <= now && i.at > now - 6 * 3600 * 1000 && !sent[i.key]).sort((a, b) => a.at - b.at);
+  let alive = subs;
+  for (const item of due.slice(0, 6)) {
+    const payload = { title: String(item.title || 'Semester HQ').slice(0, 120), body: String(item.body || '').slice(0, 240), route: String(item.route || ''), tag: item.key.slice(0, 80) };
+    const results = await Promise.all(alive.map(s => sendWebPush(s, payload, vapidConfig(env)).then(r => ({ s, status: r.status })).catch(() => ({ s, status: 0 }))));
+    alive = results.filter(r => r.status !== 404 && r.status !== 410 && r.status !== 400).map(r => r.s);
+    sent[item.key] = now;
+  }
+  items.filter(i => i.at <= now - 6 * 3600 * 1000 && !sent[i.key]).forEach(i => { sent[i.key] = now; });
+  for (const k of Object.keys(sent)) if (sent[k] < now - 14 * 86400 * 1000) delete sent[k];
+  const upcoming = items.filter(i => i.at > now && !sent[i.key]).map(i => i.at);
+  const nextAt = due.length > 6 ? now : upcoming.length ? Math.min(...upcoming) : now + 30 * 86400 * 1000;
+  const fields = { sentJson: JSON.stringify(sent), nextAt };
+  if (alive.length !== subs.length) fields.subsJson = JSON.stringify(alive);
+  await patchFirestoreDoc(env, `push/${uid}`, fields);
+}
+async function handlePushTest(request, env, origin) {
+  if (!env.VAPID_PRIVATE_JWK) return jsonError('Push isn’t set up on the server yet.', 503, env, origin);
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
+  let payload;
+  try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); } catch { return jsonError('Your session expired, sign in again.', 401, env, origin); }
+  const doc = await readFirestoreDoc(env, 'push', payload.sub);
+  const subs = cleanSubs(parseJsonField(doc?.subsJson, []));
+  if (!subs.length) return jsonError('No devices are set up for notifications yet.', 404, env, origin);
+  const results = await Promise.all(subs.map(s => sendWebPush(s, { title: 'Reminders are on', body: 'You’ll get these even when Semester HQ is closed.', route: 'dashboard', tag: 'shq-test' }, vapidConfig(env)).catch(() => ({ status: 0 }))));
+  return jsonOk({ sent: results.filter(r => r.status >= 200 && r.status < 300).length, devices: subs.length }, env, origin);
+}
+// PATCH only the named fields (updateMask), leaving the app's own fields alone.
+async function patchFirestoreDoc(env, path, fields) {
+  const token = await getFirebaseAccessToken(env);
+  const mask = Object.keys(fields).map(f => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${path}?${mask}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ fields: toFirestoreFields(fields) }),
+  });
+  if (!res.ok) throw new Error('Firestore patch failed: ' + await res.text());
+}
 
 /* ── 1. AI proxy ──────────────────────────────────────────────── */
 // Gated behind a paid subscription: every caller must prove (via a fresh Firebase
@@ -448,6 +540,7 @@ async function handleDeleteAccount(request, env, origin) {
     // them explicitly first or "delete my account" leaves every note behind.
     await deleteFirestoreSubcollection(env, `planners/${uid}`, 'notes');
     await deleteFirestoreDoc(env, 'planners', uid);
+    await deleteFirestoreDoc(env, 'push', uid).catch(() => {});
 
     let authDeleted = true;
     try { await deleteFirebaseAuthUser(env, uid); }

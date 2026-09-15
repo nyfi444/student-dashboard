@@ -59,6 +59,7 @@ async function fileToBase64(file) {
 }
 
 async function extractPdfText(file) {
+  await ensurePdfJs();
   const buf = await file.arrayBuffer();
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -77,6 +78,7 @@ async function extractPdfText(file) {
 // since every image is stored inline as a data URL alongside the rest of the
 // planner (see FIRESTORE_DOC_SAFE_BYTES in firebase.js).
 async function extractPdfPageImages(file, { scale = 1.3, quality = 0.78, maxPages = 20 } = {}) {
+  await ensurePdfJs();
   const buf = await file.arrayBuffer();
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -99,9 +101,21 @@ const SYLLABUS_SYSTEM = `You extract structured course information from a syllab
 {
   "name": string, "code": string, "instructor": string, "location": string, "credits": number|null,
   "meetings": [{"day": 0-6 (0=Sun), "start": "HH:MM", "end": "HH:MM"}],
-  "assignments": [{"title": string, "type": "assignment"|"reading"|"discussion"|"quiz"|"exam"|"project"|"paper"|"lab", "dueDate": "YYYY-MM-DD or empty string if unknown", "dueTime": "HH:MM or empty string", "maxPoints": number|null}]
+  "assignments": [{"title": string, "type": "assignment"|"reading"|"discussion"|"quiz"|"exam"|"project"|"paper"|"lab", "dueDate": "YYYY-MM-DD or empty string if unknown", "dueTime": "HH:MM or empty string", "maxPoints": number|null}],
+  "details": {
+    "email": string, "phone": string, "office": string,
+    "officeHours": [{"day": 0-6, "start": "HH:MM", "end": "HH:MM", "where": string}],
+    "officeHoursNote": string (for example "or by appointment", or office hours that don't have fixed times),
+    "tas": [{"name": string, "email": string, "officeHours": string}],
+    "absenceLimit": number|null (how many absences are allowed before it starts to count against you, only if the syllabus gives a number),
+    "absencePolicy": string (one or two plain sentences),
+    "latePolicy": string (one or two plain sentences on late work and extensions),
+    "policies": [{"title": string, "text": string}] (up to 5 other rules a student would want to know: missed exams, makeup work, AI use, collaboration, devices in class),
+    "website": string (course website URL if one is given),
+    "textbook": string
+  }
 }
-Infer the current or nearest upcoming year for dates when the syllabus only gives month/day. If a field is unknown, use an empty string, null, or empty array. Do not invent assignments that aren't mentioned.`;
+Infer the current or nearest upcoming year for dates when the syllabus only gives month/day. If a field is unknown, use an empty string, null, or empty array. Do not invent assignments, office hours, or policies that aren't in the syllabus. Keep policy summaries short and in plain language. Do not extract grading weights or grade scales.`;
 
 // `images` is an array of {base64, mediaType}: multiple photos of one syllabus
 // (e.g. a multi-page handout shot page by page) get sent as one message so the

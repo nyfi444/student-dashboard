@@ -8,14 +8,21 @@ let _palette = { open: false, query: '', index: 0, results: [] };
 function paletteItems() {
   const items = [];
   const add = (group, label, sub, iconName, run, keywords = '') => items.push({ group, label, sub, icon: iconName, run, keywords });
+  add('Actions', 'Quick capture', 'Photo, PDF, or text into tasks', 'camera', () => openQuickCapture(), 'photo scan whiteboard snap upload');
   add('Actions', 'New assignment', '', 'plus', () => openAssignmentModal(), 'add create homework');
   add('Actions', 'New to-do', '', 'check-square', () => openTodoModal(), 'add create task');
   add('Actions', 'New note', '', 'file-text', () => createNote('root'), 'add create write');
   add('Actions', 'Upload a syllabus', 'Fills in class times and deadlines', 'upload', () => { setState({ route: 'courses', subRoute: null }); openSyllabusUploadModal(); }, 'import pdf ai');
   add('Actions', 'Start a focus session', '', 'play', () => { setState({ route: 'timer', subRoute: null }); if (!window._timer.running) startTimer(); }, 'timer pomodoro study');
   add('Actions', 'Add a time block', '', 'calendar', () => { setState({ route: 'calendar', subRoute: null }); openEventModal(null, todayIso()); }, 'event schedule');
+  add('Actions', 'Join a shared class', 'Get every deadline for a class in one tap', 'graduation-cap', () => { setState({ route: 'courses', subRoute: null }); openJoinClassModal(); }, 'class code section syllabus classmates');
   add('Actions', 'Start a study group', '', 'users', () => { setState({ route: 'studygroups', subRoute: null }); openCreateGroupModal(); }, 'create group');
+  add('Actions', 'Semester Wrapped', 'Your semester in shareable cards', 'sparkles', () => openWrapped(), 'recap story share instagram stats');
+  add('Actions', 'Add an application', 'Internship, job, or scholarship', 'briefcase', () => { setState({ route: 'career', subRoute: null }); openApplicationModal(); }, 'career job internship scholarship');
   add('Actions', 'Join a study group', 'With a code', 'user-plus', () => { setState({ route: 'studygroups', subRoute: null }); openJoinGroupModal(); }, 'code invite');
+  add('Actions', 'Start a club or team', 'One calendar for every member', 'shield', () => { setState({ route: 'orgs', subRoute: null }); openCreateOrgModal(); }, 'org organization sorority fraternity chapter team club greek');
+  add('Actions', 'Join a club or team', 'With a code from an officer', 'shield', () => { setState({ route: 'orgs', subRoute: null }); openJoinOrgModal(); }, 'org code sorority fraternity chapter team club');
+  add('Actions', 'Customize dashboard', 'Widgets, theme, and colors', 'palette', () => { setState({ route: 'dashboard', subRoute: null }); openDashboardCustomizeModal(); }, 'theme color colors appearance dark light widgets');
   add('Actions', state.settings.dark ? 'Switch to light mode' : 'Switch to dark mode', '', state.settings.dark ? 'sun' : 'moon', () => toggleDark(!state.settings.dark), 'theme appearance');
   if (!activeCourses().length) add('Actions', 'Set up my semester', '', 'sparkles', () => openSemesterSetup(), 'onboarding get started');
 
@@ -29,7 +36,10 @@ function paletteItems() {
   state.notes.filter(n => n.type === 'note').sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
     .forEach(n => add('Notes', n.name || 'Untitled note', getCourse(n.courseId)?.code || '', 'file-text', () => setState({ route: 'notebook', notebookSelected: n.id, subRoute: null }), plainTextSnippet(n.content)));
   state.decks.forEach(d => add('Flashcards', d.name, `${d.cards.length} cards`, 'layers', () => { setState({ route: 'studytools', subRoute: null }); if (d.cards.length) openStudyMode(d.id); }));
+  applications().forEach(a => add('Applications', a.org, [a.role, a.type].filter(Boolean).join(' · '), 'briefcase', () => { setState({ route: 'career', subRoute: null }); openApplicationModal(a.id); }, `${a.type} ${a.location || ''}`));
   if (typeof allGroups === 'function') allGroups().forEach(g => add('Study groups', g.name, g.courseLabel || '', 'users', () => openGroup(g.code), g.courseLabel || ''));
+  if (typeof allOrgs === 'function') allOrgs().forEach(o => add('Clubs & teams', o.name, o.school || '', 'shield', () => openOrg(o.code), `${o.kind} ${o.school || ''}`));
+  visibleProjects().forEach(p => add('Projects', p.title, [getCourse(p.courseId)?.code, projectIsDone(p) ? 'Finished' : daysLeftLabel(p.dueDate)].filter(Boolean).join(' · '), 'folder', () => openProject(p.id), p.description || ''));
   return items;
 }
 function plainTextSnippet(html) { return String(html || '').replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/g, ' ').slice(0, 400); }
@@ -57,7 +67,7 @@ function paletteSearch(q) {
     return [...items.filter(i => i.group === 'Actions').slice(0, 5), ...items.filter(i => i.group === 'Classes'), ...upcoming];
   }
   const scored = items.map(i => ({ i, s: paletteScore(i, q) })).filter(x => x.s > 0);
-  const groupRank = { Actions: 0, 'Go to': 1, Classes: 2, Assignments: 3, 'Study groups': 4, Notes: 5, Flashcards: 6 };
+  const groupRank = { Actions: 0, 'Go to': 1, Classes: 2, Assignments: 3, 'Study groups': 4, Applications: 5, Notes: 6, Flashcards: 7 };
   scored.sort((a, b) => b.s - a.s || groupRank[a.i.group] - groupRank[b.i.group]);
   const out = scored.slice(0, 40).map(x => x.i);
   // Keep results visually grouped while respecting the ranking of each group's best hit.
@@ -98,7 +108,7 @@ function renderPaletteList() {
   if (!list) return;
   const res = _palette.results;
   if (!res.length) {
-    list.innerHTML = `<div class="cmdk-empty">No matches for “${esc(_palette.query)}”.${_palette.query.trim() ? `<button class="cmdk-item" data-i="-1" onclick="paletteQuickTodo()"><span class="cmdk-ic">${icon('plus', 14, 2)}</span><span class="cmdk-text"><span class="cmdk-label">Add “${esc(_palette.query.trim())}” as a to-do</span></span></button>` : ''}</div>`;
+    list.innerHTML = `<div class="cmdk-empty">No matches for “${esc(_palette.query)}”.${_palette.query.trim() ? `<button class="cmdk-item" data-i="-1" onclick="paletteQuickTodo()"><span class="cmdk-ic">${icon('plus', 14, 2)}</span><span class="cmdk-text"><span class="cmdk-label">${(() => { const p = parseQuickAdd(_palette.query); return `Add “${esc(p.title)}”${p.looksLikeAssignment ? ` to ${esc(p.courseLabel)}` : ' as a to-do'}${p.dueDate ? `, ${esc(relativeDay(p.dueDate).replace(' (overdue)', ''))}` : ''}${p.dueTime ? ` ${fmtTime(p.dueTime)}` : ''}`; })()}</span></span></button>` : ''}</div>`;
     return;
   }
   let lastGroup = '';
@@ -127,13 +137,24 @@ function runPaletteItem(i) {
   closeCommandPalette(false);
   if (item) setTimeout(() => { item.run(); window.scrollTo(0, 0); }, 0);
 }
+// Nothing matched: whatever was typed becomes a to-do or assignment, read the
+// same way as the quick add bar ("psych quiz thu 11am").
 function paletteQuickTodo() {
-  const title = _palette.query.trim();
-  if (!title) return;
+  const text = _palette.query.trim();
+  if (!text) return;
   closeCommandPalette(false);
-  state.todos.unshift({ id: uid(), courseId: null, title, done: false, dueDate: todayIso(), priority: 'medium', recurring: null });
+  const p = parseQuickAdd(text);
+  if (p.looksLikeAssignment) {
+    const a = { id: uid(), courseId: p.courseId, title: p.title, type: p.type, dueDate: p.dueDate || addDays(todayIso(), 7), dueTime: p.dueTime || '23:59', startByDate: null, maxPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
+    state.assignments.push(a);
+    touch();
+    toast(`Added “${a.title}” to ${p.courseLabel}, due ${relativeDay(a.dueDate).replace(' (overdue)', '')}`, 'success', 4500, { label: 'Undo', run: () => { state.assignments = state.assignments.filter(x => x.id !== a.id); touch(); } });
+    return;
+  }
+  const td = { id: uid(), courseId: p.courseId, title: p.title, done: false, dueDate: p.dueDate || todayIso(), dueTime: p.dueTime || null, priority: p.priority || 'medium', recurring: null };
+  state.todos.unshift(td);
   touch();
-  toast(`Added “${title}” to your to-dos`);
+  toast(`Added “${td.title}” to your to-dos`, 'success', 4500, { label: 'Undo', run: () => { state.todos = state.todos.filter(x => x.id !== td.id); touch(); } });
 }
 function closeCommandPalette(restoreFocus = true) {
   const el = $('#cmdk');

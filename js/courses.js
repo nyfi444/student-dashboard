@@ -40,6 +40,7 @@ function pageCourses() {
   const credits = courses.reduce((s, c) => s + (Number(c.credits) || 0), 0);
   return `
     ${pageHead('Courses', `${courses.length} course${courses.length === 1 ? '' : 's'} · ${credits} credits · Click a class to open its page`, `
+      <button class="btn btn-sm" onclick="openJoinClassModal()">${icon('users', 13, 1.8)} Join a shared class</button>
       ${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}
       <button class="btn btn-primary" onclick="openCourseModal()">+ Add course</button>
     `)}
@@ -50,7 +51,7 @@ function pageCourses() {
           <div class="sg-strong">Add your classes</div>
           <div class="small muted">Upload a syllabus and Semester HQ fills in meeting times, assignments, and exam dates. Or add a class by hand.</div>
         </div>
-        <div class="flex-gap wrap">${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}<button class="btn btn-primary btn-sm" onclick="openCourseModal()">+ Add course</button></div>
+        <div class="flex-gap wrap"><button class="btn btn-sm" onclick="openJoinClassModal()">Join a shared class</button>${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}<button class="btn btn-primary btn-sm" onclick="openCourseModal()">+ Add course</button></div>
       </div>`}
   `;
 }
@@ -71,7 +72,7 @@ function courseCard(c) {
     <div class="card course-card" role="button" tabindex="0" onclick="openCourse('${c.id}')" onkeydown="if(event.key==='Enter')openCourse('${c.id}')" style="--course:${esc(c.color || '#5a6b7b')}">
       <div class="course-card-top">
         <div style="min-width:0">
-          <div class="course-code"><span class="course-dot"></span>${esc(c.code || 'Course')}${c.instructor ? ` · ${esc(c.instructor)}` : ''}</div>
+          <div class="course-code"><span class="course-dot"></span>${esc(c.code || 'Course')}${c.instructor ? ` · ${esc(c.instructor)}` : ''}${c.sharedClass ? ` <span class="class-shared-tag">${icon('users', 10, 2)} Shared</span>` : ''}</div>
           <div class="course-name">${esc(c.name)}</div>
         </div>
         <div class="course-ring" title="${w.done.length} of ${w.items.length} assignments finished">
@@ -84,7 +85,7 @@ function courseCard(c) {
         <div><span class="course-ic">${icon('clipboard-list', 13, 1.8)}</span><span>${nextDue ? `Next due: <span class="sg-strong">${esc(nextDue.title)}</span>, ${esc(relativeDay(nextDue.dueDate))}` : '<span class="muted">Nothing due soon</span>'}</span></div>
       </div>
       <div class="course-foot small muted">
-        <span>${w.open.length} open${overdue ? ` · <span class="sg-overdue">${overdue} overdue</span>` : ''}${due ? ` · ${due} card${due === 1 ? '' : 's'} to review` : ''}</span>
+        <span>${w.open.length} open${overdue ? ` · <span class="sg-overdue">${overdue} overdue</span>` : ''}${due ? ` · ${due} card${due === 1 ? '' : 's'} to review` : ''}${c.details?.absenceLimit != null && countedAbsences(c) ? ` · <span class="${countedAbsences(c) >= c.details.absenceLimit ? 'sg-overdue' : ''}">${countedAbsences(c)}/${c.details.absenceLimit} absences</span>` : ''}</span>
         <span class="course-open">Open class page ${icon('chevron-right', 12, 2)}</span>
       </div>
     </div>`;
@@ -93,6 +94,7 @@ function openCourse(id) { setState({ route: 'courses', subRoute: id }); window.s
 
 /* ── Class page: one page for everything about a class ─────────── */
 function pageCourseHub(c) {
+  if (c.sharedClass && !window._classCheckedThisView?.[c.id]) { (window._classCheckedThisView = window._classCheckedThisView || {})[c.id] = true; setTimeout(() => checkClassUpdates(c.id), 0); }
   const w = courseWork(c);
   const t = todayIso();
   const next = nextMeeting(c);
@@ -120,6 +122,7 @@ function pageCourseHub(c) {
       </div>
     </div>
 
+    ${c.sample ? '' : classShareBar(c)}
     <div class="sg-overview">
       <div class="sg-col">
         <div class="card card-pad hub-progress">
@@ -156,6 +159,7 @@ function pageCourseHub(c) {
           <div class="hub-exam-row"><div class="hub-exam-days"><strong>${daysBetween(exams[0].dueDate)}</strong><span>day${daysBetween(exams[0].dueDate) === 1 ? '' : 's'}</span></div>
           <div style="min-width:0"><div class="sg-strong">${esc(exams[0].title)}</div><div class="small muted">${esc(fmtDateLong(exams[0].dueDate))}</div></div></div>
         </div>` : ''}
+        ${syllabusCard(c)}
         <div class="card card-pad">
           <h3 class="sg-h3 mb-8">Class schedule</h3>
           ${(c.meetings || []).length ? [...c.meetings].sort((a, b) => a.day - b.day || a.start.localeCompare(b.start)).map(m => `<div class="sg-person"><span class="hub-day">${DOW_NAMES[m.day]}</span><div class="row-title small">${fmtTime(m.start)} – ${fmtTime(m.end)}</div></div>`).join('') : `<p class="small muted">No meeting times. <button class="sg-link" onclick="openCourseModal('${c.id}')">Add them</button></p>`}
@@ -175,7 +179,7 @@ function pageCourseHub(c) {
 }
 function hubAssignmentRow(a) {
   const overdue = a.dueDate && a.dueDate < todayIso();
-  return `<div class="list-row sg-task compact" onclick="openAssignmentModal('${a.id}')">
+  return `<div class="list-row sg-task compact" data-item-id="${a.id}" onclick="openAssignmentModal('${a.id}')">
     <button type="button" class="row-check" role="checkbox" aria-checked="false" aria-label="Mark ${esc(a.title)} as done" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')"></button>
     <div class="row-title"><div>${esc(a.title)} ${typeTag(a.type)}</div></div>
     <div class="row-meta ${overdue ? 'sg-overdue' : ''}">${a.dueDate ? esc(relativeDay(a.dueDate)) : 'No date'}</div>
@@ -291,11 +295,14 @@ function deleteCourse(id) {
 }
 
 /* ── Syllabus upload → AI parse → review & confirm ────────────── */
-function openSyllabusUploadModal() {
+function openSyllabusUploadModal(targetCourseId = null) {
+  window._sylTargetCourseId = targetCourseId && getCourse(targetCourseId) ? targetCourseId : null;
+  const target = window._sylTargetCourseId ? getCourse(targetCourseId) : null;
   openModal(`
-    <div class="modal-head"><h3>Upload syllabus <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${target ? `Upload the ${esc(target.code || target.name)} syllabus` : 'Upload syllabus'} <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       ${!aiEnabled() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">AI parsing isn’t set up on this deployment yet.</div>` : ''}
+      <p class="small muted mb-8">${target ? 'Semester HQ pulls out office hours, contact info, the attendance and late policies, and any deadlines this class doesn’t have yet. You’ll review it before anything is saved.' : 'Semester HQ fills in class times, every deadline, office hours, and the attendance and late policies. You’ll review it before anything is saved.'}</p>
       <div class="segmented mb-8" id="syl-tabs">
         <button class="active" onclick="sylTab('paste')" data-tab="paste">Paste text</button>
         <button onclick="sylTab('pdf')" data-tab="pdf">Upload PDF</button>
@@ -370,7 +377,8 @@ async function runSyllabusParse() {
       data = await aiParseSyllabus({ text });
     }
     closeModal();
-    openSyllabusReviewModal(data);
+    if (window._sylTargetCourseId && getCourse(window._sylTargetCourseId)) openSyllabusMergeModal(window._sylTargetCourseId, data);
+    else openSyllabusReviewModal(data);
   } catch (e) {
     toast(e.message || 'Could not parse that syllabus', 'error', 4000);
   } finally { setBtnLoading(btn, false); }
@@ -383,10 +391,16 @@ function openSyllabusReviewModal(data) {
     credits: data.credits || 3, color: nextCourseColor(),
     meetings: Array.isArray(data.meetings) ? data.meetings : [],
     status: 'in-progress', requirementType: 'required', resources: [],
-    syllabusRaw: '',
+    syllabusRaw: '', details: sanitizeCourseDetails(data.details),
   };
   window._courseDraft = draft;
   window._sylAssignments = (data.assignments || []).map(a => ({ ...a, _include: true, id: uid() }));
+  const dd = draft.details;
+  const detailBits = [
+    dd.email ? esc(dd.email) : '', dd.officeHours.length ? `Office hours ${dd.officeHours.map(h => `${DOW_NAMES[h.day]} ${fmtTime(h.start)}`).join(', ')}` : '',
+    dd.absenceLimit != null ? `${dd.absenceLimit} absence${dd.absenceLimit === 1 ? '' : 's'} allowed` : '', dd.latePolicy ? 'Late work policy' : '',
+    dd.policies.length ? `${dd.policies.length} other polic${dd.policies.length === 1 ? 'y' : 'ies'}` : '', dd.tas.length ? `${dd.tas.length} TA${dd.tas.length === 1 ? '' : 's'}` : '',
+  ].filter(Boolean);
 
   openModal(`
     <div class="modal-head"><h3>Review & confirm <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
@@ -400,6 +414,7 @@ function openSyllabusReviewModal(data) {
         <div class="field"><label>Instructor</label><input class="input" id="cf-instructor" value="${esc(draft.instructor)}"></div>
         <div class="field"><label>Location</label><input class="input" id="cf-location" value="${esc(draft.location)}"></div>
       </div>
+      ${detailBits.length ? `<div class="field"><label>Class details found</label><ul class="syl-found">${detailBits.map(b => `<li>${icon('check', 12, 2.4)} ${b}</li>`).join('')}</ul><div class="small muted">These go on the class page. You can edit them there any time.</div></div>` : ''}
       <div class="field"><label>Assignments found (${window._sylAssignments.length})</label>
         <div id="syl-assignment-list" style="max-height:220px;overflow-y:auto">
           ${window._sylAssignments.map((a, i) => `
@@ -438,7 +453,7 @@ function commitSyllabusCourse() {
     state.assignments.push({
       id: uid(), courseId: d.id, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
       dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59',
-      maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', recurringTemplateId: null,
+      maxPoints: a.maxPoints || null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
     });
   });
   touch();

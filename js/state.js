@@ -57,6 +57,7 @@ function disablePersistentStorage() {
     localStorage.removeItem(storeKey);
     localStorage.removeItem(storeKey + '.bak');
     localStorage.removeItem(storeKey + '.groups'); // study group cache, see GROUP_CACHE_KEY
+    localStorage.removeItem(storeKey + '.orgs');   // clubs & teams cache, see ORG_CACHE_KEY
     localStorage.removeItem('shq_unsynced');
     localStorage.removeItem('shq_timer');
   } catch {}
@@ -175,7 +176,7 @@ function darkTextFromPreset(hex) { const { h, s } = hexToHsl(hex || '#fafafa'); 
    auto-purged after TRASH_RETENTION_DAYS. Settings → Recently Deleted
    lets people restore or permanently remove them. ──────────────────── */
 const TRASH_RETENTION_DAYS = 30;
-const TRASH_KIND_LABELS = { 'note-bundle': 'Note', course: 'Course', assignment: 'Assignment', todo: 'To-do', event: 'Time block', project: 'Project', deck: 'Flashcard deck' };
+const TRASH_KIND_LABELS = { 'note-bundle': 'Note', course: 'Course', assignment: 'Assignment', todo: 'To-do', event: 'Time block', project: 'Project', deck: 'Flashcard deck', application: 'Application' };
 function trashItem(kind, label, data) {
   state.trash = state.trash || [];
   state.trash.unshift({ id: uid(), kind, label, data, deletedAt: Date.now() });
@@ -196,6 +197,7 @@ function restoreTrashItem(id) {
     event: () => state.events.push(t.data),
     project: () => state.projects.push(t.data),
     deck: () => state.decks.push(t.data),
+    application: () => (state.applications = state.applications || []).push(t.data),
   };
   (restoreMap[t.kind] || (() => {}))();
   state.trash = state.trash.filter(x => x.id !== id);
@@ -238,7 +240,7 @@ function seedData() {
       aiModel: 'claude-sonnet-4-6',
       displayName: '',
       weeklyStudyGoalMinutes: 300,
-      dashboardWidgets: ['dueThisWeek', 'studyGroups', 'exams', 'focus', 'workload', 'quickNote', 'projects', 'notes', 'quickAdd'],
+      dashboardWidgets: ['quickAdd', 'dueThisWeek', 'studyGroups', 'orgs', 'exams', 'focus', 'workload', 'quickNote', 'projects', 'notes'],
       hiddenWidgets: [],
     },
     currentSemesterId: semId,
@@ -258,7 +260,9 @@ function seedData() {
     timerSessions: [],
     decks: [],
     projects: [],
+    applications: [],
     studyGroups: [],
+    orgs: [],
     recurringTemplates: [],
     trash: [],
   };
@@ -339,6 +343,7 @@ function save({ localOnly = false } = {}) {
   if (localOnly) return;
   if (typeof markLocalUnsynced === 'function') markLocalUnsynced();
   if (typeof queueCloudSync === 'function') queueCloudSync();
+  if (typeof uploadPushSchedule === 'function') uploadPushSchedule();
 }
 
 function setState(patch) {

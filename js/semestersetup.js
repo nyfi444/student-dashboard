@@ -163,12 +163,12 @@ async function setupUploadSyllabus(ci, files) {
     if (list[0].type === 'application/pdf') {
       const text = await withTimeout(extractPdfText(list[0]), 30000, 'Timed out reading this PDF');
       if (!text.trim()) throw new Error('No text found in that PDF. Try uploading photos of it instead.');
-      c.syllabusStatus = 'Pulling out dates and grading…';
+      c.syllabusStatus = 'Pulling out dates and class details…';
       renderSetupStep();
       data = await aiParseSyllabus({ text });
     } else {
       const images = await Promise.all(list.map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
-      c.syllabusStatus = 'Pulling out dates and grading…';
+      c.syllabusStatus = 'Pulling out dates and class details…';
       renderSetupStep();
       data = await aiParseSyllabus({ images });
     }
@@ -178,11 +178,13 @@ async function setupUploadSyllabus(ci, files) {
     if (data.credits) c.credits = data.credits;
     if (Array.isArray(data.meetings) && data.meetings.length) c.slots = meetingsToSlots(data.meetings);
     c._pendingAssignments = (data.assignments || []).filter(a => a && a.title);
+    c.details = sanitizeCourseDetails(data.details);
     const bits = [
       c._pendingAssignments.length ? `${c._pendingAssignments.length} deadline${c._pendingAssignments.length === 1 ? '' : 's'}` : '',
       data.meetings?.length ? 'class times' : '',
+      courseDetailsCount(c.details) ? 'office hours and policies' : '',
     ].filter(Boolean);
-    c.syllabusStatus = bits.length ? `Found ${bits.join(' and ')}` : 'Read it, but didn’t find any dates';
+    c.syllabusStatus = bits.length ? `Found ${bits.length > 1 ? `${bits.slice(0, -1).join(', ')} and ${bits.at(-1)}` : bits[0]}` : 'Read it, but didn’t find any dates';
   } catch (e) {
     c.syllabusStatus = e.message || 'Couldn’t read that syllabus.';
   }
@@ -240,14 +242,14 @@ function setupFinish() {
     state.courses.push({
       id, semesterId: semId, name: c.name.trim(), code: c.code.trim(), instructor: c.instructor || '',
       color: c.color, credits: Number(c.credits) || 0, location: c.location || '', status: 'in-progress', requirementType: 'required',
-      meetings, resources: [], syllabusRaw: '',
+      meetings, resources: [], syllabusRaw: '', ...(courseDetailsCount(c.details) ? { details: c.details } : {}),
     });
     c._pendingAssignments.forEach(a => {
       assignments++;
       state.assignments.push({
         id: uid(), courseId: id, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
         dueDate: a.dueDate || null, dueTime: a.dueTime || '23:59', startByDate: null,
-        maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
+        maxPoints: a.maxPoints || null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
       });
     });
   });
@@ -273,13 +275,26 @@ function loadSampleSemester() {
   const psy = course('Intro to Psychology', 'PSY 101', COURSE_PALETTE[1], 'Prof. Nguyen', 'Lecture Hall B', [{ day: 2, start: '11:00', end: '12:15' }, { day: 4, start: '11:00', end: '12:15' }]);
   const calc = course('Calculus II', 'MATH 152', COURSE_PALETTE[2], 'Dr. Rivera', 'Math Building 118', [{ day: 1, start: '13:00', end: '13:50' }, { day: 3, start: '13:00', end: '13:50' }, { day: 5, start: '13:00', end: '13:50' }]);
   const mkt = course('Marketing Strategy', 'MKT 300', COURSE_PALETTE[3], 'Prof. Okafor', 'Business School 310', [{ day: 2, start: '15:30', end: '16:45' }]);
+  chem.details = sanitizeCourseDetails({
+    email: 'patel@university.edu', office: 'Science Hall 310', officeHours: [{ day: 2, start: '14:00', end: '15:30', where: 'Science Hall 310' }, { day: 4, start: '10:00', end: '11:00', where: 'Science Hall 310' }],
+    officeHoursNote: 'Or by appointment. Email to set one up.', tas: [{ name: 'Marcus Hill', email: 'mhill@university.edu', officeHours: 'Mon 4–5 PM, Chem Tutoring Center' }],
+    absenceLimit: 3, absencePolicy: 'You can miss 3 lectures without it affecting your participation. After that, each absence counts unless it’s excused with documentation.',
+    latePolicy: 'Lab reports lose 10% per day late, up to 3 days. After that they aren’t accepted. One 48-hour extension per semester if you ask before the due date.',
+    policies: [{ title: 'Missed exams', text: 'Makeup exams only with documentation, scheduled within one week.' }, { title: 'AI tools', text: 'Allowed for studying and checking understanding. Not allowed for writing lab reports.' }],
+    textbook: 'Organic Chemistry, 9th edition (Wade & Simek)',
+  });
+  chem.absences = [{ id: uid(), date: addDays(t, -9), note: 'Sick', excused: false, at: Date.now() }];
+  psy.details = sanitizeCourseDetails({ email: 'nguyen@university.edu', officeHours: [{ day: 3, start: '13:00', end: '14:00', where: 'Psych Building 112' }], absenceLimit: 4, latePolicy: 'Discussion posts close at 11:59 PM and can’t be submitted late.' });
   state.courses.push(chem, psy, calc, mkt);
   const A = (c, title, type, d, extra = {}) => ({ id: uid(), courseId: c.id, title, type, dueDate: addDays(t, d), dueTime: '23:59', startByDate: null, maxPoints: 100, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null, sample: true, ...extra });
   const done = () => ({ status: 'done' });
   state.assignments.push(
     A(chem, 'Lab report 1', 'lab', -17, done()), A(chem, 'Homework 1', 'assignment', -14, done()), A(chem, 'Quiz 1', 'quiz', -10, done()),
     A(chem, 'Lab report 2', 'lab', -3, done()), A(chem, 'Homework 2', 'assignment', -1), A(chem, 'Lab report 3', 'lab', 2, { dueTime: '17:00' }),
-    A(chem, 'Midterm 1', 'exam', 9, { dueTime: '09:00' }), A(chem, 'Homework 3', 'assignment', 12), A(chem, 'Final exam', 'exam', 80, { dueTime: '08:00' }),
+    A(chem, 'Midterm 1', 'exam', 9, { dueTime: '09:00', exam: { location: 'Science Hall 204', format: 'In class', materials: 'One page of handwritten notes, model kit' }, topics: [
+      { id: uid(), title: 'Chapter 5: Stereochemistry', conf: 2 }, { id: uid(), title: 'Chapter 6: Alkyl halides', conf: 1 }, { id: uid(), title: 'SN1 vs SN2 mechanisms', conf: 1 },
+      { id: uid(), title: 'E1 and E2 eliminations', conf: 0 }, { id: uid(), title: 'Naming (IUPAC)', conf: 2 }, { id: uid(), title: 'Lab 2 techniques', conf: 0 },
+    ] }), A(chem, 'Homework 3', 'assignment', 12), A(chem, 'Final exam', 'exam', 80, { dueTime: '08:00' }),
     A(psy, 'Discussion post: memory', 'discussion', -9, { ...done(), maxPoints: 10 }), A(psy, 'Quiz 1', 'quiz', -6, { ...done(), maxPoints: 20 }), A(psy, 'Chapter 5 reading', 'reading', 1, { maxPoints: null }),
     A(psy, 'Discussion post: sleep', 'discussion', 3, { status: 'in-progress', maxPoints: 10 }), A(psy, 'Quiz 2', 'quiz', 6, { maxPoints: 20 }), A(psy, 'Exam 1', 'exam', 16, { dueTime: '11:00' }),
     A(calc, 'Webwork 4', 'assignment', -12, done()), A(calc, 'Webwork 5', 'assignment', -5, done()), A(calc, 'Quiz 3', 'quiz', -4, { ...done(), maxPoints: 10 }),
@@ -293,7 +308,17 @@ function loadSampleSemester() {
   );
   const dow = new Date().getDay();
   state.events.push({ id: uid(), title: 'Library: Chem midterm prep', date: t, startTime: dow === 0 || dow === 6 ? '14:00' : '19:00', endTime: dow === 0 || dow === 6 ? '16:00' : '20:30', courseId: chem.id, type: 'block', color: COURSE_PALETTE[0], sample: true });
-  [[chem, -1, 50], [calc, 0, 25], [psy, -2, 75], [chem, -3, 40], [mkt, -4, 30]].forEach(([c, d, m]) => state.timerSessions.push({ id: uid(), courseId: c.id, date: addDays(t, d), minutes: m, mode: 'pomodoro', sample: true }));
+  // Three weeks of evening study sessions, so streaks and Semester Wrapped have something to show.
+  const cycle = [chem, calc, psy, chem, mkt, calc, chem];
+  for (let d = -21; d <= 0; d++) {
+    if (d % 6 === -5) continue;
+    const c = cycle[(d + 21) % cycle.length];
+    const date = addDays(t, d);
+    const at = new Date(date + 'T21:15:00').getTime();
+    state.timerSessions.push({ id: uid(), courseId: c.id, date, minutes: 25 + (Math.abs(d * 7) % 4) * 15, mode: 'pomodoro', at: String(at), sample: true });
+  }
+  state.srsLog = state.srsLog || {};
+  for (let d = -14; d <= -1; d++) state.srsLog[addDays(t, d)] = (state.srsLog[addDays(t, d)] || 0) + 12 + (Math.abs(d * 5) % 9);
   state.decks.push({ id: uid(), name: 'Functional groups', courseId: chem.id, sample: true, cards: [
     { id: uid(), front: 'Alcohol', back: 'R–OH', mastery: 'mastered' }, { id: uid(), front: 'Ketone', back: 'C=O bonded to two carbons', mastery: 'learning' },
     { id: uid(), front: 'Aldehyde', back: 'C=O at the end of a chain (R–CHO)', mastery: 'new' }, { id: uid(), front: 'Amine', back: 'R–NH₂', mastery: 'new' },
@@ -301,9 +326,26 @@ function loadSampleSemester() {
   ] });
   state.notes.push({ id: uid(), type: 'note', name: 'Lecture 7: Stereochemistry', parentId: 'root', courseId: chem.id, pinned: true, sample: true, updatedAt: Date.now() - 3600000,
     content: '<h2>Stereochemistry</h2><ul><li>Chiral centers have four different substituents</li><li>Assign R/S by priority (Cahn-Ingold-Prelog)</li><li>Enantiomers are non-superimposable mirror images</li></ul>' });
-  state.projects.push({ id: uid(), title: 'Nike case study', courseId: mkt.id, dueDate: addDays(t, 11), sample: true, milestones: [
-    { id: uid(), title: 'Research the brand', done: true, tasks: [] }, { id: uid(), title: 'Outline', done: false, tasks: [] }, { id: uid(), title: 'First draft', done: false, tasks: [] },
-  ] });
+  const mil = (title, d, done, tasks) => ({ id: uid(), title, dueDate: addDays(t, d), done, tasks: tasks.map(([x, dn]) => ({ id: uid(), title: x, done: !!dn })) });
+  state.projects.push(
+    { id: uid(), title: 'Nike case study', courseId: mkt.id, dueDate: addDays(t, 11), startDate: addDays(t, -10), createdAt: Date.now() - 10 * 86400000, status: 'active', template: 'case', sample: true,
+      description: '8–10 pages analyzing Nike’s direct-to-consumer shift. APA, at least 6 sources.', team: [], links: [{ id: uid(), label: 'docs.google.com', url: 'https://docs.google.com/' }], notes: 'Prof. Okafor said to focus on 2020–2024.',
+      milestones: [mil('Read the case', -6, true, [['Highlight key facts', 1]]), mil('Analysis', 2, false, [['SWOT', 1], ['Compare to Adidas', 0]]), mil('Recommendations', 6, false, [['3 recommendations with evidence', 0]]), mil('Write it up', 11, false, [['Proofread', 0], ['Submit', 0]])] },
+    { id: uid(), title: 'Group project: product launch', courseId: mkt.id, dueDate: addDays(t, 30), startDate: addDays(t, -2), createdAt: Date.now() - 2 * 86400000, status: 'active', template: 'presentation', sample: true,
+      description: '15-minute presentation launching a new product. Groups of 4.', team: ['Maya', 'Jordan', 'Priya'], links: [], notes: '',
+      milestones: [mil('Split up roles', 1, false, [['Set a group chat', 1], ['Decide who covers what', 0]]), mil('Research', 10, false, []), mil('Build slides', 20, false, []), mil('Rehearse', 27, false, []), mil('Present', 30, false, [])] },
+  );
+  const errands = { id: uid(), name: 'Errands', sample: true };
+  state.todoSections.push(errands);
+  state.todos.push({ id: uid(), courseId: null, sectionId: errands.id, title: 'Pick up package from the mailroom', done: false, dueDate: addDays(t, 1), priority: 'low', recurring: null, sample: true });
+  state.applications = state.applications || [];
+  state.applications.push(
+    { id: uid(), type: 'Internship', org: 'Pfizer', role: 'Summer research intern', location: 'New York', link: '', stage: 'interviewing', deadline: addDays(t, -20), appliedOn: addDays(t, -18), reachedInterview: true, nextStep: { label: 'Final interview', date: addDays(t, 3), time: '14:00' }, amount: '', notes: '', contacts: [{ name: 'Dana Lee', email: 'Recruiter' }], outcome: '', sample: true, createdAt: Date.now(),
+      checklist: [{ id: uid(), text: 'Tailor your resume', done: true }, { id: uid(), text: 'Write a cover letter', done: true }, { id: uid(), text: 'Submit application', done: true }, { id: uid(), text: 'Prep STAR stories', done: false }] },
+    { id: uid(), type: 'Scholarship', org: 'Goldwater Scholarship', role: 'STEM research', location: '', link: '', stage: 'saved', deadline: addDays(t, 12), appliedOn: '', nextStep: { label: '', date: '', time: '' }, amount: 7500, notes: '', contacts: [], outcome: '', sample: true, createdAt: Date.now(),
+      checklist: [{ id: uid(), text: 'Write the essay', done: false }, { id: uid(), text: 'Ask for a recommendation letter', done: true }, { id: uid(), text: 'Request transcript', done: false }, { id: uid(), text: 'Submit application', done: false }] },
+    { id: uid(), type: 'Job', org: 'Campus Library', role: 'Student assistant', location: 'On campus', link: '', stage: 'applied', deadline: '', appliedOn: addDays(t, -4), nextStep: { label: 'Follow up', date: addDays(t, 6), time: '' }, amount: '', notes: '', contacts: [], outcome: '', sample: true, createdAt: Date.now(), checklist: [] },
+  );
   state.settings.sampleData = { prevSemesterId };
   state.currentSemesterId = semId;
   touch();
@@ -316,7 +358,8 @@ function removeSampleSemester() {
     const sampleSemIds = state.semesters.filter(s => s.sample).map(s => s.id);
     const sampleCourseIds = state.courses.filter(c => c.sample).map(c => c.id);
     state.courses = state.courses.filter(c => !c.sample);
-    ['assignments', 'todos', 'events', 'timerSessions', 'decks', 'notes', 'projects'].forEach(k => { state[k] = state[k].filter(x => !x.sample && !sampleCourseIds.includes(x.courseId)); });
+    ['assignments', 'todos', 'events', 'timerSessions', 'decks', 'notes', 'projects', 'applications'].forEach(k => { state[k] = (state[k] || []).filter(x => !x.sample && !sampleCourseIds.includes(x.courseId)); });
+    state.todoSections = (state.todoSections || []).filter(x => !x.sample);
     state.semesters = state.semesters.filter(s => !s.sample);
     const prev = state.semesters.find(s => s.id === info.prevSemesterId) || state.semesters[0];
     if (!prev) { const id = uid(); state.semesters.push({ id, name: suggestedSemesterName(), startDate: todayIso(), endDate: addDays(todayIso(), 110), archived: false }); state.currentSemesterId = id; }

@@ -155,6 +155,8 @@ function pagePaywall() {
         <h2>No plan on this account yet</h2>
         ${signedInEmail ? `<p class="small muted mb-8">Signed in as <strong>${esc(signedInEmail)}</strong></p>` : ''}
         ${typeof pendingInviteBanner === 'function' ? pendingInviteBanner() : ''}
+        ${typeof pendingOrgCode === 'function' && pendingOrgCode() && !(typeof pendingJoinCode === 'function' && pendingJoinCode()) ? `<div class="sg-callout small mb-16" style="text-align:left"><span>${icon('shield', 15, 1.8)}</span><div>You’ve been invited to join a club or team. Subscribe to get its events on your calendar. Signing up the whole group? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Ask about group pricing</a>.</div></div>` : ''}
+        ${typeof pendingClassCode === 'function' && pendingClassCode() && !(typeof pendingJoinCode === 'function' && pendingJoinCode()) ? `<div class="sg-callout small mb-16" style="text-align:left"><span>${icon('graduation-cap', 15, 1.8)}</span><div>A classmate shared a class with you. Subscribe to add it with every deadline already filled in.</div></div>` : ''}
         <p class="small muted mb-16">If you already subscribed, this is probably just the wrong account. Switch below and it'll unlock right away. Otherwise, $7.99/mo unlocks cross-device sync, AI syllabus upload, and study groups for this account. Billed monthly, cancel anytime.</p>
         <div class="paywall-price">$7.99<span class="paywall-price-period">/mo</span></div>
         <button class="btn btn-primary" style="width:100%" onclick="redirectToCheckout()">Subscribe</button>

@@ -32,7 +32,7 @@ function pageAssignments() {
 
   return `
     ${pageHead('Assignments', `${open.length} to do · ${weekCount} due this week${overdueCount ? ` · ${overdueCount} overdue` : ''}`, `
-      ${aiButton('Upload PDF', 'openAssignmentUploadModal()')}
+      ${aiButton('Quick capture', 'openQuickCapture()')}
       <button class="btn btn-sm ${selectMode ? 'btn-primary' : ''}" onclick="toggleAssignSelectMode()">${icon('check-square', 13, 2)} ${selectMode ? 'Cancel' : 'Select'}</button>
       <button class="btn btn-primary" onclick="openAssignmentModal(null, state._assignCourseFilter !== 'all' ? state._assignCourseFilter : null)">+ Add assignment</button>
     `)}
@@ -47,13 +47,7 @@ function pageAssignments() {
       </div>
     </div>
 
-    ${activeCourses().length ? `
-    <div class="quick-add card">
-      <span class="quick-add-ic">${icon('plus', 15, 2)}</span>
-      <input class="quick-add-input" id="qa-assign-title" placeholder="Add an assignment and press Enter" onkeydown="if(event.key==='Enter')quickAddAssignment()">
-      <select class="select" id="qa-assign-course" aria-label="Course">${activeCourses().map(c => `<option value="${c.id}" ${c.id === courseFilter ? 'selected' : ''}>${esc(c.code || c.name)}</option>`).join('')}</select>
-      <input class="input" type="date" id="qa-assign-date" aria-label="Due date" value="${addDays(t, 7)}">
-    </div>` : ''}
+    ${activeCourses().length ? quickAddBar('assign', { mode: 'assignment', defaultCourseId: courseFilter !== 'all' ? courseFilter : null }) : ''}
 
     ${selectMode ? `
     <div class="card card-pad mb-16 select-bar">
@@ -82,7 +76,7 @@ function assignmentRow(a, selectMode, selected) {
   const rowClick = selectMode ? `toggleAssignSelected('${a.id}')` : `openAssignmentModal('${a.id}')`;
   const rubricDone = (a.rubric || []).filter(r => r.done).length;
   const c = getCourse(a.courseId);
-  return `<div class="assign-row ${isSelected ? 'selected' : ''} ${isDone ? 'is-done' : ''}" style="--course:${esc(c?.color || '#8a8a8a')}" onclick="${rowClick}" draggable="${selectMode ? 'false' : 'true'}" ondragstart="event.stopPropagation();dragStartItem(event,'assignment','${a.id}')" title="${selectMode ? '' : 'Drag onto the Calendar to reschedule or plan work time'}">
+  return `<div class="assign-row ${isSelected ? 'selected' : ''} ${isDone ? 'is-done' : ''}" data-item-id="${a.id}" style="--course:${esc(c?.color || '#8a8a8a')}" onclick="${rowClick}" draggable="${selectMode ? 'false' : 'true'}" ondragstart="event.stopPropagation();dragStartItem(event,'assignment','${a.id}')" title="${selectMode ? '' : 'Drag onto the Calendar to reschedule or plan work time'}">
     ${selectMode
       ? `<button type="button" class="row-check ${isSelected ? 'checked' : ''}" role="checkbox" aria-checked="${isSelected}" aria-label="${isSelected ? 'Deselect' : 'Select'} ${esc(a.title)}" onclick="event.stopPropagation();toggleAssignSelected('${a.id}')">${isSelected ? checkGlyph(true) : ''}</button>`
       : `<button type="button" class="row-check ${isDone ? 'checked' : ''}" role="checkbox" aria-checked="${isDone}" aria-label="Mark ${esc(a.title)} as ${isDone ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isDone ? checkGlyph(true) : ''}</button>`}
@@ -98,20 +92,6 @@ function assignmentRow(a, selectMode, selected) {
     <div class="assign-due ${overdue ? 'sg-overdue' : ''}">${a.dueDate ? `${esc(isDone ? fmtDate(a.dueDate) : relativeDay(a.dueDate).replace(' (overdue)', ''))}${a.dueTime && a.dueTime !== '23:59' && !isDone ? `<span>${fmtTime(a.dueTime)}</span>` : ''}` : '<span class="muted">No date</span>'}</div>
   </div>`;
 }
-function quickAddAssignment() {
-  const input = $('#qa-assign-title');
-  const title = input.value.trim();
-  if (!title) return;
-  const lower = title.toLowerCase();
-  const type = /exam|midterm|final\b/.test(lower) ? 'exam' : /quiz/.test(lower) ? 'quiz' : /\blab\b/.test(lower) ? 'lab' : /read|chapter|ch\./.test(lower) ? 'reading' : /discussion|post/.test(lower) ? 'discussion' : /paper|essay/.test(lower) ? 'paper' : /project|presentation/.test(lower) ? 'project' : 'assignment';
-  state.assignments.push({
-    id: uid(), courseId: $('#qa-assign-course').value, title, type, dueDate: $('#qa-assign-date').value || null, dueTime: '23:59',
-    startByDate: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
-  });
-  touch();
-  toast(`Added “${title}”`);
-  setTimeout(() => $('#qa-assign-title')?.focus(), 30);
-}
 function bulkMarkAssignmentsDone() {
   const ids = state._assignSelectedIds || [];
   state.assignments.forEach(a => { if (ids.includes(a.id)) a.status = 'done'; });
@@ -125,7 +105,7 @@ function toggleAssignmentDone(id) {
   const before = a.status;
   a.status = isAssignmentDone(a) ? 'not-started' : 'done';
   touch();
-  if (a.status === 'done') toast(`Finished “${a.title}”`, 'success', 4000, { label: 'Undo', run: () => { a.status = before; touch(); } });
+  if (a.status === 'done') { celebrateItem(a.id); toast(`Finished “${a.title}”`, 'success', 4000, { label: 'Undo', run: () => { a.status = before; touch(); } }); }
 }
 function toggleAssignSelectMode() {
   state._assignSelectMode = !state._assignSelectMode;
@@ -187,17 +167,15 @@ function renderAssignmentModal(id) {
         <div class="field"><label>Status</label><select class="select" id="af-status">${Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       </div>
       <div class="field"><label>Start by <span class="small muted">(optional reminder)</span></label><input class="input" type="date" id="af-startby" value="${a.startByDate || ''}"></div>
-      <div class="field-row">
-        <div class="field"><label>Points earned</label><input class="input" type="number" id="af-earned" value="${a.earnedPoints ?? ''}"></div>
-        <div class="field"><label>Points possible</label><input class="input" type="number" id="af-max" value="${a.maxPoints ?? ''}"></div>
-      </div>
       <div class="field"><label>Notes</label><textarea class="input" id="af-notes">${esc(a.notes || '')}</textarea></div>
 
       <div class="field">
-        <div class="flex-between"><label>Rubric checklist</label>${aiEnabled() ? '' : ''}</div>
+        <label>Steps</label>
         <div id="af-rubric">${a.rubric.map((r, i) => rubricRow(r, i)).join('')}</div>
-        <button class="btn btn-sm mt-8" onclick="addRubricRow()">+ Break into gradable pieces</button>
+        <button class="btn btn-sm mt-8" onclick="addRubricRow()">+ Add a step</button>
       </div>
+      ${id && a.type === 'exam' ? `<button class="sg-callout af-link" onclick="closeModal();openExamPrep('${id}')"><span>${icon('target', 14, 1.8)}</span><div class="small"><span class="sg-strong">Exam prep</span> · topics, study sessions, and flashcards for this exam</div>${icon('chevron-right', 13, 2)}</button>` : ''}
+      ${id && ['project', 'paper', 'lab'].includes(a.type) ? `<button class="sg-callout af-link" onclick="planAssignmentAsProject('${id}')"><span>${icon('folder', 14, 1.8)}</span><div class="small"><span class="sg-strong">${state.projects.some(p => p.assignmentId === id) ? 'Open its project' : 'Plan it as a project'}</span> · break it into milestones spaced out to the due date</div>${icon('chevron-right', 13, 2)}</button>` : ''}
 
       <div class="field" style="margin-bottom:0">
         <label>Attachments <span class="small muted">(rubric, prompt, reference, reading, instructions)</span></label>
@@ -255,14 +233,19 @@ async function addAttachmentFile(files) {
 }
 function rubricRow(r, i) {
   return `<div class="field-row" style="align-items:center;margin-bottom:6px">
-    <button type="button" class="row-check ${r.done ? 'checked' : ''}" style="flex-shrink:0" role="checkbox" aria-checked="${r.done}" aria-label="Mark ${esc(r.item || 'rubric item')} as ${r.done ? 'not done' : 'done'}" onclick="_assignDraft.rubric[${i}].done=!_assignDraft.rubric[${i}].done;renderAssignmentModal()">${r.done ? checkGlyph(true) : ''}</button>
-    <input class="input" value="${esc(r.item)}" placeholder="Piece of the assignment" oninput="_assignDraft.rubric[${i}].item=this.value">
-    <input class="input" type="number" value="${r.points ?? ''}" style="max-width:80px" placeholder="pts" oninput="_assignDraft.rubric[${i}].points=Number(this.value)">
-    <input class="input" type="number" value="${r.earned ?? ''}" style="max-width:80px" placeholder="earned" oninput="_assignDraft.rubric[${i}].earned=Number(this.value)">
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove rubric item" onclick="_assignDraft.rubric.splice(${i},1);renderAssignmentModal()">${icon('x',13,2.2)}</button>
+    <button type="button" class="row-check ${r.done ? 'checked' : ''}" style="flex-shrink:0" role="checkbox" aria-checked="${!!r.done}" aria-label="Mark ${esc(r.item || 'step')} as ${r.done ? 'not done' : 'done'}" onclick="syncAssignDraftFields();_assignDraft.rubric[${i}].done=!_assignDraft.rubric[${i}].done;renderAssignmentModal(assignDraftExistingId())">${r.done ? checkGlyph(true) : ''}</button>
+    <input class="input" value="${esc(r.item)}" placeholder="Outline, first draft, cite sources…" aria-label="Step ${i + 1}" oninput="_assignDraft.rubric[${i}].item=this.value">
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove step" onclick="syncAssignDraftFields();_assignDraft.rubric.splice(${i},1);renderAssignmentModal(assignDraftExistingId())">${icon('x',13,2.2)}</button>
   </div>`;
 }
-function addRubricRow() { _assignDraft.rubric.push({ id: uid(), item: '', points: null, earned: null, done: false }); renderAssignmentModal(); }
+function assignDraftExistingId() { return state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null; }
+// Re-rendering the modal (checking a step) used to throw away unsaved edits to the other fields.
+function syncAssignDraftFields() {
+  const d = _assignDraft, v = (id) => $(`#${id}`)?.value;
+  if (!$('#af-title')) return;
+  Object.assign(d, { title: v('af-title'), courseId: v('af-course'), type: v('af-type'), dueDate: v('af-date') || null, dueTime: v('af-time'), status: v('af-status'), startByDate: v('af-startby') || null, notes: v('af-notes') });
+}
+function addRubricRow() { syncAssignDraftFields(); _assignDraft.rubric.push({ id: uid(), item: '', done: false }); renderAssignmentModal(assignDraftExistingId()); }
 function saveAssignmentModal(id) {
   const d = _assignDraft;
   d.title = $('#af-title').value.trim();
@@ -273,8 +256,6 @@ function saveAssignmentModal(id) {
   d.dueTime = $('#af-time').value;
   d.status = $('#af-status').value;
   d.startByDate = $('#af-startby').value || null;
-  d.earnedPoints = $('#af-earned').value === '' ? null : Number($('#af-earned').value);
-  d.maxPoints = $('#af-max').value === '' ? null : Number($('#af-max').value);
   d.notes = $('#af-notes').value;
   if (id) { const i = state.assignments.findIndex(x => x.id === id); state.assignments[i] = d; } else state.assignments.push(d);
   touch(); closeModal(); toast(id ? 'Updated' : 'Assignment added');

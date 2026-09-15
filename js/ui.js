@@ -15,18 +15,29 @@ function toast(msg, type = 'success', duration = 2600, action = null) {
 
 let _modalCloseHandler = null;
 let _modalGen = 0;
+let _modalReturnFocus = null;
 function openModal(html, { wide = false, onClose } = {}) {
   _modalGen++;
-  $('#modal').className = 'modal' + (wide ? ' wide' : '');
-  $('#modal').innerHTML = html;
+  const modal = $('#modal');
+  const wasOpen = $('#modal-wrap').classList.contains('show');
+  if (!wasOpen) _modalReturnFocus = document.activeElement;
+  modal.className = 'modal' + (wide ? ' wide' : '');
+  modal.innerHTML = html;
+  const title = modal.querySelector('.modal-head h3');
+  if (title) { title.id = 'modal-title'; modal.setAttribute('aria-labelledby', 'modal-title'); } else modal.removeAttribute('aria-labelledby');
   $('#overlay').classList.add('show');
   $('#modal-wrap').classList.add('show');
   _modalCloseHandler = onClose || null;
-  bindPage($('#modal'));
+  enhanceAccessibility(modal);
+  // Move focus into the dialog (unless something inside already grabbed it).
+  if (!modal.contains(document.activeElement)) setTimeout(() => { if (!modal.contains(document.activeElement)) (modal.querySelector('.modal-body input:not([type=hidden]):not([disabled]), .modal-body textarea, .modal-body select') || modal).focus({ preventScroll: true }); }, 30);
 }
 function closeModal() {
+  const wasOpen = $('#modal-wrap').classList.contains('show');
   $('#overlay').classList.remove('show');
   $('#modal-wrap').classList.remove('show');
+  if (wasOpen && _modalReturnFocus && document.contains(_modalReturnFocus)) { try { _modalReturnFocus.focus({ preventScroll: true }); } catch {} }
+  _modalReturnFocus = null;
   if (_modalCloseHandler) { _modalCloseHandler(); _modalCloseHandler = null; }
   // Snapshot the generation so a stale timeout can't wipe out a modal that
   // opened again (e.g. closeModal() immediately followed by openModal())
@@ -50,7 +61,7 @@ function confirmDialog(message, onConfirm, confirmLabel = 'Delete') {
 function courseChip(courseId, { small } = {}) {
   const c = getCourse(courseId);
   if (!c) return `<span class="course-chip" style="background:var(--surface-2);color:var(--text-faint)">No course</span>`;
-  return `<span class="course-chip" style="background:${c.color}22;color:${c.color}">${esc(c.code || c.name)}</span>`;
+  return `<span class="course-chip tinted" style="--c:${c.color}">${esc(c.code || c.name)}</span>`;
 }
 function typeTag(type) {
   const colors = { exam: 'var(--danger)', quiz: 'var(--warn)', project: 'var(--accent)', paper: 'var(--accent)', reading: 'var(--text-faint)', discussion: 'var(--success)', lab: 'var(--accent)', assignment: 'var(--text-dim)' };
@@ -65,7 +76,7 @@ function emptyState(icon, text, actionHtml = '', sub = '') {
   return `<div class="empty"><div class="ic">${icon}</div><p>${esc(text)}</p>${sub ? `<div class="empty-sub">${esc(sub)}</div>` : ''}${actionHtml}</div>`;
 }
 function pageHead(title, sub, actionsHtml = '') {
-  return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions"><button class="btn btn-icon btn-sm mobile-search" aria-label="Search" onclick="openCommandPalette()">${typeof searchIcon === 'function' ? searchIcon() : ''}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}${signInHeaderButton()}${actionsHtml}</div></div>`;
+  return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions"><button class="btn btn-icon btn-sm mobile-search" aria-label="Search" onclick="openCommandPalette()">${typeof searchIcon === 'function' ? searchIcon() : ''}</button><button class="btn btn-icon btn-sm mobile-search" aria-label="Quick capture" onclick="openQuickCapture()">${icon('camera', 15, 1.8)}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}${signInHeaderButton()}${actionsHtml}</div></div>`;
 }
 // A persistent, always-visible way to log in, not just buried in a modal or
 // Settings, since it's the same click for a brand-new account or an existing
@@ -96,4 +107,42 @@ function setBtnLoading(btn, loading, labelWhenDone) {
   else { btn.innerHTML = labelWhenDone || btn.dataset.origHtml || btn.innerHTML; btn.disabled = false; }
 }
 
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeModal(); return; }
+  // Keep Tab inside an open dialog.
+  if (e.key === 'Tab' && $('#modal-wrap').classList.contains('show')) {
+    const f = [...$('#modal').querySelectorAll('button:not([disabled]), [href], input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(el => el.offsetParent !== null);
+    if (!f.length) return;
+    if (e.shiftKey && (document.activeElement === f[0] || !$('#modal').contains(document.activeElement))) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  }
+  // Enter/Space activates anything made clickable by enhanceAccessibility.
+  const t = e.target;
+  const activatable = t?.getAttribute?.('role') === 'button' || (e.key === 'Enter' && t?.hasAttribute?.('data-row-click'));
+  if ((e.key === 'Enter' || e.key === ' ') && activatable && !/^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(t.tagName) && !e.defaultPrevented) {
+    e.preventDefault();
+    t.click();
+  }
+});
+
+// The app renders plenty of clickable rows and cards as <div onclick>. This
+// makes every one of them reachable and usable from the keyboard and screen
+// readers, and gives placeholder-only fields an accessible name.
+function enhanceAccessibility(root) {
+  if (!root) return;
+  root.querySelectorAll('[onclick]:not(button):not(a):not(input):not(select):not(textarea):not(label):not([role])').forEach(el => {
+    if (el.closest('.sg-grid')) return;
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+    // A row holding its own buttons (a checkbox, a menu) can't itself be a
+    // button, so it stays focusable and opens with Enter instead.
+    if (el.querySelector('button, a[href], input, select, textarea, [onclick]')) el.setAttribute('data-row-click', '');
+    else el.setAttribute('role', 'button');
+  });
+  root.querySelectorAll('input:not([type=hidden]):not([aria-label]), textarea:not([aria-label]), select:not([aria-label])').forEach(el => {
+    if (el.id && root.querySelector(`label[for="${CSS.escape(el.id)}"]`)) return;
+    if (el.closest('label')) return;
+    const prev = el.previousElementSibling;
+    const name = el.getAttribute('placeholder') || el.getAttribute('title') || (prev && (prev.tagName === 'LABEL' || prev.classList.contains('label')) ? prev.textContent.trim() : '');
+    if (name) el.setAttribute('aria-label', name);
+  });
+}

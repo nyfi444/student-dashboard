@@ -18,6 +18,8 @@ function notificationPermission() { return notificationsSupported() ? Notificati
 
 function showSystemNotification(title, body, tag, onClickRoute) {
   if (notificationPermission() !== 'granted') return false;
+  // Push is delivering reminders for this device already; the app only adds a toast.
+  if (typeof pushActive === 'function' && pushActive() && tag !== 'timer') return false;
   // In front of the user already: a toast is enough, don't double up.
   if (document.visibilityState === 'visible' && document.hasFocus()) return false;
   const opts = { body, tag: tag || 'semester-hq', icon: 'assets/icon-192.png', badge: 'assets/icon-192.png', data: { route: onClickRoute || null } };
@@ -40,8 +42,12 @@ async function enableReminders(on) {
   if (on && notificationPermission() === 'denied') toast('Notifications are blocked for this site. Allow them in your browser’s site settings, then try again.', 'error', 6000);
   touch();
   checkReminders();
+  if (typeof ensurePushSubscription === 'function') {
+    if (on && notificationPermission() === 'granted') { if (await ensurePushSubscription()) toast('Reminders are on, even when Semester HQ is closed.', 'success', 4000); }
+    else if (!on) removePushSubscription();
+  }
 }
-function updateReminderSetting(key, value) { state.settings.reminders = { ...reminderSettings(), [key]: value }; save(); }
+function updateReminderSetting(key, value) { state.settings.reminders = { ...reminderSettings(), [key]: value }; save(); if (typeof uploadPushSchedule === 'function') uploadPushSchedule(); }
 function sendTestNotification() {
   if (notificationPermission() !== 'granted') { toast('Turn on notifications first.', 'error'); return; }
   const opts = { body: 'This is what a Semester HQ reminder looks like.', tag: 'shq-test', icon: 'assets/icon-192.png' };
@@ -65,12 +71,21 @@ function attentionItems() {
   state.todos.filter(td => !td.done && td.dueDate === t)
     .forEach(td => out.push(item('Today', td.title, 'To-do', `openTodoModal('${td.id}')`, getCourseColor(td.courseId))));
   if (typeof groupSessionsOnDate === 'function') groupSessionsOnDate(t).forEach(s => out.push(item('Today', s.title, `${s.groupName}${s.start ? ` · ${fmtTime(s.start)}` : ''}`, `openGroup('${s.code}','schedule')`, '#6b6b6b')));
+  if (typeof orgEventsOnDate === 'function') {
+    orgEventsOnDate(t).forEach(e => out.push(item('Today', e.title, `${e.orgName}${e.start ? ` · ${fmtTime(e.start)}` : ''}${e.required ? ' · required' : ''}`, e.action, e.color)));
+    allOrgs().forEach(o => { const n = orgUnreadCount(o); if (n) out.push(item('Today', `${n} new announcement${n === 1 ? '' : 's'}`, o.name, `openOrg('${o.code}','announcements')`, orgColor(o))); });
+  }
+  milestoneDueItems(t, t).forEach(({ p, m }) => out.push(item('Today', m.title, `Milestone · ${p.title}`, `openProject('${p.id}')`, projectColor(p))));
+  milestoneDueItems(addDays(t, -60), addDays(t, -1)).forEach(({ p, m }) => out.push(item('Overdue', m.title, `Milestone · ${p.title} · was due ${fmtSessionDay(m.dueDate)}`, `openProject('${p.id}')`, projectColor(p))));
   open.filter(a => a.dueDate === tomorrow)
     .forEach(a => out.push(item('Tomorrow', a.title, `${getCourse(a.courseId)?.code || ''} · ${a.type}`, `openAssignmentModal('${a.id}')`, getCourseColor(a.courseId))));
   open.filter(a => a.type === 'exam' && a.dueDate > tomorrow && daysBetween(a.dueDate) <= 7)
-    .forEach(a => out.push(item('Coming up', a.title, `${getCourse(a.courseId)?.code || ''} · exam in ${daysBetween(a.dueDate)} days`, `openAssignmentModal('${a.id}')`, getCourseColor(a.courseId))));
+    .forEach(a => out.push(item('Coming up', a.title, `${getCourse(a.courseId)?.code || ''} · exam in ${daysBetween(a.dueDate)} days${examPrep(a) != null ? ` · ${examPrep(a)}% prepped` : ''}`, `openExamPrep('${a.id}')`, getCourseColor(a.courseId))));
   open.filter(a => a.startByDate && a.startByDate <= t && a.dueDate > tomorrow)
     .forEach(a => out.push(item('Coming up', a.title, `Time to start · due ${fmtSessionDay(a.dueDate)}`, `openAssignmentModal('${a.id}')`, getCourseColor(a.courseId))));
+  applications().filter(a => a.stage === 'saved' && a.deadline && a.deadline < t)
+    .forEach(a => out.push(item('Overdue', `Apply: ${a.org}`, `${a.type} · deadline was ${fmtSessionDay(a.deadline)}`, `openApplicationModal('${a.id}')`, '#6b6b6b')));
+  appDueItems(t, addDays(t, 7)).forEach(i => out.push(item(i.date === t ? 'Today' : i.date === tomorrow ? 'Tomorrow' : 'Coming up', i.label, `${i.app.type} · ${fmtSessionDay(i.date)}${i.time ? ` ${fmtTime(i.time)}` : ''}`, `openApplicationModal('${i.app.id}')`, '#6b6b6b')));
   const cards = typeof srsDueTotal === 'function' ? srsDueTotal() : 0;
   if (cards) out.push(item('Today', `${cards} flashcard${cards === 1 ? '' : 's'} to review`, 'Spaced repetition', 'openReview()', 'var(--accent)'));
   return out;
@@ -128,12 +143,12 @@ function checkReminders() {
   };
 
   if (rs.digest && nowMin >= toMin(rs.digestTime)) {
-    const today = [...open.filter(a => a.dueDate === t).map(a => a.title), ...state.todos.filter(x => !x.done && x.dueDate === t).map(x => x.title)];
+    const today = [...open.filter(a => a.dueDate === t).map(a => a.title), ...state.todos.filter(x => !x.done && x.dueDate === t).map(x => x.title), ...appDueItems(t, t).map(i => i.label)];
     const overdue = open.filter(a => a.dueDate && a.dueDate < t).length;
     if (today.length || overdue) send(`digest:${t}`, today.length ? `${today.length} thing${today.length === 1 ? '' : 's'} due today` : 'You have overdue work', [today.length ? summarize(today) : '', overdue ? `${overdue} overdue` : ''].filter(Boolean).join(' · '), 'dashboard');
   }
   if (rs.evening && nowMin >= toMin(rs.eveningTime)) {
-    const due = open.filter(a => a.dueDate === tomorrow).map(a => a.title);
+    const due = [...open.filter(a => a.dueDate === tomorrow).map(a => a.title), ...appDueItems(tomorrow, tomorrow).map(i => i.label)];
     if (due.length) send(`evening:${t}`, `Due tomorrow: ${due.length} thing${due.length === 1 ? '' : 's'}`, summarize(due), 'assignments');
   }
   if (rs.hourBefore) {
@@ -152,6 +167,10 @@ function checkReminders() {
     groupSessionsOnDate(t).filter(s => s.start).forEach(s => {
       const mins = toMin(s.start) - nowMin;
       if (mins > 0 && mins <= 30) send(`session:${s.code}:${s.id}:${t}`, `${s.title} starts in ${mins} min`, `${s.groupName}`, 'studygroups');
+    });
+    if (typeof orgEventsOnDate === 'function') orgEventsOnDate(t).filter(e => e.start).forEach(e => {
+      const mins = toMin(e.start) - nowMin;
+      if (mins > 0 && mins <= 60) send(`org:${e.code}:${e.id}:${t}`, `${e.title} in ${mins} min`, `${e.orgName}${e.required ? ' · required' : ''}`, 'orgs');
     });
   }
 }
@@ -192,7 +211,8 @@ function remindersSettingsCard() {
   return `
     <div class="card card-pad" id="settings-reminders">
       <h3 style="font-size:15px" class="mb-8">Reminders</h3>
-      <p class="small muted mb-16">Get a heads-up before things are due. Notifications appear while Semester HQ is open in a tab or installed on your device.</p>
+      <p class="small muted mb-16">Get a heads-up before things are due${typeof pushSupported === 'function' && pushSupported() && cloudGroupsEnabled() ? ', even when Semester HQ is closed' : ''}.</p>
+      ${typeof isIosBrowserNotInstalled === 'function' && isIosBrowserNotInstalled() ? `<div class="sg-callout small mb-16"><span>${icon('share', 14, 1.8)}</span><div>On iPhone, reminders work once Semester HQ is on your Home Screen. Tap Share, then <strong>Add to Home Screen</strong>, and turn reminders on from there.</div></div>` : ''}
       ${perm === 'unsupported' ? `<p class="small muted mb-16">This browser doesn’t support notifications. Use the calendar export below instead.</p>`
         : perm === 'denied' ? `<p class="small mb-16">Notifications are blocked for this site. Allow them in your browser’s site settings to turn reminders on.</p>`
         : `<div class="checkbox-row mb-16"><input type="checkbox" id="st-reminders" ${on ? 'checked' : ''} onchange="enableReminders(this.checked)"><label for="st-reminders" style="font-weight:600">Send me reminders</label></div>`}
@@ -202,7 +222,7 @@ function remindersSettingsCard() {
         ${row('hourBefore', 'An hour before deadlines with a set time')}
         ${row('exams', 'Exams 3 days and 1 day ahead')}
         ${row('sessions', 'Study group sessions 30 minutes before')}
-        ${on ? `<button class="btn btn-sm mt-8" onclick="sendTestNotification()">Send a test notification</button>` : ''}
+        ${on ? `<div class="flex-gap wrap mt-8" style="align-items:center"><button class="btn btn-sm" onclick="sendPushTest()">Send a test notification</button>${typeof pushActive === 'function' && pushActive() ? `<span class="small muted">${icon('check', 12, 2.4)} Works even when the app is closed</span>` : ''}</div>` : ''}
       </div>
       <div class="divider"></div>
       <div class="small dim mb-8" style="font-weight:600">Reminders when the app is closed</div>

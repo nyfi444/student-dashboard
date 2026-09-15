@@ -45,6 +45,11 @@ function fmtInterval(days) {
   return '1 yr';
 }
 function masteryFromSrs(s) { return !s ? 'new' : s.interval >= 21 ? 'mastered' : 'learning'; }
+// Per-day review counts, kept for Semester Wrapped and streaks.
+function logReview() {
+  const log = state.srsLog || (state.srsLog = {});
+  log[todayIso()] = (log[todayIso()] || 0) + 1;
+}
 function srsDaily() {
   const d = state.settings.srsDaily;
   if (!d || d.date !== todayIso()) state.settings.srsDaily = { date: todayIso(), newSeen: 0, reviewed: 0 };
@@ -284,8 +289,10 @@ function rateReview(rating) {
   cur.card.mastery = masteryFromSrs(cur.card.srs);
   const daily = srsDaily();
   daily.reviewed++;
+  logReview();
   if (wasNew) daily.newSeen++;
   r.counts[rating]++;
+  playUiSound(rating === 1 ? 'tap' : 'complete');
   // Forgotten cards come back a few cards later in the same session.
   if (rating === 1) r.queue.splice(Math.min(r.queue.length, r.index + 4), 0, { deckId: cur.deck.id, cardId: cur.card.id });
   r.index++;
@@ -301,6 +308,7 @@ function reviewKeydown(e) {
 }
 function renderReviewSummary() {
   const r = window._review;
+  if (!r.celebrated) { r.celebrated = true; playUiSound('success'); }
   const reviewed = r.counts[1] + r.counts[2] + r.counts[3] + r.counts[4];
   const remembered = reviewed ? Math.round(((r.counts[2] + r.counts[3] + r.counts[4]) / reviewed) * 100) : 0;
   const mins = Math.max(1, Math.round((Date.now() - r.startedAt) / 60000));
@@ -418,7 +426,7 @@ function checkTestAnswer() {
 function gradeTestCard(rating) {
   const { cards } = studyCards();
   const card = cards[window._study.idx];
-  if (card) { card.srs = srsNext(card, rating); card.mastery = masteryFromSrs(card.srs); srsDaily().reviewed++; save(); }
+  if (card) { card.srs = srsNext(card, rating); card.mastery = masteryFromSrs(card.srs); srsDaily().reviewed++; logReview(); save(); }
   if (window._study.idx < cards.length - 1) studyNav(1); else { closeModal(); touch(); toast('End of the deck'); }
 }
 function studyNav(dir) {

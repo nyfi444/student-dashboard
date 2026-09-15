@@ -20,7 +20,7 @@ let _fbAuth = null, _fbDb = null, _fbStorage = null, _fbUser = null, _syncQueued
 // or queueCloudSync() most recently established what Firestore holds.
 let _lastKnownUpdatedAt = 0;
 let _plannerUnsub = null, _notesUnsub = null;
-const DEVICE_LOCAL_VIEW_KEYS = ['route', 'subRoute', 'groupTab', 'groupTaskFilter', 'calView', 'calDate', 'todoFilter', 'notebookSelected', 'todayMode'];
+const DEVICE_LOCAL_VIEW_KEYS = ['route', 'subRoute', 'groupTab', 'orgTab', 'groupTaskFilter', 'calView', 'calDate', 'todoFilter', 'notebookSelected', 'todayMode'];
 
 function fbConfigured() { return !!FB_CONFIG.apiKey; }
 
@@ -44,7 +44,6 @@ function bootFirebase() {
     firebase.initializeApp(FB_CONFIG);
     _fbAuth = firebase.auth();
     _fbDb = firebase.firestore();
-    _fbStorage = firebase.storage();
     // Safety net: normally an emailed sign-in link points at login.html (the
     // canonical sign-in page), but if one is ever opened while pointed at
     // the app itself, complete it here instead of leaving it inert.
@@ -263,8 +262,15 @@ let _lastSyncedNoteIds = new Set();
 // Local-only (not signed in, or signed in but unpaid) usage is completely
 // unaffected. Attachments stay inline as base64, exactly as before, since
 // there's no cloud sync happening for that account anyway.
+async function fbStorage() {
+  if (!_fbStorage) {
+    if (!firebase.storage) await loadScriptOnce(FIREBASE_STORAGE_SRC);
+    _fbStorage = firebase.storage();
+  }
+  return _fbStorage;
+}
 async function uploadDataUrlToStorage(path, dataUrl) {
-  const ref = _fbStorage.ref(path);
+  const ref = (await fbStorage()).ref(path);
   await ref.putString(dataUrl, 'data_url');
   return await ref.getDownloadURL();
 }

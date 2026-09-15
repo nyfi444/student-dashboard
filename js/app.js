@@ -3,14 +3,16 @@ const NAV = [
   ['Overview', [['dashboard', 'home', 'Dashboard'], ['calendar', 'calendar', 'Calendar'], ['todos', 'check-square', 'To-Do List']]],
   ['Coursework', [['courses', 'graduation-cap', 'Courses'], ['assignments', 'clipboard-list', 'Assignments'], ['exams', 'flag', 'Exams'], ['projects', 'folder', 'Projects']]],
   ['Study', [['notebook', 'book-open', 'Notebook'], ['timer', 'timer', 'Study Timer'], ['studytools', 'layers', 'Flashcards'], ['studygroups', 'users', 'Study Groups']]],
+  ['Campus', [['orgs', 'shield', 'Clubs & Teams'], ['career', 'briefcase', 'Applications']]],
 ];
 const PAGES = {
   dashboard: pageDashboard, calendar: pageCalendar, todos: pageTodos, courses: pageCourses,
   assignments: pageAssignments, exams: pageExams, projects: pageProjects,
-  notebook: pageNotebook, timer: pageTimer, studytools: pageStudyTools, studygroups: pageStudyGroups,
+  notebook: pageNotebook, timer: pageTimer, studytools: pageStudyTools, studygroups: pageStudyGroups, orgs: pageOrgs, career: pageCareer,
   settings: pageSettings,
 };
 
+let _lastViewKey = '';
 function render() {
   renderSidebar();
   document.getElementById('app').classList.toggle('sidebar-collapsed', !!state.settings.sidebarCollapsed);
@@ -21,7 +23,15 @@ function render() {
   }
   const fn = PAGES[state.route] || pageDashboard;
   $('#content').classList.toggle('content-notebook', state.route === 'notebook');
-  $('#content').innerHTML = `<div class="fade-in">${fn()}</div>`;
+  // Animate in only when moving to a different page. Re-rendering the same
+  // page after a click (checking something off, typing) used to replay the
+  // fade every time, which read as a flicker.
+  const viewKey = `${state.route}|${state.subRoute || ''}|${state.groupTab || ''}|${state.route === 'orgs' ? state.orgTab || '' : ''}`;
+  const isNewView = viewKey !== _lastViewKey;
+  _lastViewKey = viewKey;
+  $('#content').innerHTML = `<div class="${isNewView ? 'fade-in' : ''}">${fn()}</div>`;
+  enhanceAccessibility($('#content'));
+  enhanceAccessibility($('#sidebar'));
   if (typeof afterGroupPageRender === 'function') afterGroupPageRender();
   if (typeof updateTimerChrome === 'function') updateTimerChrome();
 }
@@ -73,6 +83,8 @@ function toggleSidebar() {
 
 function renderSidebar() {
   const groupsUnread = typeof anyGroupUnread === 'function' && anyGroupUnread();
+  let orgsUnread = false;
+  try { orgsUnread = allOrgs().some(o => orgUnreadCount(o) > 0); } catch {}
   $('#sidebar').innerHTML = `
     <div class="sidebar-brand">
       <div><h1>Semester HQ</h1><p>${esc(activeSemesterName())}</p></div>
@@ -86,12 +98,12 @@ function renderSidebar() {
       ${NAV.map(([label, items]) => `
         <div class="nav-group">
           <div class="nav-group-label">${label}</div>
-          ${items.map(([id, iconName, name]) => `<div class="nav-item ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" onclick="setState({route:'${id}',subRoute:null})"><span class="ic">${icon(iconName)}</span>${name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}</div>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
+          ${items.map(([id, iconName, name]) => `<button class="nav-item ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" ${state.route === id ? 'aria-current="page"' : ''} onclick="setState({route:'${id}',subRoute:null})"><span class="ic">${icon(iconName)}</span>${name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}${id === 'orgs' && orgsUnread ? '<span class="nav-dot" aria-label="New announcements"></span>' : ''}</button>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
         </div>
       `).join('')}
     </div>
     <div class="sidebar-foot">
-      <div class="nav-item ${state.route === 'settings' ? 'active' : ''}" onclick="setState({route:'settings',subRoute:null})"><span class="ic">${icon('settings')}</span>Settings</div>
+      <button class="nav-item ${state.route === 'settings' ? 'active' : ''}" ${state.route === 'settings' ? 'aria-current="page"' : ''} onclick="setState({route:'settings',subRoute:null})"><span class="ic">${icon('settings')}</span>Settings</button>
       <div class="user-chip" onclick="setState({route:'settings',subRoute:null})">
         <div class="avatar">${(state.settings.displayName || _fbUser?.displayName || 'S')[0].toUpperCase()}</div>
         <div>${_fbUser ? esc(_fbUser.displayName || _fbUser.email) : (fbConfigured() ? 'Not signed in' : 'Local only')}</div>
@@ -111,10 +123,14 @@ function initApp() {
   applyTheme();
   materializeRecurringTodos();
   captureJoinParam();
+  captureClassParam();
+  captureOrgParam();
   save();
   bootFirebase();
   if (typeof startReminderLoop === 'function') startReminderLoop();
   if (typeof registerServiceWorker === 'function') registerServiceWorker();
+  if (typeof handleSharedContent === 'function') handleSharedContent();
+  if (new URLSearchParams(location.search).has('capture')) { history.replaceState({}, '', location.pathname); setTimeout(() => openQuickCapture(), 300); }
   $('.sidebar-expand-fab').innerHTML = icon('panel-left', 16, 1.6);
   render();
 }
