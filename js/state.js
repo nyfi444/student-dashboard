@@ -264,6 +264,7 @@ function seedData() {
     studyGroups: [],
     orgs: [],
     recurringTemplates: [],
+    assignmentSeries: [],
     trash: [],
   };
 }

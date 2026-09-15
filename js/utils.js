@@ -94,6 +94,108 @@ function withTimeout(promise, ms, message) {
   ]);
 }
 
+/* ── File names and types for uploads ─────────────────────────────
+   Some devices hand over a file with no type, or a generic one, and a
+   stored file named only by its random id opens as gibberish with no
+   extension, so the computer can guess the wrong app for it. These keep
+   the real name and the right type attached everywhere a file is stored. */
+const MIME_BY_EXT = {
+  pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  odt: 'application/vnd.oasis.opendocument.text', rtf: 'application/rtf', csv: 'text/csv', tsv: 'text/tab-separated-values', txt: 'text/plain', md: 'text/markdown',
+  pages: 'application/vnd.apple.pages', key: 'application/vnd.apple.keynote', numbers: 'application/vnd.apple.numbers', epub: 'application/epub+zip', zip: 'application/zip',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', mp4: 'video/mp4', mov: 'video/quicktime',
+};
+function fileExt(name) { const m = String(name || '').toLowerCase().match(/\.([a-z0-9]{1,8})$/); return m ? m[1] : ''; }
+// The extension wins when it's a known one: it's what the person sees, and
+// what their computer uses to decide which app opens the file.
+function mimeForFile(name, type) {
+  return MIME_BY_EXT[fileExt(name)] || (type && type !== 'application/octet-stream' ? type : 'application/octet-stream');
+}
+// Short label for a file row: "PDF", "DOCX", or just "File".
+function fileTypeLabel(name) { const ext = fileExt(name); return ext && MIME_BY_EXT[ext] ? ext.toUpperCase() : 'File'; }
+// Path-safe version of a file name for a storage path, extension kept.
+function storageSafeName(name) {
+  const ext = fileExt(name);
+  const base = String(name || 'file').replace(/\.[^.]*$/, '').normalize('NFKD').replace(/[^\w\s.-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'file';
+  return ext ? `${base}.${ext}` : base;
+}
+// Storage metadata that makes a download open or save under its real name.
+// A name with no extension (an attachment renamed "Rubric") gets the one its
+// type calls for, so the saved copy still opens in the right app.
+function storageFileMetadata(name, type) {
+  let clean = String(name || 'file').replace(/[\r\n"]+/g, '').trim().slice(0, 180) || 'file';
+  if (!MIME_BY_EXT[fileExt(clean)]) {
+    const ext = Object.keys(MIME_BY_EXT).find(k => MIME_BY_EXT[k] === type);
+    if (ext) clean += `.${ext}`;
+  }
+  const ascii = clean.normalize('NFKD').replace(/[^\x20-\x7e]/g, '').replace(/[\\;]/g, '').replace(/\s{2,}/g, ' ') || 'file';
+  const encoded = encodeURIComponent(clean).replace(/['()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+  return { contentType: mimeForFile(clean, type), contentDisposition: `inline; filename="${ascii}"; filename*=UTF-8''${encoded}` };
+}
+
+/* ── Reading .docx and .pptx: both are zip files of XML. This finds the
+   entries asked for through the zip's central directory and inflates them
+   with the browser's own DecompressionStream, so no library is needed. ── */
+async function readZipEntries(file, wanted) {
+  if (typeof DecompressionStream === 'undefined') throw new Error('This browser can’t open that file. Save it as a PDF and upload that.');
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  let end = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) { if (dv.getUint32(i, true) === 0x06054b50) { end = i; break; } }
+  if (end < 0) throw new Error('That file looks damaged. Try saving it again, or as a PDF.');
+  const count = dv.getUint16(end + 10, true);
+  let p = dv.getUint32(end + 16, true);
+  const out = {};
+  for (let n = 0; n < count && p + 46 <= buf.length && dv.getUint32(p, true) === 0x02014b50; n++) {
+    const method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), commentLen = dv.getUint16(p + 32, true);
+    const local = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(buf.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    if (!wanted(name) || local + 30 > buf.length) continue;
+    const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+    const data = buf.subarray(start, start + size);
+    let bytes = null;
+    if (method === 0) bytes = data;
+    else if (method === 8) bytes = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    if (bytes) out[name] = new TextDecoder().decode(bytes);
+  }
+  return out;
+}
+function xmlToText(xml, paragraphTag) {
+  return decodeEntities(String(xml || '')
+    .replace(new RegExp(`</${paragraphTag}>`, 'g'), '\n')
+    .replace(/<w:tab\/>/g, '\t').replace(/<(w:br|a:br)\b[^>]*>/g, '\n')
+    .replace(/<[^>]+>/g, ''))
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+function decodeEntities(s) {
+  return String(s || '').replace(/&(#x[0-9a-f]+|#\d+|lt|gt|amp|quot|apos|nbsp);/gi, (m, e) => {
+    const k = e.toLowerCase();
+    if (k[0] === '#') { const n = k[1] === 'x' ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10); try { return String.fromCodePoint(n); } catch { return m; } }
+    return { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'", nbsp: ' ' }[k];
+  });
+}
+async function docxText(file) {
+  const entries = await readZipEntries(file, n => n === 'word/document.xml');
+  if (!entries['word/document.xml']) throw new Error('Couldn’t find any text in that Word doc.');
+  return xmlToText(entries['word/document.xml'], 'w:p');
+}
+async function pptxText(file) {
+  const slideNum = (n) => Number((n.match(/(\d+)\.xml$/) || [])[1] || 0);
+  const entries = await readZipEntries(file, n => /^ppt\/(slides\/slide|notesSlides\/notesSlide)\d+\.xml$/.test(n));
+  const slides = Object.keys(entries).filter(n => n.startsWith('ppt/slides/')).sort((a, b) => slideNum(a) - slideNum(b));
+  if (!slides.length) throw new Error('Couldn’t find any slides in that file.');
+  return slides.map(n => {
+    const notes = entries[`ppt/notesSlides/notesSlide${slideNum(n)}.xml`];
+    const noteText = notes ? xmlToText(notes, 'a:p').replace(/^\d+$/m, '').trim() : '';
+    return `Slide ${slideNum(n)}\n${xmlToText(entries[n], 'a:p')}${noteText ? `\nNotes: ${noteText}` : ''}`;
+  }).join('\n\n');
+}
+
 /* Perceived-brightness check so text stays legible on any accent swatch */
 function readableTextOn(hex) {
   const c = hex.replace('#', '');

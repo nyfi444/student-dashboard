@@ -4,7 +4,7 @@ const FAQ_ITEMS = [
   { q: 'Where is my data stored, and is it private?', a: 'Everything lives in your browser’s local storage by default. Nothing is sent anywhere unless you turn on cross-device sync or use an AI feature (which sends only the text/image you’re asking about, routed through our AI proxy, never directly to Anthropic from your browser).' },
   { q: 'How do I sync across devices?', a: 'Sign in with Google under Settings → Account & Sync to turn it on. If this deployment has payments configured, signing in unlocks a $7.99/month subscription that activates sync, AI upload, and cross-device Study Groups for that account. Without it, everything still works great locally on one device. If payments aren’t configured on this deployment, signing in alone is enough. Either way, the app owner sets sync up once by adding a Firebase project to FB_CONFIG in js/firebase.js (see README.md).' },
   { q: 'What happens when I start a new semester?', a: 'Settings → Semester reset archives your current semester (nothing is deleted, you can still view it from the semester dropdown) and sets up a fresh one, optionally carrying over your course names and instructors as a starting point.' },
-  { q: 'What does Dark mode do?', a: 'Dark mode (Settings → Appearance) switches the whole planner to a dark background. By default that’s plain black with white text, but Settings → Background → Dark mode color lets you pick a preset instead, and the background becomes a deep tint of it while the text becomes a light tint of the same color, so it stays readable without being flat black-and-white. Light mode text always stays black; only the background there is customizable.' },
+  { q: 'How do I change the colors?', a: 'Settings → Appearance (or Customize on the dashboard) has themes, each with a matching dark mode, plus page colors. Turn on Dark mode and the page colors switch to deep tints of the same colors, with light text so everything stays readable.' },
   { q: 'How do study groups work?', a: 'Start a group from Study Groups and invite classmates with its 6-character code or an invite link. Inside a group you can schedule sessions (they show up on every member’s calendar, with RSVPs), paint your weekly availability so Semester HQ can suggest the best time to meet, split up tasks with owners and due dates, chat, and share notes, flashcards, files, and links. Everyone in a group needs their own Semester HQ Plus account. Organizing a whole class, club, or team? Ask about group pricing at semester-hq.com/group-pricing.html.' },
   { q: 'What can I share with a study group?', a: 'Notes, whole notebooks, flashcard decks, and projects each have a Share button that sends a copy to one of your groups. You can also open a group’s Resources tab to share any of those, plus files and links, without leaving the group. Members can add their own copy to their notebook, flashcards, or projects. It’s a one-time copy, not a live sync, so edits after sharing stay with whoever made them.' },
   { q: 'Can I assign tasks to people in my study group?', a: 'Yes. On a group’s Tasks tab, give each task an owner and an optional due date, and filter to just yours. Tasks assigned to you also show up on your Dashboard, and the group’s Overview shows a feed of who scheduled, shared, and finished what.' },
@@ -35,30 +35,6 @@ function pageSettings() {
     <div class="settings-columns">
       ${appearanceSettingsCard()}
 
-      <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Custom background</h3>
-        <p class="small muted mb-8">Changes the light-mode page background behind the sidebar and content. Text stays black either way, so it always stays legible no matter which background you pick.</p>
-        <div class="bg-preview mb-8" style="background:${bgCssValue(state.settings.background)}"></div>
-        <details class="settings-collapse">
-          <summary>Choose a preset (currently ${esc(BACKGROUND_PRESETS.find(p => bgMatchesPreset(state.settings.background, p))?.label || 'custom')})</summary>
-          <div class="settings-collapse-body flex-gap wrap">
-            ${BACKGROUND_PRESETS.map((p, i) => `<div class="bg-preset ${bgMatchesPreset(state.settings.background, p) ? 'active' : ''}" style="background:${bgCssValue(p)}" title="${esc(p.label)}" onclick="setBackgroundPreset(${i})"></div>`).join('')}
-          </div>
-        </details>
-        <div class="divider"></div>
-        <h3 style="font-size:15px" class="mb-8">Dark mode color</h3>
-        <p class="small muted mb-8">Pick a color for dark mode instead of plain black-and-white. The background becomes a deep tint of it and the text becomes a light tint of the same color, so it always stays readable.</p>
-        <div class="bg-preview mb-8" style="background:${darkBgFromPreset(state.settings.darkBackground.color)};display:flex;align-items:center;justify-content:center">
-          <span style="color:${darkTextFromPreset(state.settings.darkBackground.color)};font-size:13px;font-weight:600">Sample text: Aa</span>
-        </div>
-        <details class="settings-collapse">
-          <summary>Choose a preset (currently ${esc(BACKGROUND_PRESETS.find(p => bgMatchesPreset(state.settings.darkBackground, p))?.label || 'custom')})</summary>
-          <div class="settings-collapse-body flex-gap wrap">
-            ${BACKGROUND_PRESETS.map((p, i) => `<div class="bg-preset ${bgMatchesPreset(state.settings.darkBackground, p) ? 'active' : ''}" style="background:${darkBgFromPreset(p.color)}" title="${esc(p.label)}" onclick="setDarkBackgroundPreset(${i})"></div>`).join('')}
-          </div>
-        </details>
-      </div>
-
       ${remindersSettingsCard()}
 
       ${installSettingsCard()}
@@ -79,8 +55,10 @@ function pageSettings() {
 
       <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">AI <span class="ai-badge">Claude</span></h3>
-        <p class="small muted mb-8">Powers syllabus and assignment auto-fill from uploaded documents.</p>
-        ${aiEnabled()
+        <p class="small muted mb-8">Powers syllabus upload, quick capture, and making flashcards from notes and files.</p>
+        ${aiEnabled() && !aiLooksUnlocked()
+          ? `<div class="flex-gap"><span class="pill" style="background:var(--surface-2);color:var(--text-dim)">${icon('lock', 12, 2)} Included with Semester HQ Plus</span></div><p class="small muted mt-8">These don’t run in the demo. ${isEmbedded() ? '' : _fbUser ? '' : '<a href="login.html">Log in</a> to use them.'}</p>`
+          : aiEnabled()
           ? `<div class="flex-gap"><span class="pill" style="background:var(--accent-light);color:var(--accent)">${icon('check', 12, 2.4)} Ready to use</span></div><p class="small muted mt-8">No setup needed, just upload a syllabus from Courses.</p>`
           : `<p class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px">Not set up on this deployment yet. The app owner needs to deploy the Cloudflare Worker proxy in <code>/worker</code> and fill in <code>AI_PROXY_URL</code> in <code>js/ai.js</code> (see <code>worker/README.md</code>).</p>`}
       </div>

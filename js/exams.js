@@ -144,7 +144,7 @@ function pageExamPrep(a) {
         <div class="card card-pad">
           <div class="flex-between mb-8">
             <h3 class="sg-h3">Topics</h3>
-            ${aiEnabled() ? `<button class="sg-link" onclick="openTopicsFromGuideModal('${a.id}')">${icon('sparkles', 12, 1.8)} From a study guide</button>` : ''}
+            ${aiEnabled() ? `<button class="sg-link" onclick="openTopicsFromGuideModal('${a.id}')">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 12, 1.8)} From a study guide</button>` : ''}
           </div>
           ${topics.length ? `
             <div class="exam-conf-summary small" aria-label="Confidence summary">${CONFIDENCE.map(([label, v], i) => `<span class="conf-${v}"><strong>${counts[i]}</strong> ${label.toLowerCase()}</span>`).join('')}</div>
@@ -276,6 +276,7 @@ function removeStudyBlock(eventId) {
 /* ── Topics from a study guide ─────────────────────────────────── */
 const TOPICS_SYSTEM = `You pull the list of topics an exam covers out of a study guide, review sheet, or syllabus section. Reply with ONLY a JSON array of short topic strings (no prose, no markdown fences), in the order they appear, at most 30. Merge duplicates. Keep each under 80 characters.`;
 function openTopicsFromGuideModal(id) {
+  if (!requireAi('Pulling topics from a study guide')) return;
   window._guideImages = null;
   openModal(`
     <div class="modal-head"><h3>Topics from a study guide <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>

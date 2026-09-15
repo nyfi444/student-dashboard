@@ -6,18 +6,30 @@
    and chapters buying a group plan.
 
    Firestore: orgs/{CODE}. The 6-character code is the invite, like study
-   groups. officerUids decides who can post (people[uid] is just names);
-   members can only RSVP (rsvp[their uid]), rename themselves, or leave.
-   See firestore.rules. Locally, state.orgs holds { code, cloud, name }
-   entries; the sample org lives entirely in the planner.
+   groups. officerUids decides who can post; people[uid] holds each
+   member's name and the title shown next to it ("Treasurer"). Members can
+   only RSVP (rsvp[their uid]), edit their own name and title, post in
+   chat, or leave. Officers also share files (files[id], stored in Firebase
+   Storage under orgs/CODE/files). Chat lives in the messages subcollection,
+   with lastMessage on the doc for unread dots. See firestore.rules and
+   storage.rules. Locally, state.orgs holds { code, cloud, name } entries;
+   the sample org lives entirely in the planner.
+
+   Roles: whoever starts the club is its founder and an officer. Only the
+   founder makes someone else an officer. Anyone joining picks "general
+   body" or adds their position, and the founder is asked whether that
+   person should get officer access.
 ──────────────────────────────────────────────────────────────── */
 const ORG_KINDS = [['club', 'Club', 'flag'], ['team', 'Team', 'trophy'], ['chapter', 'Sorority or fraternity', 'shield'], ['org', 'Organization', 'users'], ['other', 'Other', 'star']];
 const ORG_EVENT_CATEGORIES = [['meeting', 'Meeting'], ['practice', 'Practice'], ['game', 'Game or match'], ['social', 'Social'], ['service', 'Service or philanthropy'], ['deadline', 'Deadline or dues'], ['other', 'Other']];
 const ORG_COLORS = ['#1B2A4A', '#8C3B1F', '#2F4A3A', '#6E2E3A', '#3b6ea5', '#7A4A68', '#1F5F6B', '#5a4a1f'];
-const ORG_TABS = [['overview', 'Overview'], ['events', 'Calendar'], ['announcements', 'Announcements'], ['members', 'Members']];
+const ORG_TABS = [['overview', 'Overview'], ['events', 'Calendar'], ['announcements', 'Announcements'], ['chat', 'Chat'], ['files', 'Files'], ['members', 'Members']];
 const ORG_CACHE_KEY = storeKey + '.orgs';
 const PENDING_ORG_KEY = 'shq_pending_org';
 const ORG_ANNOUNCEMENT_MAX = 1200;
+const ORG_FILES_MAX = 100;
+const ORG_TITLE_MAX = 40;
+const ORG_TITLE_SUGGESTIONS = ['President', 'Vice President', 'Captain', 'Treasurer', 'Secretary', 'Social chair'];
 
 let _liveOrgs = {};
 try { _liveOrgs = JSON.parse(dataStore.getItem(ORG_CACHE_KEY) || '{}') || {}; } catch { _liveOrgs = {}; }
@@ -33,6 +45,7 @@ function orgView(entry) {
     ...raw, local: !!entry.local, hideCalendar: !!entry.hideCalendar,
     people: raw.people || {}, memberUids: raw.memberUids || [], officerUids: raw.officerUids || [],
     events: raw.events || {}, announcements: raw.announcements || {}, rsvp: raw.rsvp || {}, titles: raw.titles || {},
+    files: raw.files || {}, lastMessage: raw.lastMessage || null,
   };
 }
 function allOrgs() { return orgEntries().filter(e => e && SAFE_ID.test(e.code || '')).map(orgView).filter(Boolean); }
@@ -48,8 +61,25 @@ function orgMonogram(o) {
 }
 function orgColor(o) { return HEX_COLOR.test(o?.color || '') ? o.color : ORG_COLORS[0]; }
 function orgPeople(o) {
-  return o.memberUids.filter(safeId).map(u => ({ uid: u, name: cleanStr(o.people[u]?.name, 60) || 'Member', joinedAt: o.people[u]?.joinedAt || 0, officer: o.officerUids.includes(u), owner: o.createdBy === u, title: cleanStr(o.titles[u], 40) }))
+  return o.memberUids.filter(safeId).map(u => ({ uid: u, name: cleanStr(o.people[u]?.name, 60) || 'Member', joinedAt: o.people[u]?.joinedAt || 0, officer: o.officerUids.includes(u), owner: o.createdBy === u, title: orgTitleOf(o, u), reviewed: !!o.people[u]?.reviewed }))
     .sort((a, b) => Number(b.owner) - Number(a.owner) || Number(b.officer) - Number(a.officer) || a.name.localeCompare(b.name));
+}
+// people[uid].title is the one source going forward (members set their own,
+// officers anyone's); titles[uid] is where officers' titles lived before.
+function orgTitleOf(o, uid) { const p = o.people?.[uid]; return p && typeof p.title === 'string' ? cleanStr(p.title, ORG_TITLE_MAX) : cleanStr(o.titles?.[uid], ORG_TITLE_MAX); }
+function orgGeneralLabel(o) { return o.kind === 'team' ? 'Team member' : 'General body'; }
+// What shows next to someone's name: their title, or their role without one.
+function orgRoleLabel(o, p) { return p.title || (p.owner ? 'Founder' : p.officer ? 'Officer' : orgGeneralLabel(o)); }
+function orgPersonByUid(o, uid) { return orgPeople(o).find(p => p.uid === uid); }
+function orgChatSeen() { return state.settings.orgChatSeen || (state.settings.orgChatSeen = {}); }
+function orgChatUnread(o) { const m = o.lastMessage; return !!m && typeof m.at === 'number' && m.uid !== myOrgUid(o) && m.at > (orgChatSeen()[o.code] || 0); }
+function markOrgChatSeen(code, at) {
+  const o = findOrg(code);
+  const latest = at || o?.lastMessage?.at || 0;
+  if (!latest || (orgChatSeen()[code] || 0) >= latest) return;
+  orgChatSeen()[code] = latest;
+  save();
+  renderSidebar();
 }
 function orgEventList(o) {
   return Object.values(o.events || {}).filter(e => e && safeId(e.id) && typeof e.title === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date || ''))
@@ -160,13 +190,13 @@ async function unusedOrgCode() {
   }
   return genGroupCode();
 }
-function newOrgDoc({ code, name, kind, school, color, description, ownerUid }) {
+function newOrgDoc({ code, name, kind, school, color, description, ownerUid, ownerTitle = '' }) {
   const now = Date.now();
   return {
     v: 1, code, name, kind, school, schoolKey: normKey(school), color, description,
     createdBy: ownerUid, createdAt: now, updatedAt: now,
-    memberUids: [ownerUid], officerUids: [ownerUid], people: { [ownerUid]: { name: myGroupName(), joinedAt: now } },
-    titles: {}, events: {}, announcements: {}, rsvp: {},
+    memberUids: [ownerUid], officerUids: [ownerUid], people: { [ownerUid]: { name: myGroupName(), joinedAt: now, title: cleanStr(ownerTitle, ORG_TITLE_MAX) } },
+    titles: {}, events: {}, announcements: {}, rsvp: {}, files: {},
   };
 }
 
@@ -229,16 +259,16 @@ function pageOrgs() {
 function orgsEmptyHero() {
   const features = [
     ['calendar', 'One calendar for everyone', 'Meetings, practices, games, and deadlines land on every member’s Semester HQ calendar.'],
-    ['megaphone', 'Announcements that get seen', 'Post once. Members see it on their dashboard instead of lost in a group chat.'],
-    ['check-square', 'RSVPs and required events', 'See who’s coming and who hasn’t answered, at a glance.'],
-    ['shield', 'Officers run it', 'Officers post and edit. Members RSVP and stay in the loop.'],
+    ['check-square', 'See who’s going', 'Everyone RSVPs, and you can see who’s coming, who can’t, and who hasn’t answered.'],
+    ['message-circle', 'Chat, announcements, and files', 'Talk in one place, post updates that get seen, and share forms and schedules.'],
+    ['shield', 'Officers and titles', 'Officers run the calendar. Everyone’s title, like President or Treasurer, shows next to their name.'],
   ];
   return `
     <div class="card sg-hero">
       <div class="sg-hero-copy">
         <div class="sg-eyebrow">${icon('shield', 13, 1.8)} Clubs & Teams</div>
         <h3 class="sg-hero-title">Your org’s calendar, in everyone’s planner.</h3>
-        <p class="muted">For clubs, sports teams, and sororities and fraternities. Officers post it once, and it shows up for every member next to their classes and deadlines.</p>
+        <p class="muted">For clubs, sports teams, sororities, fraternities, etc. Officers post it once, and it shows up for every member next to their classes and deadlines.</p>
         <div class="sg-hero-actions">
           <button class="btn btn-primary" onclick="openCreateOrgModal()">+ Start a club or team</button>
           <button class="btn" onclick="openJoinOrgModal()">Join with code</button>
@@ -251,6 +281,7 @@ function orgsEmptyHero() {
 function orgIndexCard(o) {
   const next = upcomingOrgEvents(o)[0];
   const unread = orgUnreadCount(o);
+  const chatUnread = orgChatUnread(o);
   const kind = orgKind(o);
   return `
     <div class="card sg-card org-card" style="--org:${esc(orgColor(o))}" role="button" tabindex="0" onclick="openOrg('${o.code}')" onkeydown="if(event.key==='Enter')openOrg('${o.code}')">
@@ -260,7 +291,7 @@ function orgIndexCard(o) {
           <div class="sg-card-name">${esc(o.name)}</div>
           <div class="small muted">${[kind[1], o.school ? esc(o.school) : '', o.sample ? 'Sample' : ''].filter(Boolean).join(' · ')}</div>
         </div>
-        ${unread ? `<span class="sg-unread-dot" title="${unread} new announcement${unread === 1 ? '' : 's'}"></span>` : ''}
+        ${unread || chatUnread ? `<span class="sg-unread-dot" title="${[unread ? `${unread} new announcement${unread === 1 ? '' : 's'}` : '', chatUnread ? 'New messages' : ''].filter(Boolean).join(', ')}"></span>` : ''}
       </div>
       <div class="sg-card-line"><span class="sg-card-ic">${icon('calendar', 13)}</span>${next ? `<span><span class="sg-strong">${esc(next.title)}</span><br><span class="muted">${fmtSessionDay(next.date)}${next.start ? ` · ${fmtTime(next.start)}` : ''}</span></span>` : '<span class="muted">Nothing scheduled</span>'}</div>
       <div class="sg-card-foot"><span class="small muted">${o.loading ? 'Loading…' : `${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'}`}${isOrgOfficer(o) ? ' · You’re an officer' : ''}</span></div>
@@ -278,20 +309,46 @@ function orgEventRow(o, e, { showOrg = false } = {}) {
         <div class="row-meta">${[showOrg ? esc(o.name) : '', esc(ORG_EVENT_CATEGORIES.find(c => c[0] === e.category)?.[1] || ''), e.start ? `${fmtTime(e.start)}${e.end ? `–${fmtTime(e.end)}` : ''}` : '', e.location ? esc(e.location) : ''].filter(Boolean).join(' · ')}</div>
       </div>
       ${!past ? orgRsvpControl(o, e, mine) : ''}
-      ${isOrgOfficer(o) ? `<span class="small muted org-counts" title="${counts.yes} going, ${counts.no} can’t, ${counts.none} haven’t answered">${counts.yes}/${o.memberUids.length}</span>` : ''}
+      <span class="small muted org-counts" title="${counts.yes} going, ${counts.no} can’t, ${counts.none} haven’t answered">${counts.yes} going</span>
     </div>`;
+}
+// Who's going, who can't, and (for officers, who follow up) who hasn't answered.
+function orgAttendanceHtml(o, e) {
+  const people = orgPeople(o);
+  const answer = (p) => o.rsvp?.[p.uid]?.[e.id] || '';
+  const group = (label, list, open = true) => `
+    <details class="org-rsvp-group" ${open ? 'open' : ''}>
+      <summary><span class="sg-strong">${label}</span><span class="assign-count">${list.length}</span></summary>
+      ${list.length ? `<div class="org-rsvp-list">${list.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, p.officer ? orgColor(o) : '#6b6b6b')}<div class="row-title small">${esc(p.name)}${p.uid === myOrgUid(o) ? ' <span class="muted">(you)</span>' : ''}</div><span class="small muted">${esc(orgRoleLabel(o, p))}</span></div>`).join('')}</div>` : '<div class="small muted org-rsvp-empty">No one yet.</div>'}
+    </details>`;
+  const going = people.filter(p => answer(p) === 'yes'), cant = people.filter(p => answer(p) === 'no'), none = people.filter(p => !answer(p));
+  return `
+    ${group(orgEventPast(e) ? 'Said they’d go' : 'Going', going)}
+    ${group('Can’t make it', cant, cant.length <= 8)}
+    ${isOrgOfficer(o)
+      ? `${group('Haven’t answered', none, false)}${none.length && !orgEventPast(e) ? `<button class="btn btn-sm mt-8" onclick="remindToRsvp('${o.code}','${e.id}')">${icon('megaphone', 13, 1.8)} Remind them to RSVP</button>` : ''}`
+      : none.length ? `<div class="small muted mt-8">${none.length} ${none.length === 1 ? 'person hasn’t' : 'people haven’t'} answered yet.</div>` : ''}`;
+}
+function remindToRsvp(code, eventId) {
+  const o = findOrg(code);
+  const e = o && orgEventList(o).find(x => x.id === eventId);
+  if (!e) return;
+  openAnnouncementModal(code, `Please RSVP for ${e.title} on ${fmtDate(e.date, { weekday: 'long', month: 'short', day: 'numeric' })}${e.start ? ` at ${fmtTime(e.start)}` : ''}. Open Clubs & Teams in Semester HQ and tap Going or Can’t.`);
 }
 function orgRsvpControl(o, e, mine = myOrgRsvp(o, e.id)) {
   const opt = (val, label) => `<button class="${mine === val ? 'active' : ''}" aria-pressed="${mine === val}" onclick="event.stopPropagation();setOrgRsvp('${o.code}','${e.id}','${val}')">${label}</button>`;
   return `<div class="segmented sg-rsvp" role="group" aria-label="RSVP to ${esc(e.title)}">${opt('yes', 'Going')}${opt('no', 'Can’t')}</div>`;
 }
-function setOrgRsvp(code, eventId, val) {
+async function setOrgRsvp(code, eventId, val) {
   const o = findOrg(code);
   if (!o || !safeId(eventId)) return;
   const u = myOrgUid(o);
   const current = myOrgRsvp(o, eventId);
-  orgWrite(code, { [`rsvp.${u}.${eventId}`]: current === val ? GW_DELETE : val });
   if (val === 'yes' && current !== 'yes') playUiSound('tap');
+  const ok = await orgWrite(code, { [`rsvp.${u}.${eventId}`]: current === val ? GW_DELETE : val });
+  // Answering from inside the event's popup: refresh it so you show up in the right list.
+  const open = window._orgEventModal;
+  if (ok && open?.code === code && open.eventId === eventId && $('#modal .org-rsvp-group')) showOrgEventModal(code, eventId);
 }
 
 /* ── Org page ──────────────────────────────────────────────────── */
@@ -300,7 +357,8 @@ function pageOrgDetail(o) {
   const unread = orgUnreadCount(o);
   if (tab === 'announcements' && unread) setTimeout(() => markOrgSeen(o.code), 0);
   const kind = orgKind(o);
-  const body = { overview: orgOverviewTab, events: orgEventsTab, announcements: orgAnnouncementsTab, members: orgMembersTab }[tab];
+  const chatUnread = orgChatUnread(o);
+  const body = { overview: orgOverviewTab, events: orgEventsTab, announcements: orgAnnouncementsTab, chat: orgChatTab, files: orgFilesTab, members: orgMembersTab }[tab];
   return `
     <div style="--org:${esc(orgColor(o))}">
     <button class="btn btn-ghost btn-sm sg-back" onclick="setState({subRoute:null})">${icon('arrow-left', 14, 1.9)} Clubs & teams</button>
@@ -320,7 +378,7 @@ function pageOrgDetail(o) {
     </div>
     ${o.loading ? '<div class="small muted mb-16">Loading…</div>' : ''}
     <div class="sg-tabs" role="tablist">
-      ${ORG_TABS.map(([k, label]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}" onclick="setState({orgTab:'${k}'})">${label}${k === 'announcements' && unread && tab !== k ? '<span class="sg-tab-dot" aria-label="new"></span>' : ''}</button>`).join('')}
+      ${ORG_TABS.map(([k, label]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}" onclick="setState({orgTab:'${k}'})">${label}${(k === 'announcements' && unread || k === 'chat' && chatUnread) && tab !== k ? '<span class="sg-tab-dot" aria-label="new"></span>' : ''}</button>`).join('')}
     </div>
     <div class="sg-tab-body">${body(o)}</div>
     </div>`;
@@ -342,7 +400,7 @@ function orgOverviewTab(o) {
               <div class="sg-next-title">${esc(next.title)}</div>
               <div class="small muted sg-meta-line">${next.start ? `<span>${icon('clock', 12, 1.8)} ${fmtTime(next.start)}${next.end ? `–${fmtTime(next.end)}` : ''}</span>` : ''}${next.location ? `<span>${icon('map-pin', 12, 1.8)} ${linkifyWhere(next.location)}</span>` : ''}</div>
               ${next.notes ? `<div class="small sg-notes">${linkifyText(next.notes)}</div>` : ''}
-              <div class="sg-next-foot">${orgRsvpControl(o, next)}<span class="small muted">${orgRsvpCounts(o, next.id).yes} going</span></div>
+              <div class="sg-next-foot">${orgRsvpControl(o, next)}${(() => { const goingUids = orgPeople(o).filter(p => o.rsvp?.[p.uid]?.[next.id] === 'yes'); return `<button class="sg-link org-going-link" onclick="showOrgEventModal('${o.code}','${next.id}')" aria-label="See who’s going to ${esc(next.title)}">${goingUids.length ? `<span class="sg-stack">${goingUids.slice(0, 4).map(p => personAvatar(p.uid, p.name, 22, p.officer ? orgColor(o) : '#6b6b6b')).join('')}</span>` : ''}${goingUids.length} going · See who</button>`; })()}</div>
             </div>
           </div>` : `
           <div class="card card-pad sg-next-empty">
@@ -362,9 +420,14 @@ function orgOverviewTab(o) {
           <div class="flex-between mb-8"><h3 class="sg-h3">Announcements</h3>${isOrgOfficer(o) ? `<button class="sg-link" onclick="openAnnouncementModal('${o.code}')">+ Post</button>` : `<button class="sg-link" onclick="setState({orgTab:'announcements'})">All →</button>`}</div>
           ${anns.length ? anns.map(a => orgAnnouncementHtml(o, a, { compact: true })).join('') : '<p class="small muted">No announcements yet.</p>'}
         </div>
+        ${(() => { const files = orgFileList(o).slice(0, 3); return files.length ? `
+        <div class="card card-pad">
+          <div class="flex-between mb-8"><h3 class="sg-h3">Files</h3><button class="sg-link" onclick="setState({orgTab:'files'})">All ${orgFileList(o).length} →</button></div>
+          ${files.map(f => orgFileRow(o, f, { compact: true })).join('')}
+        </div>` : ''; })()}
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Officers</h3><button class="sg-link" onclick="setState({orgTab:'members'})">${o.memberUids.length} members →</button></div>
-          ${officers.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, orgColor(o))}<div class="row-title small">${esc(p.name)}${p.uid === myOrgUid(o) ? ' <span class="muted">(you)</span>' : ''}</div><span class="small muted">${esc(p.title || (p.owner ? 'Founder' : 'Officer'))}</span></div>`).join('')}
+          ${officers.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, orgColor(o))}<div class="row-title small">${esc(p.name)}${p.uid === myOrgUid(o) ? ' <span class="muted">(you)</span>' : ''}</div><span class="small muted">${esc(orgRoleLabel(o, p))}</span></div>`).join('')}
         </div>
         <label class="checkbox-row small org-cal-toggle"><input type="checkbox" ${o.hideCalendar ? '' : 'checked'} onchange="setOrgOnCalendar('${o.code}',this.checked)"><span>Show ${esc(o.name)} events on my calendar</span></label>
       </div>
@@ -410,16 +473,91 @@ function orgAnnouncementsTab(o) {
 function orgMembersTab(o) {
   const people = orgPeople(o);
   const me = myOrgUid(o);
+  const officerCount = people.filter(p => p.officer).length;
+  // Someone who joined with a position ("Treasurer") but isn't an officer
+  // yet: only the founder can give officer access, so the founder is asked.
+  const requests = isOrgOwner(o) ? people.filter(p => p.title && !p.officer && !p.reviewed) : [];
   return `
-    <div class="sg-toolbar"><div class="small muted">${people.length} member${people.length === 1 ? '' : 's'} · ${people.filter(p => p.officer).length} officer${people.filter(p => p.officer).length === 1 ? '' : 's'}</div><button class="btn btn-primary btn-sm" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 13, 1.8)} Invite</button></div>
+    <div class="sg-toolbar"><div class="small muted">${people.length} member${people.length === 1 ? '' : 's'} · ${officerCount} officer${officerCount === 1 ? '' : 's'}</div><button class="btn btn-primary btn-sm" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 13, 1.8)} Invite</button></div>
+    ${requests.map(p => `
+      <div class="sg-callout org-request mb-8"><span>${icon('shield', 14, 1.8)}</span>
+        <div class="small" style="flex:1"><span class="sg-strong">${esc(p.name)}</span> joined as <span class="sg-strong">${esc(p.title)}</span>. Make them an officer so they can add events, post announcements, and share files?</div>
+        <div class="flex-gap"><button class="btn btn-sm" onclick="reviewOrgRole('${o.code}','${esc(p.uid)}',false)">Not now</button><button class="btn btn-primary btn-sm" onclick="reviewOrgRole('${o.code}','${esc(p.uid)}',true)">Make officer</button></div>
+      </div>`).join('')}
     <div class="card card-pad">
       ${people.map(p => `
         <div class="sg-person org-member">
           ${personAvatar(p.uid, p.name, 30, p.officer ? orgColor(o) : '#6b6b6b')}
-          <div class="row-title"><div class="small sg-strong">${esc(p.name)}${p.uid === me ? ' <span class="muted">(you)</span>' : ''}</div><div class="small muted">${p.owner ? 'Founder' : p.officer ? 'Officer' : 'Member'}${p.title ? ` · ${esc(p.title)}` : ''}</div></div>
-          ${isOrgOfficer(o) && !o.local ? `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>` : ''}
+          <div class="row-title"><div class="small sg-strong">${esc(p.name)}${p.uid === me ? ' <span class="muted">(you)</span>' : ''}</div><div class="small muted">${esc(orgRoleLabel(o, p))}${p.officer && p.title ? ` · <span class="org-officer-tag">${icon('shield', 11, 1.9)} ${p.owner ? 'Founder' : 'Officer'}</span>` : ''}</div></div>
+          ${isOrgOfficer(o) && !o.local ? `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>` : p.uid === me ? `<button class="btn btn-ghost btn-sm" onclick="openMyOrgTitleModal('${o.code}')">Edit title</button>` : ''}
         </div>`).join('')}
+    </div>
+    <details class="card card-pad org-roles-help mt-16">
+      <summary class="sg-strong small">How roles work</summary>
+      <div class="small muted mt-8">
+        <p><span class="sg-strong">Founder:</span> whoever started ${esc(o.name)}. The founder is an officer and is the only one who can make someone else an officer.</p>
+        <p><span class="sg-strong">Officers:</span> add events, post announcements, share files, see who hasn’t RSVPed, and manage members.</p>
+        <p><span class="sg-strong">${esc(orgGeneralLabel(o))}:</span> RSVP, chat, and open shared files. Events show up on their calendar.</p>
+        <p>Anyone can add a title, like Treasurer or Captain, that shows next to their name. When someone joins with a title, the founder is asked whether they should be an officer.</p>
+      </div>
+    </details>`;
+}
+async function reviewOrgRole(code, memberUid, makeOfficer) {
+  const o = findOrg(code);
+  if (!o || !isOrgOwner(o) || !safeId(memberUid)) return;
+  const ops = { [`people.${memberUid}.reviewed`]: true };
+  if (makeOfficer) ops.officerUids = gwUnion(memberUid);
+  const name = orgPersonByUid(o, memberUid)?.name || 'They';
+  if (await orgWrite(code, ops)) toast(makeOfficer ? `${name} is an officer now` : 'Got it. You can make them an officer anytime from Manage.');
+}
+function openMyOrgTitleModal(code) {
+  const o = findOrg(code);
+  if (!o) return;
+  const me = myOrgUid(o);
+  const current = orgTitleOf(o, me);
+  openModal(`
+    <div class="modal-head"><h3>Your title in ${esc(o.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      ${orgRoleFieldsHtml(o, current, 'mt')}
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveMyOrgTitle('${code}')">Save</button></div>
+  `);
+}
+// "General body" or a position, used when joining and when editing your own title.
+function orgRoleFieldsHtml(o, title, prefix) {
+  const hasRole = !!title;
+  return `
+    <div class="field" style="margin-bottom:0"><label>Your role</label>
+      <div class="segmented org-role-pick" role="radiogroup" aria-label="Your role">
+        <button type="button" role="radio" aria-checked="${!hasRole}" class="${hasRole ? '' : 'active'}" onclick="pickOrgRole('${prefix}',false)">${esc(orgGeneralLabel(o))}</button>
+        <button type="button" role="radio" aria-checked="${hasRole}" class="${hasRole ? 'active' : ''}" onclick="pickOrgRole('${prefix}',true)">I have a position</button>
+      </div>
+      <div id="${prefix}-title-wrap" class="mt-8" ${hasRole ? '' : 'hidden'}>
+        <input class="input" id="${prefix}-title" maxlength="${ORG_TITLE_MAX}" value="${esc(title)}" placeholder="Treasurer, Captain, Social chair…" aria-label="Your title">
+        <div class="chip-row mt-8">${ORG_TITLE_SUGGESTIONS.map(t => `<button type="button" class="chip" onclick="$('#${prefix}-title').value='${t}'">${t}</button>`).join('')}</div>
+        <div class="small muted mt-8">Shows next to your name.${isOrgOfficer(o) ? '' : ' If you should be an officer, the founder can give you access to post events.'}</div>
+      </div>
     </div>`;
+}
+function pickOrgRole(prefix, hasRole) {
+  const wrap = $(`#${prefix}-title-wrap`);
+  if (wrap) wrap.hidden = !hasRole;
+  $$('.org-role-pick button').forEach((b, i) => { const on = (i === 1) === hasRole; b.classList.toggle('active', on); b.setAttribute('aria-checked', on); });
+  if (hasRole) setTimeout(() => $(`#${prefix}-title`)?.focus(), 30);
+}
+function chosenOrgTitle(prefix) {
+  const wrap = $(`#${prefix}-title-wrap`);
+  return wrap && !wrap.hidden ? cleanStr($(`#${prefix}-title`)?.value, ORG_TITLE_MAX) : '';
+}
+async function saveMyOrgTitle(code) {
+  const o = findOrg(code);
+  if (!o) return;
+  const me = myOrgUid(o);
+  const title = chosenOrgTitle('mt');
+  // A new title is worth the founder's review again, unless it's being cleared.
+  const ops = { [`people.${me}.title`]: title, [`people.${me}.reviewed`]: title ? isOrgOfficer(o) : GW_DELETE };
+  closeModal();
+  if (await orgWrite(code, ops)) toast(title ? `Your title is ${title}` : `You’re listed as ${orgGeneralLabel(o).toLowerCase()}`);
 }
 
 /* ── Events ────────────────────────────────────────────────────── */
@@ -427,9 +565,10 @@ function showOrgEventModal(code, eventId) {
   const o = findOrg(code);
   const e = o && orgEventList(o).find(x => x.id === eventId);
   if (!e) return;
-  const counts = orgRsvpCounts(o, e.id);
-  const who = (val) => orgPeople(o).filter(p => (o.rsvp?.[p.uid]?.[e.id] || '') === val).map(p => esc(p.name));
   const past = orgEventPast(e);
+  const same = window._orgEventModal?.code === code && window._orgEventModal.eventId === eventId;
+  const openGroups = same ? $$('#modal .org-rsvp-group').map(d => d.open) : null;
+  window._orgEventModal = { code, eventId };
   openModal(`
     <div class="modal-head"><h3>${esc(e.title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
@@ -442,14 +581,11 @@ function showOrgEventModal(code, eventId) {
       ${e.notes ? `<div class="small sg-notes mt-8">${linkifyText(e.notes)}</div>` : ''}
       ${!past ? `<div class="flex-gap wrap mt-16" style="align-items:center">${orgRsvpControl(o, e)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 13, 1.8)} Add to calendar app</button></div>` : ''}
       <div class="divider"></div>
-      <div class="small"><span class="sg-strong">${counts.yes} going</span> · ${counts.no} can’t · ${counts.none} haven’t answered</div>
-      ${isOrgOfficer(o) ? `
-        ${who('yes').length ? `<div class="small muted mt-8">Going: ${who('yes').join(', ')}</div>` : ''}
-        ${who('no').length ? `<div class="small muted mt-4">Can’t: ${who('no').join(', ')}</div>` : ''}
-        ${who('').length ? `<div class="small muted mt-4">No answer: ${who('').join(', ')}</div>` : ''}` : ''}
+      ${orgAttendanceHtml(o, e)}
     </div>
     ${isOrgOfficer(o) ? `<div class="modal-foot"><button class="btn btn-danger" style="margin-right:auto" onclick="deleteOrgEvent('${o.code}','${e.id}')">Delete</button><button class="btn" onclick="openOrgEventModal('${o.code}','${e.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button></div>` : ''}
-  `);
+  `, { onClose: () => { window._orgEventModal = null; } });
+  if (openGroups) $$('#modal .org-rsvp-group').forEach((d, i) => { if (openGroups[i] != null) d.open = openGroups[i]; });
 }
 function openOrgEventModal(code, eventId) {
   const o = findOrg(code);
@@ -540,13 +676,13 @@ function downloadOrgIcs(code, eventId) {
 }
 
 /* ── Announcements ─────────────────────────────────────────────── */
-function openAnnouncementModal(code) {
+function openAnnouncementModal(code, prefill = '') {
   const o = findOrg(code);
   if (!o || !isOrgOfficer(o)) return;
   openModal(`
     <div class="modal-head"><h3>Announcement to ${esc(o.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
-      <div class="field"><label for="an-text">Message</label><textarea class="input" id="an-text" maxlength="${ORG_ANNOUNCEMENT_MAX}" style="min-height:130px" placeholder="Practice moved to 6 tomorrow because of the storm."></textarea></div>
+      <div class="field"><label for="an-text">Message</label><textarea class="input" id="an-text" maxlength="${ORG_ANNOUNCEMENT_MAX}" style="min-height:130px" placeholder="Practice moved to 6 tomorrow because of the storm.">${esc(prefill)}</textarea></div>
       <label class="checkbox-row small"><input type="checkbox" id="an-pin"><span>Pin to the top</span></label>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="an-post" onclick="postAnnouncement('${o.code}')">${icon('send', 13, 1.8)} Post</button></div>
@@ -576,8 +712,8 @@ function openMemberRoleModal(code, memberUid) {
   openModal(`
     <div class="modal-head"><h3>${esc(p.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
-      <div class="field"><label for="mr-title">Title <span class="muted">(shown next to their name)</span></label><input class="input" id="mr-title" maxlength="40" value="${esc(p.title)}" placeholder="President, Captain, Treasurer…"></div>
-      ${isOrgOwner(o) && !p.owner ? `<label class="checkbox-row small"><input type="checkbox" id="mr-officer" ${p.officer ? 'checked' : ''}><span>Officer: can add events and post announcements</span></label>` : `<p class="small muted">${p.owner ? 'Founder of this club.' : p.officer ? 'Officer.' : 'Member.'} ${isOrgOwner(o) ? '' : 'Only the founder can make someone an officer.'}</p>`}
+      <div class="field"><label for="mr-title">Title <span class="muted">(shown next to their name)</span></label><input class="input" id="mr-title" maxlength="${ORG_TITLE_MAX}" value="${esc(p.title)}" placeholder="President, Captain, Treasurer…"><div class="small muted mt-4">Leave it blank to list them as ${esc(orgGeneralLabel(o).toLowerCase())}.</div></div>
+      ${isOrgOwner(o) && !p.owner ? `<label class="checkbox-row small"><input type="checkbox" id="mr-officer" ${p.officer ? 'checked' : ''}><span>Officer: can add events, post announcements, share files, and manage members</span></label>` : `<p class="small muted">${p.owner ? 'Founder of this club.' : p.officer ? 'Officer.' : esc(orgGeneralLabel(o)) + '.'} ${isOrgOwner(o) ? '' : 'Only the founder can make someone an officer.'}</p>`}
     </div>
     <div class="modal-foot">
       ${!p.owner && p.uid !== me ? `<button class="btn btn-danger" style="margin-right:auto" onclick="removeOrgMember('${code}','${esc(p.uid)}')">Remove</button>` : ''}
@@ -588,7 +724,7 @@ function openMemberRoleModal(code, memberUid) {
 async function saveMemberRole(code, memberUid) {
   const o = findOrg(code);
   if (!o || !safeId(memberUid)) return;
-  const ops = { [`titles.${memberUid}`]: $('#mr-title').value.trim().slice(0, 40) || GW_DELETE };
+  const ops = { [`people.${memberUid}.title`]: cleanStr($('#mr-title').value, ORG_TITLE_MAX), [`titles.${memberUid}`]: GW_DELETE, [`people.${memberUid}.reviewed`]: true };
   const box = $('#mr-officer');
   if (box && isOrgOwner(o)) ops.officerUids = box.checked ? gwUnion(memberUid) : gwRemove(memberUid);
   closeModal();
@@ -599,6 +735,250 @@ function removeOrgMember(code, memberUid) {
   if (!o || !safeId(memberUid)) return;
   const name = orgPeople(o).find(p => p.uid === memberUid)?.name || 'this member';
   confirmDialog(`Remove ${name} from ${o.name}?`, () => orgWrite(code, { memberUids: gwRemove(memberUid), officerUids: gwRemove(memberUid), [`people.${memberUid}`]: GW_DELETE, [`rsvp.${memberUid}`]: GW_DELETE, [`titles.${memberUid}`]: GW_DELETE }), 'Remove');
+}
+
+/* ── Files: officers share, everyone opens ─────────────────────── */
+function orgFileList(o) {
+  return Object.values(o.files || {}).filter(f => f && safeId(f.id) && (f.kind === 'file' || f.kind === 'link') && typeof f.title === 'string')
+    .map(f => ({ ...f, title: cleanStr(f.title, 120) || 'File', name: cleanStr(f.name, 60) || 'An officer', size: Number(f.size) || 0 }))
+    .sort((a, b) => (b.at || 0) - (a.at || 0));
+}
+function orgFileUrl(o, f) {
+  const url = String(f.url || '');
+  if (isHttpUrl(url)) return url;
+  return o.local && url.startsWith('data:') ? url : '';
+}
+function orgFileRow(o, f, { compact = false } = {}) {
+  const url = orgFileUrl(o, f);
+  const isFile = f.kind === 'file';
+  const meta = isFile ? [fileTypeLabel(f.fileName || f.title), fmtFileSize(f.size)] : ['Link', hostOf(url)];
+  if (!compact) meta.push(f.name, fmtRelativeTime(f.at));
+  const open = !url ? '' : isFile
+    ? `<a class="btn btn-sm" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(f.fileName || f.title)}">${icon('download', 13)} Open</a>`
+    : `<a class="btn btn-sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${icon('link', 13)} Open</a>`;
+  return `
+    <div class="list-row sg-resource org-file">
+      <span class="sg-res-ic">${icon(isFile ? 'paperclip' : 'link', 16)}</span>
+      <div class="row-title"><div class="sg-strong">${esc(f.title)}</div><div class="row-meta">${meta.filter(Boolean).map(esc).join(' · ')}</div></div>
+      ${open}
+      ${!compact && isOrgOfficer(o) ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(f.title)}" onclick="removeOrgFile('${o.code}','${f.id}')">${icon('trash', 14)}</button>` : ''}
+    </div>`;
+}
+function orgFilesTab(o) {
+  const files = orgFileList(o);
+  const officer = isOrgOfficer(o);
+  return `
+    <div class="sg-toolbar">
+      <div class="small muted">${officer ? 'Share forms, schedules, rosters, and links with everyone.' : 'Forms, schedules, and links from your officers.'}</div>
+      ${officer ? `<button class="btn btn-primary btn-sm" onclick="openOrgFileModal('${o.code}')">+ Share a file or link</button>` : ''}
+    </div>
+    ${files.length ? `<div class="card card-pad">${files.map(f => orgFileRow(o, f)).join('')}</div>`
+      : emptyState(icon('paperclip', 24, 1.4), 'No files yet', officer ? `<button class="btn btn-sm mt-8" onclick="openOrgFileModal('${o.code}')">Share the first file</button>` : '', officer ? 'A dues form, the practice schedule, your constitution, a link to the photo drive.' : 'When officers share something, it shows up here.')}
+  `;
+}
+function openOrgFileModal(code) {
+  const o = findOrg(code);
+  if (!o || !isOrgOfficer(o)) return;
+  window._orgFile = { code, kind: 'file', file: null };
+  const max = o.local ? GROUP_FILE_MAX_BYTES_LOCAL : GROUP_FILE_MAX_BYTES_CLOUD;
+  openModal(`
+    <div class="modal-head"><h3>Share with ${esc(o.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <div class="segmented mb-16" id="ofl-kind-pick" role="group" aria-label="What are you sharing?">
+        <button type="button" class="active" aria-pressed="true" onclick="setOrgFileKind('file')">${icon('paperclip', 12, 1.8)} A file</button>
+        <button type="button" aria-pressed="false" onclick="setOrgFileKind('link')">${icon('link', 12, 1.8)} A link</button>
+      </div>
+      <div id="ofl-file-fields">
+        <div class="upload-drop" onclick="if(event.target.id!=='ofl-file-input')$('#ofl-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');handleOrgFilePick(event.dataTransfer.files[0])">
+          <div class="small" id="ofl-file-status">Choose a file or drop it here: a PDF, doc, spreadsheet, or image, up to ${fmtFileSize(max)}</div>
+          <input type="file" id="ofl-file-input" hidden onchange="handleOrgFilePick(this.files[0])">
+        </div>
+      </div>
+      <div id="ofl-link-fields" hidden>
+        <div class="field" style="margin-bottom:0"><label for="ofl-link-url">Link</label><input class="input" id="ofl-link-url" type="url" placeholder="https://…"></div>
+      </div>
+      <div class="field mt-16" style="margin-bottom:0"><label for="ofl-title">Title <span class="muted">(optional)</span></label><input class="input" id="ofl-title" maxlength="120" placeholder="Dues form, Practice schedule, Photo drive…"></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ofl-share" onclick="saveOrgFile()">Share</button></div>
+  `);
+}
+function setOrgFileKind(kind) {
+  window._orgFile.kind = kind;
+  $('#ofl-file-fields').hidden = kind !== 'file';
+  $('#ofl-link-fields').hidden = kind !== 'link';
+  $$('#ofl-kind-pick button').forEach((b, i) => { const on = (i === 0) === (kind === 'file'); b.classList.toggle('active', on); b.setAttribute('aria-pressed', on); });
+  if (kind === 'link') setTimeout(() => $('#ofl-link-url')?.focus(), 30);
+}
+async function handleOrgFilePick(file) {
+  const st = window._orgFile;
+  const o = findOrg(st?.code);
+  const input = $('#ofl-file-input');
+  if (input) input.value = '';
+  if (!file || !o) return;
+  const max = o.local ? GROUP_FILE_MAX_BYTES_LOCAL : GROUP_FILE_MAX_BYTES_CLOUD;
+  const status = $('#ofl-file-status');
+  if (file.size > max) { st.file = null; if (status) status.textContent = `That file is ${fmtFileSize(file.size)}. The limit is ${fmtFileSize(max)}.`; return; }
+  if (status) status.textContent = 'Reading…';
+  const dataUrl = 'data:' + mimeForFile(file.name, file.type) + ';base64,' + (await fileToBase64(file));
+  st.file = { name: file.name, size: file.size, dataUrl };
+  if (status) status.textContent = `${file.name} (${fmtFileSize(file.size)}) is ready to share`;
+}
+async function saveOrgFile() {
+  const st = window._orgFile;
+  const o = findOrg(st?.code);
+  if (!o || !isOrgOfficer(o)) return;
+  if (orgFileList(o).length >= ORG_FILES_MAX) { toast(`${o.name} already has ${ORG_FILES_MAX} files. Remove an old one first.`, 'error', 5000); return; }
+  const id = uid();
+  const base = { id, uid: myOrgUid(o), name: myGroupName(), at: Date.now() };
+  const title = cleanStr($('#ofl-title').value, 120);
+  let item;
+  if (st.kind === 'link') {
+    const url = $('#ofl-link-url').value.trim();
+    if (!isHttpUrl(url)) { toast('Enter a full link starting with https://', 'error'); return; }
+    item = { ...base, kind: 'link', title: title || hostOf(url) || 'Link', url };
+  } else {
+    if (!st.file) { toast('Choose a file first', 'error'); return; }
+    item = { ...base, kind: 'file', title: title || fileBaseName(st.file.name) || st.file.name, fileName: st.file.name, size: st.file.size };
+  }
+  const btn = $('#ofl-share');
+  setBtnLoading(btn, true);
+  try {
+    if (item.kind === 'file') {
+      if (o.local) item.url = st.file.dataUrl;
+      else if (!cloudGroupsEnabled()) { setBtnLoading(btn, false, 'Share'); toast('Log in to share files.', 'error'); return; }
+      else item.url = await uploadDataUrlToStorage(`orgs/${o.code}/files/${id}-${storageSafeName(st.file.name)}`, st.file.dataUrl, st.file.name);
+    }
+    if (await orgWrite(o.code, { [`files.${id}`]: item })) { closeModal(); toast(`Shared “${item.title}”`); }
+    else setBtnLoading(btn, false, 'Share');
+  } catch (e) {
+    console.warn('Club file upload failed', e?.code, e);
+    setBtnLoading(btn, false, 'Share');
+    toast('Couldn’t upload that file. Check your connection and try again.', 'error', 5000);
+  }
+}
+function removeOrgFile(code, id) {
+  const o = findOrg(code);
+  const f = o && orgFileList(o).find(x => x.id === id);
+  if (!f || !isOrgOfficer(o)) return;
+  confirmDialog(`Remove “${f.title}” for everyone?`, async () => {
+    if (!(await orgWrite(code, { [`files.${id}`]: GW_DELETE }))) return;
+    if (f.kind === 'file' && String(f.url || '').includes('firebasestorage')) fbStorage().then(s => s.refFromURL(f.url).delete()).catch(() => {});
+  }, 'Remove');
+}
+
+/* ── Chat ─────────────────────────────────────────────────────────
+   Everyone in the club can post. Messages live in orgs/CODE/messages and
+   only load while the Chat tab is open; lastMessage on the club doc drives
+   the unread dots everywhere else. Officers can delete any message. */
+const _orgMessages = {};
+const _orgChatFailed = {};
+let _orgChatSub = { code: null, unsub: null };
+function orgMessages(o) {
+  const list = o.local ? (orgEntry(o.code)?.messages || []) : (_orgMessages[o.code] || []);
+  return list.filter(m => m && safeId(m.id) && typeof m.text === 'string' && typeof m.at === 'number');
+}
+function closeOrgChatListener() { if (_orgChatSub.unsub) _orgChatSub.unsub(); _orgChatSub = { code: null, unsub: null }; }
+function ensureOrgChatListener(code) {
+  const entry = orgEntry(code);
+  if (!entry?.cloud || !cloudGroupsEnabled() || _orgChatFailed[code]) { closeOrgChatListener(); return; }
+  if (_orgChatSub.code === code) return;
+  closeOrgChatListener();
+  _orgChatSub.code = code;
+  _orgChatSub.unsub = _fbDb.collection('orgs').doc(code).collection('messages').orderBy('at').limitToLast(200).onSnapshot(snap => {
+    _orgMessages[code] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+    renderRemote();
+  }, err => {
+    console.warn('Club chat listener failed', code, err);
+    _orgChatFailed[code] = true; // not retried until the tab is opened again, so a failure can't loop
+    _orgChatSub = { code: null, unsub: null };
+    renderRemote();
+  });
+}
+// Runs after every render (see render() in app.js).
+function afterOrgPageRender() {
+  const code = state.route === 'orgs' ? state.subRoute : null;
+  if (!code || state.orgTab !== 'chat' || !orgEntry(code)) {
+    if (_orgChatSub.code) closeOrgChatListener();
+    Object.keys(_orgChatFailed).forEach(k => delete _orgChatFailed[k]);
+    return;
+  }
+  ensureOrgChatListener(code);
+  const log = document.getElementById('org-chat-log');
+  if (log) { log.scrollTop = log.scrollHeight; markOrgChatSeen(code); }
+}
+function orgChatTab(o) {
+  const msgs = orgMessages(o);
+  const me = myOrgUid(o);
+  const officer = isOrgOfficer(o);
+  const byUid = Object.fromEntries(orgPeople(o).map(p => [p.uid, p]));
+  const loading = !o.local && !_orgMessages[o.code] && !_orgChatFailed[o.code];
+  let lastDay = '', lastUid = '', lastAt = 0;
+  const rows = msgs.map(m => {
+    const day = iso(new Date(m.at));
+    const sep = day !== lastDay ? `<div class="sg-chat-day">${fmtSessionDay(day)}</div>` : '';
+    const grouped = !sep && lastUid === m.uid && m.at - lastAt < 5 * 60000;
+    lastDay = day; lastUid = m.uid; lastAt = m.at;
+    const mine = m.uid === me;
+    const p = byUid[m.uid];
+    const who = p ? p.name : cleanStr(m.name, 60) || 'Former member';
+    return `${sep}
+      <div class="sg-msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''}">
+        ${mine ? '' : grouped ? '<span class="sg-msg-spacer"></span>' : personAvatar(m.uid, who, 28, p?.officer ? orgColor(o) : '#6b6b6b')}
+        <div class="sg-msg-body">
+          ${!mine && !grouped ? `<div class="sg-msg-name">${esc(who)}${p ? ` <span class="org-msg-role">${esc(orgRoleLabel(o, p))}</span>` : ''} <span class="muted">${new Date(m.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></div>` : ''}
+          <div class="sg-bubble" title="${esc(new Date(m.at).toLocaleString())}">${linkifyText(m.text)}</div>
+        </div>
+        ${mine || officer ? `<button class="sg-msg-del" aria-label="Delete message" title="Delete" onclick="deleteOrgMessage('${o.code}','${m.id}')">${icon('x', 11, 2.2)}</button>` : ''}
+      </div>`;
+  }).join('');
+  return `
+    <div class="card sg-chat">
+      <div class="sg-chat-log" id="org-chat-log" data-keep-scroll="bottom">
+        ${_orgChatFailed[o.code] ? emptyState(icon('message-circle', 24, 1.4), 'Chat didn’t load', `<button class="btn btn-sm mt-8" onclick="delete _orgChatFailed['${o.code}'];render()">Try again</button>`, 'Check your connection, then try again.')
+          : loading ? '<div class="small muted" style="padding:18px;text-align:center">Loading messages…</div>'
+          : msgs.length ? rows : emptyState(icon('message-circle', 24, 1.4), 'No messages yet', '', `Say hi to ${o.name}. Everyone in the ${o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club'} sees this chat.`)}
+      </div>
+      <div class="sg-chat-compose">
+        <input class="input" id="org-chat-input" maxlength="${GROUP_MESSAGE_MAX}" autocomplete="off" placeholder="Message ${esc(o.name)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendOrgMessage('${o.code}')}">
+        <button class="btn btn-primary" aria-label="Send message" onclick="sendOrgMessage('${o.code}')">${icon('send', 14, 1.9)}</button>
+      </div>
+    </div>`;
+}
+async function sendOrgMessage(code) {
+  const input = $('#org-chat-input');
+  const text = input?.value.trim();
+  const entry = orgEntry(code);
+  const o = findOrg(code);
+  if (!text || !entry || !o) return;
+  const msg = { id: uid(), uid: myOrgUid(o), name: myGroupName(), text: text.slice(0, GROUP_MESSAGE_MAX), at: Date.now() };
+  const lastMessage = { uid: msg.uid, name: msg.name, text: msg.text.slice(0, 140), at: msg.at };
+  input.value = '';
+  if (entry.local) {
+    entry.messages = [...(entry.messages || []), msg].slice(-200);
+    entry.lastMessage = lastMessage;
+    orgChatSeen()[code] = msg.at;
+    touch();
+    $('#org-chat-input')?.focus();
+    return;
+  }
+  if (!cloudGroupsEnabled()) { input.value = text; toast('Log in to chat with your club.', 'error'); return; }
+  try {
+    const ref = _fbDb.collection('orgs').doc(code);
+    await ref.collection('messages').doc(msg.id).set(msg);
+    ref.update({ lastMessage, updatedAt: Date.now() }).catch(e => console.warn('Club lastMessage update failed', e));
+    markOrgChatSeen(code, msg.at);
+    playUiSound('send');
+  } catch (e) {
+    console.warn('Club message failed', e?.code, e);
+    if (input.isConnected && !input.value) input.value = text;
+    toast('Message didn’t send. Check your connection and try again.', 'error');
+  }
+}
+function deleteOrgMessage(code, id) {
+  const entry = orgEntry(code);
+  if (!entry || !safeId(id)) return;
+  if (entry.local) { entry.messages = (entry.messages || []).filter(m => m.id !== id); touch(); return; }
+  _fbDb.collection('orgs').doc(code).collection('messages').doc(id).delete().catch(() => toast('Couldn’t delete that message.', 'error'));
 }
 
 /* ── Create, join, invite, settings ────────────────────────────── */
@@ -614,6 +994,11 @@ function openCreateOrgModal() {
         <div class="field"><label>Color</label><div class="org-colors" id="of-colors" role="group" aria-label="Color">${ORG_COLORS.map((c, i) => `<button type="button" class="page-color ${i === 0 ? 'active' : ''}" style="background:${c}" aria-label="Color ${i + 1}" aria-pressed="${i === 0}" onclick="_orgDraft.color='${c}';$$('#of-colors button').forEach(b=>{b.classList.toggle('active',b===this);b.setAttribute('aria-pressed',b===this)})"></button>`).join('')}</div></div>
       </div>
       <div class="field"><label for="of-desc">Description <span class="muted">(optional)</span></label><input class="input" id="of-desc" maxlength="200" placeholder="Meetings Tuesdays at 7 in the Union"></div>
+      <div class="field"><label for="of-title">Your title <span class="muted">(optional)</span></label>
+        <input class="input" id="of-title" maxlength="${ORG_TITLE_MAX}" placeholder="President, Captain, Chair…">
+        <div class="chip-row mt-8">${ORG_TITLE_SUGGESTIONS.map(t => `<button type="button" class="chip" onclick="$('#of-title').value='${t}'">${t}</button>`).join('')}</div>
+      </div>
+      <div class="sg-callout small mb-8"><span>${icon('shield', 14, 1.8)}</span><div>You’ll be the founder and an officer. Officers add events, post announcements, share files, and see who’s coming. You can make other members officers from the Members tab.</div></div>
       ${!cloudGroupsEnabled() && fbConfigured() ? '<p class="small muted">You’re not logged in, so this stays on this tab only. <a href="login.html">Log in</a> to invite members.</p>' : ''}
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="of-create" onclick="submitCreateOrg()">Create</button></div>
@@ -625,7 +1010,7 @@ async function submitCreateOrg() {
   const d = window._orgDraft;
   const school = $('#of-school').value.trim().slice(0, 80);
   if (school) state.settings.school = school;
-  const fields = { name: name.slice(0, 80), kind: d.kind, school, color: d.color, description: $('#of-desc').value.trim().slice(0, 200) };
+  const fields = { name: name.slice(0, 80), kind: d.kind, school, color: d.color, description: $('#of-desc').value.trim().slice(0, 200), ownerTitle: cleanStr($('#of-title').value, ORG_TITLE_MAX) };
   if (!cloudGroupsEnabled()) {
     const code = genGroupCode();
     orgEntries().push({ ...newOrgDoc({ code, ...fields, ownerUid: LOCAL_UID }), local: true });
@@ -719,12 +1104,14 @@ function showOrgPreview(code, data) {
         ${o.description ? `<div class="small mt-8">${esc(o.description)}</div>` : ''}
         ${next ? `<div class="small muted mt-8">Next: ${esc(next.title)}, ${fmtSessionDay(next.date)}${next.start ? ` at ${fmtTime(next.start)}` : ''}</div>` : ''}
       </div>
+      <div class="mt-16">${orgRoleFieldsHtml(o, '', 'oj')}</div>
     </div>
     <div class="modal-foot"><button class="btn" onclick="clearPendingOrg();closeModal()">Not now</button><button class="btn btn-primary" id="oj-confirm" onclick="confirmJoinOrg('${code}')">Join</button></div>
   `);
 }
 async function confirmJoinOrg(code) {
   const btn = $('#oj-confirm');
+  const title = chosenOrgTitle('oj');
   setBtnLoading(btn, true);
   try {
     const myUid = _fbUser.uid;
@@ -735,7 +1122,7 @@ async function confirmJoinOrg(code) {
       if (!snap.exists) throw new Error('That club doesn’t exist anymore.');
       const data = snap.data();
       name = data.name;
-      if (!(data.memberUids || []).includes(myUid)) tx.update(ref, { memberUids: firebase.firestore.FieldValue.arrayUnion(myUid), [`people.${myUid}`]: { name: myGroupName(), joinedAt: Date.now() }, updatedAt: Date.now() });
+      if (!(data.memberUids || []).includes(myUid)) tx.update(ref, { memberUids: firebase.firestore.FieldValue.arrayUnion(myUid), [`people.${myUid}`]: { name: myGroupName(), joinedAt: Date.now(), title }, updatedAt: Date.now() });
     });
     clearPendingOrg();
     state.orgs = [...orgEntries().filter(e => e.code !== code), { code, cloud: true, name, joinedAt: Date.now() }];
@@ -766,6 +1153,7 @@ function openOrgSettingsModal(code) {
         <div class="field"><label for="os-desc">Description</label><input class="input" id="os-desc" maxlength="200" value="${esc(o.description || '')}"></div>
         <div class="field"><label>Color</label><div class="org-colors" role="group" aria-label="Color">${ORG_COLORS.map((c, i) => `<button type="button" class="page-color ${orgColor(o) === c ? 'active' : ''}" style="background:${c}" aria-label="Color ${i + 1}" aria-pressed="${orgColor(o) === c}" onclick="orgWrite('${code}',{color:'${c}'}).then(()=>openOrgSettingsModal('${code}'))"></button>`).join('')}</div></div>
       ` : `<p class="small muted mb-8">Officers manage the details. You can leave any time.</p>`}
+      <div class="flex-between small mb-8"><span>Your title: <span class="sg-strong">${esc(orgTitleOf(o, myOrgUid(o)) || (isOrgOwner(o) ? 'Founder' : isOrgOfficer(o) ? 'Officer' : orgGeneralLabel(o)))}</span></span><button class="sg-link" onclick="openMyOrgTitleModal('${code}')">Change</button></div>
       <label class="checkbox-row small"><input type="checkbox" ${o.hideCalendar ? '' : 'checked'} onchange="setOrgOnCalendar('${code}',this.checked)"><span>Show events on my calendar</span></label>
       <div class="divider"></div>
       <div class="sg-danger">
@@ -821,6 +1209,13 @@ async function deleteOrgEverywhere(code) {
   const o = findOrg(code);
   try {
     if (_orgDocUnsubs[code]) { _orgDocUnsubs[code](); delete _orgDocUnsubs[code]; }
+    if (_orgChatSub.code === code) closeOrgChatListener();
+    // Best effort: the chat and shared files don't go away on their own.
+    try {
+      const msgs = await _fbDb.collection('orgs').doc(code).collection('messages').limit(450).get();
+      if (!msgs.empty) { const batch = _fbDb.batch(); msgs.docs.forEach(d => batch.delete(d.ref)); await batch.commit(); }
+    } catch (e) { console.warn('Could not clear club chat', e); }
+    if (o) orgFileList(o).filter(f => f.kind === 'file' && String(f.url || '').includes('firebasestorage')).forEach(f => fbStorage().then(s => s.refFromURL(f.url).delete()).catch(() => {}));
     await _fbDb.collection('orgs').doc(code).delete();
     dropOrgEntry(code, `Deleted “${o?.name || 'the club'}”.`);
   } catch (e) { console.warn(e); reconcileOrgSubscriptions(); toast('Couldn’t delete it. Check your connection.', 'error'); }
@@ -873,12 +1268,26 @@ function createSampleOrg() {
     ev('General meeting', 'meeting', addDays(nextDow(2), 7), '19:00', '20:00', 'Student Union 210', { required: true }),
   ]);
   const ids = Object.keys(events);
+  const H = 3600000;
+  const fileId = uid(), linkId = uid();
+  const dues = 'Spring dues\n\n$40 for the semester, due Friday.\nVenmo @noah-treasurer and put your name in the note.\nQuestions? Ask Noah in chat.\n';
+  const messages = [
+    { uid: lena, name: 'Lena', text: 'Is the networking night business casual or business formal?', at: now - 27 * H },
+    { uid: ava, name: 'Ava', text: 'Business casual! Bring a few copies of your resume.', at: now - 26.5 * H },
+    { uid: jade, name: 'Jade', text: 'I can drive 3 people to the food bank on Saturday 🚗', at: now - 5 * H },
+    { uid: noah, name: 'Noah', text: 'Reminder that dues are due Friday. The details are in Files.', at: now - 2 * H },
+  ].map(m => ({ id: uid(), ...m }));
   const entry = {
     ...newOrgDoc({ code, name: 'Women in Business', kind: 'club', school: state.settings.school || '', color: ORG_COLORS[3], description: 'Career panels, networking, and a community of students going into business.', ownerUid: ava }),
     local: true, sample: true,
     memberUids: [ava, noah, lena, sam, jade, me], officerUids: [ava, noah],
-    people: { [ava]: { name: 'Ava', joinedAt: now - 60 * D }, [noah]: { name: 'Noah', joinedAt: now - 50 * D }, [lena]: { name: 'Lena', joinedAt: now - 30 * D }, [sam]: { name: 'Sam', joinedAt: now - 20 * D }, [jade]: { name: 'Jade', joinedAt: now - 9 * D }, [me]: { name: myGroupName(), joinedAt: now - 2 * D } },
-    titles: { [ava]: 'President', [noah]: 'Treasurer' },
+    people: { [ava]: { name: 'Ava', joinedAt: now - 60 * D, title: 'President' }, [noah]: { name: 'Noah', joinedAt: now - 50 * D, title: 'Treasurer' }, [lena]: { name: 'Lena', joinedAt: now - 30 * D, title: '' }, [sam]: { name: 'Sam', joinedAt: now - 20 * D, title: '' }, [jade]: { name: 'Jade', joinedAt: now - 9 * D, title: 'Social chair', reviewed: true }, [me]: { name: myGroupName(), joinedAt: now - 2 * D, title: '' } },
+    files: {
+      [fileId]: { id: fileId, kind: 'file', title: 'Spring dues', fileName: 'Spring dues.txt', size: dues.length, url: 'data:text/plain;base64,' + btoa(dues), uid: noah, name: 'Noah', at: now - 20 * H },
+      [linkId]: { id: linkId, kind: 'link', title: 'Resume workshop slides', url: 'https://example.com/slides', uid: ava, name: 'Ava', at: now - 3 * D },
+    },
+    messages,
+    lastMessage: { uid: noah, name: 'Noah', text: messages[3].text, at: messages[3].at },
     events,
     rsvp: { [ava]: { [ids[0]]: 'yes', [ids[1]]: 'yes' }, [noah]: { [ids[0]]: 'yes', [ids[3]]: 'yes' }, [lena]: { [ids[0]]: 'no', [ids[1]]: 'yes' }, [sam]: { [ids[1]]: 'yes' } },
     announcements: Object.fromEntries([
@@ -888,5 +1297,5 @@ function createSampleOrg() {
   };
   orgEntries().push(entry);
   openOrg(code);
-  toast('This is a sample club. Try RSVPing. Officers’ events show up on your calendar too.', 'info', 4500);
+  toast('This is a sample club. Try RSVPing, see who’s going, or say hi in Chat.', 'info', 4500);
 }

@@ -20,12 +20,14 @@ function pageNotebook() {
   const sort = state._notebookSort || 'edited';
   const pinned = allNotes.filter(n => n.pinned);
 
+  const listHidden = notebookListHidden();
   const html = `
     ${pageHead('Notebook', 'Organize notes by class', `
+      <button class="btn btn-sm" id="nb-list-toggle" aria-controls="notebook-tree-panel" aria-expanded="${!listHidden}" onclick="toggleNotebookList()">${notebookListToggleLabel(listHidden)}</button>
       <button class="btn btn-sm" onclick="createFolder('root')">${icon('folder', 13)} Folder</button>
       <button class="btn btn-primary" onclick="createNote('root')">${icon('plus', 13, 2.2)} Note</button>
     `)}
-    <div class="notebook-layout">
+    <div class="notebook-layout ${listHidden ? 'list-hidden' : ''}">
       <div class="notebook-tree-panel" id="notebook-tree-panel" style="--nb-tree-w:${state.settings.notebookTreeWidth || 264}px">
         <div class="notebook-search-wrap">
           <span class="notebook-search-ic">${icon('file-text', 13)}</span>
@@ -80,6 +82,32 @@ function pageNotebook() {
   `;
   setTimeout(() => { wireBubbleToolbar(); wireSlashMenu(); updateNbColorSwatches(); }, 0);
   return html;
+}
+
+/* ── Show or hide the notes list, for more room to write (most of all on a
+   phone, where the list sits above the note). Toggled from the page head, or
+   by clicking Notebook in the sidebar while already on this page. Kept per
+   device rather than in synced settings, so hiding it on a phone doesn't hide
+   it on a laptop. Flips a class on the live layout instead of re-rendering,
+   so the open note keeps its caret and scroll position. ── */
+const NB_LIST_HIDDEN_KEY = 'shq_nb_list_hidden';
+let _nbListHidden = null;
+function notebookListHidden() {
+  if (_nbListHidden === null) { try { _nbListHidden = localStorage.getItem(NB_LIST_HIDDEN_KEY) === '1'; } catch { _nbListHidden = false; } }
+  return _nbListHidden;
+}
+function notebookListToggleLabel(hidden) { return `${icon('panel-left', 13, 1.8)} ${hidden ? 'Show list' : 'Hide list'}`; }
+function toggleNotebookList() {
+  _nbListHidden = !notebookListHidden();
+  try { localStorage.setItem(NB_LIST_HIDDEN_KEY, _nbListHidden ? '1' : '0'); } catch {}
+  const layout = $('.notebook-layout');
+  if (!layout) { render(); return; }
+  layout.classList.add('nb-animating');
+  layout.classList.toggle('list-hidden', _nbListHidden);
+  setTimeout(() => layout.classList.remove('nb-animating'), 260);
+  const btn = $('#nb-list-toggle');
+  if (btn) { btn.innerHTML = notebookListToggleLabel(_nbListHidden); btn.setAttribute('aria-expanded', String(!_nbListHidden)); }
+  renderSidebar();
 }
 
 // touch() does a full innerHTML re-render, which swaps in a brand-new <input>

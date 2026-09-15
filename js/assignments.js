@@ -65,7 +65,7 @@ function pageAssignments() {
       <section class="assign-group ${k === 'overdue' ? 'is-overdue' : ''}">
         <div class="assign-group-head"><span>${label}</span><span class="assign-count">${items.length}</span></div>
         <div class="card assign-list">${items.map(a => assignmentRow(a, selectMode, selected)).join('')}</div>
-      </section>`).join('') : emptyState(icon('cloud-sun', 26, 1.4), total ? 'All caught up' : 'No assignments yet', total ? '' : `<button class="btn btn-primary mt-8" onclick="openAssignmentUploadModal()">${icon('sparkles', 13, 1.6)} Upload a syllabus or assignment sheet</button>`, total ? 'Nothing left to do here. Nice work.' : 'Add one above, or upload a document and Semester HQ pulls out every deadline.'))
+      </section>`).join('') : emptyState(icon('cloud-sun', 26, 1.4), total ? 'All caught up' : 'No assignments yet', total ? '' : `<button class="btn btn-primary mt-8" onclick="openAssignmentUploadModal()">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 13, 1.6)} Upload a syllabus or assignment sheet</button>`, total ? 'Nothing left to do here. Nice work.' : 'Add one above, or upload a document and Semester HQ pulls out every deadline.'))
       : `<div class="card assign-list">${visible.length ? visible.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list', 26, 1.4), view === 'done' ? 'Nothing finished yet.' : 'No assignments match.')}</div>`}</div>`}
   `;
 }
@@ -81,7 +81,7 @@ function assignmentRow(a, selectMode, selected) {
       ? `<button type="button" class="row-check ${isSelected ? 'checked' : ''}" role="checkbox" aria-checked="${isSelected}" aria-label="${isSelected ? 'Deselect' : 'Select'} ${esc(a.title)}" onclick="event.stopPropagation();toggleAssignSelected('${a.id}')">${isSelected ? checkGlyph(true) : ''}</button>`
       : `<button type="button" class="row-check ${isDone ? 'checked' : ''}" role="checkbox" aria-checked="${isDone}" aria-label="Mark ${esc(a.title)} as ${isDone ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isDone ? checkGlyph(true) : ''}</button>`}
     <div class="assign-main">
-      <div class="assign-title">${esc(a.title)}${a.attachments && a.attachments.length ? ` <span class="muted">${icon('paperclip', 12, 1.8)}</span>` : ''}</div>
+      <div class="assign-title">${esc(a.title)}${a.attachments && a.attachments.length ? ` <span class="muted">${icon('paperclip', 12, 1.8)}</span>` : ''}${assignmentSeries(a) ? ` <span class="muted" title="Repeats">${icon('refresh-cw', 11, 2)}</span>` : ''}</div>
       <div class="assign-meta">
         <span class="assign-course"><span class="course-dot"></span>${esc(c ? (c.code || c.name) : 'No course')}</span>
         <span>${esc(a.type)}</span>
@@ -145,7 +145,167 @@ function openAssignmentModal(id, presetCourseId) {
   const a = id ? state.assignments.find(x => x.id === id) : { id: uid(), courseId: presetCourseId || activeCourses()[0]?.id || null, title: '', type: 'assignment', dueDate: todayIso(), dueTime: '23:59', startByDate: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
   window._assignDraft = JSON.parse(JSON.stringify(a));
   if (!_assignDraft.attachments) _assignDraft.attachments = [];
+  const sem = currentSemester();
+  const due = a.dueDate || todayIso();
+  window._assignRepeat = { freq: '', days: [new Date(due + 'T00:00:00').getDay()], daysTouched: false, until: sem?.endDate && sem.endDate > due ? sem.endDate : addDays(due, 70), numbered: false };
   renderAssignmentModal(id);
+}
+
+/* ── Repeating assignments ─────────────────────────────────────────
+   A weekly reading response or a biweekly problem set is added as a whole
+   series at once, one assignment per due date through an end date (the end
+   of the semester by default), so every one is on the calendar and in the
+   workload from the start. Each copy carries recurringTemplateId, pointing
+   at its record in state.assignmentSeries, and seriesIndex for numbering
+   ("Quiz 3"). Editing or deleting one asks whether the upcoming ones in the
+   series should change too. ─────────────────────────────────────── */
+const ASSIGN_SERIES_MAX = 60;
+const ASSIGN_REPEAT_LABELS = { weekly: 'Every week', biweekly: 'Every 2 weeks' };
+function assignmentSeries(a) { return a?.recurringTemplateId ? (state.assignmentSeries || []).find(s => s.id === a.recurringTemplateId) || null : null; }
+function upcomingInSeries(a) {
+  return state.assignments.filter(o => o.id !== a.id && o.recurringTemplateId === a.recurringTemplateId && !isAssignmentDone(o) && (o.dueDate || '') > (a.dueDate || ''))
+    .sort((x, y) => (x.dueDate || '').localeCompare(y.dueDate || ''));
+}
+function repeatDaysText(days) { return days.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DOW_NAMES[d]).join(', '); }
+function assignmentSeriesDates({ start, freq, days, until }) {
+  if (!start || !days.length || !until || until < start) return [];
+  const step = freq === 'biweekly' ? 14 : 7;
+  const out = [];
+  for (let base = startOfWeek(start); base <= until && out.length < ASSIGN_SERIES_MAX; base = addDays(base, step)) {
+    days.slice().sort((x, y) => x - y).forEach(d => { const date = addDays(base, d); if (date >= start && date <= until) out.push(date); });
+  }
+  return out.slice(0, ASSIGN_SERIES_MAX);
+}
+function assignRepeatFieldsHtml(a) {
+  const series = assignmentSeries(a);
+  if (series) {
+    const left = upcomingInSeries(a).length;
+    return `<div class="sg-callout af-series mb-16"><span>${icon('refresh-cw', 14, 1.8)}</span><div class="small"><span class="sg-strong">${esc(ASSIGN_REPEAT_LABELS[series.freq] || 'Repeats')} on ${esc(repeatDaysText(series.days || []))}</span>${series.until ? ` until ${esc(fmtDate(series.until))}` : ''}. ${left ? `${left} more after this one.` : 'This is the last one.'}${left ? ' When you save or delete, you can include the upcoming ones too.' : ''}</div></div>`;
+  }
+  const r = window._assignRepeat;
+  return `
+    <div class="field">
+      <label for="af-repeat">Repeats</label>
+      <select class="select" id="af-repeat" onchange="setAssignRepeat(this.value)">
+        <option value="" ${!r.freq ? 'selected' : ''}>Doesn’t repeat</option>
+        ${Object.entries(ASSIGN_REPEAT_LABELS).map(([k, l]) => `<option value="${k}" ${r.freq === k ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+      <div class="af-repeat-opts" id="af-repeat-opts" ${r.freq ? '' : 'hidden'}>
+        <div class="small muted mt-8" style="margin-bottom:6px">Due on</div>
+        <div class="chip-row" id="af-repeat-days" role="group" aria-label="Due on these days">${[1, 2, 3, 4, 5, 6, 0].map(d => `<button type="button" class="chip ${r.days.includes(d) ? 'active' : ''}" aria-pressed="${r.days.includes(d)}" data-day="${d}" onclick="toggleAssignRepeatDay(${d})">${DOW_NAMES[d]}</button>`).join('')}</div>
+        <div class="field-row mt-8" style="align-items:flex-end">
+          <div class="field" style="margin-bottom:0"><label for="af-until">Until</label><input class="input" type="date" id="af-until" value="${esc(r.until || '')}" onchange="window._assignRepeat.until=this.value;updateAssignRepeatSummary()"></div>
+          <label class="checkbox-row small" style="margin:0 0 10px"><input type="checkbox" id="af-number" ${r.numbered ? 'checked' : ''} onchange="window._assignRepeat.numbered=this.checked;updateAssignRepeatSummary()"><span>Number them (Quiz 1, Quiz 2…)</span></label>
+        </div>
+        <div class="small muted mt-8" id="af-repeat-summary" aria-live="polite">${assignRepeatSummaryText()}</div>
+      </div>
+    </div>`;
+}
+function assignRepeatSummaryText() {
+  const r = window._assignRepeat;
+  if (!r?.freq) return '';
+  const start = $('#af-date')?.value || _assignDraft.dueDate;
+  if (!start) return 'Pick the first due date above.';
+  if (!r.days.length) return 'Pick at least one day.';
+  const dates = assignmentSeriesDates({ start, freq: r.freq, days: r.days, until: r.until });
+  if (!dates.length) return 'Pick an end date after the first due date.';
+  const title = ($('#af-title')?.value || _assignDraft.title || '').trim() || 'Assignment';
+  const first = r.numbered ? `${title.replace(/\s+#?\d+$/, '')} 1` : title;
+  return `Adds ${dates.length} assignment${dates.length === 1 ? '' : 's'}, from “${first}” on ${fmtDate(dates[0], { weekday: 'short', month: 'short', day: 'numeric' })} to ${fmtDate(dates[dates.length - 1], { month: 'short', day: 'numeric' })}${dates.length >= ASSIGN_SERIES_MAX ? ` (the first ${ASSIGN_SERIES_MAX})` : ''}.`;
+}
+function updateAssignRepeatSummary() { const el = $('#af-repeat-summary'); if (el) el.textContent = assignRepeatSummaryText(); }
+function setAssignRepeat(freq) {
+  window._assignRepeat.freq = freq;
+  const opts = $('#af-repeat-opts');
+  if (opts) opts.hidden = !freq;
+  updateAssignRepeatSummary();
+}
+function toggleAssignRepeatDay(d) {
+  const r = window._assignRepeat;
+  r.daysTouched = true;
+  r.days = r.days.includes(d) ? r.days.filter(x => x !== d) : [...r.days, d];
+  $$('#af-repeat-days .chip').forEach(b => { const on = r.days.includes(Number(b.dataset.day)); b.classList.toggle('active', on); b.setAttribute('aria-pressed', on); });
+  updateAssignRepeatSummary();
+}
+// Until someone picks days themselves, the repeat day follows the due date.
+function onAssignDateChange() {
+  const r = window._assignRepeat;
+  const v = $('#af-date')?.value;
+  if (r && v && !r.daysTouched) {
+    r.days = [new Date(v + 'T00:00:00').getDay()];
+    $$('#af-repeat-days .chip').forEach(b => { const on = r.days.includes(Number(b.dataset.day)); b.classList.toggle('active', on); b.setAttribute('aria-pressed', on); });
+  }
+  updateAssignRepeatSummary();
+}
+// Copies of an assignment for the rest of its series: same class, type,
+// time, notes, and steps (unchecked), the start-by reminder shifted with the
+// due date, and linked attachments (files still stored only on this device
+// stay on the first one, so a long series doesn't copy them over and over).
+function seriesCopy(a, dueDate, seriesId, index, title) {
+  const shift = a.startByDate && a.dueDate ? Math.round((new Date(a.startByDate + 'T00:00:00') - new Date(a.dueDate + 'T00:00:00')) / 86400000) : null;
+  return {
+    ...JSON.parse(JSON.stringify(a)), id: uid(), title, dueDate, status: 'not-started',
+    startByDate: shift != null ? addDays(dueDate, shift) : null,
+    rubric: (a.rubric || []).map(r => ({ id: uid(), item: r.item, done: false })),
+    attachments: (a.attachments || []).filter(att => /^https?:\/\//i.test(att.url || '') && !att.dataUrl).map(att => ({ ...att, id: uid() })),
+    recurringTemplateId: seriesId, seriesIndex: index,
+  };
+}
+// Returns how many assignments the series has once saved (0 if no dates fit).
+function createAssignmentSeries(d, existingId) {
+  const r = window._assignRepeat;
+  let dates = assignmentSeriesDates({ start: d.dueDate, freq: r.freq, days: r.days, until: r.until });
+  if (!dates.length) return 0;
+  const seriesId = uid();
+  const base = r.numbered ? d.title.replace(/\s+#?\d+$/, '') : d.title;
+  const name = (n) => (r.numbered ? `${base} ${n}` : base);
+  (state.assignmentSeries = state.assignmentSeries || []).push({ id: seriesId, title: base, courseId: d.courseId, freq: r.freq, days: r.days.slice(), until: r.until, numbered: !!r.numbered, createdAt: Date.now() });
+  if (existingId) {
+    // The assignment being edited stays as the first one; the rest follow it.
+    Object.assign(d, { recurringTemplateId: seriesId, seriesIndex: 1, title: name(1) });
+    state.assignments[state.assignments.findIndex(x => x.id === existingId)] = d;
+    dates = dates.filter(x => x > d.dueDate);
+    dates.forEach((date, i) => state.assignments.push(seriesCopy(d, date, seriesId, i + 2, name(i + 2))));
+    return dates.length + 1;
+  }
+  // A new one: the first keeps everything as entered (steps, attachments), on
+  // the first date that matches the chosen days.
+  dates.forEach((date, i) => state.assignments.push(i === 0
+    ? { ...seriesCopy(d, date, seriesId, 1, name(1)), id: d.id, status: d.status, rubric: d.rubric, attachments: d.attachments }
+    : seriesCopy(d, date, seriesId, i + 1, name(i + 1))));
+  return dates.length;
+}
+// Before saving an edited assignment in a series: which fields would the
+// upcoming ones pick up? Status, dates, and attachments stay per assignment.
+function seriesFieldsChanged(before, after) {
+  const steps = (x) => (x.rubric || []).map(s => s.item).join('\n');
+  return ['title', 'type', 'courseId', 'dueTime', 'notes'].some(k => (before[k] || '') !== (after[k] || '')) || steps(before) !== steps(after);
+}
+function applyToUpcomingInSeries(d) {
+  const series = assignmentSeries(d);
+  const numbered = !!series?.numbered;
+  const base = numbered ? d.title.replace(/\s+#?\d+$/, '') : d.title;
+  if (series) { series.title = base; series.courseId = d.courseId; }
+  const list = upcomingInSeries(d);
+  list.forEach(o => {
+    o.title = numbered && o.seriesIndex ? `${base} ${o.seriesIndex}` : base;
+    Object.assign(o, { type: d.type, courseId: d.courseId, dueTime: d.dueTime, notes: d.notes });
+    o.rubric = (d.rubric || []).map(s => ({ id: uid(), item: s.item, done: !!(o.rubric || []).find(x => x.item === s.item)?.done }));
+  });
+  return list.length;
+}
+function askSeriesScope({ title, message, oneLabel, allLabel, danger = false }, run) {
+  openModal(`
+    <div class="modal-head"><h3>${esc(title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body"><p style="font-size:14px">${esc(message)}</p></div>
+    <div class="modal-foot">
+      <button class="btn" style="margin-right:auto" onclick="closeModal()">Cancel</button>
+      <button class="btn ${danger ? 'btn-danger' : ''}" id="scope-one">${esc(oneLabel)}</button>
+      <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="scope-all">${esc(allLabel)}</button>
+    </div>
+  `);
+  $('#scope-one').onclick = () => { closeModal(); run(false); };
+  $('#scope-all').onclick = () => { closeModal(); run(true); };
 }
 function renderAssignmentModal(id) {
   const a = _assignDraft;
@@ -160,12 +320,13 @@ function renderAssignmentModal(id) {
 
       <div class="field-row">
         <div class="field"><label>Due date</label>
-          <input class="input" type="date" id="af-date" value="${a.dueDate || ''}" ${a.dueDate ? '' : 'disabled'}>
+          <input class="input" type="date" id="af-date" value="${a.dueDate || ''}" ${a.dueDate ? '' : 'disabled'} onchange="onAssignDateChange()">
           <label class="checkbox-row small mt-4" style="font-weight:400"><input type="checkbox" ${a.dueDate ? '' : 'checked'} onchange="toggleNoDueDate('af-date',this.checked)"><span>No due date</span></label>
         </div>
         <div class="field"><label>Due time</label><input class="input" type="time" id="af-time" value="${a.dueTime || ''}"></div>
         <div class="field"><label>Status</label><select class="select" id="af-status">${Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       </div>
+      ${assignRepeatFieldsHtml(a)}
       <div class="field"><label>Start by <span class="small muted">(optional reminder)</span></label><input class="input" type="date" id="af-startby" value="${a.startByDate || ''}"></div>
       <div class="field"><label>Notes</label><textarea class="input" id="af-notes">${esc(a.notes || '')}</textarea></div>
 
@@ -222,7 +383,7 @@ async function addAttachmentFile(files) {
   let skipped = 0;
   for (const file of files) {
     if (file.size > 3 * 1024 * 1024) { skipped++; continue; }
-    const dataUrl = 'data:' + (file.type || 'application/octet-stream') + ';base64,' + (await fileToBase64(file));
+    const dataUrl = 'data:' + mimeForFile(file.name, file.type) + ';base64,' + (await fileToBase64(file));
     _assignDraft.attachments.push({ id: uid(), kind: 'other', name: file.name, url: dataUrl, dataUrl });
   }
   if (skipped) toast(`${skipped} file${skipped > 1 ? 's' : ''} too large to store in the browser (max ~3MB). Add ${skipped > 1 ? 'them' : 'it'} as a link instead`, 'error', 4000);
@@ -257,21 +418,58 @@ function saveAssignmentModal(id) {
   d.status = $('#af-status').value;
   d.startByDate = $('#af-startby').value || null;
   d.notes = $('#af-notes').value;
-  if (id) { const i = state.assignments.findIndex(x => x.id === id); state.assignments[i] = d; } else state.assignments.push(d);
-  touch(); closeModal(); toast(id ? 'Updated' : 'Assignment added');
+  const repeat = window._assignRepeat;
+  if (repeat?.freq && !assignmentSeries(d)) {
+    if (!d.dueDate) { toast('Pick the first due date for a repeating assignment', 'error'); return; }
+    if (!repeat.days.length) { toast('Pick at least one day it’s due', 'error'); return; }
+    const n = createAssignmentSeries(d, id);
+    if (!n) { toast('Pick an end date after the first due date', 'error'); return; }
+    touch(); closeModal(); toast(`Added ${n} repeating assignment${n === 1 ? '' : 's'}`);
+    return;
+  }
+  const before = id ? state.assignments.find(x => x.id === id) : null;
+  const upcoming = before && assignmentSeries(d) ? upcomingInSeries(d).length : 0;
+  const commit = (all) => {
+    if (id) { const i = state.assignments.findIndex(x => x.id === id); state.assignments[i] = d; } else state.assignments.push(d);
+    const n = all ? applyToUpcomingInSeries(d) : 0;
+    touch(); closeModal(); toast(n ? `Updated this and ${n} upcoming` : id ? 'Updated' : 'Assignment added');
+  };
+  if (upcoming && seriesFieldsChanged(before, d)) {
+    askSeriesScope({ title: 'Update the upcoming ones too?', message: `“${d.title}” repeats. Apply these changes to just this one, or to the ${upcoming} upcoming one${upcoming === 1 ? '' : 's'} as well? Due dates and progress stay as they are.`, oneLabel: 'Just this one', allLabel: `This and ${upcoming} upcoming` }, commit);
+    return;
+  }
+  commit(false);
 }
 function deleteAssignment(id) {
-  confirmDialog('Delete this assignment? You can restore it from Recently Deleted for 30 days.', () => {
-    const a = state.assignments.find(x => x.id === id);
-    if (a) trashItem('assignment', a.title || 'Untitled assignment', a);
-    state.assignments = state.assignments.filter(a => a.id !== id);
+  const a = state.assignments.find(x => x.id === id);
+  if (!a) return;
+  const upcoming = assignmentSeries(a) ? upcomingInSeries(a) : [];
+  const remove = (all) => {
+    const gone = [a, ...(all ? upcoming : [])];
+    gone.forEach(x => trashItem('assignment', x.title || 'Untitled assignment', x));
+    const ids = new Set(gone.map(x => x.id));
+    // The series record stays, so restoring from Recently Deleted brings the
+    // assignments back still linked as a series.
+    state.assignments = state.assignments.filter(x => !ids.has(x.id));
     touch(); closeModal();
-    if (a) toast(`Deleted “${a.title}”`, 'success', 5000, { label: 'Undo', run: () => { const t = (state.trash || []).find(x => x.kind === 'assignment' && x.data.id === a.id); if (t) restoreTrashItem(t.id); } });
-  });
+    toast(gone.length > 1 ? `Deleted ${gone.length} assignments` : `Deleted “${a.title}”`, 'success', 5000, { label: 'Undo', run: () => {
+      const entries = (state.trash || []).filter(t => t.kind === 'assignment' && ids.has(t.data.id));
+      state.assignments.push(...entries.map(t => t.data));
+      state.trash = state.trash.filter(t => !entries.includes(t));
+      touch();
+      toast(entries.length > 1 ? `Restored ${entries.length} assignments` : `Restored “${a.title}”`);
+    } });
+  };
+  if (upcoming.length) {
+    askSeriesScope({ title: 'Delete a repeating assignment', message: `“${a.title}” repeats. Delete just this one, or this and the ${upcoming.length} upcoming one${upcoming.length === 1 ? '' : 's'}? You can restore them from Recently Deleted for 30 days.`, oneLabel: 'Just this one', allLabel: `This and ${upcoming.length} upcoming`, danger: true }, remove);
+    return;
+  }
+  confirmDialog('Delete this assignment? You can restore it from Recently Deleted for 30 days.', () => remove(false));
 }
 
 /* ── Bulk upload assignments from a PDF/photo/pasted syllabus ──── */
 function openAssignmentUploadModal() {
+  if (!requireAi('Reading a syllabus or assignment sheet')) return;
   if (!activeCourses().length) { toast('Add a course first so uploaded assignments have somewhere to go', 'error'); return; }
   openModal(`
     <div class="modal-head"><h3>Upload assignments <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>

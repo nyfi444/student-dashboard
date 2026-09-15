@@ -1,9 +1,10 @@
 /* ── Appearance: themes, seasonal editions, app icons, sound, motion ──
    A theme sets the whole palette (page, surfaces, text, accent) for both
-   light and dark mode. Classic is the original black-and-white look and
-   keeps working with the custom background presets in Settings. Seasonal
-   editions can only be picked during their season, but stay yours once
-   chosen.
+   light and dark mode. Classic is the original black-and-white look. Any
+   theme can take a page color on top (pageColorSwatchesHtml). Autumn Term
+   and Summer Session are seasonal editions that can only be picked during
+   their season, but stay yours once chosen; Winter Finals and Spring Bloom
+   are available all year.
 ──────────────────────────────────────────────────────────────── */
 const THEMES = [
   { id: 'classic', name: 'Classic', note: 'Ink on white' },
@@ -22,15 +23,36 @@ const THEMES = [
   { id: 'espresso', name: 'Espresso', note: 'Cream and coffee',
     light: { bg: '#F6F1EC', surface: '#FFFCF8', surface2: '#EDE5DC', border: '#E0D5C9', text: '#231A14', accent: '#3B2A20', accentLight: '#EBE0D4', accentText: '#F6F1EC' },
     dark: { bg: '#130E0B', surface: '#1C1612', surface2: '#271F19', border: '#382D25', text: '#F0E4D6', accent: '#EBDCCB', accentLight: '#2E251E', accentText: '#130E0B' } },
+  { id: 'winter', name: 'Winter Finals', note: 'Frost and slate',
+    light: { bg: '#F1F4F7', surface: '#FFFFFF', surface2: '#E5EBF0', border: '#D6DEE6', text: '#131C25', accent: '#2E4057', accentLight: '#E0E7EE', accentText: '#F1F4F7' },
+    dark: { bg: '#0C1116', surface: '#131A21', surface2: '#1B242D', border: '#29343F', text: '#E3ECF4', accent: '#D4E1EC', accentLight: '#1F2A35', accentText: '#0C1116' } },
+  { id: 'spring', name: 'Spring Bloom', note: 'Petals and plum',
+    light: { bg: '#FAF6F7', surface: '#FFFCFD', surface2: '#F2E9EC', border: '#E7D9DE', text: '#23171D', accent: '#7A4A68', accentLight: '#F1E4EC', accentText: '#FAF6F7' },
+    dark: { bg: '#150F13', surface: '#1F161C', surface2: '#2A1F26', border: '#3B2D35', text: '#F3E6EE', accent: '#E8C9DC', accentLight: '#33242E', accentText: '#150F13' } },
+  { id: 'lavender', name: 'Lavender', note: 'Lilac and violet',
+    light: { bg: '#F6F4FB', surface: '#FFFEFF', surface2: '#EDE9F6', border: '#DFD9EE', text: '#1C1729', accent: '#4E3F86', accentLight: '#E9E4F5', accentText: '#F6F4FB' },
+    dark: { bg: '#110F18', surface: '#1A1724', surface2: '#231F31', border: '#342E45', text: '#ECE8F8', accent: '#D9D0F5', accentLight: '#2B2640', accentText: '#110F18' } },
+  { id: 'peony', name: 'Peony', note: 'Soft pink and berry',
+    light: { bg: '#FCF4F7', surface: '#FFFBFC', surface2: '#F6E7ED', border: '#EDD5DF', text: '#2A1520', accent: '#9A3563', accentLight: '#F6E1EA', accentText: '#FFFBFC' },
+    dark: { bg: '#180D12', surface: '#22141B', surface2: '#2E1C25', border: '#402A35', text: '#F7E6EE', accent: '#F2BCD4', accentLight: '#37222D', accentText: '#180D12' } },
+  { id: 'sky', name: 'Sky', note: 'Clear blue',
+    light: { bg: '#F2F7FC', surface: '#FFFFFF', surface2: '#E6EEF8', border: '#D5E2F0', text: '#122033', accent: '#285692', accentLight: '#E1EBF7', accentText: '#F2F7FC' },
+    dark: { bg: '#0B1422', surface: '#111D2E', surface2: '#18273B', border: '#26374F', text: '#E3EEFA', accent: '#BBD5F4', accentLight: '#1C2C43', accentText: '#0B1422' } },
+  { id: 'matcha', name: 'Matcha', note: 'Tea green',
+    light: { bg: '#F4F6EC', surface: '#FDFEF8', surface2: '#EAEEDD', border: '#DCE2CA', text: '#1B2012', accent: '#475F22', accentLight: '#E6ECD6', accentText: '#F7F9EF' },
+    dark: { bg: '#10130B', surface: '#181C11', surface2: '#212719', border: '#313A25', text: '#E9F0DA', accent: '#CFE0A8', accentLight: '#252D1B', accentText: '#10130B' } },
+  { id: 'honey', name: 'Honey', note: 'Butter and gold',
+    light: { bg: '#FBF7EA', surface: '#FFFDF5', surface2: '#F3ECD6', border: '#E8DDBD', text: '#231C0B', accent: '#735411', accentLight: '#F2E8CC', accentText: '#FFFDF5' },
+    dark: { bg: '#15110A', surface: '#1F1A10', surface2: '#292317', border: '#3B3322', text: '#F5ECD5', accent: '#EBCF8B', accentLight: '#2F2819', accentText: '#15110A' } },
+  { id: 'coral', name: 'Coral', note: 'Peach and terracotta',
+    light: { bg: '#FDF5F1', surface: '#FFFCFA', surface2: '#F7E8E1', border: '#EED8CD', text: '#28160F', accent: '#A5432A', accentLight: '#F6E2D9', accentText: '#FFFCFA' },
+    dark: { bg: '#180F0B', surface: '#231712', surface2: '#2E1F18', border: '#422D24', text: '#F8E7DE', accent: '#F5BFA6', accentLight: '#38251C', accentText: '#180F0B' } },
+  { id: 'cherry', name: 'Cherry', note: 'Crisp red',
+    light: { bg: '#FBF4F3', surface: '#FFFCFB', surface2: '#F5E6E4', border: '#EBD6D3', text: '#261312', accent: '#9B2226', accentLight: '#F5E0DF', accentText: '#FFFCFB' },
+    dark: { bg: '#170C0C', surface: '#211313', surface2: '#2C1B1B', border: '#402928', text: '#F7E4E2', accent: '#F4B8B5', accentLight: '#372120', accentText: '#170C0C' } },
   { id: 'autumn', name: 'Autumn Term', note: 'Limited edition', season: { label: 'fall', months: [8, 9, 10], until: 'November 30' },
     light: { bg: '#F7F1E8', surface: '#FFFBF4', surface2: '#EFE5D7', border: '#E4D5C1', text: '#23170F', accent: '#8C3B1F', accentLight: '#F1DFD2', accentText: '#FBF6EE' },
     dark: { bg: '#150E0A', surface: '#1F1510', surface2: '#2A1D16', border: '#3D2B20', text: '#F4E6D7', accent: '#F0C6A8', accentLight: '#35231A', accentText: '#150E0A' } },
-  { id: 'winter', name: 'Winter Finals', note: 'Limited edition', season: { label: 'winter', months: [11, 0, 1], until: 'February 28' },
-    light: { bg: '#F1F4F7', surface: '#FFFFFF', surface2: '#E5EBF0', border: '#D6DEE6', text: '#131C25', accent: '#2E4057', accentLight: '#E0E7EE', accentText: '#F1F4F7' },
-    dark: { bg: '#0C1116', surface: '#131A21', surface2: '#1B242D', border: '#29343F', text: '#E3ECF4', accent: '#D4E1EC', accentLight: '#1F2A35', accentText: '#0C1116' } },
-  { id: 'spring', name: 'Spring Bloom', note: 'Limited edition', season: { label: 'spring', months: [2, 3, 4], until: 'May 31' },
-    light: { bg: '#FAF6F7', surface: '#FFFCFD', surface2: '#F2E9EC', border: '#E7D9DE', text: '#23171D', accent: '#7A4A68', accentLight: '#F1E4EC', accentText: '#FAF6F7' },
-    dark: { bg: '#150F13', surface: '#1F161C', surface2: '#2A1F26', border: '#3B2D35', text: '#F3E6EE', accent: '#E8C9DC', accentLight: '#33242E', accentText: '#150F13' } },
   { id: 'summer', name: 'Summer Session', note: 'Limited edition', season: { label: 'summer', months: [5, 6, 7], until: 'August 31' },
     light: { bg: '#FAF7EF', surface: '#FFFDF7', surface2: '#EFEBDF', border: '#E3DDCC', text: '#1B1E1C', accent: '#1F5F6B', accentLight: '#E0ECEC', accentText: '#FAF7EF' },
     dark: { bg: '#0D1314', surface: '#141C1E', surface2: '#1C2628', border: '#2A3739', text: '#E4EFEE', accent: '#BFE0E2', accentLight: '#1E2C2E', accentText: '#0D1314' } },
@@ -62,7 +84,7 @@ function applyTheme() {
       '--ink': p.text, '--cloud': dark ? p.surface2 : p.surface,
     });
   }
-  // A custom page color from Settings → Background still wins over the theme.
+  // A page color picked under Appearance still wins over the theme's own.
   const lightBg = state.settings.background?.color;
   const darkBg = state.settings.darkBackground?.color;
   if (dark) {
@@ -155,8 +177,14 @@ function themeTilesHtml(afterPick = '') {
     }).join('')}
   </div>`;
 }
-// A short row of page colors for whichever mode is on. The full set lives in Settings.
-const QUICK_PAGE_COLORS = ['Default', 'White', 'Warm White', 'Cream', 'Sand', 'Blush', 'Rose', 'Apricot', 'Sage', 'Mint', 'Jade', 'Sky', 'Periwinkle', 'Lavender', 'Stone', 'Cool Gray'];
+// Page colors for whichever mode is on, shared by Settings → Appearance and
+// the dashboard's Customize panel. Neutrals first, then around the color wheel.
+const QUICK_PAGE_COLORS = [
+  'Default', 'White', 'Warm White', 'Cream', 'Sand', 'Taupe', 'Stone', 'Cool Gray',
+  'Blush', 'Carnation', 'Bubblegum', 'Ruby', 'Rose', 'Coral', 'Terracotta', 'Tangerine', 'Apricot', 'Marigold', 'Citrine',
+  'Pistachio', 'Sage', 'Mint', 'Jade', 'Emerald Deep', 'Teal',
+  'Sky', 'Denim', 'Sapphire', 'Cornflower', 'Periwinkle', 'Lavender', 'Amethyst', 'Orchid',
+];
 function pageColorSwatchesHtml(afterPick = '') {
   const dark = !!state.settings.dark;
   const current = dark ? state.settings.darkBackground : state.settings.background;
@@ -178,6 +206,7 @@ function appearanceSettingsCard() {
     <div class="card card-pad">
       <h3 style="font-size:15px" class="mb-8">Appearance</h3>
       <div class="field"><label>Theme</label>${themeTilesHtml()}</div>
+      <div class="field"><label>Page color <span class="muted">(${state.settings.dark ? 'dark' : 'light'} mode)</span></label>${pageColorSwatchesHtml()}</div>
       <div class="checkbox-row mb-8"><input type="checkbox" id="st-dark" ${state.settings.dark ? 'checked' : ''} onchange="toggleDark(this.checked)"><label for="st-dark">Dark mode</label></div>
       <div class="checkbox-row mb-8"><input type="checkbox" id="st-sounds" ${state.settings.sounds !== false ? 'checked' : ''} onchange="state.settings.sounds=this.checked;save();if(this.checked)playUiSound('complete')"><label for="st-sounds">Sound effects</label></div>
       <div class="checkbox-row"><input type="checkbox" id="st-motion" ${state.settings.reduceMotion ? 'checked' : ''} onchange="state.settings.reduceMotion=this.checked;applyTheme();save()"><label for="st-motion">Reduce motion</label></div>

@@ -4,9 +4,8 @@
    2. Notifications: a morning summary, an evening preview of tomorrow,
       an alert an hour before timed deadlines, exam heads-ups, and study
       group sessions about to start. These fire while Semester HQ is open
-      in a tab or running as an installed app. For reminders when it's
-      fully closed, deadlines can be exported to the phone's own calendar
-      with alarms attached (downloadDeadlinesIcs).
+      in a tab or running as an installed app; push.js delivers the same
+      reminders when it's fully closed.
    Each notification is sent once; sent keys live in localStorage.
 ──────────────────────────────────────────────────────────────── */
 const REMINDER_SENT_KEY = 'shq_reminders_sent';
@@ -175,34 +174,6 @@ function checkReminders() {
   }
 }
 
-/* ── Calendar export with alarms, for reminders when the app is closed ─ */
-function downloadDeadlinesIcs() {
-  const icsText = (v) => String(v || '').replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([,;])/g, '\\$1');
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
-  const events = state.assignments.filter(a => !isAssignmentDone(a) && a.dueDate && a.dueDate >= todayIso() && activeCourses().some(c => c.id === a.courseId)).map(a => {
-    const c = getCourse(a.courseId);
-    const d = a.dueDate.replace(/-/g, '');
-    const timed = a.dueTime && a.dueTime !== '23:59';
-    const alarm = a.type === 'exam' ? '-P1D' : timed ? '-PT1H' : '-PT15H'; // all-day items: 9am the day before
-    return [
-      'BEGIN:VEVENT', `UID:${a.id}@semester-hq.com`, `DTSTAMP:${stamp}`,
-      timed ? `DTSTART:${d}T${a.dueTime.replace(':', '')}00` : `DTSTART;VALUE=DATE:${d}`,
-      timed ? `DTEND:${d}T${addMinutesHHMM(a.dueTime, 15).replace(':', '')}00` : `DTEND;VALUE=DATE:${addDays(a.dueDate, 1).replace(/-/g, '')}`,
-      `SUMMARY:${icsText(`${a.type === 'exam' ? 'Exam' : 'Due'}: ${a.title}${c ? ` (${c.code || c.name})` : ''}`)}`,
-      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsText(a.title)}`, `TRIGGER:${alarm}`, 'END:VALARM',
-      'END:VEVENT',
-    ].join('\r\n');
-  });
-  if (!events.length) { toast('No upcoming deadlines to export.', 'info'); return; }
-  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Semester HQ//Deadlines//EN', 'X-WR-CALNAME:Semester HQ deadlines', ...events, 'END:VCALENDAR'].join('\r\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
-  a.download = 'semester-hq-deadlines.ics';
-  document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-  toast(`Exported ${events.length} deadline${events.length === 1 ? '' : 's'}. Open the file to add them to your calendar.`, 'success', 5000);
-}
-
 function remindersSettingsCard() {
   const rs = reminderSettings();
   const perm = notificationPermission();
@@ -213,7 +184,7 @@ function remindersSettingsCard() {
       <h3 style="font-size:15px" class="mb-8">Reminders</h3>
       <p class="small muted mb-16">Get a heads-up before things are due${typeof pushSupported === 'function' && pushSupported() && cloudGroupsEnabled() ? ', even when Semester HQ is closed' : ''}.</p>
       ${typeof isIosBrowserNotInstalled === 'function' && isIosBrowserNotInstalled() ? `<div class="sg-callout small mb-16"><span>${icon('share', 14, 1.8)}</span><div>On iPhone, reminders work once Semester HQ is on your Home Screen. Tap Share, then <strong>Add to Home Screen</strong>, and turn reminders on from there. <button class="sg-link" onclick="openInstallHelp()">Show me how</button></div></div>` : ''}
-      ${perm === 'unsupported' ? `<p class="small muted mb-16">This browser doesn’t support notifications. Use the calendar export below instead.</p>`
+      ${perm === 'unsupported' ? `<p class="small muted mb-16">This browser doesn’t support notifications. Try Chrome, Edge, Firefox, or Safari.</p>`
         : perm === 'denied' ? `<p class="small mb-16">Notifications are blocked for this site. Allow them in your browser’s site settings to turn reminders on.</p>`
         : `<div class="checkbox-row mb-16"><input type="checkbox" id="st-reminders" ${on ? 'checked' : ''} onchange="enableReminders(this.checked)"><label for="st-reminders" style="font-weight:600">Send me reminders</label></div>`}
       <div class="${on ? '' : 'is-disabled'}">
@@ -224,10 +195,6 @@ function remindersSettingsCard() {
         ${row('sessions', 'Study group sessions 30 minutes before')}
         ${on ? `<div class="flex-gap wrap mt-8" style="align-items:center"><button class="btn btn-sm" onclick="sendPushTest()">Send a test notification</button>${typeof pushActive === 'function' && pushActive() ? `<span class="small muted">${icon('check', 12, 2.4)} Works even when the app is closed</span>` : ''}</div>` : ''}
       </div>
-      <div class="divider"></div>
-      <div class="small dim mb-8" style="font-weight:600">Reminders when the app is closed</div>
-      <p class="small muted mb-8">Add your upcoming deadlines to your phone or computer calendar, with alerts attached (the day before, or an hour before timed deadlines).</p>
-      <button class="btn btn-sm" onclick="downloadDeadlinesIcs()">${icon('download', 13, 1.8)} Export deadlines to calendar</button>
     </div>`;
 }
 

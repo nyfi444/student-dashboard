@@ -10,6 +10,7 @@ const CAPTURE_SYSTEM = `You turn a photo, screenshot, or text from a college stu
 Rules: "assignment" and "exam" are graded coursework with a due date; "todo" is any other action ("email the professor", "buy lab goggles"). courseCode must be one of the student's course codes listed below when you can tell which class it belongs to, otherwise an empty string. Resolve relative dates ("next Friday", "due Tuesday") using today's date. Keep titles short and specific. Put useful extra detail (page numbers, length, format) in notes. Do not invent items that aren't there. If nothing actionable is present, return {"items": []}.`;
 
 function openQuickCapture({ files = [], text = '' } = {}) {
+  if (!requireAi('Quick capture')) return;
   window._capture = { files: [], text, items: null };
   renderCaptureInput();
   if (files.length) addCaptureFiles(files);
@@ -76,7 +77,7 @@ async function runQuickCapture() {
       if (f.type === 'application/pdf') {
         const pdfText = await withTimeout(extractPdfText(f.file), 30000, 'Timed out reading the PDF').catch(() => '');
         if (pdfText.trim().length > 80) extraText += `\n\n${f.name}:\n${pdfText}`;
-        else (await extractPdfPageImages(f.file, { maxPages: 4 })).forEach(img => images.push(img));
+        else (await extractPdfPageImages(f.file, { maxPages: 4 })).images.forEach(src => images.push({ base64: src.split(',')[1], mediaType: 'image/jpeg' }));
       } else {
         const dataUrl = await downscaleImage(f.file, 1600, 0.82);
         if (dataUrl) images.push({ base64: dataUrl.split(',')[1], mediaType: 'image/jpeg' });
@@ -171,6 +172,6 @@ async function handleSharedContent() {
     }
     await Promise.all((await cache.keys()).map(k => cache.delete(k)));
     const text = [meta.title, meta.text, meta.url].filter(Boolean).join('\n');
-    setTimeout(() => openQuickCapture({ files, text }), 300);
+    setTimeout(() => whenAccountChecked(() => openQuickCapture({ files, text })), 300);
   } catch (e) { console.warn('Could not open shared content', e); }
 }

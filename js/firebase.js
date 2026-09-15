@@ -269,10 +269,47 @@ async function fbStorage() {
   }
   return _fbStorage;
 }
-async function uploadDataUrlToStorage(path, dataUrl) {
+// fileName, when given, is stored with the upload so the download opens or
+// saves under that name with the right type (see storageFileMetadata).
+async function uploadDataUrlToStorage(path, dataUrl, fileName) {
   const ref = (await fbStorage()).ref(path);
-  await ref.putString(dataUrl, 'data_url');
+  const type = (String(dataUrl).match(/^data:([^;,]+)/) || [])[1];
+  await ref.putString(dataUrl, 'data_url', fileName ? storageFileMetadata(fileName, type) : undefined);
   return await ref.getDownloadURL();
+}
+// Files uploaded before names were kept (Sep 15, 2026) open as a random id
+// with no extension. Gives each one its real name and type once; any
+// signed-in member may update a file's metadata (see storage.rules).
+const NAMED_FILES_KEY = 'shq_named_files';
+let _namingFiles = false, _namingQueued = [];
+const _namingFailed = new Set(); // tried this session and couldn't; not retried until the next app open
+async function nameStoredFiles(files) {
+  if (!_fbUser || !window._licensed) return;
+  if (_namingFiles) { _namingQueued.push(...files); return; }
+  let done;
+  try { done = new Set(JSON.parse(localStorage.getItem(NAMED_FILES_KEY) || '[]')); } catch { done = new Set(); }
+  const todo = files.filter(f => f && f.name && String(f.url || '').includes('firebasestorage') && !done.has(f.url) && !_namingFailed.has(f.url));
+  if (!todo.length) return;
+  _namingFiles = true;
+  try {
+    const st = await fbStorage();
+    for (const f of todo) {
+      try {
+        const ref = st.refFromURL(f.url);
+        const meta = await ref.getMetadata();
+        const want = storageFileMetadata(f.name, meta.contentType);
+        if (meta.contentDisposition !== want.contentDisposition || meta.contentType !== want.contentType) await ref.updateMetadata(want);
+        done.add(f.url);
+      } catch (e) {
+        if (e?.code === 'storage/object-not-found') done.add(f.url);
+        else { _namingFailed.add(f.url); console.warn('Could not name stored file', f.name, e); }
+      }
+    }
+    try { localStorage.setItem(NAMED_FILES_KEY, JSON.stringify([...done].slice(-400))); } catch {}
+  } finally {
+    _namingFiles = false;
+    if (_namingQueued.length) nameStoredFiles(_namingQueued.splice(0));
+  }
 }
 // Scans for any attachment still holding inline base64 (data:...) instead
 // of a real Storage URL and uploads it. Covers both a brand new upload
@@ -288,7 +325,7 @@ async function migrateInlineAttachmentsToStorage() {
       if (att.dataUrl && att.dataUrl.startsWith('data:')) {
         jobs.push((async () => {
           try {
-            const url = await uploadDataUrlToStorage(`users/${_fbUser.uid}/attachments/${att.id}`, att.dataUrl);
+            const url = await uploadDataUrlToStorage(`users/${_fbUser.uid}/attachments/${att.id}-${storageSafeName(att.name)}`, att.dataUrl, att.name);
             att.url = url; att.dataUrl = null;
           } catch (e) { console.warn('Attachment upload failed, staying local-only for now', att.id, e); }
         })());
@@ -298,6 +335,7 @@ async function migrateInlineAttachmentsToStorage() {
   // Study group files upload straight to Storage when shared (see
   // addCloudGroupItem in studygroups.js), so they never sit inline here.
   if (jobs.length) await Promise.all(jobs);
+  nameStoredFiles((state.assignments || []).flatMap(a => (a.attachments || []).filter(att => att.url && !att.dataUrl).map(att => ({ url: att.url, name: att.name }))));
 }
 
 function queueCloudSync() {

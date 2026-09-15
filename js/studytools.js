@@ -87,6 +87,7 @@ function pageStudyTools() {
   const maxF = Math.max(1, ...forecast.map(f => f.n));
   return `
     ${pageHead('Flashcards', 'Review each card right before you’d forget it', `
+      <button class="btn btn-sm" onclick="openFlashcardFileModal()">${icon('upload', 13, 1.8)} Upload a file</button>
       ${aiButton('Make from a note', 'openGenerateDeckModal()')}
       <button class="btn btn-primary" onclick="openDeckModal()">+ New deck</button>
     `)}
@@ -106,8 +107,8 @@ function pageStudyTools() {
     <div class="grid grid-3">${decks.map(deckCard).join('')}</div>`
     : `<div class="card welcome-inline">
         <div class="sg-feature-ic">${icon('layers', 18, 1.7)}</div>
-        <div style="flex:1;min-width:220px"><div class="sg-strong">Make your first deck</div><div class="small muted">Build one by hand, paste a list of terms, or turn any note into flashcards automatically. Semester HQ schedules each card so you review it right before you’d forget.</div></div>
-        <div class="flex-gap wrap">${aiButton('Make from a note', 'openGenerateDeckModal()')}<button class="btn btn-primary btn-sm" onclick="openDeckModal()">+ New deck</button></div>
+        <div style="flex:1;min-width:220px"><div class="sg-strong">Make your first deck</div><div class="small muted">Build one by hand, paste a list of terms, upload a Quizlet export or your class slides, or turn any note into flashcards automatically. Semester HQ schedules each card so you review it right before you’d forget.</div></div>
+        <div class="flex-gap wrap"><button class="btn btn-sm" onclick="openFlashcardFileModal()">${icon('upload', 13, 1.8)} Upload a file</button>${aiButton('Make from a note', 'openGenerateDeckModal()')}<button class="btn btn-primary btn-sm" onclick="openDeckModal()">+ New deck</button></div>
       </div>`}
   `;
 }
@@ -163,6 +164,8 @@ function renderDeckModal(id) {
         <div class="flex-gap wrap mt-8">
           <button class="btn btn-sm" onclick="_deckDraft.cards.push({id:uid(),front:'',back:''});renderDeckModal('${existing}');setTimeout(()=>$$('#df-cards .fc-edit-front').at(-1)?.focus(),60)">+ Add card</button>
           <button class="btn btn-sm btn-ghost" onclick="$('#df-bulk-wrap').hidden=!$('#df-bulk-wrap').hidden">Paste a list</button>
+          <button class="btn btn-sm btn-ghost" onclick="$('#df-file').click()" title="A Quizlet or Anki export, or a CSV with the front in the first column and the back in the second">${icon('upload', 12, 1.8)} Import a file</button>
+          <input type="file" id="df-file" accept="${CARD_LIST_ACCEPT}" hidden onchange="importCardListFile(this.files[0],'${existing}')">
         </div>
         <div id="df-bulk-wrap" hidden class="mt-8">
           <textarea class="input" id="df-bulk" placeholder="One card per line. Separate the front and back with a tab, a dash, or a colon:&#10;Mitochondria - powerhouse of the cell&#10;Osmosis: diffusion of water across a membrane"></textarea>
@@ -197,6 +200,126 @@ function importBulkCards(existing) {
   renderDeckModal(existing);
   toast(added ? `Added ${added} card${added === 1 ? '' : 's'}` : 'Couldn’t find any “front - back” lines', added ? 'success' : 'error');
 }
+
+/* ── Card lists from a file: Quizlet and Anki exports, spreadsheets ─
+   Rows become cards directly, no AI involved, so this works in the demo
+   too. Anki's plain-text export starts with "#separator:tab"-style lines,
+   may wrap fields in HTML, and can include guid/notetype/deck/tags columns
+   that aren't the front or back. A .txt uses whichever separator ("term -
+   definition", "term: definition", tab, comma) fits most of its lines. */
+const CARD_LIST_EXTS = ['csv', 'tsv', 'txt', 'md'];
+const CARD_LIST_ACCEPT = '.csv,.tsv,.txt';
+function parseDelimited(text, delim) {
+  const rows = [];
+  let row = [], field = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else quoted = false; }
+      else field += ch;
+    } else if (ch === '"' && !field.trim()) { quoted = true; field = ''; }
+    else if (ch === delim) { row.push(field); field = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(field); rows.push(row); row = []; field = ''; }
+    else field += ch;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+function parseCardList(raw, ext = '') {
+  const lines = String(raw || '').replace(/^﻿/, '').split(/\r?\n/);
+  const opts = {};
+  while (lines.length && /^#(separator|html|tags|columns|notetype|deck|guid)( column)?:/i.test(lines[0])) { const [k, ...v] = lines.shift().slice(1).split(':'); opts[k.trim().toLowerCase()] = v.join(':').trim().toLowerCase(); }
+  const body = lines.join('\n');
+  const html = opts.html === 'true' || /<(br|div|p|b|i|u|span)\b[^>]*>/i.test(body);
+  const clean = (v) => {
+    let s = String(v ?? '');
+    if (html) s = s.replace(/<br\s*\/?>/gi, '\n').replace(/<\/?(div|p|li)\b[^>]*>/gi, '\n').replace(/<[^>]*>/g, '');
+    return decodeEntities(s).replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{2,}/g, '\n').trim();
+  };
+  const filled = lines.filter(l => l.trim());
+  const skipCols = new Set(['guid column', 'notetype column', 'deck column', 'tags column'].map(k => Number(opts[k]) - 1).filter(n => n >= 0));
+  const delim = { tab: '\t', comma: ',', semicolon: ';', pipe: '|' }[opts.separator]
+    || (ext === 'tsv' ? '\t' : ext === 'csv' ? ',' : filled.length && filled.filter(l => l.includes('\t')).length >= filled.length * 0.6 ? '\t' : null);
+  let cards = [], total = 0;
+  if (delim) {
+    const rows = parseDelimited(body, delim).filter(r => r.some(f => f.trim()));
+    total = rows.length;
+    rows.forEach(r => { const f = r.filter((_, i) => !skipCols.has(i)).map(clean).filter(Boolean); if (f.length >= 2) cards.push({ front: f[0], back: f[1] }); });
+  } else {
+    let items = filled.map(l => l.trim());
+    if (items.length <= 2 && (body.match(/;/g) || []).length >= 3) items = body.split(';').map(s => s.trim()).filter(Boolean);
+    total = items.length;
+    const avgLen = items.reduce((s, l) => s + l.length, 0) / Math.max(1, items.length);
+    let best = [];
+    ['\\s+[-–—]\\s+', '\\s*:\\s+', '\\s+=\\s+', ',\\s+'].forEach((sep, i) => {
+      // A comma only separates cards in a short vocab list ("cat, gato");
+      // in longer lines it's just a sentence.
+      if (i === 3 && avgLen > 80) return;
+      const re = new RegExp(`^(.{1,${i === 3 ? 40 : 120}}?)${sep}(.+)$`);
+      const found = items.filter(l => l.length <= 400).map(l => l.match(re)).filter(Boolean).map(m => ({ front: clean(m[1]), back: clean(m[2]) }));
+      if (found.length > best.length) best = found;
+    });
+    cards = best;
+  }
+  cards = cards.filter(c => c.front && c.back);
+  if (cards.length && /^(terms?|front|questions?|words?|prompts?|vocab)$/i.test(cards[0].front) && /^(definitions?|back|answers?|meanings?)$/i.test(cards[0].back)) { cards.shift(); total--; }
+  return { cards: cards.slice(0, 1000), confident: cards.length > 0 && cards.length >= total * 0.6 };
+}
+function fileBaseName(name) { return String(name || '').replace(/\.[^.]*$/, '').replace(/[_]+/g, ' ').trim().slice(0, 80); }
+async function importCardListFile(file, existing) {
+  const input = $('#df-file');
+  if (input) input.value = '';
+  if (!file) return;
+  const { cards, confident } = parseCardList(await file.text(), fileExt(file.name));
+  if (!confident) { toast('Couldn’t find a front and back on each line. Use a Quizlet or Anki export, or a CSV with the front in the first column.', 'error', 6000); return; }
+  _deckDraft.cards = [..._deckDraft.cards.filter(c => (c.front || '').trim() || (c.back || '').trim()), ...cards.map(c => ({ id: uid(), front: c.front, back: c.back }))];
+  if (!(_deckDraft.name || '').trim()) _deckDraft.name = fileBaseName(file.name);
+  renderDeckModal(existing);
+  toast(`Added ${cards.length} card${cards.length === 1 ? '' : 's'} from ${file.name}`);
+}
+
+/* ── Upload a file: one entry point for both kinds of file ──────── */
+function openFlashcardFileModal() {
+  const locked = !aiLooksUnlocked();
+  openModal(`
+    <div class="modal-head"><h3>Make flashcards from a file</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <div class="capture-drop fc-file-drop" id="fc-file-drop" onclick="if(event.target.id!=='fc-file-input')$('#fc-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');handleFlashcardFiles(event.dataTransfer.files)">
+        <span class="capture-drop-ic">${icon('upload', 24, 1.6)}</span>
+        <div class="sg-strong" id="fc-file-status">Choose a file</div>
+        <div class="small muted">or drop it here</div>
+        <input type="file" id="fc-file-input" accept="${CARD_LIST_ACCEPT},${STUDY_MATERIAL_ACCEPT}" multiple hidden onchange="handleFlashcardFiles(this.files)">
+      </div>
+      <div class="fc-file-kinds">
+        <div class="fc-file-kind"><span class="sg-feature-ic">${icon('layers', 15, 1.7)}</span><div><div class="sg-strong small">Card lists</div><div class="small muted">A Quizlet or Anki export, or a spreadsheet saved as CSV with the front in the first column. Every row becomes a card.</div></div></div>
+        <div class="fc-file-kind"><span class="sg-feature-ic">${icon(locked ? 'lock' : 'sparkles', 15, 1.7)}</span><div><div class="sg-strong small">Notes and slides</div><div class="small muted">A PDF, Word doc, PowerPoint, or photos of your notes. Semester HQ writes question-and-answer cards for you to review.${locked ? ' Included with Semester HQ Plus.' : ''}</div></div></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button></div>
+  `);
+}
+async function handleFlashcardFiles(fileList) {
+  const files = Array.from(fileList || []);
+  const input = $('#fc-file-input');
+  if (input) input.value = '';
+  if (!files.length) return;
+  const first = files[0];
+  const ext = fileExt(first.name);
+  if (files.length === 1 && (CARD_LIST_EXTS.includes(ext) || (/^text\//.test(first.type) && !ext))) {
+    const text = await first.text();
+    const { cards, confident } = parseCardList(text, ext);
+    if (confident) {
+      window._deckDraft = { id: uid(), name: fileBaseName(first.name), courseId: null, cards: cards.map(c => ({ id: uid(), front: c.front, back: c.back })) };
+      renderDeckModal(null);
+      toast(`Found ${cards.length} card${cards.length === 1 ? '' : 's'}. Look them over, then save.`, 'success', 4000);
+      return;
+    }
+    if (ext === 'csv' || ext === 'tsv') { toast('Couldn’t find a front and back in that file. Put the front in the first column and the back in the second.', 'error', 6000); return; }
+    // Plain notes rather than a list of terms: write cards from them instead.
+  }
+  openGenerateDeckModal(null, { files });
+}
+
 function saveDeckModal(id) {
   const d = _deckDraft;
   d.name = $('#df-name').value.trim() || 'Untitled deck';
@@ -444,55 +567,99 @@ function shuffleDeck() {
 /* ── Make flashcards from a note (or pasted text) ─────────────── */
 const FLASHCARDS_SYSTEM = `You write study flashcards from a student's class notes. Reply with ONLY a JSON array (no prose, no markdown fences) of objects: [{"front": string, "back": string}].
 Rules: one idea per card; fronts are short questions or terms; backs are concise answers (under 30 words); cover the most important facts, definitions, and relationships in the material; no duplicates; do not invent facts that aren't in the material; aim for 8 to 25 cards depending on how much material there is.`;
-function openGenerateDeckModal(noteId) {
-  const notes = state.notes.filter(n => n.type === 'note' && plainTextOfNoteSafe(n).trim().length > 40).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+const GENERATE_SOURCES = [['note', 'From a note'], ['file', 'Upload a file'], ['text', 'Paste text']];
+function openGenerateDeckModal(noteId, { files } = {}) {
+  if (!requireAi(files ? 'Making flashcards from notes and slides' : 'Making flashcards from your notes')) return;
+  const notes = generatableNotes();
   const pre = noteId ? state.notes.find(n => n.id === noteId) : null;
-  window._genDeck = { source: notes.length || pre ? 'note' : 'text', noteId: pre?.id || notes[0]?.id || null, cards: null };
+  window._genDeck = { source: files ? 'file' : notes.length || pre ? 'note' : 'file', noteId: pre?.id || notes[0]?.id || null, cards: null, file: null };
   openModal(`
     <div class="modal-head"><h3>Make flashcards <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
-      <p class="small muted mb-16">Semester HQ reads your notes and writes question-and-answer cards. You’ll review them before the deck is created.</p>
-      <div class="segmented mb-16">
-        <button class="${window._genDeck.source === 'note' ? 'active' : ''}" onclick="window._genDeck.source='note';openGenerateDeckModalRefresh()">From a note</button>
-        <button class="${window._genDeck.source === 'text' ? 'active' : ''}" onclick="window._genDeck.source='text';openGenerateDeckModalRefresh()">Paste text</button>
+      <p class="small muted mb-16">Semester HQ reads your notes, slides, or photos and writes question-and-answer cards. You’ll review them before the deck is created.</p>
+      <div class="segmented mb-16" id="gd-sources" role="group" aria-label="Make cards from">
+        ${GENERATE_SOURCES.map(([k, l]) => `<button class="${window._genDeck.source === k ? 'active' : ''}" aria-pressed="${window._genDeck.source === k}" data-source="${k}" onclick="window._genDeck.source='${k}';openGenerateDeckModalRefresh()">${l}</button>`).join('')}
       </div>
       <div id="gd-source">${generateSourceFields(notes, pre)}</div>
       <div class="field-row">
-        <div class="field"><label for="gd-name">Deck name</label><input class="input" id="gd-name" value="${esc(pre ? pre.name : '')}" placeholder="Chapter 5 review"></div>
+        <div class="field"><label for="gd-name">Deck name</label><input class="input" id="gd-name" value="${esc(pre ? pre.name : files ? fileBaseName(files[0].name) : '')}" placeholder="Chapter 5 review"></div>
         <div class="field"><label for="gd-course">Class</label><select class="select" id="gd-course"><option value="">None</option>${activeCourses().map(c => `<option value="${c.id}" ${pre && c.id === pre.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
       </div>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="gd-go" onclick="runGenerateDeck()">${icon('sparkles', 13, 1.5)} Make flashcards</button></div>
   `, { wide: true });
+  if (files) loadGenerateFiles(files);
 }
+function generatableNotes() { return state.notes.filter(n => n.type === 'note' && plainTextOfNoteSafe(n).trim().length > 40).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)); }
 function openGenerateDeckModalRefresh() {
-  const notes = state.notes.filter(n => n.type === 'note' && plainTextOfNoteSafe(n).trim().length > 40).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  $('#gd-source').innerHTML = generateSourceFields(notes, state.notes.find(n => n.id === window._genDeck.noteId));
-  $$('.modal-body .segmented button').forEach((b, i) => b.classList.toggle('active', (i === 0) === (window._genDeck.source === 'note')));
+  if (!$('#gd-source')) return;
+  $('#gd-source').innerHTML = generateSourceFields(generatableNotes(), state.notes.find(n => n.id === window._genDeck.noteId));
+  $$('#gd-sources button').forEach(b => { const on = b.dataset.source === window._genDeck.source; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on); });
+  enhanceAccessibility($('#gd-source'));
 }
 function generateSourceFields(notes, pre) {
-  if (window._genDeck.source === 'note') {
-    if (!notes.length) return `<p class="small muted mb-16">You don’t have any notes with enough text yet. Paste text instead.</p>`;
-    return `<div class="field"><label for="gd-note">Note</label><select class="select" id="gd-note" onchange="window._genDeck.noteId=this.value;const n=state.notes.find(x=>x.id===this.value);if(n&&!$('#gd-name').value)$('#gd-name').value=n.name||''">${notes.map(n => `<option value="${n.id}" ${n.id === (pre?.id || window._genDeck.noteId) ? 'selected' : ''}>${esc(n.name || 'Untitled note')}</option>`).join('')}</select></div>`;
+  const g = window._genDeck;
+  if (g.source === 'note') {
+    if (!notes.length) return `<p class="small muted mb-16">You don’t have any notes with enough text yet. Upload a file or paste text instead.</p>`;
+    return `<div class="field"><label for="gd-note">Note</label><select class="select" id="gd-note" onchange="window._genDeck.noteId=this.value;const n=state.notes.find(x=>x.id===this.value);if(n&&!$('#gd-name').value)$('#gd-name').value=n.name||''">${notes.map(n => `<option value="${n.id}" ${n.id === (pre?.id || g.noteId) ? 'selected' : ''}>${esc(n.name || 'Untitled note')}</option>`).join('')}</select></div>`;
+  }
+  if (g.source === 'file') {
+    const f = g.file;
+    return `<div class="field"><label>File</label>
+      <div class="upload-drop fc-gen-drop" onclick="if(event.target.id!=='gd-file-input')$('#gd-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');loadGenerateFiles(event.dataTransfer.files)">
+        <div class="small ${f?.ready ? 'sg-strong' : ''}">${f ? `${icon(f.ready ? 'check' : 'refresh-cw', 12, 2.2)} ${esc(f.name)} · ${esc(f.status)}` : 'Choose a PDF, Word doc, PowerPoint, or photos of your notes'}</div>
+        <input type="file" id="gd-file-input" accept="${STUDY_MATERIAL_ACCEPT}" multiple hidden onchange="loadGenerateFiles(this.files)">
+      </div>
+      ${f?.ready ? '' : '<div class="small muted mt-8">Up to 8 photos at once, or one document.</div>'}</div>`;
   }
   return `<div class="field"><label for="gd-text">Material</label><textarea class="input" id="gd-text" style="min-height:160px" placeholder="Paste lecture notes, a study guide, or a reading summary"></textarea></div>`;
+}
+async function loadGenerateFiles(fileList) {
+  const files = Array.from(fileList || []);
+  const input = $('#gd-file-input');
+  if (input) input.value = '';
+  const g = window._genDeck;
+  if (!files.length || !g) return;
+  const token = uid();
+  g.file = { token, name: files.length > 1 ? `${files.length} files` : files[0].name, status: 'Reading…', ready: false };
+  openGenerateDeckModalRefresh();
+  try {
+    const { text, images } = await readStudyMaterial(files);
+    if (window._genDeck !== g || g.file?.token !== token) return; // closed, or another file was picked meanwhile
+    g.file = { ...g.file, text, images, ready: true, status: images.length ? `${images.length} page${images.length === 1 ? '' : 's'} ready` : `${text.length.toLocaleString()} characters ready` };
+    const nameInput = $('#gd-name');
+    if (nameInput && !nameInput.value.trim()) nameInput.value = fileBaseName(files[0].name);
+  } catch (e) {
+    if (window._genDeck !== g || g.file?.token !== token) return;
+    g.file = null;
+    toast(e.message || 'Couldn’t read that file', 'error', 6000);
+  }
+  openGenerateDeckModalRefresh();
 }
 function plainTextOfNoteSafe(n) { return String(n.content || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' '); }
 async function runGenerateDeck() {
   const g = window._genDeck;
-  let text = '';
+  let text = '', images = [];
   if (g.source === 'note') {
     const n = state.notes.find(x => x.id === ($('#gd-note')?.value || g.noteId));
     text = n ? `${n.name}\n\n${plainTextOfNoteSafe(n)}` : '';
+  } else if (g.source === 'file') {
+    if (!g.file) { toast('Choose a file first', 'error'); return; }
+    if (!g.file.ready) { toast('Still reading that file, one moment', 'info'); return; }
+    text = g.file.text || '';
+    images = g.file.images || [];
   } else text = ($('#gd-text')?.value || '').trim();
-  if (text.trim().length < 40) { toast('Add a bit more material to make cards from', 'error'); return; }
+  if (!images.length && text.trim().length < 40) { toast('Add a bit more material to make cards from', 'error'); return; }
   if (!navigator.onLine) { toast('You’re offline. Making flashcards needs a connection.', 'error'); return; }
   const name = $('#gd-name').value.trim() || 'New deck';
   const courseId = $('#gd-course').value || null;
   const btn = $('#gd-go');
   setBtnLoading(btn, true);
   try {
-    const raw = await callClaude({ system: FLASHCARDS_SYSTEM, userContent: `Material:\n\n${text.slice(0, 14000)}`, maxTokens: 3000 });
+    const userContent = images.length
+      ? [...imageBlocks(images), { type: 'text', text: `Make flashcards from these pages of study material.${text ? `\n\nText from the same material:\n${text.slice(0, 8000)}` : ''}` }]
+      : `Material:\n\n${text.slice(0, 14000)}`;
+    const raw = await callClaude({ system: FLASHCARDS_SYSTEM, userContent, maxTokens: 3000 });
     const cards = extractJson(raw).filter(c => c && c.front && c.back).slice(0, 60).map(c => ({ id: uid(), front: String(c.front).trim(), back: String(c.back).trim(), _include: true }));
     if (!cards.length) throw new Error('Couldn’t find enough to make cards from. Try a longer note.');
     window._genDeck = { ...g, name, courseId, cards };

@@ -512,7 +512,8 @@ async function unusedGroupCode() {
 async function addCloudGroupItem(code, item) {
   const clean = { ...item };
   const inline = [clean.dataUrl, clean.url].find(v => typeof v === 'string' && v.startsWith('data:'));
-  if (inline) clean.url = await uploadDataUrlToStorage(`studyGroups/${code}/files/${clean.id}`, inline);
+  const fileName = clean.fileName || clean.title || 'file';
+  if (inline) clean.url = await uploadDataUrlToStorage(`studyGroups/${code}/files/${clean.id}-${storageSafeName(fileName)}`, inline, fileName);
   delete clean.dataUrl;
   if (JSON.stringify(clean).length > FIRESTORE_DOC_SAFE_BYTES) throw new Error('That’s too large to share in one piece. Try sharing a smaller notebook or deck.');
   await _fbDb.collection('studyGroups').doc(code).collection('items').doc(clean.id).set(clean);
@@ -528,6 +529,7 @@ function ensureGroupDetailListeners(code) {
   const ref = _fbDb.collection('studyGroups').doc(code);
   _detailSubs.unsubs.push(ref.collection('items').onSnapshot(snap => {
     _groupItems[code] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+    nameStoredFiles(_groupItems[code].filter(it => it.kind === 'file').map(it => ({ url: it.url, name: it.fileName || it.title })));
     renderRemote();
   }, e => console.warn('Group items listener failed', e)));
   _detailSubs.unsubs.push(ref.collection('messages').orderBy('at').limitToLast(200).onSnapshot(snap => {
@@ -1179,10 +1181,11 @@ function resourceRow(g, s) {
   const action = s.kind === 'file' ? (url ? `<a class="btn btn-sm" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(s.fileName || s.title)}">${icon('download', 13)} Open</a>` : '')
     : s.kind === 'link' ? (url ? `<a class="btn btn-sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${icon('link', 13)} Open</a>` : '')
     : `<button class="btn btn-sm" onclick="importGroupResource('${g.code}','${s.id}')">${icon('plus', 13)} Add to mine</button>`;
+  const kindLabel = s.kind === 'file' ? fileTypeLabel(s.fileName || s.title) : SHARE_KIND_LABEL[s.kind] || 'Item';
   return `
     <div class="list-row sg-resource">
       <span class="sg-res-ic">${icon(SHARE_KIND_ICON[s.kind] || 'file-text', 16)}</span>
-      <div class="row-title"><div class="sg-strong">${esc(s.title)}</div><div class="row-meta">${[SHARE_KIND_LABEL[s.kind] || 'Item', esc(meta), esc(s.sharedBy || 'Someone'), fmtRelativeTime(s.sharedAt)].filter(Boolean).join(' · ')}</div></div>
+      <div class="row-title"><div class="sg-strong">${esc(s.title)}</div><div class="row-meta">${[esc(kindLabel), esc(meta), esc(s.sharedBy || 'Someone'), fmtRelativeTime(s.sharedAt)].filter(Boolean).join(' · ')}</div></div>
       ${action}
       ${canRemove ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(s.title)}" onclick="removeGroupResource('${g.code}','${s.id}')">${icon('trash', 14)}</button>` : ''}
     </div>`;
@@ -1244,7 +1247,7 @@ async function handleShareResourceFile(file) {
   const status = $('#sr-file-status');
   if (file.size > max) { status.textContent = `That file is ${fmtFileSize(file.size)}. The limit is ${fmtFileSize(max)}.`; window._shareResource.file = null; return; }
   status.textContent = 'Reading…';
-  const dataUrl = 'data:' + (file.type || 'application/octet-stream') + ';base64,' + (await fileToBase64(file));
+  const dataUrl = 'data:' + mimeForFile(file.name, file.type) + ';base64,' + (await fileToBase64(file));
   window._shareResource.file = { name: file.name, size: file.size, dataUrl };
   status.textContent = `${file.name} (${fmtFileSize(file.size)}) is ready to share`;
 }

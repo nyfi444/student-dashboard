@@ -251,6 +251,7 @@ const POSTING_SYSTEM = `You extract the key details from a job, internship, or s
 {"org": string, "role": string, "type": "Internship"|"Job"|"Scholarship"|"Research"|"Fellowship"|"Grad school"|"Other", "location": string, "deadline": "YYYY-MM-DD or empty string", "amount": number|null, "link": string, "checklist": [string]}
 checklist: 2 to 6 short action items the applicant needs to do based on the posting's requirements (for example "Write 500-word essay", "Submit transcript"). Use empty strings for anything not stated. Infer the nearest upcoming year when only a month and day are given. Do not invent details.`;
 function openPastePostingModal() {
+  if (!requireAi('Filling in an application from a posting')) return;
   openModal(`
     <div class="modal-head"><h3>Paste a posting <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">

@@ -98,8 +98,10 @@ function progressRing(pct, color, size = 76) {
       stroke-dasharray="${(circ * frac).toFixed(2)} ${circ.toFixed(2)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
   </svg>`;
 }
+// In the demo these show a lock and explain Plus when clicked (see requireAi).
 function aiButton(label, onclick, id) {
-  return `<button class="btn btn-sm" ${id ? `id="${id}"` : ''} onclick="${onclick}" style="background:var(--badge);color:var(--ink);border:none">${icon('sparkles', 13, 1.5)} ${esc(label)}</button>`;
+  const locked = typeof aiLooksUnlocked === 'function' && !aiLooksUnlocked();
+  return `<button class="btn btn-sm" ${id ? `id="${id}"` : ''} onclick="${onclick}" style="background:var(--badge);color:var(--ink);border:none" ${locked ? 'title="Included with Semester HQ Plus"' : ''}>${icon(locked ? 'lock' : 'sparkles', 13, 1.6)} ${esc(label)}</button>`;
 }
 function setBtnLoading(btn, loading, labelWhenDone) {
   if (!btn) return;

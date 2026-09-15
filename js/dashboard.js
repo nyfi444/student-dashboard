@@ -437,7 +437,7 @@ function openDashboardCustomizeModal() {
       </div>
       <div class="field"><label>Page color <span class="muted">(${state.settings.dark ? 'dark' : 'light'} mode)</span></label>
         ${pageColorSwatchesHtml('openDashboardCustomizeModal()')}
-        <button class="sg-link small mt-8" onclick="closeModal();setState({route:'settings',subRoute:null})">More colors and app icons in Settings →</button>
+        <button class="sg-link small mt-8" onclick="closeModal();setState({route:'settings',subRoute:null})">App icons, sounds, and more in Settings →</button>
       </div>
       <div class="field"><label>Quick note size</label>
         <div class="segmented">

@@ -9,10 +9,53 @@ const AI_PROXY_URL = 'https://student-planner-ai-proxy.semesterhq.workers.dev/v1
 
 function aiEnabled() { return !!AI_PROXY_URL; }
 
+/* ── Plus-only gate ──────────────────────────────────────────────
+   Every AI request costs money, so AI features only run for a signed-in
+   Semester HQ Plus account, never in the demo: no account, or the copy
+   embedded on the marketing site. The Worker enforces the same rule
+   server-side; this keeps the demo from opening a flow that can't finish.
+   Buttons still show (with a lock) so the demo shows what Plus includes. */
+function aiUnlocked() { return aiEnabled() && !isEmbedded() && !!_fbUser && !!window._licensed; }
+function licensedDeviceFlag() { try { return localStorage.getItem(LICENSE_DEVICE_FLAG) === '1'; } catch { return false; } }
+// A returning subscriber's account is still being checked for a moment
+// after the app opens; don't flash locks at them in the meantime.
+function aiLooksUnlocked() { return aiUnlocked() || (aiEnabled() && !isEmbedded() && !window._licenseChecked && licensedDeviceFlag()); }
+// Call first in anything that uses AI. `what` names the feature in the
+// explanation: "Quick capture is part of Semester HQ Plus…".
+function requireAi(what) {
+  if (aiUnlocked()) return true;
+  if (!aiEnabled()) { toast('This isn’t set up on this deployment yet.', 'info'); return false; }
+  if (aiLooksUnlocked()) { toast('One moment, still checking your account…', 'info'); return false; }
+  openPlusOnlyModal(what);
+  return false;
+}
+// For something opened straight from a link or the share sheet as the app
+// loads: waits (up to 10s) for the account check so requireAi sees the answer.
+function whenAccountChecked(fn, waited = 0) {
+  if (window._licenseChecked || !fbConfigured() || waited >= 10000) { fn(); return; }
+  setTimeout(() => whenAccountChecked(fn, waited + 250), 250);
+}
+function openPlusOnlyModal(what) {
+  const cta = isEmbedded()
+    ? `<a class="btn btn-primary" href="https://semester-hq.com/#pricing" target="_top">See Semester HQ Plus</a>`
+    : _fbUser ? `<button class="btn btn-primary" onclick="closeModal();redirectToCheckout()">Subscribe</button>`
+    : `<a class="btn btn-primary" href="login.html">Log in or sign up</a>`;
+  openModal(`
+    <div class="modal-head"><h3>Included with Semester HQ Plus</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <div class="plus-lock" aria-hidden="true">${icon('lock', 18, 1.8)}</div>
+      <p style="font-size:14px">${esc(what)} is part of Semester HQ Plus, so it doesn’t run in the demo.</p>
+      <p class="small muted mt-8">Everything else works, so you can still add classes, assignments, and flashcards by hand. Plus is $7.99/month and also saves your semester and syncs it across your devices.</p>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Not now</button>${cta}</div>
+  `);
+}
+
 class AiError extends Error {}
 
 async function callClaude({ system, userContent, maxTokens = 2000 }) {
   if (!aiEnabled()) throw new AiError('AI features aren’t set up on this deployment yet.');
+  if (isEmbedded()) throw new AiError('This is part of Semester HQ Plus, so it doesn’t run in the demo.');
   if (!navigator.onLine) throw new AiError('You’re offline. This needs an internet connection.');
   // AI upload is part of the paid subscription, not the free local tier, see
   // checkout.js. This client-side check just avoids a wasted round trip and
@@ -95,6 +138,34 @@ async function extractPdfPageImages(file, { scale = 1.3, quality = 0.78, maxPage
     images.push(canvas.toDataURL('image/jpeg', quality));
   }
   return { images, totalPages: pdf.numPages, truncated: pdf.numPages > pageCount };
+}
+
+// Study material uploaded to make flashcards from: text from a PDF, Word doc,
+// PowerPoint, or text file, or page images when there's no text to pull (a
+// photo of notes, a scanned PDF). Up to 8 files at once, like several photos.
+const STUDY_MATERIAL_ACCEPT = '.pdf,.docx,.pptx,.txt,.md,image/*';
+async function readStudyMaterial(fileList) {
+  const images = [];
+  let text = '';
+  for (const file of Array.from(fileList || []).slice(0, 8)) {
+    const ext = fileExt(file.name);
+    if (/^image\//.test(file.type) || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
+      const dataUrl = await downscaleImage(file, 1600, 0.82);
+      if (!dataUrl) throw new Error(`Couldn’t open ${file.name}. Try a JPG or PNG photo.`);
+      images.push({ base64: dataUrl.split(',')[1], mediaType: 'image/jpeg' });
+    } else if (ext === 'pdf' || file.type === 'application/pdf') {
+      const pdfText = await withTimeout(extractPdfText(file), 30000, 'Timed out reading that PDF').catch(() => '');
+      if (pdfText.trim().length > 200) text += `\n\n${pdfText}`;
+      else (await withTimeout(extractPdfPageImages(file, { maxPages: 6 }), 30000, 'Timed out reading that PDF')).images.forEach(src => images.push({ base64: src.split(',')[1], mediaType: 'image/jpeg' }));
+    } else if (ext === 'docx') text += `\n\n${await docxText(file)}`;
+    else if (ext === 'pptx') text += `\n\n${await pptxText(file)}`;
+    else if (['txt', 'md', 'csv', 'tsv'].includes(ext) || /^text\//.test(file.type)) text += `\n\n${await file.text()}`;
+    else if (['doc', 'ppt', 'pages', 'key', 'rtf', 'odt'].includes(ext)) throw new Error(`Semester HQ can’t read .${ext} files. Save it as a PDF and upload that.`);
+    else throw new Error(`Semester HQ can’t read ${file.name}. Try a PDF, Word doc, PowerPoint, or photo.`);
+  }
+  text = text.trim();
+  if (!text && !images.length) throw new Error('Couldn’t find anything to read in that file.');
+  return { text, images: images.slice(0, 8) };
 }
 
 const SYLLABUS_SYSTEM = `You extract structured course information from a syllabus. Reply with ONLY a JSON object (no prose, no markdown fences) matching this shape:

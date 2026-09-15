@@ -104,10 +104,11 @@ service cloud.firestore {
 
     // Clubs & teams. Like study groups, the 6-character code is the invite:
     // anyone signed in with the code can look the org up and add themselves.
-    // Officers (officerUids) run it: events, announcements, members, details.
-    // Only the founder (createdBy) changes who's an officer or hands off the
-    // org, and the founder can never be removed. Regular members can only
-    // RSVP for themselves, update their own name, or leave.
+    // Officers (officerUids) run it: events, announcements, files, members,
+    // details. Only the founder (createdBy) changes who's an officer or hands
+    // off the org, and the founder can never be removed. Regular members can
+    // only RSVP for themselves, update their own name and title, mark the
+    // chat's latest message as theirs, or leave.
     match /orgs/{code} {
       function orgSignedIn() { return request.auth != null; }
       function orgChanged() { return request.resource.data.diff(resource.data).affectedKeys(); }
@@ -140,10 +141,11 @@ service cloud.firestore {
                   && (!orgChanged().hasAny(['officerUids']) || removesOnlyMe('officerUids')))))
         // Members
         || (isOrgMember() && !isOrgOfficer()
-          && orgChanged().hasOnly(['rsvp', 'people', 'memberUids', 'updatedAt'])
+          && orgChanged().hasOnly(['rsvp', 'people', 'memberUids', 'lastMessage', 'updatedAt'])
           && (!orgChanged().hasAny(['rsvp']) || request.resource.data.rsvp.diff(resource.data.rsvp).affectedKeys().hasOnly([request.auth.uid]))
           && (!orgChanged().hasAny(['people']) || request.resource.data.people.diff(resource.data.people).affectedKeys().hasOnly([request.auth.uid]))
-          && (!orgChanged().hasAny(['memberUids']) || removesOnlyMe('memberUids')))
+          && (!orgChanged().hasAny(['memberUids']) || removesOnlyMe('memberUids'))
+          && (!orgChanged().hasAny(['lastMessage']) || request.resource.data.lastMessage.uid == request.auth.uid))
         // Joining with the code: add only yourself.
         || (!(request.auth.uid in resource.data.memberUids)
           && orgChanged().hasOnly(['memberUids', 'people', 'updatedAt'])
@@ -154,6 +156,21 @@ service cloud.firestore {
       );
 
       allow delete: if isOrgFounder();
+
+      // Club chat. Members read and post as themselves; officers can remove
+      // any message. Same shape as study group chat.
+      match /messages/{messageId} {
+        function orgDoc() { return get(/databases/$(database)/documents/orgs/$(code)).data; }
+        allow read: if request.auth != null && request.auth.uid in orgDoc().memberUids;
+        allow create: if request.auth != null && request.auth.uid in orgDoc().memberUids
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000;
+        allow delete: if request.auth != null && request.auth.uid in orgDoc().memberUids
+          && (resource.data.uid == request.auth.uid || request.auth.uid in orgDoc().officerUids);
+        allow update: if false;
+      }
     }
 
     // Push notification subscriptions and each student's upcoming reminder

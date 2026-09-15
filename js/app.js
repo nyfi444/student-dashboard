@@ -33,6 +33,7 @@ function render() {
   enhanceAccessibility($('#content'));
   enhanceAccessibility($('#sidebar'));
   if (typeof afterGroupPageRender === 'function') afterGroupPageRender();
+  if (typeof afterOrgPageRender === 'function') afterOrgPageRender();
   if (typeof updateTimerChrome === 'function') updateTimerChrome();
 }
 function bellButton(cls) {
@@ -80,11 +81,20 @@ function toggleSidebar() {
   state.settings.sidebarCollapsed = !state.settings.sidebarCollapsed;
   touch();
 }
+function navTo(id) {
+  // Already on the Notebook page: its sidebar entry shows or hides the notes list.
+  if (id === 'notebook' && state.route === 'notebook' && typeof toggleNotebookList === 'function') {
+    toggleNotebookList();
+    $('#sidebar [data-nav="notebook"]')?.focus({ preventScroll: true });
+    return;
+  }
+  setState({ route: id, subRoute: null });
+}
 
 function renderSidebar() {
   const groupsUnread = typeof anyGroupUnread === 'function' && anyGroupUnread();
   let orgsUnread = false;
-  try { orgsUnread = allOrgs().some(o => orgUnreadCount(o) > 0); } catch {}
+  try { orgsUnread = allOrgs().some(o => orgUnreadCount(o) > 0 || orgChatUnread(o)); } catch {}
   $('#sidebar').innerHTML = `
     <div class="sidebar-brand">
       <div><h1>Semester HQ</h1><p>${esc(activeSemesterName())}</p></div>
@@ -98,7 +108,7 @@ function renderSidebar() {
       ${NAV.map(([label, items]) => `
         <div class="nav-group">
           <div class="nav-group-label">${label}</div>
-          ${items.map(([id, iconName, name]) => `<button class="nav-item ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" ${state.route === id ? 'aria-current="page"' : ''} onclick="setState({route:'${id}',subRoute:null})"><span class="ic">${icon(iconName)}</span>${name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}${id === 'orgs' && orgsUnread ? '<span class="nav-dot" aria-label="New announcements"></span>' : ''}</button>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
+          ${items.map(([id, iconName, name]) => `<button class="nav-item ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" data-nav="${id}" ${state.route === id ? 'aria-current="page"' : ''} ${id === 'notebook' && state.route === 'notebook' ? `aria-controls="notebook-tree-panel" aria-expanded="${typeof notebookListHidden === 'function' ? !notebookListHidden() : true}" title="Show or hide your notes list"` : ''} onclick="navTo('${id}')"><span class="ic">${icon(iconName)}</span>${name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}${id === 'orgs' && orgsUnread ? '<span class="nav-dot" aria-label="New club activity"></span>' : ''}</button>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
         </div>
       `).join('')}
     </div>
@@ -131,7 +141,7 @@ function initApp() {
   if (typeof registerServiceWorker === 'function') registerServiceWorker();
   if (typeof initInstallPrompt === 'function') initInstallPrompt();
   if (typeof handleSharedContent === 'function') handleSharedContent();
-  if (new URLSearchParams(location.search).has('capture')) { history.replaceState({}, '', location.pathname); setTimeout(() => openQuickCapture(), 300); }
+  if (new URLSearchParams(location.search).has('capture')) { history.replaceState({}, '', location.pathname); setTimeout(() => whenAccountChecked(() => openQuickCapture()), 300); }
   $('.sidebar-expand-fab').innerHTML = icon('panel-left', 16, 1.6);
   render();
 }

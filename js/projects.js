@@ -204,7 +204,7 @@ function pageProjectDetail(p) {
           <div class="flex-between mb-8"><h3 class="sg-h3">Milestones</h3>${ms.length && p.dueDate ? `<button class="sg-link" onclick="respaceMilestones('${p.id}')">Space out dates</button>` : ''}</div>
           ${ms.length ? ms.map((m, i) => milestoneBlockHtml(p, m, i, ms.length)).join('') : `
             <div class="proj-templates compact">${PROJECT_TEMPLATES.map(t => `<button class="proj-template" onclick="applyProjectTemplate('${p.id}','${t.id}')"><span class="sg-feature-ic">${icon(t.icon, 14, 1.7)}</span><span class="sg-strong small">${esc(t.name)}</span></button>`).join('')}</div>
-            ${aiEnabled() ? `<button class="btn btn-sm mt-8" id="proj-ai-btn" onclick="planProjectWithAI('${p.id}')">${icon('sparkles', 13, 1.6)} Plan it for me</button>` : ''}`}
+            ${aiEnabled() ? `<button class="btn btn-sm mt-8" id="proj-ai-btn" onclick="planProjectWithAI('${p.id}')">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 13, 1.6)} Plan it for me</button>` : ''}`}
           <div class="proj-add-ms">
             <input class="input" id="proj-new-ms" maxlength="120" placeholder="Add a milestone" onkeydown="if(event.key==='Enter')addMilestone('${p.id}')">
             <input class="input" type="date" id="proj-new-ms-date" aria-label="Milestone date" ${p.dueDate ? `max="${p.dueDate}"` : ''}>
@@ -423,7 +423,7 @@ function applyProjectTemplate(pid, templateId) {
 const PROJECT_PLAN_SYSTEM = `You break a college student's project into a realistic plan. Reply with ONLY a JSON object (no prose, no markdown fences): {"milestones": [{"title": string (short), "dueDate": "YYYY-MM-DD or empty string", "tasks": [string]}]}. Use 3 to 7 milestones in order, each with 0 to 4 short, concrete tasks. Space dates between today and the due date with the heaviest work in the middle and a small buffer before the deadline. Don't include grading.`;
 async function planProjectWithAI(pid) {
   const p = getProject(pid);
-  if (!p) return;
+  if (!p || !requireAi('Planning a project for you')) return;
   const btn = $('#proj-ai-btn');
   setBtnLoading(btn, true);
   try {

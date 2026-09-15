@@ -296,6 +296,7 @@ function deleteCourse(id) {
 
 /* ── Syllabus upload → AI parse → review & confirm ────────────── */
 function openSyllabusUploadModal(targetCourseId = null) {
+  if (!requireAi('Syllabus upload')) return;
   window._sylTargetCourseId = targetCourseId && getCourse(targetCourseId) ? targetCourseId : null;
   const target = window._sylTargetCourseId ? getCourse(targetCourseId) : null;
   openModal(`
