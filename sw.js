@@ -8,12 +8,12 @@
    Bump VERSION whenever you deploy, so open tabs can offer "Refresh to
    update" and old cached files get cleaned up.
 ──────────────────────────────────────────────────────────────── */
-const VERSION = 'shq-2026-09-15-release6';
+const VERSION = 'shq-2026-09-15-release8';
 const APP_SHELL = [
-  './', 'index.html', 'login.html', 'manifest.json', 'css/styles.css',
+  './', 'index.html', 'login.html', 'group-admin.html', 'manifest.json', 'css/styles.css',
   'assets/favicon.png', 'assets/apple-touch-icon.png', 'assets/icon-192.png', 'assets/icon-512.png',
-  'js/utils.js', 'js/icons.js', 'js/colorwheel.js', 'js/state.js', 'js/firebase.js', 'js/ai.js', 'js/errortracking.js',
-  'js/checkout.js', 'js/ui.js', 'js/dashboard.js', 'js/courses.js', 'js/semestersetup.js', 'js/calendar.js', 'js/todos.js',
+  'js/utils.js', 'js/icons.js', 'js/colorwheel.js', 'js/state.js', 'js/firebase.js', 'js/ai.js', 'js/uploads.js', 'js/errortracking.js',
+  'js/checkout.js', 'js/groupplans.js', 'js/group-admin.js', 'js/ui.js', 'js/dashboard.js', 'js/courses.js', 'js/semestersetup.js', 'js/calendar.js', 'js/todos.js',
   'js/assignments.js', 'js/notebook.js', 'js/timer.js', 'js/exams.js', 'js/projects.js', 'js/studytools.js',
   'js/studygroups.js', 'js/career.js', 'js/capture.js', 'js/wrapped.js', 'js/classes.js', 'js/quickparse.js', 'js/syllabus.js', 'js/orgs.js', 'js/appearance.js', 'js/reminders.js', 'js/push.js', 'js/settings.js', 'js/palette.js', 'js/install.js', 'js/offline.js', 'js/app.js',
 ];

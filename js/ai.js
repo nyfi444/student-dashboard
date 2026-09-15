@@ -140,34 +140,6 @@ async function extractPdfPageImages(file, { scale = 1.3, quality = 0.78, maxPage
   return { images, totalPages: pdf.numPages, truncated: pdf.numPages > pageCount };
 }
 
-// Study material uploaded to make flashcards from: text from a PDF, Word doc,
-// PowerPoint, or text file, or page images when there's no text to pull (a
-// photo of notes, a scanned PDF). Up to 8 files at once, like several photos.
-const STUDY_MATERIAL_ACCEPT = '.pdf,.docx,.pptx,.txt,.md,image/*';
-async function readStudyMaterial(fileList) {
-  const images = [];
-  let text = '';
-  for (const file of Array.from(fileList || []).slice(0, 8)) {
-    const ext = fileExt(file.name);
-    if (/^image\//.test(file.type) || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
-      const dataUrl = await downscaleImage(file, 1600, 0.82);
-      if (!dataUrl) throw new Error(`Couldn’t open ${file.name}. Try a JPG or PNG photo.`);
-      images.push({ base64: dataUrl.split(',')[1], mediaType: 'image/jpeg' });
-    } else if (ext === 'pdf' || file.type === 'application/pdf') {
-      const pdfText = await withTimeout(extractPdfText(file), 30000, 'Timed out reading that PDF').catch(() => '');
-      if (pdfText.trim().length > 200) text += `\n\n${pdfText}`;
-      else (await withTimeout(extractPdfPageImages(file, { maxPages: 6 }), 30000, 'Timed out reading that PDF')).images.forEach(src => images.push({ base64: src.split(',')[1], mediaType: 'image/jpeg' }));
-    } else if (ext === 'docx') text += `\n\n${await docxText(file)}`;
-    else if (ext === 'pptx') text += `\n\n${await pptxText(file)}`;
-    else if (['txt', 'md', 'csv', 'tsv'].includes(ext) || /^text\//.test(file.type)) text += `\n\n${await file.text()}`;
-    else if (['doc', 'ppt', 'pages', 'key', 'rtf', 'odt'].includes(ext)) throw new Error(`Semester HQ can’t read .${ext} files. Save it as a PDF and upload that.`);
-    else throw new Error(`Semester HQ can’t read ${file.name}. Try a PDF, Word doc, PowerPoint, or photo.`);
-  }
-  text = text.trim();
-  if (!text && !images.length) throw new Error('Couldn’t find anything to read in that file.');
-  return { text, images: images.slice(0, 8) };
-}
-
 const SYLLABUS_SYSTEM = `You extract structured course information from a syllabus. Reply with ONLY a JSON object (no prose, no markdown fences) matching this shape:
 {
   "name": string, "code": string, "instructor": string, "location": string, "credits": number|null,
@@ -195,9 +167,11 @@ function imageBlocks(images) {
   return images.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } }));
 }
 
-async function aiParseSyllabus({ text, images }) {
-  const userContent = images && images.length
-    ? [...imageBlocks(images), { type: 'text', text: 'Extract the course info from this syllabus (across all pages/photos if more than one) as specified.' }]
+// An upload can bring both text and images (a Word doc plus photos, or a
+// scan with a little text), so both go in the same message.
+async function aiParseSyllabus({ text = '', images = [] }) {
+  const userContent = images.length
+    ? [...imageBlocks(images), { type: 'text', text: `Extract the course info from this syllabus (across all pages/photos if more than one) as specified.${text ? `\n\nText from the same upload:\n${text.slice(0, 15000)}` : ''}` }]
     : `Here is the syllabus text:\n\n${text.slice(0, 15000)}`;
   const raw = await callClaude({ system: SYLLABUS_SYSTEM, userContent, maxTokens: 3000 });
   return extractJson(raw);
@@ -207,9 +181,9 @@ const ASSIGNMENTS_SYSTEM = `You extract a list of assignments/deadlines from a d
 [{"title": string, "type": "assignment"|"reading"|"discussion"|"quiz"|"exam"|"project"|"paper"|"lab", "dueDate": "YYYY-MM-DD or empty string if unknown", "dueTime": "HH:MM or empty string", "maxPoints": number|null}]
 Infer the current or nearest upcoming year for dates when only month/day is given. Do not invent assignments that aren't mentioned in the document.`;
 
-async function aiParseAssignments({ text, images }) {
-  const userContent = images && images.length
-    ? [...imageBlocks(images), { type: 'text', text: 'Extract the list of assignments/deadlines from these images (they may be multiple pages of one document) as specified.' }]
+async function aiParseAssignments({ text = '', images = [] }) {
+  const userContent = images.length
+    ? [...imageBlocks(images), { type: 'text', text: `Extract the list of assignments/deadlines from these images (they may be multiple pages of one document) as specified.${text ? `\n\nText from the same upload:\n${text.slice(0, 15000)}` : ''}` }]
     : `Here is the document text:\n\n${text.slice(0, 15000)}`;
   const raw = await callClaude({ system: ASSIGNMENTS_SYSTEM, userContent, maxTokens: 3000 });
   return extractJson(raw);

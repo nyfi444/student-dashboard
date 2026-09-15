@@ -78,7 +78,7 @@ function pageNotebook() {
       ${SLASH_COMMANDS.map(c => `<div class="nb-slash-item" data-key="${c.key}" onmousedown="event.preventDefault()" onclick="runSlashCommand('${c.key}')"><span class="nb-slash-glyph">${c.glyph}</span><span><div class="nb-slash-label">${c.label}</div><div class="nb-slash-desc">${c.desc}</div></span></div>`).join('')}
     </div>
     <div class="nb-color-popover" id="nb-color-popover"></div>
-    <input type="file" id="nb-pdf-input" accept="application/pdf" multiple style="display:none" onchange="handleNotePdfUpload(this.files)">
+    <input type="file" id="nb-file-input" multiple style="display:none" onchange="handleNoteFileUpload(this.files)">
   `;
   setTimeout(() => { wireBubbleToolbar(); wireSlashMenu(); updateNbColorSwatches(); }, 0);
   return html;
@@ -595,7 +595,7 @@ function renderNoteEditor(note) {
           <button class="btn btn-ghost btn-sm" onclick="duplicateNote('${note.id}')">${icon('layers', 13)} Duplicate</button>
           <button class="btn btn-ghost btn-sm" onclick="openMoveNoteModal('${note.id}')">${icon('folder', 13)} Move</button>
           <button class="btn btn-ghost btn-sm" onclick="exportNoteToPdf('${note.id}')">${icon('download', 13)} Export PDF</button>
-          <button class="btn btn-ghost btn-sm" onclick="triggerNotePdfUpload('${note.id}')">${icon('upload', 13)} Upload PDF</button>
+          <button class="btn btn-ghost btn-sm" onclick="triggerNoteFileUpload('${note.id}')">${icon('upload', 13)} Upload file</button>
           <button class="btn btn-ghost btn-sm" onclick="openGenerateDeckModal('${note.id}')">${icon('layers', 13)} Flashcards</button>
           <button class="btn btn-ghost btn-sm" onclick="shareNoteToGroup('${note.id}')">${icon('users', 13)} Share</button>
         </div>
@@ -743,7 +743,7 @@ function shareNoteToGroup(id) {
   openShareToGroupModal('note', note.name || 'Untitled note', { content: note.content || '' });
 }
 // Shares a whole folder (every note directly inside it, including anything
-// pulled in via Upload PDF) as one bundle, instead of only being able to
+// pulled in via Upload file) as one bundle, instead of only being able to
 // share notes one at a time.
 function shareFolderToGroup(id) {
   const folder = state.notes.find(n => n.id === id && n.type === 'folder');
@@ -753,41 +753,50 @@ function shareFolderToGroup(id) {
   openShareToGroupModal('note-bundle', folder.name || 'Untitled notebook', { notes: notes.map(n => ({ name: n.name, content: n.content || '' })) });
 }
 
-function triggerNotePdfUpload(id) {
-  window._nbPdfNoteId = id;
-  const input = $('#nb-pdf-input');
+function triggerNoteFileUpload(id) {
+  window._nbUploadNoteId = id;
+  const input = $('#nb-file-input');
   if (input) input.click();
 }
-async function handleNotePdfUpload(files) {
-  const input = $('#nb-pdf-input');
-  const noteId = window._nbPdfNoteId;
-  const note = state.notes.find(n => n.id === noteId);
-  if (!files || !files.length || !note) { if (input) input.value = ''; return; }
+async function handleNoteFileUpload(fileList) {
+  const input = $('#nb-file-input');
+  const files = Array.from(fileList || []);
+  if (input) input.value = '';
+  const note = state.notes.find(n => n.id === window._nbUploadNoteId);
+  if (!files.length || !note) return;
   const status = $('#nb-save-status');
-  let failed = 0, truncatedAny = false, markerId = '';
+  const problems = [];
+  let added = 0, markerId = '';
   for (const file of files) {
-    if (status) status.textContent = `Rendering ${file.name}…`;
+    if (status) status.textContent = `Adding ${file.name}…`;
     try {
-      // Each page is rendered to an actual image and dropped in: the real
-      // document (figures, layout, handwriting) rather than a stripped text
-      // reflow. See extractPdfPageImages in ai.js for the size/page caps.
-      // Wrapped in a timeout: a scanned/malformed PDF, or a slow/blocked CDN
-      // fetch of the pdf.js worker, can otherwise hang forever with no error,
-      // making the upload silently look like it never happened.
-      const { images, truncated } = await withTimeout(extractPdfPageImages(file), 30000, 'Timed out reading this PDF');
-      if (truncated) truncatedAny = true;
-      const body = images.length
-        ? images.map(src => `<p><img src="${src}" alt="${esc(file.name)} page" style="max-width:100%;border-radius:6px;border:1px solid var(--border);margin:4px 0"></p>`).join('')
-        : '<p><em>No pages could be rendered from this PDF.</em></p>';
+      const body = await noteHtmlForFile(file, problems);
       markerId = 'nb-import-' + uid();
       note.content = (note.content || '') + `<h3 id="${markerId}">${esc(file.name)}</h3>${body}`;
-    } catch (e) { failed++; }
+      added++;
+    } catch (e) { problems.push(e.message || `Couldn’t read ${file.name}.`); }
   }
-  note.updatedAt = Date.now();
+  if (added) note.updatedAt = Date.now();
   touch();
-  if (markerId) requestAnimationFrame(() => document.getElementById(markerId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  if (failed) toast(`Imported ${files.length - failed} of ${files.length} PDFs, ${failed} couldn't be read`, failed === files.length ? 'error' : 'info', 4000);
-  else toast(files.length > 1 ? `${files.length} PDFs imported into note` : 'PDF imported into note');
-  if (truncatedAny) toast('One PDF had more pages than could be imported. Only the first 20 pages of it were added', 'info', 5000);
-  if (input) input.value = '';
+  if (added) requestAnimationFrame(() => document.getElementById(markerId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  const done = added === files.length ? (added > 1 ? `${added} files added to the note.` : 'File added to the note.') : added ? `Added ${added} of ${files.length} files.` : '';
+  toast([done, ...problems].filter(Boolean).join(' '), added ? (problems.length ? 'info' : 'success') : 'error', problems.length ? 7000 : 3000);
+}
+// PDF pages come in as page images (the real document: figures, layout,
+// handwriting, not a stripped text reflow; see extractPdfPageImages in ai.js
+// for the size and page caps), photos as pictures, and any other document
+// as its text, ready to edit.
+async function noteHtmlForFile(file, problems) {
+  const kind = await uploadKind(file);
+  const picture = (src, alt) => `<p><img src="${src}" alt="${esc(alt)}" style="max-width:100%;border-radius:6px;border:1px solid var(--border);margin:4px 0"></p>`;
+  if (kind === 'pdf') {
+    const { images, totalPages } = await pdfPageImagesForUpload(file, 20);
+    if (totalPages > images.length) problems.push(`${file.name} has ${totalPages} pages, so only the first ${images.length} were added.`);
+    return images.map(src => picture(src, `${file.name} page`)).join('');
+  }
+  if (kind === 'image') return picture(await imageUploadDataUrl(file, 1400, 0.8), file.name);
+  const { text } = await readOneUpload(file, { textOnly: true });
+  const lines = String(text || '').split('\n').map(line => line.split('\t').map(s => s.trim()).filter(Boolean).join(' · ')).filter(Boolean);
+  if (!lines.length) throw new Error(`Couldn’t find any text in ${file.name}.`);
+  return lines.map(line => `<p>${esc(line)}</p>`).join('');
 }

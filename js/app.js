@@ -32,6 +32,7 @@ function render() {
   $('#content').innerHTML = `<div class="${isNewView ? 'fade-in' : ''}">${fn()}</div>`;
   enhanceAccessibility($('#content'));
   enhanceAccessibility($('#sidebar'));
+  applyExpandables($('#content'));
   if (typeof afterGroupPageRender === 'function') afterGroupPageRender();
   if (typeof afterOrgPageRender === 'function') afterOrgPageRender();
   if (typeof updateTimerChrome === 'function') updateTimerChrome();
@@ -135,6 +136,7 @@ function initApp() {
   captureJoinParam();
   captureClassParam();
   captureOrgParam();
+  capturePlanParam();
   save();
   bootFirebase();
   if (typeof startReminderLoop === 'function') startReminderLoop();

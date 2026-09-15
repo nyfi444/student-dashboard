@@ -102,7 +102,9 @@ async function startInstall() {
 }
 
 const shareGlyph = () => `<span class="install-glyph" aria-hidden="true">${icon('share', 15, 1.9)}</span>`;
-function openInstallHelp() {
+// The steps for this exact device, shared by the help modal and the last
+// screen of semester setup.
+function installGuide() {
   const p = installPlatform();
   const step = (n, html) => `<li class="install-step"><span class="install-num">${n}</span><div>${html}</div></li>`;
   let title, steps, note = '';
@@ -140,6 +142,10 @@ function openInstallHelp() {
       step(3, `Using Chrome or Edge? Look for the install icon <span class="install-glyph" aria-hidden="true">${icon('download', 14, 2)}</span> at the right end of the address bar to get it as an app.`),
     ];
   }
+  return { platform: p, title, steps, note };
+}
+function openInstallHelp() {
+  const { platform: p, title, steps, note } = installGuide();
   openModal(`
     <div class="modal-head"><h3>${esc(title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
@@ -153,8 +159,37 @@ function openInstallHelp() {
     </div>
   `);
 }
-function markBookmarked() { saveInstallInfo({ bookmarked: Date.now() }); closeModal(); touch(); toast('Nice. Your semester is one click away.'); }
-function markInstalledByHand() { saveInstallInfo({ installed: Date.now() }); closeModal(); touch(); toast('Nice. Open it from your home screen from now on.'); }
+// Shown at the end of semester setup: the one moment everyone reaches, and
+// the students who put Semester HQ on their home screen are the ones who
+// keep using it (on iPhone it's also what lets reminders through).
+function installSetupCard() {
+  if (isEmbedded() || isStandaloneApp() || installInfo().installed || installInfo().bookmarked) return '';
+  const { platform: p, title, steps, note } = installGuide();
+  return `
+    <div class="card card-pad setup-install">
+      <div class="setup-install-head">
+        <img class="install-icon" src="${esc(document.querySelector('link[rel="apple-touch-icon"]')?.getAttribute('href') || 'assets/icon-192.png')}" alt="" width="40" height="40">
+        <div><div class="sg-strong">${esc(title)}</div><div class="small muted">${p === 'ios' ? 'Two taps, and it opens like any other app.' : 'Keep your semester one tap away.'}</div></div>
+      </div>
+      <ol class="install-steps mt-8">${steps.join('')}</ol>
+      ${note ? `<p class="small muted">${esc(note)}</p>` : ''}
+      <div class="flex-gap wrap mt-8">
+        ${p === 'prompt' ? `<button class="btn btn-sm btn-primary" onclick="startInstall()">${icon('download', 13, 2)} Install</button>` : ''}
+        ${p === 'ios' || p === 'android' ? `<button class="btn btn-sm" onclick="markInstalledByHand()">I added it</button>` : ''}
+        ${p === 'desktop' || p === 'mac-safari' ? `<button class="btn btn-sm" onclick="markBookmarked()">I bookmarked it</button>` : ''}
+      </div>
+    </div>`;
+}
+// Called from the help modal and from semester setup's last screen, which
+// is itself a modal: closing that one would throw away the finish screen,
+// so there it just re-renders without the install card.
+function dismissInstallStep() {
+  if (window._setup && document.querySelector('.setup-body')) { renderSetupStep(); return; }
+  closeModal();
+  touch();
+}
+function markBookmarked() { saveInstallInfo({ bookmarked: Date.now() }); dismissInstallStep(); toast('Nice. Your semester is one click away.'); }
+function markInstalledByHand() { saveInstallInfo({ installed: Date.now() }); dismissInstallStep(); toast('Nice. Open it from your home screen from now on.'); }
 
 function installSettingsCard() {
   if (isEmbedded()) return '';

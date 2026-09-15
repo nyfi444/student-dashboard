@@ -42,15 +42,24 @@ async function redirectToPortal() {
   if (!checkoutEnabled() || !_fbUser) return;
   try {
     const idToken = await _fbUser.getIdToken();
-    const res = await fetch(`${CHECKOUT_PROXY_URL}/create-portal-session`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ idToken }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.url) throw new Error(data.error || 'Could not open billing portal');
+    const data = await workerPost('/create-portal-session', { idToken });
+    if (!data.url) throw new Error('Could not open billing portal');
     window.location.href = data.url;
   } catch (e) {
+    // Nothing to bill isn't an error worth a red toast: it's an answer.
+    // Someone on a group plan, or on access that was set up for them, has
+    // no subscription of their own to change.
+    if (e.reason === 'group' || e.reason === 'no-billing') {
+      openModal(`
+        <div class="modal-head"><h3>${e.reason === 'group' ? 'Your group covers this' : 'Nothing to manage'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+        <div class="modal-body">
+          <p class="small">${esc(e.message)}</p>
+          <p class="small muted mt-8">Questions about your plan? Email <a href="mailto:hello@semester-hq.com">hello@semester-hq.com</a>.</p>
+        </div>
+        <div class="modal-foot"><button class="btn btn-primary" onclick="closeModal()">Got it</button></div>
+      `);
+      return;
+    }
     toast('Could not open billing portal: ' + e.message, 'error', 5000);
   }
 }
@@ -77,10 +86,18 @@ async function resolveLicenseStatus() {
   if (!checkoutEnabled()) return true; // payments not configured on this deployment, don't gate
   if (!_fbUser) return false;
   if (!navigator.onLine) return null;
+  // Arrived on a group plan's invite link: take the seat, which is what
+  // makes this account paid.
+  if (typeof claimGroupSeat === 'function' && (pendingPlanCode() || (typeof pendingOrgCode === 'function' && pendingOrgCode()))) {
+    if (await claimGroupSeat()) return true;
+  }
   let reachedFirestore = false;
   try {
     const doc = await withTimeout(_fbDb.collection('licenses').doc(_fbUser.uid).get(), 8000);
     reachedFirestore = !doc.metadata?.fromCache;
+    // Kept for Settings: whether this plan is the person's own subscription
+    // or a seat in a group plan changes what it can offer them.
+    if (doc.exists) window._licenseDoc = doc.data();
     if (doc.exists && doc.data().paid) return true;
   } catch (e) { console.warn('License check failed', e); }
   try {
@@ -149,11 +166,13 @@ function pagePaywall() {
       </div>`;
   }
   const signedInEmail = _fbUser?.email || '';
+  if (typeof loadPlanInvite === 'function') loadPlanInvite();
   return `
     <div class="paywall-wrap">
       <div class="paywall-card">
         <h2>No plan on this account yet</h2>
         ${signedInEmail ? `<p class="small muted mb-8">Signed in as <strong>${esc(signedInEmail)}</strong></p>` : ''}
+        ${typeof planInviteCard === 'function' ? planInviteCard() : ''}
         ${typeof pendingInviteBanner === 'function' ? pendingInviteBanner() : ''}
         ${typeof pendingOrgCode === 'function' && pendingOrgCode() && !(typeof pendingJoinCode === 'function' && pendingJoinCode()) ? `<div class="sg-callout small mb-16" style="text-align:left"><span>${icon('shield', 15, 1.8)}</span><div>You’ve been invited to join a club or team. Subscribe to get its events on your calendar. Signing up the whole group? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Ask about group pricing</a>.</div></div>` : ''}
         ${typeof pendingClassCode === 'function' && pendingClassCode() && !(typeof pendingJoinCode === 'function' && pendingJoinCode()) ? `<div class="sg-callout small mb-16" style="text-align:left"><span>${icon('graduation-cap', 15, 1.8)}</span><div>A classmate shared a class with you. Subscribe to add it with every deadline already filled in.</div></div>` : ''}

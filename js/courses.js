@@ -299,33 +299,20 @@ function openSyllabusUploadModal(targetCourseId = null) {
   if (!requireAi('Syllabus upload')) return;
   window._sylTargetCourseId = targetCourseId && getCourse(targetCourseId) ? targetCourseId : null;
   const target = window._sylTargetCourseId ? getCourse(targetCourseId) : null;
+  window._sylActiveTab = 'file';
+  delete _uploadZones.syllabus;
   openModal(`
     <div class="modal-head"><h3>${target ? `Upload the ${esc(target.code || target.name)} syllabus` : 'Upload syllabus'} <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       ${!aiEnabled() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">AI parsing isn’t set up on this deployment yet.</div>` : ''}
       <p class="small muted mb-8">${target ? 'Semester HQ pulls out office hours, contact info, the attendance and late policies, and any deadlines this class doesn’t have yet. You’ll review it before anything is saved.' : 'Semester HQ fills in class times, every deadline, office hours, and the attendance and late policies. You’ll review it before anything is saved.'}</p>
       <div class="segmented mb-8" id="syl-tabs">
-        <button class="active" onclick="sylTab('paste')" data-tab="paste">Paste text</button>
-        <button onclick="sylTab('pdf')" data-tab="pdf">Upload PDF</button>
-        <button onclick="sylTab('image')" data-tab="image">Upload photo</button>
+        <button class="active" onclick="sylTab('file')" data-tab="file">Upload a file</button>
+        <button onclick="sylTab('paste')" data-tab="paste">Paste text</button>
       </div>
-      <div id="syl-paste">
+      <div id="syl-file">${uploadZoneHtml('syllabus', 'Choose your syllabus, or drop it here', 'PDF, Word, PowerPoint, or photos. Pick several photos for a handout with more than one page.')}</div>
+      <div id="syl-paste" style="display:none">
         <textarea class="input" id="syl-text" placeholder="Paste your syllabus text here…" style="min-height:180px"></textarea>
-        <div class="small muted mt-8" id="syl-paste-status"></div>
-      </div>
-      <div id="syl-pdf" style="display:none">
-        <div class="upload-drop" onclick="$('#syl-pdf-input').click()">
-          <div class="small">Click to choose a PDF syllabus</div>
-          <input type="file" id="syl-pdf-input" accept="application/pdf" style="display:none" onchange="handleSyllabusPdf(this.files[0])">
-        </div>
-        <div class="small muted mt-8" id="syl-pdf-status"></div>
-      </div>
-      <div id="syl-image" style="display:none">
-        <div class="upload-drop" onclick="$('#syl-image-input').click()">
-          <div class="small">Click to choose one or more photos of your syllabus</div>
-          <input type="file" id="syl-image-input" accept="image/*" multiple style="display:none" onchange="handleSyllabusImage(this.files)">
-        </div>
-        <div class="small muted mt-8" id="syl-image-status"></div>
       </div>
     </div>
     <div class="modal-foot">
@@ -333,50 +320,41 @@ function openSyllabusUploadModal(targetCourseId = null) {
       <button class="btn btn-primary" id="syl-parse-btn" onclick="runSyllabusParse()" ${aiEnabled() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Parse with AI</button>
     </div>
   `, { wide: true });
-  window._sylImages = null;
+}
+function askAboutDuplicateCourse(course, data) {
+  window._sylDuplicateData = data;
+  const label = course.code || course.name;
+  openModal(`
+    <div class="modal-head"><h3>You already have this class</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <p class="small"><strong>${esc(label)}</strong> is already in this semester. Adding this syllabus to it keeps one class page with its assignments, notes, and office hours, and only pulls in deadlines it doesn’t have yet.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="closeModal();openSyllabusReviewModal(window._sylDuplicateData, true)">Add a separate class</button>
+      <button class="btn btn-primary" onclick="closeModal();openSyllabusMergeModal('${course.id}', window._sylDuplicateData)">Add to ${esc(label)}</button>
+    </div>
+  `);
 }
 function sylTab(tab) {
-  ['paste', 'pdf', 'image'].forEach(t => { $(`#syl-${t}`).style.display = t === tab ? '' : 'none'; });
+  ['file', 'paste'].forEach(t => { $(`#syl-${t}`).style.display = t === tab ? '' : 'none'; });
   $$('#syl-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   window._sylActiveTab = tab;
 }
-window._sylActiveTab = 'paste';
-async function handleSyllabusPdf(file) {
-  if (!file) return;
-  $('#syl-pdf-status').textContent = 'Reading PDF…';
-  try {
-    // A scanned/malformed PDF, or a slow/blocked CDN fetch of the pdf.js
-    // worker, can otherwise hang forever with no error, so this makes sure the
-    // status text always resolves to something instead of hanging silently.
-    const text = await withTimeout(extractPdfText(file), 30000, 'Timed out reading this PDF');
-    if (!text.trim()) { $('#syl-pdf-status').textContent = 'No text found in that PDF. Try the "Upload photo" tab instead.'; return; }
-    $('#syl-text').value = text;
-    sylTab('paste');
-    $('#syl-paste-status').textContent = `📄 ${file.name}: extracted ${text.length.toLocaleString()} characters.`;
-  } catch (e) { $('#syl-pdf-status').textContent = 'Could not read that PDF. Try again or use the "Upload photo" tab instead.'; }
-  const input = $('#syl-pdf-input');
-  if (input) input.value = '';
-}
-async function handleSyllabusImage(files) {
-  if (!files || !files.length) return;
-  $('#syl-image-status').textContent = 'Loading…';
-  window._sylImages = await Promise.all(Array.from(files).map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
-  $('#syl-image-status').textContent = `${window._sylImages.length} photo${window._sylImages.length > 1 ? 's' : ''} loaded, ready to parse.`;
-  const input = $('#syl-image-input');
-  if (input) input.value = '';
-}
 async function runSyllabusParse() {
   const btn = $('#syl-parse-btn');
+  let material;
+  if (window._sylActiveTab === 'paste') {
+    const text = $('#syl-text').value.trim();
+    if (!text) { toast('Paste your syllabus text first', 'error'); return; }
+    material = { text };
+  } else {
+    material = uploadZoneMaterial('syllabus', 'Choose your syllabus file first');
+    if (!material) return;
+  }
   setBtnLoading(btn, true);
   try {
-    let data;
-    if (window._sylActiveTab === 'image' && window._sylImages && window._sylImages.length) {
-      data = await aiParseSyllabus({ images: window._sylImages });
-    } else {
-      const text = $('#syl-text').value.trim();
-      if (!text) { toast('Paste or upload a syllabus first', 'error'); setBtnLoading(btn, false); return; }
-      data = await aiParseSyllabus({ text });
-    }
+    const data = await aiParseSyllabus(material);
     closeModal();
     if (window._sylTargetCourseId && getCourse(window._sylTargetCourseId)) openSyllabusMergeModal(window._sylTargetCourseId, data);
     else openSyllabusReviewModal(data);
@@ -385,7 +363,11 @@ async function runSyllabusParse() {
   } finally { setBtnLoading(btn, false); }
 }
 
-function openSyllabusReviewModal(data) {
+function openSyllabusReviewModal(data, forceNew = false) {
+  // The same syllabus uploaded twice, or a class that was added by hand
+  // first: offer to fill that one in instead of making a second copy.
+  const existing = forceNew ? null : findDuplicateCourse(data.name, data.code);
+  if (existing) { askAboutDuplicateCourse(existing, data); return; }
   const draft = {
     id: uid(), semesterId: state.currentSemesterId,
     name: data.name || '', code: data.code || '', instructor: data.instructor || '', location: data.location || '',

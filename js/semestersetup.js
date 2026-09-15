@@ -54,6 +54,7 @@ function renderSetupStep() {
            <button class="btn btn-primary" onclick="setupNext()">${w.step === SETUP_STEPS.length - 1 ? 'Finish setup' : 'Continue'}</button>`}
     </div>
   `, { wide: true });
+  wireSetupColorWheel();
   const first = $('.setup-body input:not([type=hidden])');
   if (first && !done && w.step < 2) setTimeout(() => { if (!first.value) first.focus(); }, 60);
 }
@@ -98,7 +99,11 @@ function setupStepClasses() {
           <input class="input setup-credits" type="number" min="0" max="12" value="${c.credits}" aria-label="Credits" title="Credits" oninput="window._setup.courses[${i}].credits=Number(this.value)||0">
           <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove class" onclick="window._setup.courses.splice(${i},1);if(!window._setup.courses.length)window._setup.courses.push(setupNewCourse());renderSetupStep()">${icon('x', 13, 2.2)}</button>
         </div>
-        <div class="setup-swatches" role="group" aria-label="Color">${COURSE_PALETTE.map(p => `<button class="setup-swatch ${p === c.color ? 'active' : ''}" style="background:${p}" aria-label="Color ${p}" onclick="window._setup.courses[${i}].color='${p}';renderSetupStep()"></button>`).join('')}</div>
+        <div class="setup-swatches" role="group" aria-label="Color">
+          ${COURSE_PALETTE.map(p => `<button class="setup-swatch ${p.toLowerCase() === c.color.toLowerCase() ? 'active' : ''}" style="background:${p}" aria-label="Color ${p}" onclick="setSetupCourseColor(${i},'${p}')"></button>`).join('')}
+          <button class="setup-swatch setup-swatch-any ${COURSE_PALETTE.some(p => p.toLowerCase() === c.color.toLowerCase()) ? '' : 'active'}" aria-label="Any other color" aria-expanded="${window._setupColorFor === i}" title="Any color" onclick="toggleSetupColorWheel(${i})"></button>
+        </div>
+        ${window._setupColorFor === i ? `<div class="setup-wheel">${colorWheelHtml(`setup-cw-${i}`, c.color)}</div>` : ''}
       </div>`).join('')}
     <button class="btn btn-sm" onclick="window._setup.courses.push(setupNewCourse());renderSetupStep()">+ Add another class</button>
     <div class="small muted mt-8">Columns: name, course code, credits.</div>`;
@@ -126,6 +131,30 @@ function setupStepTimes() {
         </div>`;
     }).join('')}`;
 }
+// The swatches are quick picks, not the whole choice: the last one opens a
+// color wheel so a class can be any color at all.
+function setSetupCourseColor(ci, hex) {
+  window._setup.courses[ci].color = hex;
+  window._setupColorFor = null;
+  renderSetupStep();
+}
+function toggleSetupColorWheel(ci) {
+  window._setupColorFor = window._setupColorFor === ci ? null : ci;
+  renderSetupStep();
+}
+// Live-updates the card while dragging instead of re-rendering the step,
+// which would cancel the drag.
+function wireSetupColorWheel() {
+  const ci = window._setupColorFor;
+  if (ci == null || !window._setup?.courses[ci]) return;
+  const course = window._setup.courses[ci];
+  wireColorWheel(`setup-cw-${ci}`, () => course.color, (hex) => {
+    course.color = hex;
+    const card = $(`#setup-cw-${ci}`)?.closest('.setup-course');
+    if (card) card.style.setProperty('--course', hex);
+    $$(`.setup-course:nth-of-type(${ci + 1}) .setup-swatch`).forEach(el => el.classList.remove('active'));
+  });
+}
 function setupToggleDay(ci, si, d) {
   const s = window._setup.courses[ci].slots[si];
   s.days = s.days.includes(d) ? s.days.filter(x => x !== d) : [...s.days, d];
@@ -139,7 +168,7 @@ function setupStepSyllabi() {
     <p class="setup-lede">With Semester HQ Plus, you can upload each syllabus here and Semester HQ pulls out class times and every deadline and exam.</p>
     <div class="sg-callout small"><span>${icon('lock', 14, 1.8)}</span><div>Syllabus upload doesn’t run in the demo. Skip this step for now and add assignments by hand, or ${isEmbedded() ? '<a href="https://semester-hq.com/#pricing" target="_top">see Semester HQ Plus</a>' : '<a href="login.html">log in</a> to use it'}.</div></div>`;
   return `
-    <p class="setup-lede">Upload a syllabus (PDF or photos) for each class, and Semester HQ pulls out meeting times and every deadline and exam. You’ll be able to review everything afterward.</p>
+    <p class="setup-lede">Upload a syllabus for each class (a PDF, Word doc, slides, or photos), and Semester HQ pulls out meeting times and every deadline and exam. You’ll be able to review everything afterward.</p>
     ${courses.map(c => {
       const ci = window._setup.courses.indexOf(c);
       const found = c._pendingAssignments.length;
@@ -150,7 +179,7 @@ function setupStepSyllabi() {
             <div class="small ${found ? '' : 'muted'}">${c.syllabusStatus ? esc(c.syllabusStatus) : 'No syllabus yet'}</div>
           </div>
           <label class="btn btn-sm ${found ? '' : 'btn-primary'}">${icon('upload', 13, 1.8)} ${found ? 'Replace' : 'Upload'}
-            <input type="file" accept="application/pdf,image/*" multiple style="display:none" onchange="setupUploadSyllabus(${ci}, this.files)">
+            <input type="file" multiple style="display:none" onchange="setupUploadSyllabus(${ci}, this.files)">
           </label>
         </div>`;
     }).join('')}`;
@@ -158,29 +187,21 @@ function setupStepSyllabi() {
 async function setupUploadSyllabus(ci, files) {
   if (!files || !files.length || !requireAi('Syllabus upload')) return;
   const c = window._setup.courses[ci];
+  const list = Array.from(files);
   c.syllabusStatus = 'Reading…';
   renderSetupStep();
   try {
-    const list = Array.from(files);
-    let data;
-    if (list[0].type === 'application/pdf') {
-      const text = await withTimeout(extractPdfText(list[0]), 30000, 'Timed out reading this PDF');
-      if (!text.trim()) throw new Error('No text found in that PDF. Try uploading photos of it instead.');
-      c.syllabusStatus = 'Pulling out dates and class details…';
-      renderSetupStep();
-      data = await aiParseSyllabus({ text });
-    } else {
-      const images = await Promise.all(list.map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
-      c.syllabusStatus = 'Pulling out dates and class details…';
-      renderSetupStep();
-      data = await aiParseSyllabus({ images });
-    }
+    const material = await readUploadedFiles(list);
+    c.syllabusStatus = 'Pulling out dates and class details…';
+    renderSetupStep();
+    const data = await aiParseSyllabus(material);
+    toastUploadProblems(material);
     c.code = c.code || data.code || '';
     c.instructor = data.instructor || c.instructor;
     c.location = data.location || c.location;
     if (data.credits) c.credits = data.credits;
     if (Array.isArray(data.meetings) && data.meetings.length) c.slots = meetingsToSlots(data.meetings);
-    c._pendingAssignments = (data.assignments || []).filter(a => a && a.title);
+    c._pendingAssignments = dropRepeats((data.assignments || []).filter(a => a && a.title));
     c.details = sanitizeCourseDetails(data.details);
     const bits = [
       c._pendingAssignments.length ? `${c._pendingAssignments.length} deadline${c._pendingAssignments.length === 1 ? '' : 's'}` : '',
@@ -220,6 +241,7 @@ function setupStepDone() {
       <div class="setup-done-mark">${icon('check', 26, 2.4)}</div>
       <h3 class="welcome-title" style="font-size:30px">${esc(window._setup.semester.name)} is ready.</h3>
       <p class="muted">${r.courses} class${r.courses === 1 ? '' : 'es'}${r.assignments ? ` · ${r.assignments} deadlines` : ''}</p>
+      ${typeof installSetupCard === 'function' ? installSetupCard() : ''}
       <div class="setup-next">
         <button class="gs-step" onclick="closeModal();setState({route:'studygroups',subRoute:null})"><span class="gs-check">${icon('users', 13, 1.8)}</span><span><span class="gs-label">Start a study group</span><span class="gs-sub">Invite classmates with a link</span></span></button>
         <button class="gs-step" onclick="closeModal();openAssignmentUploadModal()"><span class="gs-check">${icon('upload', 13, 1.8)}</span><span><span class="gs-label">Add more deadlines</span><span class="gs-sub">Upload an assignment sheet</span></span></button>

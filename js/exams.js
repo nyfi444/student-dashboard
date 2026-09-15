@@ -277,33 +277,30 @@ function removeStudyBlock(eventId) {
 const TOPICS_SYSTEM = `You pull the list of topics an exam covers out of a study guide, review sheet, or syllabus section. Reply with ONLY a JSON array of short topic strings (no prose, no markdown fences), in the order they appear, at most 30. Merge duplicates. Keep each under 80 characters.`;
 function openTopicsFromGuideModal(id) {
   if (!requireAi('Pulling topics from a study guide')) return;
-  window._guideImages = null;
+  delete _uploadZones.guide;
   openModal(`
     <div class="modal-head"><h3>Topics from a study guide <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label for="tg-text">Paste the study guide</label><textarea class="input" id="tg-text" style="min-height:150px" placeholder="Exam 1 covers chapters 5–8…"></textarea></div>
-      <label class="btn btn-sm">${icon('camera', 13, 1.8)} Or use a photo
-        <input type="file" accept="image/*" multiple style="display:none" onchange="loadGuideImages(this.files)">
+      <label class="btn btn-sm">${icon('upload', 13, 1.8)} Or upload it
+        <input type="file" id="uz-guide-input" multiple style="display:none" onchange="loadUploadZone('guide', this.files)">
       </label>
-      <span class="small muted" id="tg-status"></span>
+      <span class="small muted" id="uz-guide-status"></span>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="tg-run" onclick="runTopicsFromGuide('${id}')">${icon('sparkles', 13, 1.6)} Pull out topics</button></div>
   `);
 }
-async function loadGuideImages(files) {
-  if (!files?.length) return;
-  window._guideImages = await Promise.all(Array.from(files).slice(0, 6).map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
-  $('#tg-status').textContent = `${window._guideImages.length} photo${window._guideImages.length === 1 ? '' : 's'} ready`;
-}
 async function runTopicsFromGuide(id) {
   const a = examById(id);
-  const text = $('#tg-text').value.trim();
-  const images = window._guideImages;
-  if (!a || (!text && !images?.length)) { toast('Paste the study guide or add a photo', 'error'); return; }
+  const upload = _uploadZones.guide;
+  if (upload && !upload.ready) { toast('Still reading that file, one moment', 'info'); return; }
+  const text = [$('#tg-text').value.trim(), upload?.text].filter(Boolean).join('\n\n');
+  const images = upload?.images || [];
+  if (!a || (!text && !images.length)) { toast('Paste the study guide or upload it', 'error'); return; }
   const btn = $('#tg-run');
   setBtnLoading(btn, true);
   try {
-    const userContent = images?.length ? [...imageBlocks(images), { type: 'text', text: `List the topics this exam covers: ${a.title}` }] : `Exam: ${a.title}\n\n${text.slice(0, 12000)}`;
+    const userContent = images.length ? [...imageBlocks(images), { type: 'text', text: `List the topics this exam covers: ${a.title}${text ? `\n\n${text.slice(0, 12000)}` : ''}` }] : `Exam: ${a.title}\n\n${text.slice(0, 12000)}`;
     const list = extractJson(await callClaude({ system: TOPICS_SYSTEM, userContent, maxTokens: 1200 }));
     const have = new Set(examTopics(a).map(t => t.title.toLowerCase()));
     const fresh = (Array.isArray(list) ? list : []).filter(x => typeof x === 'string' && x.trim() && !have.has(x.trim().toLowerCase())).slice(0, 30);

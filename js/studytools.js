@@ -164,8 +164,8 @@ function renderDeckModal(id) {
         <div class="flex-gap wrap mt-8">
           <button class="btn btn-sm" onclick="_deckDraft.cards.push({id:uid(),front:'',back:''});renderDeckModal('${existing}');setTimeout(()=>$$('#df-cards .fc-edit-front').at(-1)?.focus(),60)">+ Add card</button>
           <button class="btn btn-sm btn-ghost" onclick="$('#df-bulk-wrap').hidden=!$('#df-bulk-wrap').hidden">Paste a list</button>
-          <button class="btn btn-sm btn-ghost" onclick="$('#df-file').click()" title="A Quizlet or Anki export, or a CSV with the front in the first column and the back in the second">${icon('upload', 12, 1.8)} Import a file</button>
-          <input type="file" id="df-file" accept="${CARD_LIST_ACCEPT}" hidden onchange="importCardListFile(this.files[0],'${existing}')">
+          <button class="btn btn-sm btn-ghost" onclick="$('#df-file').click()" title="A Quizlet or Anki export, or a spreadsheet or Word doc with the front in the first column and the back in the second">${icon('upload', 12, 1.8)} Import a file</button>
+          <input type="file" id="df-file" hidden onchange="importCardListFile(this.files[0],'${existing}')">
         </div>
         <div id="df-bulk-wrap" hidden class="mt-8">
           <textarea class="input" id="df-bulk" placeholder="One card per line. Separate the front and back with a tab, a dash, or a colon:&#10;Mitochondria - powerhouse of the cell&#10;Osmosis: diffusion of water across a membrane"></textarea>
@@ -206,9 +206,19 @@ function importBulkCards(existing) {
    too. Anki's plain-text export starts with "#separator:tab"-style lines,
    may wrap fields in HTML, and can include guid/notetype/deck/tags columns
    that aren't the front or back. A .txt uses whichever separator ("term -
-   definition", "term: definition", tab, comma) fits most of its lines. */
+   definition", "term: definition", tab, comma) fits most of its lines. An
+   Excel sheet uses its first two filled columns, and a Word doc its table
+   rows or "term - definition" lines. */
 const CARD_LIST_EXTS = ['csv', 'tsv', 'txt', 'md'];
-const CARD_LIST_ACCEPT = '.csv,.tsv,.txt';
+async function cardListFromFile(file, { documents = true } = {}) {
+  const ext = fileExt(file.name);
+  if (CARD_LIST_EXTS.includes(ext) || (!ext && /^text\//.test(file.type))) return parseCardList(await readTextUpload(file), ext);
+  const rows = await spreadsheetRows(file);
+  // Quoted, so a cell that starts with a quote mark stays one cell.
+  if (rows) return parseCardList(rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join('\t')).join('\n'), 'tsv');
+  if (!documents) return { cards: [], confident: false };
+  return parseCardList((await readOneUpload(file, { textOnly: true })).text || '', '');
+}
 function parseDelimited(text, delim) {
   const rows = [];
   let row = [], field = '', quoted = false;
@@ -270,8 +280,10 @@ async function importCardListFile(file, existing) {
   const input = $('#df-file');
   if (input) input.value = '';
   if (!file) return;
-  const { cards, confident } = parseCardList(await file.text(), fileExt(file.name));
-  if (!confident) { toast('Couldn’t find a front and back on each line. Use a Quizlet or Anki export, or a CSV with the front in the first column.', 'error', 6000); return; }
+  let list;
+  try { list = await cardListFromFile(file); } catch (e) { toast(e.message || 'Couldn’t read that file', 'error', 6000); return; }
+  const { cards, confident } = list;
+  if (!confident) { toast('Couldn’t find a front and back for each card. Use a Quizlet or Anki export, or a spreadsheet with the front in the first column.', 'error', 6000); return; }
   _deckDraft.cards = [..._deckDraft.cards.filter(c => (c.front || '').trim() || (c.back || '').trim()), ...cards.map(c => ({ id: uid(), front: c.front, back: c.back }))];
   if (!(_deckDraft.name || '').trim()) _deckDraft.name = fileBaseName(file.name);
   renderDeckModal(existing);
@@ -288,10 +300,10 @@ function openFlashcardFileModal() {
         <span class="capture-drop-ic">${icon('upload', 24, 1.6)}</span>
         <div class="sg-strong" id="fc-file-status">Choose a file</div>
         <div class="small muted">or drop it here</div>
-        <input type="file" id="fc-file-input" accept="${CARD_LIST_ACCEPT},${STUDY_MATERIAL_ACCEPT}" multiple hidden onchange="handleFlashcardFiles(this.files)">
+        <input type="file" id="fc-file-input" multiple hidden onchange="handleFlashcardFiles(this.files)">
       </div>
       <div class="fc-file-kinds">
-        <div class="fc-file-kind"><span class="sg-feature-ic">${icon('layers', 15, 1.7)}</span><div><div class="sg-strong small">Card lists</div><div class="small muted">A Quizlet or Anki export, or a spreadsheet saved as CSV with the front in the first column. Every row becomes a card.</div></div></div>
+        <div class="fc-file-kind"><span class="sg-feature-ic">${icon('layers', 15, 1.7)}</span><div><div class="sg-strong small">Card lists</div><div class="small muted">A Quizlet or Anki export, or a spreadsheet (Excel or CSV) with the front in the first column. Every row becomes a card.</div></div></div>
         <div class="fc-file-kind"><span class="sg-feature-ic">${icon(locked ? 'lock' : 'sparkles', 15, 1.7)}</span><div><div class="sg-strong small">Notes and slides</div><div class="small muted">A PDF, Word doc, PowerPoint, or photos of your notes. Semester HQ writes question-and-answer cards for you to review.${locked ? ' Included with Semester HQ Plus.' : ''}</div></div></div>
       </div>
     </div>
@@ -305,9 +317,10 @@ async function handleFlashcardFiles(fileList) {
   if (!files.length) return;
   const first = files[0];
   const ext = fileExt(first.name);
-  if (files.length === 1 && (CARD_LIST_EXTS.includes(ext) || (/^text\//.test(first.type) && !ext))) {
-    const text = await first.text();
-    const { cards, confident } = parseCardList(text, ext);
+  if (files.length === 1 && (CARD_LIST_EXTS.includes(ext) || SPREADSHEET_EXTS.includes(ext) || (/^text\//.test(first.type) && !ext))) {
+    let list;
+    try { list = await cardListFromFile(first, { documents: false }); } catch (e) { toast(e.message || 'Couldn’t read that file', 'error', 6000); return; }
+    const { cards, confident } = list;
     if (confident) {
       window._deckDraft = { id: uid(), name: fileBaseName(first.name), courseId: null, cards: cards.map(c => ({ id: uid(), front: c.front, back: c.back })) };
       renderDeckModal(null);
@@ -315,7 +328,7 @@ async function handleFlashcardFiles(fileList) {
       return;
     }
     if (ext === 'csv' || ext === 'tsv') { toast('Couldn’t find a front and back in that file. Put the front in the first column and the back in the second.', 'error', 6000); return; }
-    // Plain notes rather than a list of terms: write cards from them instead.
+    // Plain notes (or a spreadsheet that isn't a list of terms): write cards from them instead.
   }
   openGenerateDeckModal(null, { files });
 }
@@ -608,7 +621,7 @@ function generateSourceFields(notes, pre) {
     return `<div class="field"><label>File</label>
       <div class="upload-drop fc-gen-drop" onclick="if(event.target.id!=='gd-file-input')$('#gd-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');loadGenerateFiles(event.dataTransfer.files)">
         <div class="small ${f?.ready ? 'sg-strong' : ''}">${f ? `${icon(f.ready ? 'check' : 'refresh-cw', 12, 2.2)} ${esc(f.name)} · ${esc(f.status)}` : 'Choose a PDF, Word doc, PowerPoint, or photos of your notes'}</div>
-        <input type="file" id="gd-file-input" accept="${STUDY_MATERIAL_ACCEPT}" multiple hidden onchange="loadGenerateFiles(this.files)">
+        <input type="file" id="gd-file-input" multiple hidden onchange="loadGenerateFiles(this.files)">
       </div>
       ${f?.ready ? '' : '<div class="small muted mt-8">Up to 8 photos at once, or one document.</div>'}</div>`;
   }
@@ -624,9 +637,11 @@ async function loadGenerateFiles(fileList) {
   g.file = { token, name: files.length > 1 ? `${files.length} files` : files[0].name, status: 'Reading…', ready: false };
   openGenerateDeckModalRefresh();
   try {
-    const { text, images } = await readStudyMaterial(files);
+    const result = await readUploadedFiles(files);
     if (window._genDeck !== g || g.file?.token !== token) return; // closed, or another file was picked meanwhile
+    const { text, images } = result;
     g.file = { ...g.file, text, images, ready: true, status: images.length ? `${images.length} page${images.length === 1 ? '' : 's'} ready` : `${text.length.toLocaleString()} characters ready` };
+    toastUploadProblems(result);
     const nameInput = $('#gd-name');
     if (nameInput && !nameInput.value.trim()) nameInput.value = fileBaseName(files[0].name);
   } catch (e) {

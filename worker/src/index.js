@@ -44,12 +44,18 @@ import { sendWebPush, isPushEndpoint } from './push.js';
       crash-report counts from Firestore; and, only if CLOUDFLARE_API_TOKEN +
       CLOUDFLARE_ZONE_ID secrets are set, 7 days of Cloudflare traffic for
       semester-hq.com. Sections are omitted (not faked) when not configured.
+   9. Group plans (/group/*): a club, team, or department buys seats for
+      its members and runs them from group-admin.html. See section 9.
 ──────────────────────────────────────────────────────────────── */
 
 const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
 const MAX_TOKENS_CAP = 4000;
 const ANTHROPIC_VERSION = '2023-06-01';
 const PLUS_PRICE_CENTS = 799; // $7.99/month, bump the marketing copy too if this changes
+const GROUP_SEAT_PRICE_CENTS = 599; // $5.99 per member per month, same note as above
+const GROUP_MIN_SEATS = 5;
+const GROUP_MAX_SEATS = 500;
+const GROUP_KINDS = ['club', 'team', 'chapter', 'class', 'department', 'other'];
 
 export default {
   async fetch(request, env) {
@@ -118,6 +124,10 @@ export default {
     if (url.pathname === '/push-test') {
       if (!(await checkRateLimit(env, ip, 'push-test', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
       return handlePushTest(request, env, origin);
+    }
+    if (url.pathname.startsWith('/group/')) {
+      if (!(await checkRateLimit(env, ip, 'group', 40))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+      return handleGroupRoute(url.pathname.slice('/group/'.length), request, env, origin);
     }
     return jsonError('Not found', 404, env, origin);
   },
@@ -337,21 +347,77 @@ async function handleCreatePortalSession(request, env, origin) {
       if (byEmail?.paid) stripeCustomerId = byEmail.stripeCustomerId;
     } catch (e) { console.error('licensesByEmail fallback lookup failed', e); }
   }
-  if (!stripeCustomerId) return jsonError('No active subscription found for this account.', 404, env, origin);
+  // Last try: a Stripe customer under this email that was never linked to the
+  // account (paid with the same email some other way). Linked now, so the
+  // next visit doesn't need the search.
+  if (!stripeCustomerId && payload.email) {
+    try {
+      stripeCustomerId = await findStripeCustomerByEmail(env, payload.email);
+      if (stripeCustomerId) await patchFirestoreDoc(env, `licenses/${payload.sub}`, { stripeCustomerId });
+    } catch (e) { console.error('Stripe customer lookup failed', e); }
+  }
+  // No billing to manage. Said plainly rather than as an error: access that
+  // came from a group plan, or that was set up directly, has nothing to
+  // update or cancel here.
+  if (!stripeCustomerId) {
+    if (license?.groupPaid) return jsonError(`Your plan is covered by ${license.groupName || 'your group'}, so there’s no billing for you to manage. The group’s admin handles it.`, 404, env, origin, { reason: 'group' });
+    return jsonError('There’s no subscription on this account, so there’s nothing to manage or cancel, and you won’t be charged.', 404, env, origin, { reason: 'no-billing' });
+  }
 
+  try {
+    return jsonOk({ url: await createStripePortalSession(env, stripeCustomerId, appUrl) }, env, origin);
+  } catch (e) {
+    return jsonError('Could not open billing portal: ' + e.message, 500, env, origin);
+  }
+}
+
+// A customer can only open the portal once it has a configuration. One is
+// made here the first time Stripe says there isn't one (the account never
+// saved its customer portal settings), then reused.
+async function createStripePortalSession(env, customer, returnUrl) {
+  const open = (configuration) => {
+    const params = new URLSearchParams({ customer, return_url: returnUrl });
+    if (configuration) params.set('configuration', configuration);
+    return stripeRequest(env, 'POST', '/v1/billing_portal/sessions', params);
+  };
+  let res = await open();
+  if (!res.ok && /configuration/i.test(res.data.error?.message || '')) {
+    const configuration = await ensurePortalConfiguration(env);
+    if (configuration) res = await open(configuration);
+  }
+  if (!res.ok) throw new Error(res.data.error?.message || 'unknown error');
+  return res.data.url;
+}
+async function ensurePortalConfiguration(env) {
+  const list = await stripeRequest(env, 'GET', '/v1/billing_portal/configurations?active=true&limit=10');
+  const configs = list.data?.data || [];
+  const existing = configs.find(c => c.is_default) || configs[0];
+  if (existing) return existing.id;
   const params = new URLSearchParams();
-  params.set('customer', stripeCustomerId);
-  params.set('return_url', appUrl);
-
-  const res = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
-    body: params.toString(),
-  });
-  const data = await res.json();
-  if (!res.ok) return jsonError('Could not open billing portal: ' + (data.error?.message || 'unknown error'), 500, env, origin);
-
-  return new Response(JSON.stringify({ url: data.url }), { headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
+  params.set('business_profile[headline]', 'Manage your Semester HQ plan');
+  params.set('business_profile[privacy_policy_url]', 'https://semester-hq.com/privacy.html');
+  params.set('business_profile[terms_of_service_url]', 'https://semester-hq.com/terms.html');
+  params.set('features[payment_method_update][enabled]', 'true');
+  params.set('features[invoice_history][enabled]', 'true');
+  params.set('features[customer_update][enabled]', 'true');
+  params.append('features[customer_update][allowed_updates][]', 'email');
+  params.append('features[customer_update][allowed_updates][]', 'address');
+  params.set('features[subscription_cancel][enabled]', 'true');
+  params.set('features[subscription_cancel][mode]', 'at_period_end');
+  params.set('metadata[created_by]', 'semester-hq-worker');
+  const created = await stripeRequest(env, 'POST', '/v1/billing_portal/configurations', params);
+  if (!created.ok) console.error('Could not create a portal configuration', created.data.error?.message);
+  return created.ok ? created.data.id : '';
+}
+async function findStripeCustomerByEmail(env, email) {
+  const variants = [...new Set([email.trim(), email.trim().toLowerCase()])];
+  for (const variant of variants) {
+    const res = await stripeRequest(env, 'GET', `/v1/customers?limit=10&email=${encodeURIComponent(variant)}&expand[]=data.subscriptions`);
+    const customers = res.ok ? res.data.data || [] : [];
+    const withSubscription = customers.find(c => (c.subscriptions?.data || []).length);
+    if (withSubscription || customers[0]) return (withSubscription || customers[0]).id;
+  }
+  return '';
 }
 
 /* ── 3. Licensing ─────────────────────────────────────────────── */
@@ -371,6 +437,16 @@ async function handleStripeWebhook(request, env) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
+    // A group plan purchase activates the plan, not a license for whoever paid.
+    if (session.metadata?.kind === 'group') {
+      if (session.payment_status === 'unpaid') return new Response('ok', { status: 200 });
+      try { await activateGroupPlan(env, session); }
+      catch (e) {
+        console.error('Group plan activation failed', e);
+        return new Response('Group plan activation failed', { status: 500 });
+      }
+      return new Response('ok', { status: 200 });
+    }
     if (session.payment_status === 'paid') {
       const uid = session.client_reference_id || null;
       const email = (session.customer_details?.email || session.customer_email || '').toLowerCase().trim();
@@ -382,7 +458,7 @@ async function handleStripeWebhook(request, env) {
         purchasedAt: new Date(),
       };
       try {
-        if (uid) await writeFirestoreDoc(env, 'licenses', uid, licenseFields);
+        if (uid) await setIndividualLicense(env, uid, licenseFields, true);
         if (email) await writeFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email), { ...licenseFields, email });
       } catch (e) {
         console.error('License write failed', e);
@@ -397,6 +473,14 @@ async function handleStripeWebhook(request, env) {
   // handleCreateCheckoutSession), not from a separate lookup table.
   if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
     const sub = event.data.object;
+    if (sub.metadata?.kind === 'group') {
+      try { await syncGroupPlan(env, sub, event.type === 'customer.subscription.deleted'); }
+      catch (e) {
+        console.error('Group plan update failed', e);
+        return new Response('Group plan update failed', { status: 500 });
+      }
+      return new Response('ok', { status: 200 });
+    }
     const uid = sub.metadata?.uid || null;
     const email = (sub.metadata?.email || '').toLowerCase().trim();
     const active = event.type === 'customer.subscription.updated' && ['active', 'trialing'].includes(sub.status);
@@ -407,7 +491,7 @@ async function handleStripeWebhook(request, env) {
       updatedAt: new Date(),
     };
     try {
-      if (uid) await writeFirestoreDoc(env, 'licenses', uid, licenseFields);
+      if (uid) await setIndividualLicense(env, uid, licenseFields, active);
       if (email) await writeFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email), { ...licenseFields, email });
     } catch (e) {
       console.error('License update failed', e);
@@ -416,6 +500,20 @@ async function handleStripeWebhook(request, env) {
   }
 
   return new Response('ok', { status: 200 });
+}
+
+// A person's own subscription, kept apart from any group seat they hold:
+// `paid` is true when either one is. Merged into the doc rather than
+// replacing it, so a renewal or cancellation never wipes a group seat.
+async function setIndividualLicense(env, uid, fields, individualPaid) {
+  const existing = await readFirestoreDoc(env, 'licenses', uid);
+  await patchFirestoreDoc(env, `licenses/${uid}`, { ...fields, individualPaid, paid: individualPaid || !!existing?.groupPaid });
+}
+// Docs from before group plans have no individualPaid; their `paid` was
+// the person's own subscription.
+function individualPaidOf(license) {
+  if (!license) return false;
+  return typeof license.individualPaid === 'boolean' ? license.individualPaid : !license.groupPaid && !!license.paid;
 }
 
 // Called by the signed-in client with its Firebase ID token to link a marketing-site
@@ -444,13 +542,12 @@ async function handleClaimLicense(request, env, origin) {
         // "Manage subscription" (needs stripeCustomerId) and account deletion's
         // auto-cancel (needs stripeSubscriptionId) both silently fail later for
         // anyone who bought from the marketing site before signing in.
-        await writeFirestoreDoc(env, 'licenses', uid, {
-          paid: true,
+        await setIndividualLicense(env, uid, {
           stripeSessionId: byEmail.stripeSessionId || '',
           stripeSubscriptionId: byEmail.stripeSubscriptionId || '',
           stripeCustomerId: byEmail.stripeCustomerId || '',
           purchasedAt: new Date(),
-        });
+        }, true);
         return jsonOk({ paid: true }, env, origin);
       }
     }
@@ -507,6 +604,13 @@ async function handleDeleteAccount(request, env, origin) {
 
   try {
     const license = await readFirestoreDoc(env, 'licenses', uid);
+    // A group plan still being billed needs someone to run it, so its only
+    // admin can't disappear. Otherwise the person just steps off every plan.
+    const adminPlans = await groupPlansAdminedBy(env, uid);
+    const orphaned = adminPlans.find(p => groupHasAccess(p.status) && (p.adminUids || []).length <= 1);
+    if (orphaned) return jsonError(`You’re the only admin of ${orphaned.name}’s group plan. Make someone else an admin or cancel the plan first (app.semester-hq.com/group-admin.html), then delete your account.`, 409, env, origin);
+    for (const plan of adminPlans) await setGroupAdmins(env, plan, groupAdmins(plan).filter(a => a.uid !== uid));
+    if (license?.groupPlanId) await removeGroupMember(env, license.groupPlanId, uid);
     // Same fallback as handleCreatePortalSession: an account whose license was
     // claimed via email (bought before signing up) may be missing this field on
     // the uid-keyed doc even from before that path was fixed to copy it over.
@@ -770,8 +874,11 @@ async function fetchStripeSummary(env) {
   let payingCount = 0, compedCount = 0, pastDueCount = 0, cancelingCount = 0;
   let new7d = 0, new30d = 0, canceled30d = 0;
   const recent = [];
+  let groupPlanCount = 0, groupSeatCount = 0;
   for (const sub of subs) {
-    const listCents = sub.items?.data?.[0]?.price?.unit_amount || 0;
+    // A group plan is one subscription for many seats, so its list price is
+    // the seat price times the seat count.
+    const listCents = (sub.items?.data || []).reduce((sum, item) => sum + (item.price?.unit_amount || 0) * (item.quantity || 1), 0);
     const invoice = typeof sub.latest_invoice === 'object' ? sub.latest_invoice : null;
     const chargedCents = invoice && typeof invoice.total === 'number' ? invoice.total : listCents;
     const isActive = sub.status === 'active' || sub.status === 'trialing';
@@ -780,6 +887,7 @@ async function fetchStripeSummary(env) {
 
     if (isActive) {
       activeCount++;
+      if (sub.metadata?.kind === 'group') { groupPlanCount++; groupSeatCount += sub.items?.data?.[0]?.quantity || 0; }
       mrrCents += listCents;
       netMrrCents += Math.max(0, chargedCents);
       if (chargedCents > 0) payingCount++; else compedCount++;
@@ -809,6 +917,7 @@ async function fetchStripeSummary(env) {
 
   return {
     activeCount, mrrCents, netMrrCents, payingCount, compedCount, pastDueCount, cancelingCount,
+    groupPlanCount, groupSeatCount,
     new7d, new30d, canceled30d, totalSubscriptions: subs.length, truncated,
     revenue30d, recent: recent.slice(0, 30), fetchedAt: now,
   };
@@ -937,6 +1046,410 @@ function timingSafeEqual(a, b) {
   return diff === 0;
 }
 
+/* ── 9. Group plans ───────────────────────────────────────────────
+   A club, team, chapter, class, or department buys seats for its members
+   ($5.99 each per month, 5 or more) and runs them from group-admin.html.
+   Stripe bills the plan's buyer for the seat count; members join with the
+   plan's invite link (app.semester-hq.com/?plan=CODE) and get Plus through
+   the group without paying themselves. Only this Worker writes any of it:
+   - groupPlans/{planId}: name, kind, status, seats, memberCount, adminUids,
+     adminsJson, inviteCode, orgCode (a linked club), Stripe ids
+   - groupPlans/{planId}/members/{uid}: who holds a seat
+   - groupInvites/{code}: invite code → planId
+   A member's licenses/{uid} gets groupPlanId, groupName, and groupPaid next
+   to individualPaid (their own subscription), and paid is true when either
+   is, so the app's license check reads the same field as always. A plan
+   keeps access while Stripe retries a failed payment (past_due), so one
+   declined card doesn't lock out a whole team; it loses access once the
+   subscription is canceled or Stripe stops retrying. */
+const GROUP_INVITE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+class HttpError extends Error {
+  constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; }
+}
+function groupStatusFromStripe(status) {
+  if (status === 'active' || status === 'trialing') return 'active';
+  if (status === 'past_due') return 'past_due';
+  if (status === 'incomplete') return 'pending';
+  return 'canceled';
+}
+function groupHasAccess(status) { return status === 'active' || status === 'past_due'; }
+function groupAdmins(plan) { const list = parseJsonField(plan.adminsJson, []); return Array.isArray(list) ? list : []; }
+function groupAdminUrl(env, planId) { return new URL(`group-admin.html?plan=${encodeURIComponent(planId)}`, env.APP_URL).toString(); }
+function cleanGroupText(value, max) { return String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max); }
+function randomToken(length, chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789') {
+  return Array.from(crypto.getRandomValues(new Uint8Array(length)), b => chars[b % chars.length]).join('');
+}
+function groupPlanSummary(env, plan) {
+  const live = groupHasAccess(plan.status);
+  return {
+    id: plan.id, name: plan.name || '', kind: plan.kind || 'club', status: plan.status || 'pending',
+    seats: plan.seats || 0, requestedSeats: plan.requestedSeats || 0, memberCount: plan.memberCount || 0,
+    seatPriceCents: GROUP_SEAT_PRICE_CENTS, minSeats: GROUP_MIN_SEATS, maxSeats: GROUP_MAX_SEATS,
+    inviteCode: live ? plan.inviteCode || '' : '',
+    inviteUrl: live && plan.inviteCode ? new URL(`?plan=${plan.inviteCode}`, env.APP_URL).toString() : '',
+    orgCode: plan.orgCode || '', admins: groupAdmins(plan),
+    cancelAtPeriodEnd: !!plan.cancelAtPeriodEnd, currentPeriodEnd: plan.currentPeriodEnd || '', createdAt: plan.createdAt || '',
+  };
+}
+
+const GROUP_ACTIONS = {
+  mine: groupMine, details: groupDetails, 'create-checkout': groupCreateCheckout, seats: groupSetSeats,
+  'remove-member': groupRemoveMember, 'set-admin': groupSetAdmin, rename: groupRename, 'reset-invite': groupResetInvite,
+  portal: groupPortal, 'delete-pending': groupDeletePending, join: groupJoin, leave: groupLeave,
+};
+async function handleGroupRoute(action, request, env, origin) {
+  try {
+    if (!env.FIREBASE_PROJECT_ID || !env.STRIPE_SECRET_KEY || !env.APP_URL) throw new HttpError(500, 'Group plans aren’t set up on this server yet.');
+    let body;
+    try { body = await request.json(); } catch { throw new HttpError(400, 'Invalid JSON body'); }
+    // The one public action: what an invite link is for, shown before sign-in.
+    if (action === 'join-info') return jsonOk(await groupJoinInfo(env, body), env, origin);
+    const run = GROUP_ACTIONS[action];
+    if (!run) throw new HttpError(404, 'Not found');
+    if (!body.idToken) throw new HttpError(401, 'Sign in first.');
+    let user;
+    try { user = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
+    catch { throw new HttpError(401, 'Your session expired. Sign in again.'); }
+    const email = (user.email || '').toLowerCase().trim();
+    const name = cleanGroupText(user.name, 80) || email.split('@')[0] || 'Member';
+    return jsonOk(await run(env, { body, uid: user.sub, email, name }), env, origin);
+  } catch (e) {
+    if (e instanceof HttpError) return jsonError(e.message, e.status, env, origin, e.extra);
+    console.error(`group/${action} failed`, e);
+    return jsonError('Something went wrong. Try again in a moment.', 500, env, origin);
+  }
+}
+
+async function loadGroupPlan(env, planId) {
+  if (!/^[A-Za-z0-9]{12,40}$/.test(String(planId || ''))) throw new HttpError(404, 'That group plan wasn’t found.');
+  const plan = await readFirestoreDoc(env, 'groupPlans', planId);
+  if (!plan || plan.status === 'deleted') throw new HttpError(404, 'That group plan wasn’t found.');
+  return { ...plan, id: planId };
+}
+async function loadAdminPlan(env, ctx) {
+  const plan = await loadGroupPlan(env, ctx.body.planId);
+  if (!(plan.adminUids || []).includes(ctx.uid)) throw new HttpError(403, 'Only this plan’s admins can do that.');
+  return plan;
+}
+async function groupPlansAdminedBy(env, uid) {
+  const plans = await runFirestoreQuery(env, {
+    from: [{ collectionId: 'groupPlans' }],
+    where: { fieldFilter: { field: { fieldPath: 'adminUids' }, op: 'ARRAY_CONTAINS', value: { stringValue: uid } } },
+    limit: 50,
+  });
+  return plans.filter(p => p.status !== 'deleted');
+}
+// An invite code (from the link), or a club's code when the plan was started
+// for that club, so its members can take a seat from the club invite.
+async function findPlanForInvite(env, { code, orgCode }) {
+  if (code) {
+    const clean = String(code).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (clean.length !== 8) return null;
+    const invite = await readFirestoreDoc(env, 'groupInvites', clean);
+    const plan = invite?.planId ? await readFirestoreDoc(env, 'groupPlans', invite.planId) : null;
+    return plan && plan.status !== 'deleted' && plan.inviteCode === clean ? { ...plan, id: invite.planId } : null;
+  }
+  if (/^[A-Za-z0-9]{6}$/.test(String(orgCode || ''))) {
+    const plans = await runFirestoreQuery(env, {
+      from: [{ collectionId: 'groupPlans' }],
+      where: { fieldFilter: { field: { fieldPath: 'orgCode' }, op: 'EQUAL', value: { stringValue: String(orgCode) } } },
+      limit: 10,
+    });
+    return plans.find(p => groupHasAccess(p.status)) || null;
+  }
+  return null;
+}
+
+async function groupMine(env, ctx) {
+  const [plans, license] = await Promise.all([groupPlansAdminedBy(env, ctx.uid), readFirestoreDoc(env, 'licenses', ctx.uid)]);
+  return {
+    plans: plans.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).map(p => groupPlanSummary(env, p)),
+    seat: license?.groupPlanId ? { planId: license.groupPlanId, name: license.groupName || '', active: !!license.groupPaid } : null,
+    individualPaid: individualPaidOf(license),
+  };
+}
+async function groupDetails(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  const members = await listFirestoreCollection(env, `groupPlans/${plan.id}/members`);
+  // Keeps the seat count honest if a step ever failed partway.
+  if (members.length !== (plan.memberCount || 0)) {
+    plan.memberCount = members.length;
+    await patchFirestoreDoc(env, `groupPlans/${plan.id}`, { memberCount: members.length });
+  }
+  const adminUids = plan.adminUids || [];
+  return {
+    plan: groupPlanSummary(env, plan),
+    members: members
+      .map(m => ({ uid: m.id, name: m.name || '', email: m.email || '', joinedAt: m.joinedAt || '', admin: adminUids.includes(m.id) }))
+      .sort((a, b) => String(a.joinedAt).localeCompare(String(b.joinedAt))),
+    you: { uid: ctx.uid, hasSeat: members.some(m => m.id === ctx.uid) },
+  };
+}
+
+async function groupCreateCheckout(env, ctx) {
+  const { body } = ctx;
+  const name = cleanGroupText(body.name, 80);
+  if (!name) throw new HttpError(400, 'Give your group a name.');
+  const kind = GROUP_KINDS.includes(body.kind) ? body.kind : 'club';
+  const seats = Math.round(Number(body.seats));
+  if (!(seats >= GROUP_MIN_SEATS && seats <= GROUP_MAX_SEATS)) throw new HttpError(400, `Choose between ${GROUP_MIN_SEATS} and ${GROUP_MAX_SEATS} seats.`);
+  // Linking a plan to a club is for that club's officers only.
+  let orgCode = '';
+  if (body.orgCode) {
+    const code = String(body.orgCode);
+    const org = /^[A-Za-z0-9]{6}$/.test(code) ? await readFirestoreDoc(env, 'orgs', code) : null;
+    if (!org || !(org.officerUids || []).includes(ctx.uid)) throw new HttpError(403, 'Only that club’s officers can start a plan for it.');
+    orgCode = code;
+  }
+  let planId = body.planId ? String(body.planId) : '';
+  if (planId) {
+    const plan = await loadAdminPlan(env, ctx);
+    if (plan.status !== 'pending') throw new HttpError(400, 'This plan is already set up. Change its seats from the plan page instead.');
+    await patchFirestoreDoc(env, `groupPlans/${planId}`, { name, kind, requestedSeats: seats, updatedAt: new Date(), ...(orgCode ? { orgCode } : {}) });
+  } else {
+    const unfinished = (await groupPlansAdminedBy(env, ctx.uid)).filter(p => p.status === 'pending');
+    if (unfinished.length >= 3) throw new HttpError(429, 'Finish or delete one of your unfinished plans first.');
+    planId = randomToken(20);
+    const now = new Date();
+    await patchFirestoreDoc(env, `groupPlans/${planId}`, {
+      name, kind, orgCode, status: 'pending', seats: 0, requestedSeats: seats, memberCount: 0, inviteCode: '',
+      ownerUid: ctx.uid, adminUids: [ctx.uid], adminsJson: JSON.stringify([{ uid: ctx.uid, email: ctx.email, name: ctx.name }]),
+      stripeCustomerId: '', stripeSubscriptionId: '', stripeItemId: '', createdAt: now, updatedAt: now,
+    });
+  }
+  const back = groupAdminUrl(env, planId);
+  const params = new URLSearchParams();
+  params.set('mode', 'subscription');
+  params.set('submit_type', 'subscribe');
+  params.set('line_items[0][price_data][currency]', 'usd');
+  params.set('line_items[0][price_data][unit_amount]', String(GROUP_SEAT_PRICE_CENTS));
+  params.set('line_items[0][price_data][recurring][interval]', 'month');
+  params.set('line_items[0][price_data][product_data][name]', 'Semester HQ group plan');
+  params.set('line_items[0][price_data][product_data][description]', `Semester HQ Plus for each member of ${name}, billed per member each month. Add or remove seats anytime.`);
+  params.set('line_items[0][price_data][product_data][images][0]', 'https://semester-hq.com/assets/icon-512.png');
+  params.set('line_items[0][quantity]', String(seats));
+  params.set('line_items[0][adjustable_quantity][enabled]', 'true');
+  params.set('line_items[0][adjustable_quantity][minimum]', String(GROUP_MIN_SEATS));
+  params.set('line_items[0][adjustable_quantity][maximum]', String(GROUP_MAX_SEATS));
+  params.set('success_url', `${back}&checkout=success`);
+  params.set('cancel_url', `${back}&checkout=cancel`);
+  params.set('allow_promotion_codes', 'true');
+  params.set('client_reference_id', ctx.uid);
+  if (ctx.email) params.set('customer_email', ctx.email);
+  params.set('metadata[kind]', 'group');
+  params.set('metadata[planId]', planId);
+  params.set('subscription_data[metadata][kind]', 'group');
+  params.set('subscription_data[metadata][planId]', planId);
+  params.set('subscription_data[metadata][adminUid]', ctx.uid);
+  const res = await stripeRequest(env, 'POST', '/v1/checkout/sessions', params);
+  if (!res.ok) throw new HttpError(502, 'Could not start checkout: ' + (res.data.error?.message || 'unknown error'));
+  return { url: res.data.url, planId };
+}
+// Webhook: checkout finished, so the plan goes live with the seats bought.
+// A plan deleted while its checkout tab was still open comes back, since
+// it was paid for.
+async function activateGroupPlan(env, session) {
+  const planId = session.metadata?.planId;
+  const plan = planId ? await readFirestoreDoc(env, 'groupPlans', planId) : null;
+  if (!plan) { console.error('Group checkout for an unknown plan', planId); return; }
+  const sub = session.subscription ? (await stripeRequest(env, 'GET', `/v1/subscriptions/${session.subscription}`)).data : null;
+  const item = sub?.items?.data?.[0];
+  const status = sub?.status ? groupStatusFromStripe(sub.status) : 'active';
+  await patchFirestoreDoc(env, `groupPlans/${planId}`, {
+    status, seats: item?.quantity || plan.requestedSeats || GROUP_MIN_SEATS,
+    inviteCode: plan.inviteCode || await createGroupInvite(env, planId),
+    stripeCustomerId: session.customer || '', stripeSubscriptionId: session.subscription || '', stripeItemId: item?.id || '',
+    activatedAt: new Date(), updatedAt: new Date(),
+  });
+}
+// Webhook: renewals, seat changes made in Stripe, failed payments, cancellation.
+async function syncGroupPlan(env, sub, deleted) {
+  const planId = sub.metadata?.planId;
+  const plan = planId ? await readFirestoreDoc(env, 'groupPlans', planId) : null;
+  if (!plan) return;
+  const status = deleted ? 'canceled' : groupStatusFromStripe(sub.status);
+  if (plan.status === 'pending' && status === 'pending') return;
+  const item = sub.items?.data?.[0];
+  const periodEnd = sub.current_period_end || item?.current_period_end;
+  await patchFirestoreDoc(env, `groupPlans/${planId}`, {
+    status, seats: item?.quantity ?? plan.seats ?? 0,
+    stripeSubscriptionId: sub.id, stripeCustomerId: sub.customer || plan.stripeCustomerId || '', stripeItemId: item?.id || plan.stripeItemId || '',
+    cancelAtPeriodEnd: !!sub.cancel_at_period_end, currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : '', updatedAt: new Date(),
+    ...(groupHasAccess(status) && !plan.inviteCode ? { inviteCode: await createGroupInvite(env, planId) } : {}),
+  });
+  if (groupHasAccess(plan.status) !== groupHasAccess(status)) await setGroupMembersAccess(env, { ...plan, id: planId }, groupHasAccess(status));
+}
+async function createGroupInvite(env, planId) {
+  for (let i = 0; i < 6; i++) {
+    const code = randomToken(8, GROUP_INVITE_CHARS);
+    if (await commitFirestore(env, [{ path: `groupInvites/${code}`, fields: { planId, createdAt: new Date() }, exists: false }])) return code;
+  }
+  throw new Error('Could not create an invite code');
+}
+
+async function groupJoinInfo(env, body) {
+  const plan = await findPlanForInvite(env, body);
+  if (!plan) throw new HttpError(404, 'That invite link isn’t valid anymore. Ask your group’s admin for a new one.');
+  return { name: plan.name || '', kind: plan.kind || 'club', active: groupHasAccess(plan.status), seatsLeft: Math.max(0, (plan.seats || 0) - (plan.memberCount || 0)) };
+}
+async function groupJoin(env, ctx) {
+  // An admin taking a seat on their own plan doesn't need the invite.
+  const plan = ctx.body.planId ? await loadAdminPlan(env, ctx) : await findPlanForInvite(env, ctx.body);
+  if (!plan) throw new HttpError(404, 'That invite link isn’t valid anymore. Ask your group’s admin for a new one.');
+  if (!groupHasAccess(plan.status)) throw new HttpError(403, `${plan.name}’s group plan isn’t active right now. Ask the person who runs it.`);
+  const license = await readFirestoreDoc(env, 'licenses', ctx.uid);
+  // One group seat at a time: joining a new plan gives up the old seat.
+  if (license?.groupPlanId && license.groupPlanId !== plan.id) await removeGroupMember(env, license.groupPlanId, ctx.uid);
+  const added = await claimGroupSeat(env, plan.id, ctx);
+  await setLicenseSeat(env, ctx.uid, license, { planId: plan.id, name: plan.name, active: true });
+  return { joined: true, already: !added, name: plan.name, individualPaid: individualPaidOf(license) };
+}
+// The seat count only moves if nobody else changed the plan since it was
+// read (a Firestore precondition), so two people can't take the last seat.
+async function claimGroupSeat(env, planId, ctx) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (await readFirestoreDoc(env, `groupPlans/${planId}/members`, ctx.uid)) return false;
+    const snap = await readFirestoreDocWithTime(env, `groupPlans/${planId}`);
+    const plan = snap?.data;
+    if (!plan || !groupHasAccess(plan.status)) throw new HttpError(403, 'This group plan isn’t active right now.');
+    if ((plan.memberCount || 0) >= (plan.seats || 0)) throw new HttpError(409, `Every seat in ${plan.name}’s plan is taken. Ask the person who runs it to add one.`, { reason: 'full' });
+    const ok = await commitFirestore(env, [
+      { path: `groupPlans/${planId}`, fields: { memberCount: (plan.memberCount || 0) + 1, updatedAt: new Date() }, updateTime: snap.updateTime },
+      { path: `groupPlans/${planId}/members/${ctx.uid}`, fields: { email: ctx.email, name: ctx.name, joinedAt: new Date() }, exists: false },
+    ]);
+    if (ok) return true;
+  }
+  throw new HttpError(503, 'A lot of people are joining right now. Try again in a moment.');
+}
+async function removeGroupMember(env, planId, uid) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (!(await readFirestoreDoc(env, `groupPlans/${planId}/members`, uid))) return false;
+    const snap = await readFirestoreDocWithTime(env, `groupPlans/${planId}`);
+    if (!snap) { await deleteFirestoreDoc(env, `groupPlans/${planId}/members`, uid); return true; }
+    const ok = await commitFirestore(env, [
+      { path: `groupPlans/${planId}`, fields: { memberCount: Math.max(0, (snap.data.memberCount || 0) - 1), updatedAt: new Date() }, updateTime: snap.updateTime },
+      { path: `groupPlans/${planId}/members/${uid}`, remove: true },
+    ]);
+    if (ok) return true;
+  }
+  throw new HttpError(503, 'Couldn’t update the plan right now. Try again in a moment.');
+}
+async function setLicenseSeat(env, uid, license, { planId = '', name = '', active = false }) {
+  const individualPaid = individualPaidOf(license);
+  await patchFirestoreDoc(env, `licenses/${uid}`, { individualPaid, groupPlanId: planId, groupName: name, groupPaid: active, paid: individualPaid || active, updatedAt: new Date() });
+}
+// Turns a whole plan's seats on or off (payment recovered or failed for
+// good, or a rename), a few hundred licenses per Firestore round trip.
+async function setGroupMembersAccess(env, plan, active) {
+  const members = await listFirestoreCollection(env, `groupPlans/${plan.id}/members`);
+  for (let i = 0; i < members.length; i += 200) {
+    const chunk = members.slice(i, i + 200);
+    const licenses = await batchGetFirestoreDocs(env, chunk.map(m => `licenses/${m.id}`));
+    const writes = chunk
+      .filter(m => { const l = licenses[`licenses/${m.id}`]; return !l?.groupPlanId || l.groupPlanId === plan.id; })
+      .map(m => {
+        const individualPaid = individualPaidOf(licenses[`licenses/${m.id}`]);
+        return { path: `licenses/${m.id}`, fields: { individualPaid, groupPlanId: plan.id, groupName: plan.name || '', groupPaid: active, paid: individualPaid || active, updatedAt: new Date() } };
+      });
+    if (writes.length) await commitFirestore(env, writes);
+  }
+}
+async function groupLeave(env, ctx) {
+  const license = await readFirestoreDoc(env, 'licenses', ctx.uid);
+  if (!license?.groupPlanId) return { left: false, paid: individualPaidOf(license) };
+  await removeGroupMember(env, license.groupPlanId, ctx.uid);
+  await setLicenseSeat(env, ctx.uid, license, {});
+  return { left: true, paid: individualPaidOf(license) };
+}
+
+async function groupRemoveMember(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  const target = String(ctx.body.uid || '');
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(target)) throw new HttpError(400, 'Pick someone to remove.');
+  await removeGroupMember(env, plan.id, target);
+  const license = await readFirestoreDoc(env, 'licenses', target);
+  if (license?.groupPlanId === plan.id) await setLicenseSeat(env, target, license, {});
+  return groupDetails(env, ctx);
+}
+async function groupSetAdmin(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  const target = String(ctx.body.uid || '');
+  let admins = groupAdmins(plan);
+  if (ctx.body.admin) {
+    if (admins.some(a => a.uid === target)) return groupDetails(env, ctx);
+    const member = /^[A-Za-z0-9_-]{1,128}$/.test(target) ? await readFirestoreDoc(env, `groupPlans/${plan.id}/members`, target) : null;
+    if (!member) throw new HttpError(400, 'Only someone with a seat can be made an admin.');
+    if (admins.length >= 10) throw new HttpError(400, 'A plan can have up to 10 admins.');
+    admins = [...admins, { uid: target, email: member.email || '', name: member.name || '' }];
+  } else {
+    if (admins.length <= 1) throw new HttpError(400, 'A plan needs at least one admin.');
+    admins = admins.filter(a => a.uid !== target);
+  }
+  await setGroupAdmins(env, plan, admins);
+  if (target === ctx.uid && !ctx.body.admin) return { removedSelf: true };
+  return groupDetails(env, ctx);
+}
+async function setGroupAdmins(env, plan, admins) {
+  await patchFirestoreDoc(env, `groupPlans/${plan.id}`, { adminUids: admins.map(a => a.uid), adminsJson: JSON.stringify(admins), updatedAt: new Date() });
+}
+async function groupRename(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  const name = cleanGroupText(ctx.body.name, 80);
+  if (!name) throw new HttpError(400, 'Give your group a name.');
+  await patchFirestoreDoc(env, `groupPlans/${plan.id}`, { name, updatedAt: new Date() });
+  if (groupHasAccess(plan.status)) await setGroupMembersAccess(env, { ...plan, name }, true);
+  return groupDetails(env, ctx);
+}
+async function groupResetInvite(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  if (!groupHasAccess(plan.status)) throw new HttpError(400, 'Invite links work once the plan is active.');
+  const code = await createGroupInvite(env, plan.id);
+  await patchFirestoreDoc(env, `groupPlans/${plan.id}`, { inviteCode: code, updatedAt: new Date() });
+  if (plan.inviteCode) await deleteFirestoreDoc(env, 'groupInvites', plan.inviteCode);
+  return groupDetails(env, ctx);
+}
+async function groupSetSeats(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  if (!groupHasAccess(plan.status) || !plan.stripeSubscriptionId) throw new HttpError(400, 'Seats can be changed once the plan is active.');
+  const seats = Math.round(Number(ctx.body.seats));
+  if (!(seats >= GROUP_MIN_SEATS && seats <= GROUP_MAX_SEATS)) throw new HttpError(400, `Choose between ${GROUP_MIN_SEATS} and ${GROUP_MAX_SEATS} seats.`);
+  // Counted from the members themselves, not the running total, so a count
+  // that ever drifted can't let a plan drop below the people using it.
+  const memberCount = (await listFirestoreCollection(env, `groupPlans/${plan.id}/members`)).length;
+  if (seats < memberCount) throw new HttpError(400, `${memberCount} ${memberCount === 1 ? 'person has a seat' : 'people have seats'}. Remove someone before going below that.`);
+  let itemId = plan.stripeItemId;
+  if (!itemId) itemId = (await stripeRequest(env, 'GET', `/v1/subscriptions/${plan.stripeSubscriptionId}`)).data?.items?.data?.[0]?.id;
+  if (!itemId) throw new HttpError(502, 'Couldn’t find this plan’s subscription in Stripe.');
+  // Stripe prorates the change onto the next bill.
+  const res = await stripeRequest(env, 'POST', `/v1/subscription_items/${itemId}`, new URLSearchParams({ quantity: String(seats), proration_behavior: 'create_prorations' }));
+  if (!res.ok) throw new HttpError(502, 'Stripe couldn’t change the seats: ' + (res.data.error?.message || 'unknown error'));
+  await patchFirestoreDoc(env, `groupPlans/${plan.id}`, { seats, stripeItemId: itemId, updatedAt: new Date() });
+  return groupDetails(env, ctx);
+}
+async function groupPortal(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  if (!plan.stripeCustomerId) throw new HttpError(400, 'This plan doesn’t have billing yet. Finish checkout first.');
+  try { return { url: await createStripePortalSession(env, plan.stripeCustomerId, groupAdminUrl(env, plan.id)) }; }
+  catch (e) { throw new HttpError(502, 'Could not open billing: ' + e.message); }
+}
+// Only a plan that never finished checkout. Kept as 'deleted' rather than
+// erased, so a checkout that completes afterward still finds it.
+async function groupDeletePending(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  if (plan.status !== 'pending') throw new HttpError(400, 'Only a plan that never finished checkout can be deleted. Cancel an active plan from Billing.');
+  await patchFirestoreDoc(env, `groupPlans/${plan.id}`, { status: 'deleted', updatedAt: new Date() });
+  return { deleted: true };
+}
+
+async function stripeRequest(env, method, path, params) {
+  const res = await fetch(`https://api.stripe.com${path}`, {
+    method,
+    headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, ...(params ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
+    body: params ? params.toString() : undefined,
+  });
+  return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
+}
+
 /* ── Firebase ID token verification (manual, no Admin SDK in Workers) ─
    Mirrors what the Admin SDK does: check standard claims, then verify the
    RS256 signature against Google's public JWK set for Firebase Auth. ─── */
@@ -965,7 +1478,12 @@ async function verifyFirebaseIdToken(idToken, projectId) {
    Cloudflare Workers can't use the Node-only firebase-admin SDK, so we
    sign our own OAuth2 JWT with the service account's private key and
    exchange it for an access token, same as Admin SDK does internally. ── */
+// Reused for most of the hour it's good for: without this, every Firestore
+// call signed a new JWT and fetched a new token, doubling the requests a
+// group plan update makes (and Workers cap subrequests per invocation).
+let _firebaseToken = { value: '', expiresAt: 0 };
 async function getFirebaseAccessToken(env) {
+  if (_firebaseToken.value && Date.now() < _firebaseToken.expiresAt) return _firebaseToken.value;
   const now = Math.floor(Date.now() / 1000);
   const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   // .trim() defends against stray whitespace/newlines from copy-pasting the
@@ -994,6 +1512,7 @@ async function getFirebaseAccessToken(env) {
   });
   const data = await res.json();
   if (!data.access_token) throw new Error('Firebase auth failed: ' + JSON.stringify(data));
+  _firebaseToken = { value: data.access_token, expiresAt: Date.now() + 50 * 60 * 1000 };
   return data.access_token;
 }
 async function importPrivateKey(pem) {
@@ -1020,6 +1539,73 @@ async function readFirestoreDoc(env, collection, docId) {
   if (!res.ok) throw new Error('Firestore read failed: ' + await res.text());
   const data = await res.json();
   return fromFirestoreFields(data.fields || {});
+}
+// Same as readFirestoreDoc, plus when the doc last changed, for a write that
+// should only land if nobody has changed it since (see commitFirestore).
+async function readFirestoreDocWithTime(env, path) {
+  const token = await getFirebaseAccessToken(env);
+  const res = await fetch(`https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${path}`, { headers: { authorization: `Bearer ${token}` } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('Firestore read failed: ' + await res.text());
+  const doc = await res.json();
+  return { data: fromFirestoreFields(doc.fields || {}), updateTime: doc.updateTime };
+}
+async function batchGetFirestoreDocs(env, paths) {
+  const out = {};
+  if (!paths.length) return out;
+  const token = await getFirebaseAccessToken(env);
+  const root = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+  const res = await fetch(`https://firestore.googleapis.com/v1/${root}:batchGet`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ documents: paths.map(p => `${root}/${p}`) }),
+  });
+  if (!res.ok) throw new Error('Firestore batch read failed: ' + await res.text());
+  for (const row of await res.json()) {
+    if (row.found) out[row.found.name.slice(root.length + 1)] = fromFirestoreFields(row.found.fields || {});
+    else if (row.missing) out[row.missing.slice(root.length + 1)] = null;
+  }
+  return out;
+}
+// Writes that all land or none do. Each is { path, fields } (only those
+// fields change) or { path, remove: true }, optionally with exists (true or
+// false) or updateTime as a condition. Resolves false when a condition
+// didn't hold, so the caller can re-read and try again.
+async function commitFirestore(env, writes) {
+  const token = await getFirebaseAccessToken(env);
+  const root = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+  const body = {
+    writes: writes.map(w => {
+      const name = `${root}/${w.path}`;
+      const condition = typeof w.exists === 'boolean' ? { currentDocument: { exists: w.exists } } : w.updateTime ? { currentDocument: { updateTime: w.updateTime } } : {};
+      if (w.remove) return { delete: name, ...condition };
+      return { update: { name, fields: toFirestoreFields(w.fields) }, updateMask: { fieldPaths: Object.keys(w.fields) }, ...condition };
+    }),
+  };
+  const res = await fetch(`https://firestore.googleapis.com/v1/${root}:commit`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) return true;
+  const text = await res.text();
+  if (/FAILED_PRECONDITION|ALREADY_EXISTS|ABORTED|NOT_FOUND/.test(text)) return false;
+  throw new Error('Firestore commit failed: ' + text);
+}
+async function listFirestoreCollection(env, path) {
+  const token = await getFirebaseAccessToken(env);
+  const base = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${path}`;
+  const docs = [];
+  let pageToken = '';
+  for (let page = 0; page < 20; page++) {
+    const res = await fetch(`${base}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Firestore list failed: ' + await res.text());
+    const data = await res.json();
+    for (const d of data.documents || []) docs.push({ id: d.name.split('/').pop(), ...fromFirestoreFields(d.fields || {}) });
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+  }
+  return docs;
 }
 async function deleteFirestoreDoc(env, collection, docId) {
   const token = await getFirebaseAccessToken(env);
@@ -1078,23 +1664,32 @@ async function queryRecentDocs(env, collectionId, limit) {
 async function queryRecentErrors(env, limit) {
   return queryRecentDocs(env, 'errors', limit);
 }
+function toFirestoreValue(v) {
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (typeof v === 'number') return { integerValue: String(Math.trunc(v)) };
+  if (v instanceof Date) return { timestampValue: v.toISOString() };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(toFirestoreValue) } };
+  return { stringValue: String(v) };
+}
 function toFirestoreFields(obj) {
   const fields = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (typeof v === 'boolean') fields[k] = { booleanValue: v };
-    else if (typeof v === 'number') fields[k] = { integerValue: String(Math.trunc(v)) };
-    else if (v instanceof Date) fields[k] = { timestampValue: v.toISOString() };
-    else fields[k] = { stringValue: String(v) };
-  }
+  for (const [k, v] of Object.entries(obj)) fields[k] = toFirestoreValue(v);
   return fields;
+}
+function fromFirestoreValue(v) {
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('doubleValue' in v) return Number(v.doubleValue);
+  if ('stringValue' in v) return v.stringValue;
+  if ('timestampValue' in v) return v.timestampValue;
+  if ('arrayValue' in v) return (v.arrayValue.values || []).map(fromFirestoreValue).filter(x => x !== undefined);
+  return undefined;
 }
 function fromFirestoreFields(fields) {
   const obj = {};
   for (const [k, v] of Object.entries(fields)) {
-    if ('booleanValue' in v) obj[k] = v.booleanValue;
-    else if ('integerValue' in v) obj[k] = Number(v.integerValue);
-    else if ('stringValue' in v) obj[k] = v.stringValue;
-    else if ('timestampValue' in v) obj[k] = v.timestampValue;
+    const value = fromFirestoreValue(v);
+    if (value !== undefined) obj[k] = value;
   }
   return obj;
 }
@@ -1138,8 +1733,8 @@ function corsHeaders(env, origin, extra = {}) {
 function jsonOk(obj, env, origin) {
   return new Response(JSON.stringify(obj), { headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
 }
-function jsonError(message, status, env, origin) {
-  return new Response(JSON.stringify({ error: message }), { status, headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
+function jsonError(message, status, env, origin, extra = {}) {
+  return new Response(JSON.stringify({ ...extra, error: message }), { status, headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
 }
 
 /* ── base64url helpers ───────────────────────────────────────── */

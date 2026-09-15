@@ -219,6 +219,23 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Group plans: a club, team, or department buying Semester HQ for its
+    // members (see the Worker's /group/* routes). Seats, members, and invite
+    // codes decide who gets a paid plan, so nothing here is client-writable,
+    // and member lists aren't client-readable either: the admin page reads
+    // them through the Worker, which checks that you're one of the plan's
+    // admins first. Unmatched paths already default to deny; these are
+    // spelled out so the collections are documented where the rest are.
+    match /groupPlans/{planId} {
+      allow read, write: if false;
+      match /members/{uid} {
+        allow read, write: if false;
+      }
+    }
+    match /groupInvites/{code} {
+      allow read, write: if false;
+    }
+
     // Nyla's private Business OS (semester-hq-dashboard repo) syncs one
     // document per owner account. Not part of the student app: only her own
     // verified Google accounts can read or write, and only their own doc.

@@ -64,9 +64,9 @@ function pageAssignments() {
     ${view === 'todo' ? (groups.length ? groups.map(([k, label, items]) => `
       <section class="assign-group ${k === 'overdue' ? 'is-overdue' : ''}">
         <div class="assign-group-head"><span>${label}</span><span class="assign-count">${items.length}</span></div>
-        <div class="card assign-list">${items.map(a => assignmentRow(a, selectMode, selected)).join('')}</div>
+        ${expandable(`assign-${k}`, label, `<div class="card assign-list">${items.map(a => assignmentRow(a, selectMode, selected)).join('')}</div>`, { max: 420 })}
       </section>`).join('') : emptyState(icon('cloud-sun', 26, 1.4), total ? 'All caught up' : 'No assignments yet', total ? '' : `<button class="btn btn-primary mt-8" onclick="openAssignmentUploadModal()">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 13, 1.6)} Upload a syllabus or assignment sheet</button>`, total ? 'Nothing left to do here. Nice work.' : 'Add one above, or upload a document and Semester HQ pulls out every deadline.'))
-      : `<div class="card assign-list">${visible.length ? visible.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list', 26, 1.4), view === 'done' ? 'Nothing finished yet.' : 'No assignments match.')}</div>`}</div>`}
+      : expandable(`assign-${view}`, view === 'done' ? 'Done' : 'All assignments', `<div class="card assign-list">${visible.length ? visible.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list', 26, 1.4), view === 'done' ? 'Nothing finished yet.' : 'No assignments match.')}</div>`}</div>`, { max: 420 })}
   `;
 }
 function assignmentRow(a, selectMode, selected) {
@@ -467,36 +467,24 @@ function deleteAssignment(id) {
   confirmDialog('Delete this assignment? You can restore it from Recently Deleted for 30 days.', () => remove(false));
 }
 
-/* ── Bulk upload assignments from a PDF/photo/pasted syllabus ──── */
+/* ── Bulk upload assignments from any file or pasted text ──────── */
 function openAssignmentUploadModal() {
   if (!requireAi('Reading a syllabus or assignment sheet')) return;
   if (!activeCourses().length) { toast('Add a course first so uploaded assignments have somewhere to go', 'error'); return; }
+  window._auActiveTab = 'file';
+  delete _uploadZones.assignments;
   openModal(`
     <div class="modal-head"><h3>Upload assignments <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       ${!aiEnabled() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">AI parsing isn’t set up on this deployment yet.</div>` : ''}
       <div class="small muted mb-8">Upload a syllabus or assignment sheet to bulk-add deadlines to an existing course, instead of typing each one in by hand.</div>
       <div class="segmented mb-8" id="au-tabs">
-        <button class="active" onclick="auTab('paste')" data-tab="paste">Paste text</button>
-        <button onclick="auTab('pdf')" data-tab="pdf">Upload PDF</button>
-        <button onclick="auTab('image')" data-tab="image">Upload photo</button>
+        <button class="active" onclick="auTab('file')" data-tab="file">Upload a file</button>
+        <button onclick="auTab('paste')" data-tab="paste">Paste text</button>
       </div>
-      <div id="au-paste">
+      <div id="au-file">${uploadZoneHtml('assignments', 'Choose a file, or drop it here', 'A syllabus, assignment sheet, or schedule: PDF, Word, Excel, PowerPoint, or photos.')}</div>
+      <div id="au-paste" style="display:none">
         <textarea class="input" id="au-text" placeholder="Paste an assignment list or syllabus text here…" style="min-height:160px"></textarea>
-      </div>
-      <div id="au-pdf" style="display:none">
-        <div class="upload-drop" onclick="$('#au-pdf-input').click()">
-          <div class="small">Click to choose a PDF</div>
-          <input type="file" id="au-pdf-input" accept="application/pdf" style="display:none" onchange="handleAssignUploadPdf(this.files[0])">
-        </div>
-        <div class="small muted mt-8" id="au-pdf-status"></div>
-      </div>
-      <div id="au-image" style="display:none">
-        <div class="upload-drop" onclick="$('#au-image-input').click()">
-          <div class="small">Click to choose one or more photos</div>
-          <input type="file" id="au-image-input" accept="image/*" multiple style="display:none" onchange="handleAssignUploadImage(this.files)">
-        </div>
-        <div class="small muted mt-8" id="au-image-status"></div>
       </div>
     </div>
     <div class="modal-foot">
@@ -504,46 +492,26 @@ function openAssignmentUploadModal() {
       <button class="btn btn-primary" id="au-parse-btn" onclick="runAssignmentParse()" ${aiEnabled() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Parse with AI</button>
     </div>
   `, { wide: true });
-  window._auImages = null;
 }
 function auTab(tab) {
-  ['paste', 'pdf', 'image'].forEach(t => { $(`#au-${t}`).style.display = t === tab ? '' : 'none'; });
+  ['file', 'paste'].forEach(t => { $(`#au-${t}`).style.display = t === tab ? '' : 'none'; });
   $$('#au-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   window._auActiveTab = tab;
 }
-window._auActiveTab = 'paste';
-async function handleAssignUploadPdf(file) {
-  if (!file) return;
-  $('#au-pdf-status').textContent = 'Reading PDF…';
-  try {
-    const text = await extractPdfText(file);
-    $('#au-text').value = text;
-    $('#au-pdf-status').textContent = `Extracted ${text.length.toLocaleString()} characters.`;
-    auTab('paste');
-  } catch (e) { $('#au-pdf-status').textContent = 'Could not read that PDF.'; }
-  const input = $('#au-pdf-input');
-  if (input) input.value = '';
-}
-async function handleAssignUploadImage(files) {
-  if (!files || !files.length) return;
-  $('#au-image-status').textContent = 'Loading…';
-  window._auImages = await Promise.all(Array.from(files).map(async f => ({ base64: await fileToBase64(f), mediaType: f.type || 'image/jpeg' })));
-  $('#au-image-status').textContent = `${window._auImages.length} photo${window._auImages.length > 1 ? 's' : ''} loaded, ready to parse.`;
-  const input = $('#au-image-input');
-  if (input) input.value = '';
-}
 async function runAssignmentParse() {
   const btn = $('#au-parse-btn');
+  let material;
+  if (window._auActiveTab === 'paste') {
+    const text = $('#au-text').value.trim();
+    if (!text) { toast('Paste an assignment list first', 'error'); return; }
+    material = { text };
+  } else {
+    material = uploadZoneMaterial('assignments', 'Choose a file first');
+    if (!material) return;
+  }
   setBtnLoading(btn, true);
   try {
-    let list;
-    if (window._auActiveTab === 'image' && window._auImages && window._auImages.length) {
-      list = await aiParseAssignments({ images: window._auImages });
-    } else {
-      const text = $('#au-text').value.trim();
-      if (!text) { toast('Paste or upload something first', 'error'); setBtnLoading(btn, false); return; }
-      list = await aiParseAssignments({ text });
-    }
+    const list = await aiParseAssignments(material);
     closeModal();
     openAssignmentReviewModal(list);
   } catch (e) {
@@ -581,13 +549,21 @@ function renderAssignmentReviewModal() {
 function toggleAuAssignment(i) { window._auParsed[i]._include = !window._auParsed[i]._include; renderAssignmentReviewModal(); }
 function commitAssignmentUpload() {
   const courseId = window._auCourseId;
-  const toAdd = (window._auParsed || []).filter(a => a._include && a.title);
-  toAdd.forEach(a => {
-    state.assignments.push({
-      id: uid(), courseId, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
-      dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', startByDate: null,
-      maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
+  const chosen = dropRepeats((window._auParsed || []).filter(a => a._include && a.title));
+  const duplicates = chosen.filter(a => findDuplicateAssignment(a.title, courseId));
+  askAboutDuplicates(duplicates, chosen.length, 'assignment', (skip) => {
+    const toAdd = skip ? chosen.filter(a => !duplicates.includes(a)) : chosen;
+    toAdd.forEach(a => {
+      state.assignments.push({
+        id: uid(), courseId, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
+        dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', startByDate: null,
+        maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
+      });
     });
+    touch(); closeModal();
+    const skipped = chosen.length - toAdd.length;
+    toast(toAdd.length
+      ? `Added ${toAdd.length} assignment${toAdd.length === 1 ? '' : 's'}${skipped ? `, skipped ${skipped} you already had` : ''}`
+      : 'Nothing new to add, you already had these', toAdd.length ? 'success' : 'info', 4000);
   });
-  touch(); closeModal(); toast(`Added ${toAdd.length} assignment${toAdd.length === 1 ? '' : 's'}`);
 }

@@ -130,6 +130,72 @@ document.addEventListener('keydown', (e) => {
 // The app renders plenty of clickable rows and cards as <div onclick>. This
 // makes every one of them reachable and usable from the keyboard and screen
 // readers, and gives placeholder-only fields an accessible name.
+/* ── "You already have these" ─────────────────────────────────────
+   Shown before an upload adds something whose name matches what's
+   already in the planner. Skipping is the default: the copy already
+   there may have notes, steps, or a different due date on it. `run` is
+   called with true to skip the repeats, false to add them anyway. */
+function askAboutDuplicates(duplicates, total, noun, run) {
+  if (!duplicates.length) { run(false); return; }
+  const all = duplicates.length >= total;
+  const named = duplicates.slice(0, 6).map(d => `<li>${esc(d.title || d.name || '')}</li>`).join('');
+  window._duplicateChoice = run;
+  openModal(`
+    <div class="modal-head"><h3>Already in your planner</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <p class="small">${all ? `Every ${noun} here matches something you already have:` : `${duplicates.length} of these ${duplicates.length === 1 ? 'matches' : 'match'} something you already have:`}</p>
+      <ul class="dup-list small">${named}${duplicates.length > 6 ? `<li class="muted">and ${duplicates.length - 6} more</li>` : ''}</ul>
+      <p class="small muted mt-8">Skipping keeps what’s already there, including any notes, steps, or dates you changed.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Go back</button>
+      <button class="btn" onclick="closeModal();window._duplicateChoice(false)">Add anyway</button>
+      <button class="btn btn-primary" onclick="closeModal();window._duplicateChoice(true)">${all ? 'Skip them' : `Skip ${duplicates.length}, add the rest`}</button>
+    </div>
+  `);
+}
+
+/* ── Long sections: cap them, and open one on its own ─────────────
+   Settings, the dashboard, and the assignments list all stack more than
+   fits on a screen. Anything taller than its cap is trimmed with a
+   "Show all", which lifts that one section out full size instead of
+   making someone scroll past everything else to reach the next thing.
+   Nothing is hidden permanently: a section that fits is left alone. */
+let _openSection = null;
+function expandable(key, title, html, { max = 360, style = '' } = {}) {
+  return `<div class="xp" data-xp="${esc(key)}" data-xp-title="${esc(title)}" style="--xp-max:${max}px;${style}">
+    <div class="xp-body">${html}</div>
+    <div class="xp-fade"><button class="btn btn-sm" onclick="openSection('${esc(key)}')">Show all</button></div>
+  </div>`;
+}
+function openSection(key) { _openSection = key; render(); }
+function closeSection() { _openSection = null; render(); }
+// Runs after every render: measures what's too tall, and moves the section
+// being viewed on its own into the full-screen layer.
+function applyExpandables(root) {
+  const layer = $('#focus-layer');
+  if (!layer) return;
+  layer.innerHTML = '';
+  layer.hidden = true;
+  const target = _openSection ? root.querySelector(`[data-xp="${CSS.escape(_openSection)}"]`) : null;
+  if (_openSection && !target) _openSection = null;
+  if (target) {
+    layer.hidden = false;
+    layer.innerHTML = `<div class="focus-sheet" role="dialog" aria-modal="true" aria-label="${esc(target.dataset.xpTitle || 'Section')}">
+      <div class="focus-head"><h3>${esc(target.dataset.xpTitle || '')}</h3><button class="btn btn-sm" onclick="closeSection()">${icon('x', 12, 2.4)} Close</button></div>
+      <div class="focus-body"></div>
+    </div>`;
+    layer.querySelector('.focus-body').appendChild(target);
+    target.classList.add('is-open');
+    return;
+  }
+  root.querySelectorAll('.xp').forEach(el => {
+    const body = el.querySelector('.xp-body');
+    el.classList.toggle('is-clipped', !!body && body.scrollHeight > body.clientHeight + 8);
+  });
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && _openSection) { e.preventDefault(); closeSection(); } });
+
 function enhanceAccessibility(root) {
   if (!root) return;
   root.querySelectorAll('[onclick]:not(button):not(a):not(input):not(select):not(textarea):not(label):not([role])').forEach(el => {

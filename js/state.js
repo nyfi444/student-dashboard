@@ -355,6 +355,40 @@ function setState(patch) {
 // Mutate nested arrays/objects in place then persist + re-render, without replacing state's identity.
 function touch() { save(); if (typeof render === 'function') render(); }
 
+/* ── Spotting things you already have ─────────────────────────────
+   An upload often repeats what's already in your planner: the same
+   syllabus twice, or a screenshot of a schedule you added by hand. Two
+   names count as the same once case, spacing, and punctuation are set
+   aside, so "HW 1", "hw #1", and "HW-1" are one assignment.
+   Always within one class, never across them: "Problem set 3" in Chem
+   and "Problem set 3" in Physics are two different things to do. */
+function normalizedTitle(value) { return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function findDuplicateAssignment(title, courseId) {
+  const key = normalizedTitle(title);
+  if (!key) return null;
+  const course = courseId || '';
+  return state.assignments.find(a => normalizedTitle(a.title) === key && (a.courseId || '') === course) || null;
+}
+function findDuplicateTodo(title) {
+  const key = normalizedTitle(title);
+  return key ? state.todos.find(t => normalizedTitle(t.title) === key) || null : null;
+}
+function findDuplicateCourse(name, code) {
+  const nameKey = normalizedTitle(name), codeKey = normalizedTitle(code);
+  return activeCourses().find(c => (nameKey && normalizedTitle(c.name) === nameKey) || (codeKey && normalizedTitle(c.code) === codeKey)) || null;
+}
+// Drops repeats inside one upload (AI sometimes lists the same deadline
+// twice), keeping the first of each.
+function dropRepeats(items, titleOf = (x) => x.title) {
+  const seen = new Set();
+  return items.filter(item => {
+    const key = normalizedTitle(titleOf(item));
+    if (!key || seen.has(key)) return !key;
+    seen.add(key);
+    return true;
+  });
+}
+
 function getCourse(id) { return state.courses.find(c => c.id === id); }
 function getCourseColor(id) { return getCourse(id)?.color || '#8a8a8a'; }
 function activeCourses() { return state.courses.filter(c => c.semesterId === state.currentSemesterId); }

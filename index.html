@@ -49,6 +49,7 @@
 
 <div class="overlay" id="overlay" onclick="closeModal()"></div>
 <div class="modal-wrap" id="modal-wrap"><div class="modal" id="modal" role="dialog" aria-modal="true" tabindex="-1"></div></div>
+<div class="focus-layer" id="focus-layer" hidden onclick="if(event.target===this)closeSection()"></div>
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 <input type="file" id="hidden-file-input" style="display:none">
 <div id="print-area"></div>
@@ -59,8 +60,10 @@
 <script src="js/state.js"></script>
 <script src="js/firebase.js"></script>
 <script src="js/ai.js"></script>
+<script src="js/uploads.js"></script>
 <script src="js/errortracking.js"></script>
 <script src="js/checkout.js"></script>
+<script src="js/groupplans.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/dashboard.js"></script>
 <script src="js/courses.js"></script>

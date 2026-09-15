@@ -25,10 +25,10 @@ function renderCaptureInput() {
         ${c.files.length ? `<div class="capture-thumbs">${c.files.map((f, i) => `
           <div class="capture-thumb">${f.preview ? `<img src="${f.preview}" alt="">` : `<span class="capture-file">${icon('file-text', 18, 1.6)}<span>${esc(f.name)}</span></span>`}
             <button class="capture-thumb-x" aria-label="Remove ${esc(f.name)}" onclick="window._capture.files.splice(${i},1);renderCaptureInput()">${icon('x', 11, 2.4)}</button></div>`).join('')}</div>`
-        : `<span class="capture-drop-ic">${icon('camera', 26, 1.5)}</span><div class="sg-strong">Add a photo, screenshot, or PDF</div><div class="small muted">Drop files here, or</div>`}
+        : `<span class="capture-drop-ic">${icon('camera', 26, 1.5)}</span><div class="sg-strong">Add a photo, screenshot, or file</div><div class="small muted">Drop files here, or</div>`}
         <div class="flex-gap wrap" style="justify-content:center">
           <label class="btn btn-sm btn-primary">${icon('camera', 13, 1.8)} Take a photo<input type="file" accept="image/*" capture="environment" hidden onchange="addCaptureFiles(this.files)"></label>
-          <label class="btn btn-sm">${icon('upload', 13, 1.8)} Choose files<input type="file" accept="image/*,application/pdf" multiple hidden onchange="addCaptureFiles(this.files)"></label>
+          <label class="btn btn-sm">${icon('upload', 13, 1.8)} Choose files<input type="file" multiple hidden onchange="addCaptureFiles(this.files)"></label>
         </div>
       </div>
       <div class="field mt-16" style="margin-bottom:0"><label for="capture-text">Or paste text</label><textarea class="input" id="capture-text" placeholder="“Problem set 5 due next Friday, quiz on chapters 6–7 Wednesday…”" oninput="window._capture.text=this.value">${esc(c.text)}</textarea></div>
@@ -39,53 +39,38 @@ function renderCaptureInput() {
 async function addCaptureFiles(fileList) {
   const list = Array.from(fileList || []).slice(0, 8);
   for (const f of list) {
-    if (!/^image\//.test(f.type) && f.type !== 'application/pdf') { toast(`${f.name} isn’t a photo or PDF`, 'error'); continue; }
-    if (f.size > 20 * 1024 * 1024) { toast(`${f.name} is too large (20MB max)`, 'error'); continue; }
+    if (f.size > UPLOAD_MAX_BYTES) { toast(`${f.name} is too large (60 MB max)`, 'error'); continue; }
     const entry = { name: f.name, type: f.type, file: f, preview: null };
+    // A photo this browser can't show (an iPhone photo in Chrome) still gets
+    // read; it just shows as a file tile here.
     if (/^image\//.test(f.type)) entry.preview = await downscaleImage(f, 360, 0.7);
     window._capture.files.push(entry);
   }
   if ($('#capture-drop')) renderCaptureInput();
 }
-// Phone photos are often 4000px+; shrink before sending to keep uploads fast.
-function downscaleImage(file, maxSide, quality) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-    img.src = url;
-  });
-}
 async function runQuickCapture() {
   const c = window._capture;
   const text = (c.text || '').trim();
-  if (!c.files.length && text.length < 4) { toast('Add a photo, a PDF, or some text first', 'error'); return; }
+  if (!c.files.length && text.length < 4) { toast('Add a photo, a file, or some text first', 'error'); return; }
   const btn = $('#capture-go');
   setBtnLoading(btn, true);
   try {
-    const images = [];
-    let extraText = '';
-    for (const f of c.files) {
-      if (f.type === 'application/pdf') {
-        const pdfText = await withTimeout(extractPdfText(f.file), 30000, 'Timed out reading the PDF').catch(() => '');
-        if (pdfText.trim().length > 80) extraText += `\n\n${f.name}:\n${pdfText}`;
-        else (await extractPdfPageImages(f.file, { maxPages: 4 })).images.forEach(src => images.push({ base64: src.split(',')[1], mediaType: 'image/jpeg' }));
-      } else {
-        const dataUrl = await downscaleImage(f.file, 1600, 0.82);
-        if (dataUrl) images.push({ base64: dataUrl.split(',')[1], mediaType: 'image/jpeg' });
+    let images = [], extraText = '';
+    if (c.files.length) {
+      try {
+        const got = await readUploadedFiles(c.files.map(f => f.file), { pdfPages: 4 });
+        images = got.images;
+        extraText = got.text;
+        toastUploadProblems(got);
+      } catch (e) {
+        // None of the files could be read, but there's typed text to go on.
+        if (text.length < 4) throw e;
+        toast(e.message, 'info', 6000);
       }
     }
     const courses = activeCourses().map(x => `${x.code || x.name} = ${x.name}`).join('; ') || 'none';
     const intro = `Today is ${todayIso()} (${fmtDate(todayIso(), { weekday: 'long' })}). The student's courses: ${courses}.`;
-    const body = `${intro}${text ? `\n\nText:\n${text}` : ''}${extraText ? `\n\nDocument text:${extraText.slice(0, 14000)}` : ''}`;
+    const body = `${intro}${text ? `\n\nText:\n${text}` : ''}${extraText ? `\n\nDocument text:\n${extraText.slice(0, 14000)}` : ''}`;
     const userContent = images.length ? [...imageBlocks(images.slice(0, 8)), { type: 'text', text: body }] : body;
     const raw = await callClaude({ system: CAPTURE_SYSTEM, userContent, maxTokens: 2500 });
     const parsed = extractJson(raw);
@@ -133,7 +118,11 @@ function renderCaptureReview() {
   `, { wide: true });
 }
 function commitCapture() {
-  const items = window._capture.items.filter(i => i.include && i.title.trim());
+  const chosen = dropRepeats(window._capture.items.filter(i => i.include && i.title.trim()));
+  const duplicates = chosen.filter(it => it.kind === 'todo' || !it.courseId ? findDuplicateTodo(it.title) : findDuplicateAssignment(it.title, it.courseId));
+  askAboutDuplicates(duplicates, chosen.length, 'item', (skip) => commitCaptureItems(skip ? chosen.filter(it => !duplicates.includes(it)) : chosen, chosen.length));
+}
+function commitCaptureItems(items, chosenCount) {
   let assignments = 0, todos = 0;
   items.forEach(it => {
     if (it.kind === 'todo' || !it.courseId) {
@@ -149,8 +138,11 @@ function commitCapture() {
   });
   closeModal();
   touch();
+  const skipped = chosenCount - items.length;
+  if (!items.length) { toast('Nothing new to add, you already had these', 'info', 4000); return; }
   playUiSound('success');
-  toast([assignments ? `${assignments} assignment${assignments === 1 ? '' : 's'}` : '', todos ? `${todos} to-do${todos === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ') + ' added');
+  toast([assignments ? `${assignments} assignment${assignments === 1 ? '' : 's'}` : '', todos ? `${todos} to-do${todos === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ') + ' added'
+    + (skipped ? `, skipped ${skipped} you already had` : ''), 'success', skipped ? 4500 : 2600);
 }
 
 // Files or text shared into the installed app (Android share sheet). The

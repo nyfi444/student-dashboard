@@ -63,7 +63,11 @@ function pageDashboard() {
   const order = (state.settings.dashboardWidgets || Object.keys(DASH_WIDGET_DEFS)).filter(id => DASH_WIDGET_DEFS[id]);
   const hidden = state.settings.hiddenWidgets || [];
   const shown = order.filter(id => !hidden.includes(id));
-  const renderCol = (col) => shown.filter(id => DASH_WIDGET_DEFS[id].col === col).map(id => DASH_WIDGETS[id]()).filter(Boolean).join('');
+  // Each widget is capped at about a screenful; anything longer gets a
+  // "Show all" that opens just that widget full size (see expandable).
+  const renderCol = (col) => shown.filter(id => DASH_WIDGET_DEFS[id].col === col)
+    .map(id => { const html = DASH_WIDGETS[id](); return html ? expandable(`dash-${id}`, (DASH_WIDGET_DEFS[id].label || 'Widget').split(':')[0], html, { max: 460 }) : ''; })
+    .filter(Boolean).join('');
   return `
     ${head}
     ${policyUpdateNotice()}
@@ -269,13 +273,13 @@ const DASH_WIDGETS = {
 /* ── Policy updates ────────────────────────────────────────────────
    The Privacy Policy and Terms promise an in-app heads-up for material
    changes. Bump POLICY_VERSION with a new date when they change again. */
-const POLICY_VERSION = '2026-09-15';
+const POLICY_VERSION = '2026-09-15b';
 function policyUpdateNotice() {
   if (!_fbUser || isEmbedded() || state.settings.policySeen === POLICY_VERSION) return '';
   return `
     <div class="sg-callout mb-16 policy-notice" role="status">
       <span>${icon('file-text', 14, 1.8)}</span>
-      <div class="small" style="flex:1">We updated our <a href="https://semester-hq.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://semester-hq.com/terms.html" target="_blank" rel="noopener">Terms</a> for shared classes, clubs and teams, study groups, and reminders: what gets shared with whom, and how reminders work when the app is closed.</div>
+      <div class="small" style="flex:1">We updated our <a href="https://semester-hq.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://semester-hq.com/terms.html" target="_blank" rel="noopener">Terms</a> for group plans (one person paying for a club or team: what their admins can see, and what happens if the plan ends), and for shared classes, clubs and teams, study groups, and reminders.</div>
       <button class="btn btn-sm" onclick="state.settings.policySeen=POLICY_VERSION;touch()">Got it</button>
     </div>`;
 }

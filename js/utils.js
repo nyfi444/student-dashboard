@@ -136,66 +136,6 @@ function storageFileMetadata(name, type) {
   return { contentType: mimeForFile(clean, type), contentDisposition: `inline; filename="${ascii}"; filename*=UTF-8''${encoded}` };
 }
 
-/* ── Reading .docx and .pptx: both are zip files of XML. This finds the
-   entries asked for through the zip's central directory and inflates them
-   with the browser's own DecompressionStream, so no library is needed. ── */
-async function readZipEntries(file, wanted) {
-  if (typeof DecompressionStream === 'undefined') throw new Error('This browser can’t open that file. Save it as a PDF and upload that.');
-  const buf = new Uint8Array(await file.arrayBuffer());
-  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  let end = -1;
-  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) { if (dv.getUint32(i, true) === 0x06054b50) { end = i; break; } }
-  if (end < 0) throw new Error('That file looks damaged. Try saving it again, or as a PDF.');
-  const count = dv.getUint16(end + 10, true);
-  let p = dv.getUint32(end + 16, true);
-  const out = {};
-  for (let n = 0; n < count && p + 46 <= buf.length && dv.getUint32(p, true) === 0x02014b50; n++) {
-    const method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true);
-    const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), commentLen = dv.getUint16(p + 32, true);
-    const local = dv.getUint32(p + 42, true);
-    const name = new TextDecoder().decode(buf.subarray(p + 46, p + 46 + nameLen));
-    p += 46 + nameLen + extraLen + commentLen;
-    if (!wanted(name) || local + 30 > buf.length) continue;
-    const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
-    const data = buf.subarray(start, start + size);
-    let bytes = null;
-    if (method === 0) bytes = data;
-    else if (method === 8) bytes = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
-    if (bytes) out[name] = new TextDecoder().decode(bytes);
-  }
-  return out;
-}
-function xmlToText(xml, paragraphTag) {
-  return decodeEntities(String(xml || '')
-    .replace(new RegExp(`</${paragraphTag}>`, 'g'), '\n')
-    .replace(/<w:tab\/>/g, '\t').replace(/<(w:br|a:br)\b[^>]*>/g, '\n')
-    .replace(/<[^>]+>/g, ''))
-    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-function decodeEntities(s) {
-  return String(s || '').replace(/&(#x[0-9a-f]+|#\d+|lt|gt|amp|quot|apos|nbsp);/gi, (m, e) => {
-    const k = e.toLowerCase();
-    if (k[0] === '#') { const n = k[1] === 'x' ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10); try { return String.fromCodePoint(n); } catch { return m; } }
-    return { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'", nbsp: ' ' }[k];
-  });
-}
-async function docxText(file) {
-  const entries = await readZipEntries(file, n => n === 'word/document.xml');
-  if (!entries['word/document.xml']) throw new Error('Couldn’t find any text in that Word doc.');
-  return xmlToText(entries['word/document.xml'], 'w:p');
-}
-async function pptxText(file) {
-  const slideNum = (n) => Number((n.match(/(\d+)\.xml$/) || [])[1] || 0);
-  const entries = await readZipEntries(file, n => /^ppt\/(slides\/slide|notesSlides\/notesSlide)\d+\.xml$/.test(n));
-  const slides = Object.keys(entries).filter(n => n.startsWith('ppt/slides/')).sort((a, b) => slideNum(a) - slideNum(b));
-  if (!slides.length) throw new Error('Couldn’t find any slides in that file.');
-  return slides.map(n => {
-    const notes = entries[`ppt/notesSlides/notesSlide${slideNum(n)}.xml`];
-    const noteText = notes ? xmlToText(notes, 'a:p').replace(/^\d+$/m, '').trim() : '';
-    return `Slide ${slideNum(n)}\n${xmlToText(entries[n], 'a:p')}${noteText ? `\nNotes: ${noteText}` : ''}`;
-  }).join('\n\n');
-}
-
 /* Perceived-brightness check so text stays legible on any accent swatch */
 function readableTextOn(hex) {
   const c = hex.replace('#', '');

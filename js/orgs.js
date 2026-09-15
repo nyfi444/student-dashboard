@@ -1053,7 +1053,9 @@ function openOrgInviteModal(code, { justCreated = false } = {}) {
       ${navigator.share ? `<button class="btn" style="width:100%;justify-content:center" onclick="navigator.share({title:'Join on Semester HQ',text:orgInviteMessage('${code}')}).catch(()=>{})">${icon('send', 13, 1.8)} Share via Messages, GroupMe…</button>` : ''}
       <div class="sg-pricing-inline small mt-16">
         <span class="sg-feature-ic">${icon('shield', 15, 1.7)}</span>
-        <div><span class="sg-strong">Getting the whole ${o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club'} on?</span><div class="muted">Each member needs Semester HQ. <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Group pricing</a> covers everyone for less, and can come out of your budget or dues.</div></div>
+        <div><span class="sg-strong">Getting the whole ${o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club'} on?</span><div class="muted">Each member needs Semester HQ. ${isOrgOfficer(o) && typeof orgGroupPlanUrl === 'function'
+          ? `A <a href="${orgGroupPlanUrl(o)}">group plan</a> covers every member for $5.99 each a month, and can come out of your budget or dues. Members join from one link.`
+          : `<a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Group pricing</a> covers everyone for less, and can come out of your budget or dues.`}</div></div>
       </div>
     </div>
   `);

@@ -5,10 +5,12 @@ const FAQ_ITEMS = [
   { q: 'How do I sync across devices?', a: 'Sign in with Google under Settings → Account & Sync to turn it on. If this deployment has payments configured, signing in unlocks a $7.99/month subscription that activates sync, AI upload, and cross-device Study Groups for that account. Without it, everything still works great locally on one device. If payments aren’t configured on this deployment, signing in alone is enough. Either way, the app owner sets sync up once by adding a Firebase project to FB_CONFIG in js/firebase.js (see README.md).' },
   { q: 'What happens when I start a new semester?', a: 'Settings → Semester reset archives your current semester (nothing is deleted, you can still view it from the semester dropdown) and sets up a fresh one, optionally carrying over your course names and instructors as a starting point.' },
   { q: 'How do I change the colors?', a: 'Settings → Appearance (or Customize on the dashboard) has themes, each with a matching dark mode, plus page colors. Turn on Dark mode and the page colors switch to deep tints of the same colors, with light text so everything stays readable.' },
-  { q: 'How do study groups work?', a: 'Start a group from Study Groups and invite classmates with its 6-character code or an invite link. Inside a group you can schedule sessions (they show up on every member’s calendar, with RSVPs), paint your weekly availability so Semester HQ can suggest the best time to meet, split up tasks with owners and due dates, chat, and share notes, flashcards, files, and links. Everyone in a group needs their own Semester HQ Plus account. Organizing a whole class, club, or team? Ask about group pricing at semester-hq.com/group-pricing.html.' },
+  { q: 'How do study groups work?', a: 'Start a group from Study Groups and invite classmates with its 6-character code or an invite link. Inside a group you can schedule sessions (they show up on every member’s calendar, with RSVPs), paint your weekly availability so Semester HQ can suggest the best time to meet, split up tasks with owners and due dates, chat, and share notes, flashcards, files, and links. Everyone in a group needs their own Semester HQ Plus account. Organizing a whole class, club, or team? A group plan covers all of them, see the next question.' },
+  { q: 'Can I pay for my whole club, team, or class?', a: 'Yes. A group plan is $5.99 per member each month (five members or more) instead of $7.99 each. Open group-admin.html from Settings, pick how many members you\u2019re covering, and share the invite link it gives you: each person signs in, takes a seat, and gets their own full Semester HQ. Add or remove seats whenever your roster changes, and cancel anytime.' },
   { q: 'What can I share with a study group?', a: 'Notes, whole notebooks, flashcard decks, and projects each have a Share button that sends a copy to one of your groups. You can also open a group’s Resources tab to share any of those, plus files and links, without leaving the group. Members can add their own copy to their notebook, flashcards, or projects. It’s a one-time copy, not a live sync, so edits after sharing stay with whoever made them.' },
   { q: 'Can I assign tasks to people in my study group?', a: 'Yes. On a group’s Tasks tab, give each task an owner and an optional due date, and filter to just yours. Tasks assigned to you also show up on your Dashboard, and the group’s Overview shows a feed of who scheduled, shared, and finished what.' },
-  { q: 'Can I import a PDF into my notes?', a: 'Yes. Open a note and click Upload PDF to pull its text straight in. This is separate from the AI syllabus upload under Courses: it reads text client-side with no AI involved, so it works even without the AI proxy set up, but it won’t parse structure like dates or grading. It just drops the extracted text into the note for you to organize.' },
+  { q: 'Can I add a PDF or other file to my notes?', a: 'Yes. Open a note and click Upload file. A PDF comes in as page images, so figures and handwriting look like the original. Photos come in as pictures, and Word docs, slides, spreadsheets, and text files come in as text you can edit. This doesn’t use AI, and it’s separate from syllabus upload under Courses.' },
+  { q: 'What kinds of files can I upload?', a: 'PDFs, Word docs (.docx and older .doc), PowerPoint (.pptx and .ppt), Excel (.xlsx), CSV, OpenDocument, RTF, text files, web pages, and photos, including iPhone photos. Pages, Keynote, and Numbers files need to be exported first: in the app, choose File → Export To → PDF (or Excel for Numbers), then upload that.' },
   { q: 'Can I back up or move my data?', a: 'Yes. Settings → Data → Export backup downloads everything as a JSON file. Import backup on any device loads it back in and replaces what’s currently there, so it also works as a way to transfer your planner manually without sync.' },
   { q: 'I deleted something by accident. Can I get it back?', a: 'Yes. Deleting a note, course, assignment, to-do, time block, project, or flashcard deck moves it to Settings → Recently Deleted instead of erasing it right away. Restore it any time within 30 days, or delete it forever yourself.' },
 ];
@@ -29,13 +31,76 @@ function confirmDeleteAccount() {
   );
 }
 
+/* ── Leave a review ───────────────────────────────────────────────
+   Asked here rather than on the marketing site, where visitors haven't
+   used anything yet. Goes to the same place as the contact form (the
+   Worker's /contact-message, category "feedback"), with the rating and
+   whether it can be quoted written into the message itself. */
+function reviewSettingsCard() {
+  if (isEmbedded()) return '';
+  const sent = state.settings.reviewSentAt;
+  const rating = window._reviewRating || 0;
+  if (sent && !window._reviewAgain) {
+    return `
+      <div class="card card-pad">
+        <h3 style="font-size:15px" class="mb-8">Thanks for the review</h3>
+        <p class="small muted">You sent one on ${esc(fmtDate(iso(sent), { month: 'long', day: 'numeric' }))}. It really does help.</p>
+        <button class="btn btn-sm mt-8" onclick="window._reviewAgain=true;render()">Write another</button>
+      </div>`;
+  }
+  return `
+    <div class="card card-pad">
+      <h3 style="font-size:15px" class="mb-8">Leave a review</h3>
+      <p class="small muted mb-8">Semester HQ is made by one person. Tell me what’s working and what isn’t, and it goes straight to me.</p>
+      <div class="rev-stars" role="group" aria-label="Rating">
+        ${[1, 2, 3, 4, 5].map(n => `<button class="rev-star ${n <= rating ? 'on' : ''}" aria-label="${n} star${n === 1 ? '' : 's'}" aria-pressed="${n === rating}" onclick="setReviewRating(${n})">${n <= rating ? '★' : '☆'}</button>`).join('')}
+        <span class="small muted" id="rev-rating-label">${rating ? `${rating} out of 5` : 'Tap to rate'}</span>
+      </div>
+      <textarea class="input mt-8" id="rev-text" placeholder="What’s it saved you? What’s still annoying?" style="min-height:90px"></textarea>
+      ${_fbUser?.email ? '' : `<input class="input mt-8" id="rev-email" type="email" placeholder="Your email, so I can reply" autocomplete="email">`}
+      <label class="checkbox-row small mt-8"><input type="checkbox" id="rev-quote"><span>You can quote this on semester-hq.com (first name only)</span></label>
+      <button class="btn btn-primary btn-sm mt-8" onclick="submitReview(this)">Send</button>
+    </div>`;
+}
+function setReviewRating(n) {
+  window._reviewRating = n;
+  $$('.rev-star').forEach((el, i) => { el.classList.toggle('on', i < n); el.textContent = i < n ? '★' : '☆'; el.setAttribute('aria-pressed', i + 1 === n); });
+  const label = $('#rev-rating-label');
+  if (label) label.textContent = `${n} out of 5`;
+}
+async function submitReview(btn) {
+  const rating = window._reviewRating || 0;
+  const text = $('#rev-text').value.trim();
+  const email = (_fbUser?.email || $('#rev-email')?.value || '').trim();
+  if (!rating && !text) { toast('Add a rating or a few words first', 'error'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('Add an email so I can reply', 'error'); return; }
+  const quotable = !!$('#rev-quote')?.checked;
+  setBtnLoading(btn, true);
+  try {
+    await workerPost('/contact-message', {
+      category: 'feedback',
+      name: state.settings.displayName || _fbUser?.displayName || '',
+      email,
+      message: `${rating ? `Rating: ${rating}/5\n` : ''}Can be quoted publicly: ${quotable ? 'yes' : 'no'}\n\n${text}`,
+    });
+    state.settings.reviewSentAt = Date.now();
+    window._reviewAgain = false;
+    window._reviewRating = 0;
+    touch();
+    toast('Sent. Thank you, genuinely.', 'success', 4000);
+  } catch (e) {
+    setBtnLoading(btn, false);
+    toast(e.message || 'Could not send that right now', 'error', 5000);
+  }
+}
+
 function pageSettings() {
   return `
     ${pageHead('Settings', 'Customize your planner')}
     <div class="settings-columns">
-      ${appearanceSettingsCard()}
+      ${expandable('set-appearance', 'Appearance', appearanceSettingsCard(), { max: 320 })}
 
-      ${remindersSettingsCard()}
+      ${expandable('set-reminders', 'Reminders', remindersSettingsCard(), { max: 320 })}
 
       ${installSettingsCard()}
 
@@ -43,7 +108,7 @@ function pageSettings() {
         <h3 style="font-size:15px" class="mb-8">Account & Sync</h3>
         ${_fbUser ? `
           <div class="flex-gap"><div class="avatar">${(_fbUser.displayName || _fbUser.email || '?')[0].toUpperCase()}</div><div><div style="font-weight:600">${esc(_fbUser.displayName || _fbUser.email)}</div><div class="small muted">Synced across devices. This is the default experience.</div></div></div>
-          ${window._licensed ? `<button class="btn mt-16" onclick="redirectToPortal()">Manage subscription</button>` : ''}
+          ${window._licensed && !(window._licenseDoc?.groupPaid && !window._licenseDoc?.individualPaid) ? `<button class="btn mt-16" onclick="redirectToPortal()">Manage subscription</button>` : ''}
           <button class="btn mt-16" onclick="signOutUser()">Sign out</button>
           ${checkoutEnabled() ? `<button class="btn btn-danger mt-8" onclick="confirmDeleteAccount()">Delete account</button>` : ''}
         ` : `
@@ -51,6 +116,7 @@ function pageSettings() {
           <button class="btn btn-primary" onclick="signIn()" ${fbConfigured() ? '' : 'disabled'}>Continue with Google</button>
           <button class="btn mt-8" onclick="openEmailSignInModal()" ${fbConfigured() ? '' : 'disabled'}>Continue with email</button>
         `}
+        ${typeof groupPlanSettingsHtml === 'function' ? groupPlanSettingsHtml() : ''}
       </div>
 
       <div class="card card-pad">
@@ -86,20 +152,21 @@ function pageSettings() {
         </div>
       </div>
 
-      <div class="card card-pad" style="column-span:all">
-        ${pageRecentlyDeleted()}
-      </div>
+      ${reviewSettingsCard()}
 
-      <div class="card card-pad" style="column-span:all">
-        <h3 style="font-size:15px" class="mb-8">FAQ</h3>
-        <p class="small muted mb-8">Common questions about how this planner works.</p>
-        ${FAQ_ITEMS.map(f => `
-          <details class="faq-item">
-            <summary>${esc(f.q)}</summary>
-            <p class="small dim">${esc(f.a)}</p>
-          </details>
-        `).join('')}
-      </div>
+      ${expandable('set-trash', 'Recently Deleted', `<div class="card card-pad">${pageRecentlyDeleted()}</div>`, { max: 300, style: 'column-span:all' })}
+
+      ${expandable('set-faq', 'FAQ', `
+        <div class="card card-pad">
+          <h3 style="font-size:15px" class="mb-8">FAQ</h3>
+          <p class="small muted mb-8">Common questions about how this planner works.</p>
+          ${FAQ_ITEMS.map(f => `
+            <details class="faq-item">
+              <summary>${esc(f.q)}</summary>
+              <p class="small dim">${esc(f.a)}</p>
+            </details>
+          `).join('')}
+        </div>`, { max: 300, style: 'column-span:all' })}
     </div>
   `;
 }
