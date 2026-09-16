@@ -67,6 +67,8 @@ id = "c159c4afb7cc45619d6db5fd2fcde97d"
 #                            it on the semester-hq.com zone's Overview page in the
 #                            Cloudflare dashboard (right sidebar, "Zone ID").
 
-# Sends due push reminders every 5 minutes (see sendDueReminders in src/index.js).
+# Every 5 minutes: send push reminders that are due (sendDueReminders).
+# Once a day at 13:00 UTC (9am ET): write what the business did overnight
+# into the Business OS's inbox (buildBusinessEvents).
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "0 13 * * *"]
