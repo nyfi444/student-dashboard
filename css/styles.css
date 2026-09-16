@@ -213,6 +213,9 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .xp.is-clipped > .xp-fade .btn { pointer-events: auto; box-shadow: var(--shadow); background: var(--surface); }
 .xp.is-open > .xp-body { max-height: none; overflow: visible; }
 .xp.is-open > .xp-fade { display: none; }
+/* display:flex would otherwise beat the browser's [hidden] rule and leave an
+   empty dark layer sitting over the whole app. */
+.focus-layer[hidden] { display: none; }
 .focus-layer { position: fixed; inset: 0; z-index: 120; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto; animation: fadeIn .12s ease-out; }
 .focus-sheet { background: var(--bg); border: 1px solid var(--border); border-radius: 18px; width: min(940px, 100%); max-height: calc(100vh - 48px); display: flex; flex-direction: column; box-shadow: 0 24px 70px rgba(0, 0, 0, .32); }
 .focus-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); border-radius: 18px 18px 0 0; }

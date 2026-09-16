@@ -8,7 +8,7 @@
    Bump VERSION whenever you deploy, so open tabs can offer "Refresh to
    update" and old cached files get cleaned up.
 ──────────────────────────────────────────────────────────────── */
-const VERSION = 'shq-2026-09-15-release8';
+const VERSION = 'shq-2026-09-16-release9';
 const APP_SHELL = [
   './', 'index.html', 'login.html', 'group-admin.html', 'manifest.json', 'css/styles.css',
   'assets/favicon.png', 'assets/apple-touch-icon.png', 'assets/icon-192.png', 'assets/icon-512.png',
