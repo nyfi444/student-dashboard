@@ -41,10 +41,13 @@ const diag = (() => {
     session = Math.random().toString(36).slice(2, 10).toUpperCase();
     try { sessionStorage.setItem('shq_diag_session', session); } catch {}
   }
-  // The service worker's cache name is the deploy's VERSION (see sw.js). On a
-  // first visit the cache appears after load, so it's looked up again if needed.
+  // The service worker's cache name is the deploy's VERSION (see sw.js). Cache
+  // names come back oldest first, and an update waiting to activate already has
+  // its cache, so the last one matches the code actually running (app files are
+  // network-first). On a first visit the cache appears after load, so it's
+  // looked up again if needed.
   const lookupRelease = () => {
-    try { return caches.keys().then(keys => { release = keys.find(k => /^shq-\d{4}/.test(k)) || release; }).catch(() => {}); }
+    try { return caches.keys().then(keys => { release = keys.filter(k => /^shq-\d{4}/.test(k)).pop() || release; }).catch(() => {}); }
     catch { return Promise.resolve(); }
   };
   lookupRelease();
