@@ -65,7 +65,6 @@ function disablePersistentStorage() {
 }
 
 const ASSIGNMENT_TYPES = ['assignment', 'reading', 'discussion', 'quiz', 'exam', 'project', 'paper', 'lab'];
-const ASSIGNMENT_STATUSES = ['not-started', 'in-progress', 'waiting', 'submitted', 'done'];
 const ASSIGNMENT_STATUS_LABELS = { 'not-started': 'Not started', 'in-progress': 'In progress', waiting: 'Waiting', submitted: 'Submitted', done: 'Done' };
 const ATTACHMENT_KINDS = ['rubric', 'prompt', 'reference', 'reading', 'instructions', 'other'];
 const COURSE_STATUSES = ['planned', 'in-progress', 'completed'];
@@ -392,5 +391,4 @@ function dropRepeats(items, titleOf = (x) => x.title) {
 function getCourse(id) { return state.courses.find(c => c.id === id); }
 function getCourseColor(id) { return getCourse(id)?.color || '#8a8a8a'; }
 function activeCourses() { return state.courses.filter(c => c.semesterId === state.currentSemesterId); }
-function courseOptions() { return activeCourses().map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join(''); }
 function currentSemester() { return state.semesters.find(s => s.id === state.currentSemesterId); }

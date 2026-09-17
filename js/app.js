@@ -29,6 +29,7 @@ function render() {
   const viewKey = `${state.route}|${state.subRoute || ''}|${state.groupTab || ''}|${state.route === 'orgs' ? state.orgTab || '' : ''}`;
   const isNewView = viewKey !== _lastViewKey;
   _lastViewKey = viewKey;
+  if (isNewView) diag.crumb('view', viewKey.replace(/\|+$/, ''));
   $('#content').innerHTML = `<div class="${isNewView ? 'fade-in' : ''}">${fn()}</div>`;
   enhanceAccessibility($('#content'));
   enhanceAccessibility($('#sidebar'));
@@ -41,7 +42,6 @@ function bellButton(cls) {
   const n = typeof attentionCount === 'function' ? attentionCount() : 0;
   return `<button class="btn btn-icon bell-btn ${cls}" onclick="openHeadsUp()" aria-label="Heads up${n ? `, ${n} item${n === 1 ? '' : 's'} need attention` : ''}" title="Heads up">${icon('bell', 15, 1.8)}${n ? `<span class="bell-count">${n > 9 ? '9+' : n}</span>` : ''}</button>`;
 }
-function bindPage() { /* reserved for pages needing post-render DOM wiring beyond inline handlers */ }
 
 // Re-render for a change that came from somewhere else (another device, or a
 // study group member) rather than from something done on this screen. A plain

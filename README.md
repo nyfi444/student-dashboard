@@ -15,7 +15,7 @@ All setup below is one-time, done-by-the-app-owner configuration; regular studen
 3. **Build → Firestore Database → Create database** (production mode)
 4. Deploy the security rules in [`firestore.rules`](firestore.rules): either paste its contents into **Firestore → Rules** in the console and click Publish, or if you have the Firebase CLI: `firebase deploy --only firestore:rules`. These rules scope each user's data to themselves, and make sure only the backend Worker (not the browser) can ever mark someone as paid.
 5. **Project settings (gear icon) → General → Your apps → Add app → Web** (`</>` icon), register it, copy the `firebaseConfig` object
-6. Paste those values into `FB_CONFIG` in `js/firebase.js`:
+6. Paste those values into `FB_CONFIG` in `js/config.js` (the one file every page reads for shared settings):
    ```js
    const FB_CONFIG = {
      apiKey: '...',
@@ -35,10 +35,19 @@ Quick version:
 1. `cd worker && wrangler login`
 2. Set secrets: `ANTHROPIC_API_KEY`, `STRIPE_SECRET_KEY`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
 3. Fill in `ALLOWED_ORIGIN`, `APP_URL`, `FIREBASE_PROJECT_ID` in `wrangler.toml`
-4. `wrangler deploy`, then set `AI_PROXY_URL` in `js/ai.js` and `CHECKOUT_PROXY_URL` in `js/checkout.js` to the deployed URL
+4. `wrangler deploy`, then set `WORKER_URL` in `js/config.js` to the deployed URL
 5. Create the Stripe webhook pointing at `<worker URL>/stripe-webhook`, set `STRIPE_WEBHOOK_SECRET`
 
 Reload the app once all of this is done: Settings → AI should show "Ready to use," and signing in will prompt for the $7.99/month subscription before unlocking sync.
+
+## Diagnostics
+
+Every page loads `js/diagnostics.js` right after `js/config.js`. It reports uncaught errors, Worker calls that fail, and problems features log with `diag.warn(feature, message, err)` or `diag.error(...)`, along with the last few screens and Worker calls before it happened. Reports never include planner content, file names, or emails. The Worker records its own failures in the same place.
+
+- Read them at `admin/errors.html` (needs the `ADMIN_TOKEN` Worker secret), grouped by issue and filterable by feature.
+- A student can send you Settings → FAQ → **Copy diagnostic info**. Its support code matches the reports from their session.
+- For a Worker issue's full stack, open Cloudflare → Workers → student-planner-ai-proxy → Logs.
+- Reports older than 30 days are deleted by the daily cron.
 
 ## Deploying updates
 

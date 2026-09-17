@@ -328,7 +328,7 @@ async function groupWrite(code, ops) {
     await _fbDb.collection('studyGroups').doc(code).update(payload);
     return true;
   } catch (e) {
-    console.warn('Group write failed', code, e);
+    diag.error('studygroups', 'Group write failed', e);
     toast(e.code === 'permission-denied' ? 'That change was blocked. You may no longer be in this group.' : 'Couldn’t save that to the group. Check your connection and try again.', 'error', 4500);
     return false;
   }
@@ -386,7 +386,7 @@ function reconcileGroupSubscriptions() {
     if (_groupDocUnsubs[code]) return;
     _groupDocUnsubs[code] = _fbDb.collection('studyGroups').doc(code).onSnapshot(
       doc => onGroupSnapshot(code, doc),
-      err => console.warn('Group listener failed', code, err),
+      err => diag.error('studygroups', 'Group listener failed', err),
     );
   });
 }
@@ -398,7 +398,7 @@ function onGroupSnapshot(code, doc) {
   const data = doc.exists ? doc.data() : null;
   if (data && data.v !== 2) {
     // Rewritten in the old format by a tab still running the first version.
-    if (!_legacyDocsRepaired.has(code)) { _legacyDocsRepaired.add(code); ensureGroupMembership(code).catch(e => console.warn('Could not repair group format', code, e)); }
+    if (!_legacyDocsRepaired.has(code)) { _legacyDocsRepaired.add(code); ensureGroupMembership(code).catch(e => diag.warn('studygroups', 'Could not repair group format', e)); }
     return;
   }
   if (!data || !(data.memberUids || []).includes(myUid)) {
@@ -474,7 +474,7 @@ async function ensureGroupMembership(code, localLegacy = null) {
     if (!(data.memberUids || []).includes(myUid)) tx.update(ref, joinOps(myUid));
   });
   for (const it of items) {
-    try { await addCloudGroupItem(code, it); } catch (e) { console.warn('Could not move a shared item to the new format', it.id, e); }
+    try { await addCloudGroupItem(code, it); } catch (e) { diag.warn('studygroups', 'Could not move a shared item to the new format', e); }
   }
   return name;
 }
@@ -482,7 +482,7 @@ async function adoptGroupEntry(entry) {
   try {
     const name = await ensureGroupMembership(entry.code, entry);
     replaceWithCloudEntry(entry.code, name);
-  } catch (e) { console.warn('Could not move study group to the new format', entry.code, e); }
+  } catch (e) { diag.warn('studygroups', 'Could not move study group to the new format', e); }
 }
 // A group made while trying the app without an account, still in memory
 // when the person paid and signed in without leaving the page.
@@ -496,10 +496,10 @@ async function uploadLocalGroup(entry) {
     const doc = { ...remap(rest), v: 2, code, createdBy: myUid, memberUids: [myUid], updatedAt: Date.now() };
     doc.people = { [myUid]: { name: myGroupName(), role: 'owner', joinedAt: Date.now() } };
     await _fbDb.collection('studyGroups').doc(code).set(doc);
-    for (const it of remap(items)) { try { await addCloudGroupItem(code, it); } catch (e) { console.warn('Could not upload shared item', e); } }
+    for (const it of remap(items)) { try { await addCloudGroupItem(code, it); } catch (e) { diag.warn('studygroups', 'Could not upload shared item', e); } }
     state.studyGroups = groupEntries().filter(e => e !== entry);
     replaceWithCloudEntry(code, doc.name);
-  } catch (e) { console.warn('Could not upload local study group', entry.code, e); }
+  } catch (e) { diag.warn('studygroups', 'Could not upload local study group', e); }
 }
 async function unusedGroupCode() {
   for (let i = 0; i < 6; i++) {
@@ -531,11 +531,11 @@ function ensureGroupDetailListeners(code) {
     _groupItems[code] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
     nameStoredFiles(_groupItems[code].filter(it => it.kind === 'file').map(it => ({ url: it.url, name: it.fileName || it.title })));
     renderRemote();
-  }, e => console.warn('Group items listener failed', e)));
+  }, e => diag.error('studygroups', 'Group items listener failed', e)));
   _detailSubs.unsubs.push(ref.collection('messages').orderBy('at').limitToLast(200).onSnapshot(snap => {
     _groupMessages[code] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
     renderRemote();
-  }, e => console.warn('Group chat listener failed', e)));
+  }, e => diag.error('studygroups', 'Group chat listener failed', e)));
 }
 function closeGroupDetailListeners() {
   _detailSubs.unsubs.forEach(u => u());
@@ -1165,7 +1165,7 @@ function groupResourcesTab(g) {
       <div class="small muted">Share notes, flashcards, files, and links. Anyone in the group can add their own copy.</div>
       <button class="btn btn-primary btn-sm" onclick="openShareResourceModal('${g.code}')">+ Share something</button>
     </div>
-    ${items.length ? items.map(s => resourceRow(g, s)).join('') : emptyState(icon('layers', 24, 1.4), 'Nothing shared yet', `<button class="btn btn-sm mt-8" onclick="openShareResourceModal('${g.code}')">Share the first resource</button>`, 'You can also share straight from any note, notebook, flashcard deck, or project.')}
+    ${items.length ? items.map(s => groupResourceRow(g, s)).join('') : emptyState(icon('layers', 24, 1.4), 'Nothing shared yet', `<button class="btn btn-sm mt-8" onclick="openShareResourceModal('${g.code}')">Share the first resource</button>`, 'You can also share straight from any note, notebook, flashcard deck, or project.')}
   `;
 }
 function resourceUrl(g, s) {
@@ -1173,7 +1173,7 @@ function resourceUrl(g, s) {
   if (isHttpUrl(url)) return url;
   return g.local && String(url).startsWith('data:') ? url : '';
 }
-function resourceRow(g, s) {
+function groupResourceRow(g, s) {
   const u = myUidFor(g);
   const canRemove = !s.sharedByUid || s.sharedByUid === u || g.createdBy === u;
   const meta = { deck: `${(s.cards || []).length} cards`, 'note-bundle': `${(s.notes || []).length} notes`, project: `${(s.milestones || []).length} milestones`, file: fmtFileSize(s.size), link: hostOf(s.url) }[s.kind] || '';
@@ -1296,7 +1296,7 @@ async function addGroupItem(code, raw) {
   }
   if (!cloudGroupsEnabled()) { toast('Log in to share with this group.', 'error'); return false; }
   try { await addCloudGroupItem(code, item); return true; }
-  catch (e) { console.warn('Share failed', e); toast(e.message?.startsWith('That’s too large') ? e.message : 'Couldn’t share that. Check your connection and try again.', 'error', 5000); return false; }
+  catch (e) { if (!e.message?.startsWith('That’s too large')) diag.error('studygroups', 'Share to group failed', e); toast(e.message?.startsWith('That’s too large') ? e.message : 'Couldn’t share that. Check your connection and try again.', 'error', 5000); return false; }
 }
 function importGroupResource(code, itemId) {
   const g = findGroup(code);
@@ -1419,7 +1419,7 @@ async function sendGroupMessage(code) {
     markChatSeen(code, msg.at);
     playUiSound('send');
   } catch (e) {
-    console.warn('Message failed', e);
+    diag.error('studygroups', 'Message failed', e);
     if (input.isConnected && !input.value) input.value = text;
     toast('Message didn’t send. Check your connection and try again.', 'error');
   }
@@ -1482,7 +1482,7 @@ async function submitCreateGroup() {
     openGroup(code);
     setTimeout(() => openInviteModal(code, { justCreated: true }), 150);
   } catch (e) {
-    console.warn('Create group failed', e);
+    diag.error('studygroups', 'Create group failed', e);
     setBtnLoading(btn, false, 'Create group');
     toast('Couldn’t create the group. Check your connection and try again.', 'error', 4500);
   }
@@ -1559,7 +1559,7 @@ async function confirmJoinGroup(code) {
     openGroup(code);
     toast(`You joined ${name}`);
   } catch (e) {
-    console.warn('Join failed', e);
+    if (!e.message?.startsWith('No group')) diag.error('studygroups', 'Join failed', e);
     setBtnLoading(btn, false, 'Join group');
     toast(e.message?.startsWith('No group') ? e.message : 'Couldn’t join. Check your connection and try again.', 'error', 5000);
   }
@@ -1704,7 +1704,7 @@ async function deleteGroupEverywhere(code) {
     await ref.delete();
     dropGroupEntry(code, `Deleted “${g?.name || 'the group'}”.`);
   } catch (e) {
-    console.warn('Delete group failed', e);
+    diag.error('studygroups', 'Delete group failed', e);
     reconcileGroupSubscriptions();
     toast('Couldn’t delete the group. Check your connection and try again.', 'error');
   }
@@ -1751,7 +1751,7 @@ async function handlePendingJoin() {
     const snap = await _fbDb.collection('studyGroups').doc(code).get();
     if (!snap.exists) { clearPendingJoin(); toast('That invite link doesn’t match a group anymore. Ask for a new one.', 'error', 5000); return; }
     showJoinPreview(code, snap.data());
-  } catch (e) { console.warn('Could not load invite', e); }
+  } catch (e) { diag.warn('studygroups', 'Could not load invite', e); }
 }
 // Shown on the paywall when someone followed an invite link but hasn't
 // subscribed yet. The invite is the reason they're here, so say so, and

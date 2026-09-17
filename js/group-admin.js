@@ -7,17 +7,6 @@
    person running a plan may not use the planner themselves, and shouldn't
    have to get past a paywall to manage what they're paying for.
 ──────────────────────────────────────────────────────────────── */
-const FB_CONFIG = {
-  apiKey: 'AIzaSyBruZ173x9OGtprhnJVO-8S7TY2taoSYQE',
-  authDomain: 'semester-hq.firebaseapp.com',
-  projectId: 'semester-hq',
-  storageBucket: 'semester-hq.firebasestorage.app',
-  messagingSenderId: '191691583510',
-  appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
-};
-const WORKER_BASE_URL = 'https://student-planner-ai-proxy.semesterhq.workers.dev';
-const AGE_TOS_KEY = 'shq_age_tos_confirmed';
-const EMAIL_LINK_STORAGE_KEY = 'shq_email_for_signin';
 const SEAT_PRICE_CENTS = 599;
 const MIN_SEATS = 5;
 const MAX_SEATS = 500;
@@ -33,7 +22,7 @@ const fmtJoined = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.t
 
 async function api(action, body = {}) {
   const idToken = view.user ? await view.user.getIdToken() : null;
-  const res = await fetch(`${WORKER_BASE_URL}/group/${action}`, {
+  const res = await fetch(`${WORKER_URL}/group/${action}`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, idToken }),
   });
   const data = await res.json().catch(() => ({}));
@@ -381,7 +370,7 @@ async function completeEmailLink() {
     await _auth.signInWithEmailLink(email, window.location.href);
     localStorage.removeItem(EMAIL_LINK_STORAGE_KEY);
     history.replaceState({}, '', location.pathname + (params.toString() ? `?${params}` : ''));
-  } catch (e) { toast('That sign-in link is invalid or expired.', 'error', 6000); }
+  } catch (e) { diag.warn('group-admin', 'Sign-in link failed', e); toast('That sign-in link is invalid or expired.', 'error', 6000); }
 }
 function signOutOfAdmin() { _auth.signOut(); }
 

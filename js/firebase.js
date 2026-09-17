@@ -1,19 +1,8 @@
 /* ── Sign-in + cross-device sync ─────────────────────────────────
-   Fill in FB_CONFIG to enable real sign-in/sync:
-   console.firebase.google.com → New project → Add web app → copy
-   config below → enable Firestore + Google sign-in in the console.
-   Until it's filled in, the app runs fully offline on localStorage
-   and "Sign in" shows a friendly message instead of erroring.
+   FB_CONFIG lives in js/config.js. Without it, the app runs fully
+   offline on localStorage and "Sign in" shows a friendly message
+   instead of erroring.
 ──────────────────────────────────────────────────────────────── */
-const FB_CONFIG = {
-  apiKey: 'AIzaSyBruZ173x9OGtprhnJVO-8S7TY2taoSYQE',
-  authDomain: 'semester-hq.firebaseapp.com',
-  projectId: 'semester-hq',
-  storageBucket: 'semester-hq.firebasestorage.app',
-  messagingSenderId: '191691583510',
-  appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
-};
-
 let _fbAuth = null, _fbDb = null, _fbStorage = null, _fbUser = null, _syncQueued = false, _applyingRemote = false;
 // Guards the realtime listeners below against replaying our own writes back
 // onto ourselves (see startRealtimeSync). Set from whichever of cloudPull()
@@ -102,19 +91,18 @@ function bootFirebase() {
       if (typeof render === 'function') render();
       if (typeof onGroupsAuthResolved === 'function') onGroupsAuthResolved();
     });
-  } catch (e) { console.warn('Firebase init failed', e); }
+  } catch (e) { diag.error('sync', 'Firebase init failed', e); }
 }
 
 // COPPA-relevant: our Terms/Privacy require sign-in users to be 13+. This
 // isn't just policy text: it's a real gate a person has to check before
 // the Google popup (or an email link) goes out, and only once per browser
 // (localStorage), not re-shown every sign-in.
-const AGE_TOS_KEY = 'shq_age_tos_confirmed';
 // Holds an email address waiting on the age gate, so confirmAgeGateAndSignIn
 // knows to resume the email flow instead of defaulting to Google.
 let _pendingEmailSignIn = null;
 async function signIn() {
-  if (!fbConfigured()) { toast('Sync isn’t set up yet. Add a Firebase config in js/firebase.js to enable it.', 'info', 4200); return; }
+  if (!fbConfigured()) { toast('Sync isn’t set up yet. Add a Firebase config in js/config.js to enable it.', 'info', 4200); return; }
   // Returning 'age-gate' lets callers (e.g. signInFromOnboarding) know the
   // gate modal is now showing and awaiting the user, so they don't
   // immediately close it out from under them.
@@ -132,7 +120,7 @@ async function runGoogleSignIn() {
     provider.setCustomParameters({ prompt: 'select_account' });
     await _fbAuth.signInWithPopup(provider);
   } catch (e) {
-    if (e.code !== 'auth/popup-closed-by-user') toast('Sign-in failed: ' + e.message, 'error');
+    if (e.code !== 'auth/popup-closed-by-user') { toast('Sign-in failed: ' + e.message, 'error'); diag.error('auth', 'Google sign-in failed', e); }
   }
 }
 // One-click fix for "I'm signed in with the wrong Google account": sign out
@@ -148,20 +136,20 @@ async function switchGoogleAccount() {
 // Google accounts. Requires "Email Link" to be turned on in the Firebase
 // console under Authentication → Sign-in method (a one-time setup step,
 // not something this code can do on its own).
-const EMAIL_LINK_STORAGE_KEY = 'shq_email_for_signin';
 function emailSignInUrl() {
   // Always round-trips through login.html (the one canonical sign-in page),
   // regardless of which in-app screen (paywall, settings) kicked this off.
   return new URL('login.html', window.location.href).toString();
 }
 async function sendEmailSignInLink(email) {
-  if (!fbConfigured()) { toast('Sync isn’t set up yet. Add a Firebase config in js/firebase.js to enable it.', 'info', 4200); return false; }
+  if (!fbConfigured()) { toast('Sync isn’t set up yet. Add a Firebase config in js/config.js to enable it.', 'info', 4200); return false; }
   try {
     await _fbAuth.sendSignInLinkToEmail(email, { url: emailSignInUrl(), handleCodeInApp: true });
     localStorage.setItem(EMAIL_LINK_STORAGE_KEY, email);
     return true;
   } catch (e) {
     toast('Could not send sign-in link: ' + e.message, 'error');
+    diag.error('auth', 'Could not send sign-in link', e);
     return false;
   }
 }
@@ -179,6 +167,7 @@ async function completeEmailLinkSignInIfPresent() {
     history.replaceState({}, '', window.location.pathname);
   } catch (e) {
     toast('Sign-in link failed: ' + e.message, 'error');
+    diag.error('auth', 'Sign-in link failed', e);
   }
 }
 function openEmailSignInModal() {
@@ -302,7 +291,7 @@ async function nameStoredFiles(files) {
         done.add(f.url);
       } catch (e) {
         if (e?.code === 'storage/object-not-found') done.add(f.url);
-        else { _namingFailed.add(f.url); console.warn('Could not name stored file', f.name, e); }
+        else { _namingFailed.add(f.url); diag.warn('uploads', 'Could not name a stored file', e); }
       }
     }
     try { localStorage.setItem(NAMED_FILES_KEY, JSON.stringify([...done].slice(-400))); } catch {}
@@ -327,7 +316,7 @@ async function migrateInlineAttachmentsToStorage() {
           try {
             const url = await uploadDataUrlToStorage(`users/${_fbUser.uid}/attachments/${att.id}-${storageSafeName(att.name)}`, att.dataUrl, att.name);
             att.url = url; att.dataUrl = null;
-          } catch (e) { console.warn('Attachment upload failed, staying local-only for now', att.id, e); }
+          } catch (e) { diag.warn('sync', 'Attachment upload failed, staying local-only for now', e); }
         })());
       }
     }
@@ -357,7 +346,7 @@ function queueCloudSync() {
           _syncTooLargeShown = true;
           toast('Your planner is getting large. Recent changes aren’t syncing to the cloud (still saved on this device). Try removing old flashcard decks or attachments.', 'error', 6000);
         }
-        console.warn('Cloud sync skipped: core payload too large', coreData.length);
+        diag.error('sync', 'Cloud sync skipped: planner too large', null, { bytes: coreData.length });
         return;
       }
       _syncTooLargeShown = false;
@@ -391,7 +380,7 @@ function queueCloudSync() {
             // doc from syncing.
             const noteJson = JSON.stringify(op.note);
             if (noteJson.length > FIRESTORE_DOC_SAFE_BYTES) {
-              console.warn('Cloud sync skipped one oversized note', op.note.id, noteJson.length);
+              diag.warn('sync', 'Cloud sync skipped an oversized note', null, { bytes: noteJson.length });
               continue;
             }
             batch.set(notesCol.doc(op.note.id), op.note);
@@ -404,7 +393,7 @@ function queueCloudSync() {
       _lastSyncedNoteIds = currentIds;
       _syncFailureShown = false;
     } catch (e) {
-      console.warn('Cloud sync failed', e);
+      diag.error('sync', 'Cloud sync failed', e);
       if (!_syncFailureShown && navigator.onLine) {
         _syncFailureShown = true;
         toast('Sync failed. Your changes are saved on this device and will retry.', 'error', 5000);
@@ -449,7 +438,7 @@ async function cloudPull() {
       queueCloudSync();
     }
   } catch (e) {
-    console.warn('Cloud pull failed', e);
+    diag.error('sync', 'Cloud pull failed', e);
     if (navigator.onLine) toast('Couldn’t load your synced data. Showing what’s saved on this device instead.', 'error', 5000);
   }
   // This one-time pull only ever reflects the moment the app opened. Without
@@ -483,7 +472,7 @@ function startRealtimeSync() {
     if (remoteUpdatedAt <= _lastKnownUpdatedAt) return; // our own echo, or nothing newer than what we have
     let incoming;
     try { incoming = migrate(JSON.parse(doc.data().data)); }
-    catch (e) { console.warn('Bad realtime planner snapshot, ignoring', e); return; }
+    catch (e) { diag.warn('sync', 'Bad realtime planner snapshot, ignoring', e); return; }
     _lastKnownUpdatedAt = remoteUpdatedAt;
     _applyingRemote = true;
     const keepNotes = state.notes; // notes sync independently below, never inline in this doc's payload
@@ -501,7 +490,7 @@ function startRealtimeSync() {
     if (typeof reconcileGroupSubscriptions === 'function') reconcileGroupSubscriptions(); // joined/left a group on another device
     if (typeof adoptStrayGroupEntries === 'function') adoptStrayGroupEntries({ throttle: true });
     if (typeof renderRemote === 'function') renderRemote(); else if (typeof render === 'function') render();
-  }, (e) => console.warn('Planner realtime listener failed', e));
+  }, (e) => diag.error('sync', 'Planner realtime listener failed', e));
 
   _notesUnsub = planner.collection('notes').onSnapshot((snap) => {
     if (_syncQueued || _applyingRemote) return;
@@ -531,7 +520,7 @@ function startRealtimeSync() {
     _suspendSave = false;
     _applyingRemote = false;
     if (typeof render === 'function') render();
-  }, (e) => console.warn('Notes realtime listener failed', e));
+  }, (e) => diag.error('sync', 'Notes realtime listener failed', e));
 }
 function stopRealtimeSync() {
   if (_plannerUnsub) { _plannerUnsub(); _plannerUnsub = null; }

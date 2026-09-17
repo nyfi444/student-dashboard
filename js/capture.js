@@ -165,5 +165,5 @@ async function handleSharedContent() {
     await Promise.all((await cache.keys()).map(k => cache.delete(k)));
     const text = [meta.title, meta.text, meta.url].filter(Boolean).join('\n');
     setTimeout(() => whenAccountChecked(() => openQuickCapture({ files, text })), 300);
-  } catch (e) { console.warn('Could not open shared content', e); }
+  } catch (e) { diag.warn('capture', 'Could not open shared content', e); }
 }

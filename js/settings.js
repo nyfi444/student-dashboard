@@ -2,7 +2,7 @@
 const FAQ_ITEMS = [
   { q: 'How does AI syllabus upload work?', a: 'Go to Courses → Upload syllabus and paste, upload a PDF, or upload a photo of your syllabus. Claude reads it and fills in the course name, meeting times, and assignments. You review and edit everything before it’s added. No API key needed: AI requests are proxied through a server that holds the key, so you never see or manage one.' },
   { q: 'Where is my data stored, and is it private?', a: 'Everything lives in your browser’s local storage by default. Nothing is sent anywhere unless you turn on cross-device sync or use an AI feature (which sends only the text/image you’re asking about, routed through our AI proxy, never directly to Anthropic from your browser).' },
-  { q: 'How do I sync across devices?', a: 'Sign in with Google under Settings → Account & Sync to turn it on. If this deployment has payments configured, signing in unlocks a $7.99/month subscription that activates sync, AI upload, and cross-device Study Groups for that account. Without it, everything still works great locally on one device. If payments aren’t configured on this deployment, signing in alone is enough. Either way, the app owner sets sync up once by adding a Firebase project to FB_CONFIG in js/firebase.js (see README.md).' },
+  { q: 'How do I sync across devices?', a: 'Sign in with Google or any email under Settings → Account & Sync to turn it on. Semester HQ Plus ($7.99/month) activates sync, AI upload, and cross-device Study Groups for that account. Without it, everything still works great locally on one device.' },
   { q: 'What happens when I start a new semester?', a: 'Settings → Semester reset archives your current semester (nothing is deleted, you can still view it from the semester dropdown) and sets up a fresh one, optionally carrying over your course names and instructors as a starting point.' },
   { q: 'How do I change the colors?', a: 'Settings → Appearance (or Customize on the dashboard) has themes, each with a matching dark mode, plus page colors. Turn on Dark mode and the page colors switch to deep tints of the same colors, with light text so everything stays readable.' },
   { q: 'How do study groups work?', a: 'Start a group from Study Groups and invite classmates with its 6-character code or an invite link. Inside a group you can schedule sessions (they show up on every member’s calendar, with RSVPs), paint your weekly availability so Semester HQ can suggest the best time to meet, split up tasks with owners and due dates, chat, and share notes, flashcards, files, and links. Everyone in a group needs their own Semester HQ Plus account. Organizing a whole class, club, or team? A group plan covers all of them, see the next question.' },
@@ -25,6 +25,7 @@ function confirmDeleteAccount() {
         toast(result.authDeleted ? 'Your account has been deleted.' : 'Data deleted. Email hello@semester-hq.com to finish removing your sign-in.', 'success', 5000);
       } catch (e) {
         toast('Could not delete your account: ' + e.message, 'error', 5000);
+        diag.error('account', 'Account deletion failed', e);
       }
     },
     'Delete account'
@@ -112,7 +113,7 @@ function pageSettings() {
           <button class="btn mt-16" onclick="signOutUser()">Sign out</button>
           ${checkoutEnabled() ? `<button class="btn btn-danger mt-8" onclick="confirmDeleteAccount()">Delete account</button>` : ''}
         ` : `
-          <p class="small muted mb-16">${fbConfigured() ? 'Already subscribed? Sign in with the same account to pick up right where you left off. New here? Signing in creates your account automatically. Everything then syncs across devices, backups, and study groups. Any email works, not just Google. Local storage still covers offline caching and resilience underneath.' : 'Not set up on this deployment yet. The app owner needs to create a Firebase project and fill in FB_CONFIG in js/firebase.js (see README.md). Until then, everything is saved locally in this browser only.'}</p>
+          <p class="small muted mb-16">${fbConfigured() ? 'Already subscribed? Sign in with the same account to pick up right where you left off. New here? Signing in creates your account automatically. Everything then syncs across devices, backups, and study groups. Any email works, not just Google. Local storage still covers offline caching and resilience underneath.' : 'Not set up on this deployment yet. The app owner needs to create a Firebase project and fill in FB_CONFIG in js/config.js (see README.md). Until then, everything is saved locally in this browser only.'}</p>
           <button class="btn btn-primary" onclick="signIn()" ${fbConfigured() ? '' : 'disabled'}>Continue with Google</button>
           <button class="btn mt-8" onclick="openEmailSignInModal()" ${fbConfigured() ? '' : 'disabled'}>Continue with email</button>
         `}
@@ -126,7 +127,7 @@ function pageSettings() {
           ? `<div class="flex-gap"><span class="pill" style="background:var(--surface-2);color:var(--text-dim)">${icon('lock', 12, 2)} Included with Semester HQ Plus</span></div><p class="small muted mt-8">These don’t run in the demo. ${isEmbedded() ? '' : _fbUser ? '' : '<a href="login.html">Log in</a> to use them.'}</p>`
           : aiEnabled()
           ? `<div class="flex-gap"><span class="pill" style="background:var(--accent-light);color:var(--accent)">${icon('check', 12, 2.4)} Ready to use</span></div><p class="small muted mt-8">No setup needed, just upload a syllabus from Courses.</p>`
-          : `<p class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px">Not set up on this deployment yet. The app owner needs to deploy the Cloudflare Worker proxy in <code>/worker</code> and fill in <code>AI_PROXY_URL</code> in <code>js/ai.js</code> (see <code>worker/README.md</code>).</p>`}
+          : `<p class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px">Not set up on this deployment yet. The app owner needs to deploy the Cloudflare Worker proxy in <code>/worker</code> and fill in <code>WORKER_URL</code> in <code>js/config.js</code> (see <code>worker/README.md</code>).</p>`}
       </div>
 
       <div class="card card-pad">
@@ -166,9 +167,15 @@ function pageSettings() {
               <p class="small dim">${esc(f.a)}</p>
             </details>
           `).join('')}
+          <p class="small muted mt-16">Something not working? <button class="btn btn-sm" onclick="copyDiagnostics()">Copy diagnostic info</button> and paste it into an email to <a href="mailto:hello@semester-hq.com">hello@semester-hq.com</a>. It includes what went wrong and your app version, never your planner.</p>
         </div>`, { max: 300, style: 'column-span:all' })}
     </div>
   `;
+}
+async function copyDiagnostics() {
+  const text = await diag.summary();
+  try { await navigator.clipboard.writeText(text); toast(`Copied. Your support code is ${diag.session}.`, 'success', 5000); }
+  catch { openModal(`<div class="modal-head"><h3>Diagnostic info</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div><div class="modal-body"><textarea class="input" rows="12" readonly onfocus="this.select()">${esc(text)}</textarea></div>`); }
 }
 function pageRecentlyDeleted() {
   const items = [...(state.trash || [])].sort((a, b) => b.deletedAt - a.deletedAt);

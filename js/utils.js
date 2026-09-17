@@ -87,7 +87,7 @@ function toggleNoDueDate(inputId, checked) {
 // Some PDFs (scanned, malformed, or stuck behind a slow/blocked CDN worker
 // fetch) make pdf.js hang indefinitely with no error, so this races it against
 // a timer so upload UIs can always surface something instead of hanging forever.
-function withTimeout(promise, ms, message) {
+function withTimeout(promise, ms, message = 'timed out') {
   return Promise.race([
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
@@ -136,12 +136,6 @@ function storageFileMetadata(name, type) {
   return { contentType: mimeForFile(clean, type), contentDisposition: `inline; filename="${ascii}"; filename*=UTF-8''${encoded}` };
 }
 
-/* Perceived-brightness check so text stays legible on any accent swatch */
-function readableTextOn(hex) {
-  const c = hex.replace('#', '');
-  const r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? '#000000' : '#ffffff';
-}
 function lighten(hex, amt) {
   const c = hex.replace('#', '');
   const r = clamp(parseInt(c.substr(0, 2), 16) + amt, 0, 255);

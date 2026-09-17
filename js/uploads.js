@@ -232,7 +232,7 @@ async function imageUploadDataUrl(file, maxSide = 1600, quality = 0.82) {
       await loadScriptOnce(HEIC2ANY_SRC);
       const jpeg = await withTimeout(heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 }), 60000, 'Timed out converting that photo');
       dataUrl = await downscaleImage(Array.isArray(jpeg) ? jpeg[0] : jpeg, maxSide, quality);
-    } catch (e) { console.warn('HEIC conversion failed', e); }
+    } catch (e) { diag.warn('uploads', 'HEIC conversion failed', e); }
   }
   if (!dataUrl) throw new Error(`Couldn’t open ${file.name || 'that photo'}. Save it as a JPG or PNG, then upload that.`);
   return dataUrl;
@@ -263,6 +263,7 @@ async function pdfPageImagesForUpload(file, maxPages) {
   } catch (e) {
     if (e?.name === 'PasswordException') throw new Error(passwordMessage(file.name));
     if (/needed file/.test(e?.message || '')) throw e;
+    diag.warn('uploads', 'PDF pages couldn’t be read', e, { bytes: file.size });
     throw new Error(`Couldn’t read ${file.name}. It may be damaged; try opening it and saving a new copy.`);
   }
 }

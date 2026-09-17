@@ -6,8 +6,8 @@
    firestore.rules. This file just talks to that Worker and reflects
    whatever it decides; it never sets license state itself.
 ──────────────────────────────────────────────────────────────── */
-// Same Worker as AI_PROXY_URL (js/ai.js), no separate URL to configure.
-const CHECKOUT_PROXY_URL = (typeof AI_PROXY_URL !== 'undefined' ? AI_PROXY_URL : '').replace(/\/v1\/messages$/, '');
+// Same Worker as everything else (WORKER_URL in js/config.js).
+const CHECKOUT_PROXY_URL = WORKER_URL;
 function checkoutEnabled() { return !!CHECKOUT_PROXY_URL; }
 
 function checkoutReturnPending() { return new URLSearchParams(window.location.search).get('checkout') === 'success'; }
@@ -32,6 +32,7 @@ async function redirectToCheckout() {
     window.location.href = data.url;
   } catch (e) {
     toast('Could not start checkout: ' + e.message, 'error', 5000);
+    diag.error('checkout', 'Could not start checkout', e);
   }
 }
 
@@ -67,13 +68,6 @@ async function redirectToPortal() {
 // A hung Firestore read or fetch here would otherwise stall pollForLicense
 // forever, leaving the "Finishing up your purchase…" screen stuck with no
 // way out, so every network call in this function is capped.
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), ms)),
-  ]);
-}
-
 // Asks the Worker: does `licenses/{uid}` already say paid, or is there an
 // unclaimed purchase under this account's email (bought before signing up)?
 // The Worker is the only thing that can WRITE a license (see firestore.rules).
@@ -99,7 +93,7 @@ async function resolveLicenseStatus() {
     // or a seat in a group plan changes what it can offer them.
     if (doc.exists) window._licenseDoc = doc.data();
     if (doc.exists && doc.data().paid) return true;
-  } catch (e) { console.warn('License check failed', e); }
+  } catch (e) { diag.warn('license', 'License check failed', e); }
   try {
     const idToken = await withTimeout(_fbUser.getIdToken(), 8000);
     const res = await withTimeout(fetch(`${CHECKOUT_PROXY_URL}/claim-license`, {
@@ -109,7 +103,7 @@ async function resolveLicenseStatus() {
     }), 8000);
     const data = await res.json();
     return !!data.paid;
-  } catch (e) { console.warn('License claim failed', e); return reachedFirestore && navigator.onLine ? false : null; }
+  } catch (e) { diag.warn('license', 'License claim failed', e); return reachedFirestore && navigator.onLine ? false : null; }
 }
 
 // Stripe's webhook can lag a few seconds behind the redirect back to the app,

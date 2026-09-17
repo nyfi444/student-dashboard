@@ -40,7 +40,8 @@ async function ensurePushSubscription() {
     uploadPushSchedule();
     return true;
   } catch (e) {
-    console.warn('Push subscription failed', e);
+    if (e?.name === 'NotAllowedError') console.warn('Push permission not granted', e);
+    else diag.warn('push', 'Push subscription failed', e);
     return false;
   }
 }
@@ -60,7 +61,7 @@ async function removePushSubscription() {
       try { existing = JSON.parse(snap.data()?.subsJson || '[]'); } catch {}
       await ref.set({ subsJson: JSON.stringify(existing.filter(s => s.endpoint !== endpoint)), updatedAt: Date.now() }, { merge: true });
     }
-  } catch (e) { console.warn('Push unsubscribe failed', e); }
+  } catch (e) { diag.warn('push', 'Push unsubscribe failed', e); }
 }
 
 // The same reminders reminders.js shows in the app, laid out ahead of time.
@@ -115,7 +116,7 @@ function uploadPushSchedule() {
     try {
       await _fbDb.collection('push').doc(_fbUser.uid).set({ itemsJson: json, nextAt: items.length ? items[0].at : Date.now() + 30 * 86400000, updatedAt: Date.now() }, { merge: true });
       _lastPushHash = json;
-    } catch (e) { console.warn('Push schedule upload failed', e); }
+    } catch (e) { diag.warn('push', 'Push schedule upload failed', e); }
   }, 8000);
 }
 async function sendPushTest() {

@@ -709,7 +709,7 @@ async function exportNoteToPdf(id) {
     }).from(container).outputPdf('blob');
     await shareOrDownloadPdf(blob, filename, note.name || 'Untitled note');
   } catch (e) {
-    console.warn('PDF generation failed, falling back to print dialog', e);
+    diag.warn('notebook', 'PDF export failed, fell back to print', e);
     legacyPrintNote(note, crumbs, courseName);
   } finally {
     container.remove();
@@ -728,7 +728,7 @@ async function shareOrDownloadPdf(blob, filename, title) {
     }
   } catch (e) {
     if (e?.name === 'AbortError') return; // person dismissed the share sheet, not a failure
-    console.warn('Share failed, falling back to download', e);
+    diag.warn('notebook', 'Share failed, fell back to download', e);
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

@@ -127,7 +127,7 @@ async function orgWrite(code, ops) {
     await _fbDb.collection('orgs').doc(code).update(payload);
     return true;
   } catch (e) {
-    console.warn('Org write failed', code, e);
+    diag.error('clubs', 'Club write failed', e);
     toast(e.code === 'permission-denied' ? 'Only officers can change that.' : 'Couldn’t save that. Check your connection and try again.', 'error', 4500);
     return false;
   }
@@ -149,7 +149,7 @@ function reconcileOrgSubscriptions() {
   Object.keys(_orgDocUnsubs).forEach(code => { if (!want.has(code)) { _orgDocUnsubs[code](); delete _orgDocUnsubs[code]; } });
   want.forEach(code => {
     if (_orgDocUnsubs[code]) return;
-    _orgDocUnsubs[code] = _fbDb.collection('orgs').doc(code).onSnapshot(doc => onOrgSnapshot(code, doc), err => console.warn('Org listener failed', code, err));
+    _orgDocUnsubs[code] = _fbDb.collection('orgs').doc(code).onSnapshot(doc => onOrgSnapshot(code, doc), err => diag.error('clubs', 'Club listener failed', err));
   });
 }
 function onOrgSnapshot(code, doc) {
@@ -851,7 +851,7 @@ async function saveOrgFile() {
     if (await orgWrite(o.code, { [`files.${id}`]: item })) { closeModal(); toast(`Shared “${item.title}”`); }
     else setBtnLoading(btn, false, 'Share');
   } catch (e) {
-    console.warn('Club file upload failed', e?.code, e);
+    diag.error('clubs', 'Club file upload failed', e);
     setBtnLoading(btn, false, 'Share');
     toast('Couldn’t upload that file. Check your connection and try again.', 'error', 5000);
   }
@@ -888,7 +888,7 @@ function ensureOrgChatListener(code) {
     _orgMessages[code] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
     renderRemote();
   }, err => {
-    console.warn('Club chat listener failed', code, err);
+    diag.error('clubs', 'Club chat listener failed', err);
     _orgChatFailed[code] = true; // not retried until the tab is opened again, so a failure can't loop
     _orgChatSub = { code: null, unsub: null };
     renderRemote();
@@ -965,11 +965,11 @@ async function sendOrgMessage(code) {
   try {
     const ref = _fbDb.collection('orgs').doc(code);
     await ref.collection('messages').doc(msg.id).set(msg);
-    ref.update({ lastMessage, updatedAt: Date.now() }).catch(e => console.warn('Club lastMessage update failed', e));
+    ref.update({ lastMessage, updatedAt: Date.now() }).catch(e => diag.warn('clubs', 'Club lastMessage update failed', e));
     markOrgChatSeen(code, msg.at);
     playUiSound('send');
   } catch (e) {
-    console.warn('Club message failed', e?.code, e);
+    diag.error('clubs', 'Club message failed', e);
     if (input.isConnected && !input.value) input.value = text;
     toast('Message didn’t send. Check your connection and try again.', 'error');
   }
@@ -1031,7 +1031,7 @@ async function submitCreateOrg() {
     openOrg(code);
     setTimeout(() => openOrgInviteModal(code, { justCreated: true }), 150);
   } catch (e) {
-    console.warn('Create org failed', e);
+    diag.error('clubs', 'Create club failed', e);
     setBtnLoading(btn, false, 'Create');
     toast('Couldn’t create it. Check your connection and try again.', 'error', 4500);
   }
@@ -1216,11 +1216,11 @@ async function deleteOrgEverywhere(code) {
     try {
       const msgs = await _fbDb.collection('orgs').doc(code).collection('messages').limit(450).get();
       if (!msgs.empty) { const batch = _fbDb.batch(); msgs.docs.forEach(d => batch.delete(d.ref)); await batch.commit(); }
-    } catch (e) { console.warn('Could not clear club chat', e); }
+    } catch (e) { diag.warn('clubs', 'Could not clear club chat', e); }
     if (o) orgFileList(o).filter(f => f.kind === 'file' && String(f.url || '').includes('firebasestorage')).forEach(f => fbStorage().then(s => s.refFromURL(f.url).delete()).catch(() => {}));
     await _fbDb.collection('orgs').doc(code).delete();
     dropOrgEntry(code, `Deleted “${o?.name || 'the club'}”.`);
-  } catch (e) { console.warn(e); reconcileOrgSubscriptions(); toast('Couldn’t delete it. Check your connection.', 'error'); }
+  } catch (e) { diag.error('clubs', 'Delete club failed', e); reconcileOrgSubscriptions(); toast('Couldn’t delete it. Check your connection.', 'error'); }
 }
 
 /* ── ?org=CODE invite links ────────────────────────────────────── */

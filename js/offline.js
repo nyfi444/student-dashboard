@@ -14,7 +14,7 @@ function registerServiceWorker() {
     const check = () => reg.update().catch(() => {});
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
     setInterval(check, 60 * 60 * 1000);
-  }).catch((e) => console.warn('Service worker registration failed', e));
+  }).catch((e) => diag.warn('offline', 'Service worker registration failed', e));
 
   let reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {

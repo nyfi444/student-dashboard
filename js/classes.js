@@ -133,7 +133,7 @@ async function createSharedClass(courseId) {
     touch();
     openClassInviteModal(c.id, { justCreated: true });
   } catch (e) {
-    console.warn('Share class failed', e);
+    diag.error('classes', 'Share class failed', e);
     setBtnLoading(btn, false, 'Create class link');
     toast('Couldn’t share the class. Check your connection and try again.', 'error');
   }
@@ -150,7 +150,7 @@ async function publishClassUpdates(courseId) {
     touch();
     playUiSound('send');
     toast('Classmates will get the update next time they open Semester HQ');
-  } catch (e) { toast(e.code === 'permission-denied' ? 'Only the person who shared this class can update it.' : 'Couldn’t share the update. Try again.', 'error'); }
+  } catch (e) { diag.error('classes', 'Share class update failed', e); toast(e.code === 'permission-denied' ? 'Only the person who shared this class can update it.' : 'Couldn’t share the update. Try again.', 'error'); }
 }
 function openClassInviteModal(courseId, { justCreated = false } = {}) {
   const c = getCourse(courseId);
@@ -193,7 +193,7 @@ function openClassOptions(courseId) {
 }
 async function stopSharingClass(courseId) {
   const c = getCourse(courseId);
-  try { await classesRef().doc(c.sharedClass.code).delete(); } catch (e) { toast('Couldn’t stop sharing. Try again.', 'error'); return; }
+  try { await classesRef().doc(c.sharedClass.code).delete(); } catch (e) { diag.error('classes', 'Stop sharing failed', e); toast('Couldn’t stop sharing. Try again.', 'error'); return; }
   delete c.sharedClass;
   state.assignments.forEach(a => { if (a.courseId === courseId) delete a.shared; });
   closeModal(); touch(); toast('Stopped sharing this class');
@@ -242,7 +242,7 @@ async function lookupClassCode() {
     setBtnLoading(btn, false, 'Find class');
     if (!snap.exists) { $('#jc-result').innerHTML = `<div class="sg-callout small"><div>No class uses the code <strong>${esc(code)}</strong>. Double-check it with whoever shared it.</div></div>`; return; }
     showClassPreview(code, snap.data());
-  } catch (e) { setBtnLoading(btn, false, 'Find class'); toast('Couldn’t look that up. Check your connection.', 'error'); }
+  } catch (e) { diag.warn('classes', 'Class code lookup failed', e); setBtnLoading(btn, false, 'Find class'); toast('Couldn’t look that up. Check your connection.', 'error'); }
 }
 async function findClasses() {
   const school = $('#fc-school').value.trim(), course = $('#fc-course').value.trim();
@@ -261,7 +261,7 @@ async function findClasses() {
         ${icon('chevron-right', 14, 2)}
       </button>`).join('')
       : `<div class="sg-callout small"><div>No one has shared <strong>${esc(course)}</strong> at ${esc(school)} yet. Add the class and share it, and your classmates can join you.</div></div>`;
-  } catch (e) { setBtnLoading(btn, false, 'Search'); console.warn(e); toast('Search didn’t work. Try again in a moment.', 'error'); }
+  } catch (e) { setBtnLoading(btn, false, 'Search'); diag.warn('classes', 'Class search failed', e); toast('Search didn’t work. Try again in a moment.', 'error'); }
 }
 async function openJoinClassFromResult(code) {
   try { const snap = await classesRef().doc(code).get(); if (snap.exists) showClassPreview(code, snap.data()); } catch { toast('Couldn’t open that class', 'error'); }
@@ -320,6 +320,7 @@ async function joinSharedClass(code) {
     toast(`${course.code || course.name} added with ${sharedItemsFromDoc(d).length} deadlines`);
   } catch (e) {
     setBtnLoading(btn, false, 'Add to my semester');
+    if (!e.message?.startsWith('That class')) diag.error('classes', 'Join class failed', e);
     toast(e.message?.startsWith('That class') ? e.message : 'Couldn’t join. Check your connection and try again.', 'error');
   }
 }
@@ -344,7 +345,7 @@ async function checkClassUpdates(courseId, manual = false) {
     touch();
     if (result.added || result.changed || result.removed) toast(`${c.code || c.name} updated: ${[result.added ? `${result.added} new` : '', result.changed ? `${result.changed} changed` : '', result.removed ? `${result.removed} removed` : ''].filter(Boolean).join(', ')}`, 'info', 5000);
     else if (manual) toast('Already up to date');
-  } catch (e) { if (manual) toast('Couldn’t check for updates', 'error'); }
+  } catch (e) { diag.warn('classes', 'Shared class update check failed', e); if (manual) toast('Couldn’t check for updates', 'error'); }
 }
 function mergeSharedClass(course, d) {
   const sc = course.sharedClass;

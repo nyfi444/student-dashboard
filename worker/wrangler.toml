@@ -2,6 +2,12 @@ name = "student-planner-ai-proxy"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
 
+# Keeps console output (every logServerIssue call, with stacks) searchable in
+# the Cloudflare dashboard under Workers → student-planner-ai-proxy → Logs.
+# The error log in Firestore says something broke; this says exactly why.
+[observability]
+enabled = true
+
 # Restrict which origin(s) may call this Worker: a comma-separated list.
 # Both the app (app.semester-hq.com) and the marketing site (semester-hq.com)
 # call this Worker (AI + checkout). They're on genuinely different origins
@@ -54,7 +60,7 @@ id = "c159c4afb7cc45619d6db5fd2fcde97d"
 #   RESEND_API_KEY:        optional. From https://resend.com/api-keys (free tier is
 #                            plenty for a contact form). Without this set, contact-form
 #                            submissions still save to Firestore, just without an email.
-#   ADMIN_TOKEN:           bearer token gating /admin/errors and /admin/business-summary
+#   ADMIN_TOKEN:           bearer token gating /admin/errors, /admin/business-summary and /admin/biz-events
 #                            (the private business dashboard's data feed). Make up any
 #                            long random string; paste the same value into the dashboard's
 #                            Settings → Connectors panel.
@@ -69,6 +75,7 @@ id = "c159c4afb7cc45619d6db5fd2fcde97d"
 
 # Every 5 minutes: send push reminders that are due (sendDueReminders).
 # Once a day at 13:00 UTC (9am ET): write what the business did overnight
-# into the Business OS's inbox (buildBusinessEvents).
+# into the Business OS's inbox (buildBusinessEvents), and delete error reports
+# older than 30 days (pruneOldIssues).
 [triggers]
 crons = ["*/5 * * * *", "0 13 * * *"]

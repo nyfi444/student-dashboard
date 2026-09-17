@@ -1,7 +1,7 @@
 import { sendWebPush, isPushEndpoint } from './push.js';
 
 /* ── Student Planner backend Worker ───────────────────────────────
-   Four jobs, all server-side so secrets never reach the browser:
+   Every job here runs server-side so secrets never reach the browser:
    1. AI proxy (/v1/messages): holds ANTHROPIC_API_KEY, forwards to Claude.
    2. Checkout (/create-checkout-session): starts a $7.99/month Stripe
       subscription for sign-in and sync.
@@ -22,11 +22,14 @@ import { sendWebPush, isPushEndpoint } from './push.js';
       owner a copy via Resend if RESEND_API_KEY is set (optional, see
       worker/README.md), since the Firestore write alone never showed up
       anywhere a person would actually notice it.
-   5. Error logging (/log-error): the ONLY writer of Firestore's `errors`
-      collection. Client-side crash reporter for both the app and the
-      marketing site; rate-limited since it's reachable by anyone.
+   5. Diagnostics (/log-error): the ONLY writer of Firestore's `errors`
+      collection. Takes crash reports and feature issues from the app
+      (js/diagnostics.js) and the marketing site; rate-limited since it's
+      reachable by anyone. The Worker records its own failures there too
+      (source "worker", see logServerIssue), and Workers Logs keeps the
+      full console output (observability in wrangler.toml).
    6. Error viewer (/admin/errors): read-only, token-gated (ADMIN_TOKEN
-      secret) endpoint for admin/errors.html to list recent crash reports.
+      secret) endpoint for admin/errors.html to list recent reports.
       Not origin-restricted like the rest, since the viewer page isn't
       served from ALLOWED_ORIGIN; the bearer token is the security boundary.
    7. Event tracking (/track-event): the ONLY writer of Firestore's
@@ -58,92 +61,110 @@ const GROUP_MAX_SEATS = 500;
 const GROUP_KINDS = ['club', 'team', 'chapter', 'class', 'department', 'other'];
 
 export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const origin = request.headers.get('Origin') || '';
-
-    // /admin/errors needs GET + an Authorization header, unlike every other
-    // route here (POST + content-type only), handle its preflight separately
-    // so the browser doesn't reject the real request for a disallowed method/header.
-    if (request.method === 'OPTIONS' && (url.pathname === '/admin/errors' || url.pathname === '/admin/business-summary' || url.pathname === '/admin/biz-events')) {
-      return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
+  // Every request passes through here. A route that throws still answers with
+  // JSON and CORS headers (so the app can show its own message), and any 5xx
+  // lands in the error log with the route and what went wrong.
+  async fetch(request, env, ctx) {
+    const { pathname } = new URL(request.url);
+    try {
+      const res = await routeRequest(request, env);
+      if (res.status >= 500 && pathname !== '/log-error') {
+        ctx.waitUntil(res.clone().text().then(detail => logServerIssue(env, featureForPath(pathname), `${request.method} ${pathname} returned ${res.status}`, null, { detail: detail.slice(0, 300) })));
+      }
+      return res;
+    } catch (e) {
+      ctx.waitUntil(logServerIssue(env, featureForPath(pathname), `${request.method} ${pathname} threw`, e));
+      return jsonError('Something went wrong. Try again in a moment.', 500, env, request.headers.get('Origin') || '');
     }
-    if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env, origin) });
-
-    // Stripe calls this server-to-server, no Origin header, verified by signature instead of CORS.
-    if (url.pathname === '/stripe-webhook' && request.method === 'POST') return handleStripeWebhook(request, env);
-
-    // Token-gated, not origin-restricted (see job 6 above).
-    if (url.pathname === '/admin/errors' && request.method === 'GET') return handleAdminErrors(request, env);
-    if (url.pathname === '/admin/business-summary' && request.method === 'GET') return handleAdminBusinessSummary(request, env);
-    if (url.pathname === '/admin/biz-events' && (request.method === 'GET' || request.method === 'POST')) return handleAdminBizEvents(request, env);
-
-    if (request.method !== 'POST') return jsonError('Method not allowed', 405, env, origin);
-
-    // Defense in depth beyond CORS (CORS only stops browser JS from reading the response;
-    // it doesn't stop a direct request), so also reject disallowed origins server-side.
-    if (!isAllowedOrigin(env, origin)) return jsonError('Origin not allowed', 403, env, origin);
-
-    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-
-    if (url.pathname === '/v1/messages') {
-      if (!(await checkRateLimit(env, ip, 'ai', 20))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handleAiProxy(request, env, origin);
-    }
-    if (url.pathname === '/create-checkout-session') {
-      if (!(await checkRateLimit(env, ip, 'checkout', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handleCreateCheckoutSession(request, env, origin);
-    }
-    if (url.pathname === '/create-portal-session') {
-      if (!(await checkRateLimit(env, ip, 'portal', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handleCreatePortalSession(request, env, origin);
-    }
-    if (url.pathname === '/claim-license') {
-      if (!(await checkRateLimit(env, ip, 'claim', 15))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handleClaimLicense(request, env, origin);
-    }
-    if (url.pathname === '/check-email') {
-      if (!(await checkRateLimit(env, ip, 'check-email', 20))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handleCheckEmail(request, env, origin);
-    }
-    if (url.pathname === '/delete-account') {
-      if (!(await checkRateLimit(env, ip, 'delete-account', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handleDeleteAccount(request, env, origin);
-    }
-    if (url.pathname === '/contact-message') {
-      if (!(await checkRateLimit(env, ip, 'contact', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handleContactMessage(request, env, origin);
-    }
-    if (url.pathname === '/log-error') {
-      if (!(await checkRateLimit(env, ip, 'log-error', 30))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handleLogError(request, env, origin);
-    }
-    if (url.pathname === '/track-event') {
-      if (!(await checkRateLimit(env, ip, 'track-event', 60))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handleTrackEvent(request, env, origin);
-    }
-    if (url.pathname === '/push-test') {
-      if (!(await checkRateLimit(env, ip, 'push-test', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handlePushTest(request, env, origin);
-    }
-    if (url.pathname.startsWith('/group/')) {
-      if (!(await checkRateLimit(env, ip, 'group', 40))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-      return handleGroupRoute(url.pathname.slice('/group/'.length), request, env, origin);
-    }
-    return jsonError('Not found', 404, env, origin);
   },
 
-  // Cron trigger (wrangler.toml [triggers]): sends reminders that are due.
+  // Cron triggers (wrangler.toml [triggers]).
   async scheduled(event, env, ctx) {
-    // The daily run writes the Business OS's events; every other tick is
-    // the five-minute reminder sweep.
+    // The daily run writes the Business OS's events and clears out old
+    // reports; every other tick is the five-minute reminder sweep.
     if (event.cron === '0 13 * * *') {
-      ctx.waitUntil(buildBusinessEvents(env).catch(e => console.error('buildBusinessEvents failed', e)));
+      ctx.waitUntil(buildBusinessEvents(env).catch(e => logServerIssue(env, 'business-events', 'Daily business events failed', e)));
+      ctx.waitUntil(pruneOldIssues(env).catch(e => logServerIssue(env, 'diagnostics', 'Pruning old reports failed', e)));
       return;
     }
-    ctx.waitUntil(sendDueReminders(env).catch(e => console.error('sendDueReminders failed', e)));
+    ctx.waitUntil(sendDueReminders(env).catch(e => logServerIssue(env, 'push', 'Reminder sweep failed', e)));
   },
 };
+
+async function routeRequest(request, env) {
+  const url = new URL(request.url);
+  const origin = request.headers.get('Origin') || '';
+
+  // /admin/errors needs GET + an Authorization header, unlike every other
+  // route here (POST + content-type only), handle its preflight separately
+  // so the browser doesn't reject the real request for a disallowed method/header.
+  if (request.method === 'OPTIONS' && (url.pathname === '/admin/errors' || url.pathname === '/admin/business-summary' || url.pathname === '/admin/biz-events')) {
+    return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
+  }
+  if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env, origin) });
+
+  // Stripe calls this server-to-server, no Origin header, verified by signature instead of CORS.
+  if (url.pathname === '/stripe-webhook' && request.method === 'POST') return handleStripeWebhook(request, env);
+
+  // Token-gated, not origin-restricted (see job 6 above).
+  if (url.pathname === '/admin/errors' && request.method === 'GET') return handleAdminErrors(request, env);
+  if (url.pathname === '/admin/business-summary' && request.method === 'GET') return handleAdminBusinessSummary(request, env);
+  if (url.pathname === '/admin/biz-events' && (request.method === 'GET' || request.method === 'POST')) return handleAdminBizEvents(request, env);
+
+  if (request.method !== 'POST') return jsonError('Method not allowed', 405, env, origin);
+
+  // Defense in depth beyond CORS (CORS only stops browser JS from reading the response;
+  // it doesn't stop a direct request), so also reject disallowed origins server-side.
+  if (!isAllowedOrigin(env, origin)) return jsonError('Origin not allowed', 403, env, origin);
+
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+
+  if (url.pathname === '/v1/messages') {
+    if (!(await checkRateLimit(env, ip, 'ai', 20))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleAiProxy(request, env, origin);
+  }
+  if (url.pathname === '/create-checkout-session') {
+    if (!(await checkRateLimit(env, ip, 'checkout', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleCreateCheckoutSession(request, env, origin);
+  }
+  if (url.pathname === '/create-portal-session') {
+    if (!(await checkRateLimit(env, ip, 'portal', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleCreatePortalSession(request, env, origin);
+  }
+  if (url.pathname === '/claim-license') {
+    if (!(await checkRateLimit(env, ip, 'claim', 15))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleClaimLicense(request, env, origin);
+  }
+  if (url.pathname === '/check-email') {
+    if (!(await checkRateLimit(env, ip, 'check-email', 20))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleCheckEmail(request, env, origin);
+  }
+  if (url.pathname === '/delete-account') {
+    if (!(await checkRateLimit(env, ip, 'delete-account', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleDeleteAccount(request, env, origin);
+  }
+  if (url.pathname === '/contact-message') {
+    if (!(await checkRateLimit(env, ip, 'contact', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleContactMessage(request, env, origin);
+  }
+  if (url.pathname === '/log-error') {
+    if (!(await checkRateLimit(env, ip, 'log-error', 30))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleLogError(request, env, origin);
+  }
+  if (url.pathname === '/track-event') {
+    if (!(await checkRateLimit(env, ip, 'track-event', 60))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleTrackEvent(request, env, origin);
+  }
+  if (url.pathname === '/push-test') {
+    if (!(await checkRateLimit(env, ip, 'push-test', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handlePushTest(request, env, origin);
+  }
+  if (url.pathname.startsWith('/group/')) {
+    if (!(await checkRateLimit(env, ip, 'group', 40))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleGroupRoute(url.pathname.slice('/group/'.length), request, env, origin);
+  }
+  return jsonError('Not found', 404, env, origin);
+}
 
 /* ── Push reminders ───────────────────────────────────────────────
    Each student's app uploads a push/{uid} doc: their browser push
@@ -171,7 +192,7 @@ async function sendDueReminders(env) {
   });
   for (const doc of docs) {
     try { await sendRemindersForUser(env, doc, now); }
-    catch (e) { console.error('push for user failed', doc.id, e); }
+    catch (e) { await logServerIssue(env, 'push', 'Push for a user failed', e); }
   }
 }
 async function sendRemindersForUser(env, doc, now) {
@@ -269,6 +290,11 @@ async function handleAiProxy(request, env, origin) {
   });
 
   const text = await upstream.text();
+  if (!upstream.ok && upstream.status < 500) {
+    let upstreamError = {};
+    try { upstreamError = JSON.parse(text).error || {}; } catch {}
+    await logServerIssue(env, 'ai', `Anthropic returned ${upstream.status}`, null, { model: body.model, type: upstreamError.type || '', detail: String(upstreamError.message || '').slice(0, 200) });
+  }
   return new Response(text, { status: upstream.status, headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
 }
 
@@ -352,7 +378,7 @@ async function handleCreatePortalSession(request, env, origin) {
     try {
       const byEmail = await readFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(payload.email.toLowerCase().trim()));
       if (byEmail?.paid) stripeCustomerId = byEmail.stripeCustomerId;
-    } catch (e) { console.error('licensesByEmail fallback lookup failed', e); }
+    } catch (e) { await logServerIssue(env, 'license', 'licensesByEmail fallback lookup failed', e); }
   }
   // Last try: a Stripe customer under this email that was never linked to the
   // account (paid with the same email some other way). Linked now, so the
@@ -361,7 +387,7 @@ async function handleCreatePortalSession(request, env, origin) {
     try {
       stripeCustomerId = await findStripeCustomerByEmail(env, payload.email);
       if (stripeCustomerId) await patchFirestoreDoc(env, `licenses/${payload.sub}`, { stripeCustomerId });
-    } catch (e) { console.error('Stripe customer lookup failed', e); }
+    } catch (e) { await logServerIssue(env, 'checkout', 'Stripe customer lookup failed', e); }
   }
   // No billing to manage. Said plainly rather than as an error: access that
   // came from a group plan, or that was set up directly, has nothing to
@@ -413,7 +439,7 @@ async function ensurePortalConfiguration(env) {
   params.set('features[subscription_cancel][mode]', 'at_period_end');
   params.set('metadata[created_by]', 'semester-hq-worker');
   const created = await stripeRequest(env, 'POST', '/v1/billing_portal/configurations', params);
-  if (!created.ok) console.error('Could not create a portal configuration', created.data.error?.message);
+  if (!created.ok) await logServerIssue(env, 'checkout', 'Could not create a portal configuration', null, { stripe: created.data.error?.message || '' });
   return created.ok ? created.data.id : '';
 }
 async function findStripeCustomerByEmail(env, email) {
@@ -450,7 +476,7 @@ async function handleStripeWebhook(request, env) {
       try { await activateGroupPlan(env, session); }
       catch (e) {
         console.error('Group plan activation failed', e);
-        return new Response('Group plan activation failed', { status: 500 });
+        return new Response(`Group plan activation failed: ${e.message}`, { status: 500 });
       }
       return new Response('ok', { status: 200 });
     }
@@ -469,7 +495,7 @@ async function handleStripeWebhook(request, env) {
         if (email) await writeFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email), { ...licenseFields, email });
       } catch (e) {
         console.error('License write failed', e);
-        return new Response('License write failed', { status: 500 }); // non-2xx makes Stripe retry
+        return new Response(`License write failed: ${e.message}`, { status: 500 }); // non-2xx makes Stripe retry
       }
     }
   }
@@ -484,7 +510,7 @@ async function handleStripeWebhook(request, env) {
       try { await syncGroupPlan(env, sub, event.type === 'customer.subscription.deleted'); }
       catch (e) {
         console.error('Group plan update failed', e);
-        return new Response('Group plan update failed', { status: 500 });
+        return new Response(`Group plan update failed: ${e.message}`, { status: 500 });
       }
       return new Response('ok', { status: 200 });
     }
@@ -502,7 +528,7 @@ async function handleStripeWebhook(request, env) {
       if (email) await writeFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email), { ...licenseFields, email });
     } catch (e) {
       console.error('License update failed', e);
-      return new Response('License update failed', { status: 500 }); // non-2xx makes Stripe retry
+      return new Response(`License update failed: ${e.message}`, { status: 500 }); // non-2xx makes Stripe retry
     }
   }
 
@@ -628,7 +654,7 @@ async function handleDeleteAccount(request, env, origin) {
       try {
         const byEmail = await readFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email));
         if (byEmail?.paid) stripeSubscriptionId = byEmail.stripeSubscriptionId;
-      } catch (e) { console.error('licensesByEmail fallback lookup failed', e); }
+      } catch (e) { await logServerIssue(env, 'license', 'licensesByEmail fallback lookup failed', e); }
     }
 
     if (stripeSubscriptionId && env.STRIPE_SECRET_KEY) {
@@ -655,7 +681,7 @@ async function handleDeleteAccount(request, env, origin) {
 
     let authDeleted = true;
     try { await deleteFirebaseAuthUser(env, uid); }
-    catch (e) { authDeleted = false; console.error('Auth user delete failed', e); }
+    catch (e) { authDeleted = false; await logServerIssue(env, 'account', 'Auth user delete failed', e); }
 
     return jsonOk({ ok: true, authDeleted }, env, origin);
   } catch (e) {
@@ -695,7 +721,7 @@ async function handleContactMessage(request, env, origin) {
     // message, so a flaky email provider must never fail the submission itself.
     // Without this, the ONLY way to see a new message was to go check the
     // Firestore console by hand.
-    await notifyNewContactMessage(env, { name, email, category, message }).catch(e => console.error('contact notify email failed', e));
+    await notifyNewContactMessage(env, { name, email, category, message }).catch(e => logServerIssue(env, 'feedback', 'Contact notification email failed', e));
     return jsonOk({ ok: true }, env, origin);
   } catch (e) {
     return jsonError('Could not send your message: ' + e.message, 500, env, origin);
@@ -719,34 +745,93 @@ async function notifyNewContactMessage(env, { name, email, category, message }) 
   if (!res.ok) throw new Error(`Resend API ${res.status}: ${await res.text()}`);
 }
 
-/* ── 5. Error logging ─────────────────────────────────────────── */
+/* ── 5. Diagnostics ───────────────────────────────────────────── */
 // Writes to Firestore's `errors` collection, same server-only pattern as
-// `feedback` (see firestore.rules). Reachable by anyone, so payload sizes
-// are capped and fields coerced to strings rather than trusted as-is.
+// `feedback` (see firestore.rules). Reachable by anyone, so every field is
+// capped and coerced rather than trusted as-is, and emails or URL parameter
+// values are stripped again here in case an older client sent them.
 const ERROR_SOURCES = ['app', 'marketing'];
+const ERROR_LEVELS = ['error', 'warn'];
 async function handleLogError(request, env, origin) {
   if (!env.FIREBASE_PROJECT_ID) return jsonError('Server misconfigured: FIREBASE_PROJECT_ID not set.', 500, env, origin);
   let body;
   try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
 
-  const source = ERROR_SOURCES.includes(body.source) ? body.source : 'app';
-  const message = String(body.message || '').trim().slice(0, 2000);
-  const stack = String(body.stack || '').trim().slice(0, 4000);
-  const url = String(body.url || '').trim().slice(0, 500);
-  const userAgent = String(body.userAgent || '').trim().slice(0, 300);
-
+  const clip = (v, max) => scrubPII(String(v ?? '').trim()).slice(0, max);
+  const message = clip(body.message, 2000);
   if (!message) return jsonError('Missing error message', 400, env, origin);
+  const source = ERROR_SOURCES.includes(body.source) ? body.source : 'app';
+  const feature = String(body.feature || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40) || 'unknown';
+  let context = '';
+  try { context = body.context && typeof body.context === 'object' ? clip(JSON.stringify(body.context), 1500) : ''; } catch {}
 
   try {
-    const id = crypto.randomUUID();
-    await writeFirestoreDoc(env, 'errors', id, { source, message, stack, url, userAgent, createdAt: new Date() });
-    return jsonOk({ ok: true }, env, origin);
+    await writeFirestoreDoc(env, 'errors', crypto.randomUUID(), {
+      source, feature, message,
+      level: ERROR_LEVELS.includes(body.level) ? body.level : 'error',
+      stack: clip(body.stack, 4000),
+      url: clip(body.page || body.url, 500), // older clients send `url`
+      release: clip(body.release, 60),
+      session: clip(body.session, 20),
+      userAgent: clip(body.userAgent, 300),
+      breadcrumbs: (Array.isArray(body.breadcrumbs) ? body.breadcrumbs : []).slice(-25).map(c => clip(c, 160)),
+      context,
+      fingerprint: await issueFingerprint(source, feature, message),
+      createdAt: new Date(),
+    });
   } catch (e) {
-    // Don't fail loudly back to the client over a logging endpoint, just
-    // report success so a broken error-reporter doesn't itself spam retries.
+    // Never fail loudly over a logging endpoint, or a broken reporter spams retries.
     console.error('Error log write failed', e);
-    return jsonOk({ ok: true }, env, origin);
   }
+  return jsonOk({ ok: true }, env, origin);
+}
+
+// The Worker's own failures, in the same collection as source "worker", so
+// admin/errors.html shows them next to what students hit. Always goes to
+// Workers Logs as well. The same issue repeating within 10 minutes on one
+// instance is only logged to the console, so an outage can't flood Firestore.
+const _recentIssues = new Map();
+async function logServerIssue(env, feature, message, err, extra = {}) {
+  const text = scrubPII(err?.message ? `${message}: ${err.message}` : message).slice(0, 2000);
+  console.error(JSON.stringify({ level: 'error', feature, message: text, ...extra, stack: err?.stack }));
+  if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) return;
+  try {
+    const fingerprint = await issueFingerprint('worker', feature, text);
+    if (Date.now() - (_recentIssues.get(fingerprint) || 0) < 10 * 60 * 1000) return;
+    _recentIssues.set(fingerprint, Date.now());
+    await writeFirestoreDoc(env, 'errors', crypto.randomUUID(), {
+      source: 'worker', level: 'error', feature, message: text,
+      stack: String(err?.stack || '').slice(0, 4000),
+      context: scrubPII(JSON.stringify(extra)).slice(0, 1500),
+      fingerprint, createdAt: new Date(),
+    });
+  } catch (e) { console.error('Could not record server issue', e?.message); }
+}
+function featureForPath(path) {
+  const map = [[/^\/v1\/messages/, 'ai'], [/^\/create-(checkout|portal)-session|^\/stripe-webhook/, 'checkout'], [/^\/(claim-license|check-email)/, 'license'],
+    [/^\/group\//, 'group-plans'], [/^\/push-test/, 'push'], [/^\/delete-account/, 'account'], [/^\/contact-message/, 'feedback'], [/^\/admin\//, 'admin']];
+  return (map.find(([re]) => re.test(path)) || [])[1] || 'worker';
+}
+function scrubPII(text) {
+  return String(text).replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email]').replace(/([?&#][\w-]+=)[^&#\s'")]+/g, '$1…');
+}
+// Groups repeats of one problem: same source, feature, and message once
+// numbers and ids are ignored.
+async function issueFingerprint(source, feature, message) {
+  const normalized = String(message).toLowerCase().replace(/[0-9a-f]{8,}|\d+/g, '#').replace(/\s+/g, ' ').slice(0, 300);
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${source}|${feature}|${normalized}`));
+  return [...new Uint8Array(hash)].slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+// Daily: reports older than 30 days are deleted, so the collection stays small.
+async function pruneOldIssues(env) {
+  if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) return;
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const old = await runFirestoreQuery(env, {
+    from: [{ collectionId: 'errors' }],
+    where: { fieldFilter: { field: { fieldPath: 'createdAt' }, op: 'LESS_THAN', value: { timestampValue: cutoff } } },
+    limit: 400,
+  });
+  if (old.length) await commitFirestore(env, old.map(r => ({ path: `errors/${r.id}`, remove: true })));
 }
 
 /* ── 7. Event tracking ────────────────────────────────────────── */
@@ -789,7 +874,8 @@ async function handleAdminErrors(request, env) {
   }
 
   try {
-    const errors = await queryRecentErrors(env, 50);
+    const limit = Math.min(Math.max(Number(new URL(request.url).searchParams.get('limit')) || 200, 1), 300);
+    const errors = await queryRecentErrors(env, limit);
     return new Response(JSON.stringify({ errors }), { headers: adminCors });
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Could not load errors: ' + e.message }), { status: 500, headers: adminCors });
@@ -1026,11 +1112,15 @@ async function fetchErrorSummary(env) {
     orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
     limit: 1000,
   });
-  const count24h = rows.filter(r => now - Date.parse(r.createdAt || '') <= 24 * 60 * 60 * 1000).length;
+  const inLastDay = r => now - Date.parse(r.createdAt || '') <= 24 * 60 * 60 * 1000;
+  const errors = rows.filter(r => r.level !== 'warn');
+  const warnings = rows.filter(r => r.level === 'warn');
   return {
-    count24h,
-    count7d: rows.length,
-    latest: rows.slice(0, 8).map(r => ({ source: r.source, message: r.message, url: r.url, createdAt: r.createdAt })),
+    count24h: errors.filter(inLastDay).length,
+    count7d: errors.length,
+    warn24h: warnings.filter(inLastDay).length,
+    warn7d: warnings.length,
+    latest: errors.slice(0, 8).map(r => ({ source: r.source, feature: r.feature || '', message: r.message, url: r.url, createdAt: r.createdAt })),
   };
 }
 
@@ -1258,7 +1348,7 @@ async function groupCreateCheckout(env, ctx) {
 async function activateGroupPlan(env, session) {
   const planId = session.metadata?.planId;
   const plan = planId ? await readFirestoreDoc(env, 'groupPlans', planId) : null;
-  if (!plan) { console.error('Group checkout for an unknown plan', planId); return; }
+  if (!plan) { await logServerIssue(env, 'group-plans', 'Group checkout for an unknown plan', null, { planId }); return; }
   const sub = session.subscription ? (await stripeRequest(env, 'GET', `/v1/subscriptions/${session.subscription}`)).data : null;
   const item = sub?.items?.data?.[0];
   const status = sub?.status ? groupStatusFromStripe(sub.status) : 'active';

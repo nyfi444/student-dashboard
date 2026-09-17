@@ -238,21 +238,10 @@
   </div>
 </div>
 
+<!-- login.html is intentionally dependency-light: shared settings only, not the rest of the app's JS. -->
+<script src="js/config.js"></script>
+<script src="js/diagnostics.js"></script>
 <script>
-const FB_CONFIG = {
-  apiKey: 'AIzaSyBruZ173x9OGtprhnJVO-8S7TY2taoSYQE',
-  authDomain: 'semester-hq.firebaseapp.com',
-  projectId: 'semester-hq',
-  storageBucket: 'semester-hq.firebasestorage.app',
-  messagingSenderId: '191691583510',
-  appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
-};
-// Same Worker used everywhere else in the app (js/ai.js, js/checkout.js);
-// login.html is intentionally dependency-light so it doesn't load the rest
-// of the app's JS just to check one email against Stripe/Firestore.
-const WORKER_BASE_URL = 'https://student-planner-ai-proxy.semesterhq.workers.dev';
-const AGE_TOS_KEY = 'shq_age_tos_confirmed';
-const EMAIL_LINK_STORAGE_KEY = 'shq_email_for_signin';
 let _auth = null;
 // Holds an email waiting on the age gate, so confirmAgeGate() knows to
 // resume the email flow instead of defaulting to Google.
@@ -298,7 +287,7 @@ function startSignIn() {
 // It just falls back to the original verified-link path.
 async function checkEmailHasPlan(email) {
   try {
-    const res = await fetch(`${WORKER_BASE_URL}/check-email`, {
+    const res = await fetch(`${WORKER_URL}/check-email`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }),
     });
     if (!res.ok) return null;
@@ -308,7 +297,7 @@ async function checkEmailHasPlan(email) {
 }
 async function redirectToCheckoutForEmail(email) {
   try {
-    const res = await fetch(`${WORKER_BASE_URL}/create-checkout-session`, {
+    const res = await fetch(`${WORKER_URL}/create-checkout-session`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }),
     });
     const data = await res.json();
@@ -317,6 +306,7 @@ async function redirectToCheckoutForEmail(email) {
     return true;
   } catch (e) {
     showError('Could not start checkout: ' + e.message);
+    diag.error('checkout', 'Could not start checkout from login', e);
     return false;
   }
 }
@@ -383,7 +373,7 @@ async function runSignIn() {
     // Success redirects from the onAuthStateChanged listener below.
   } catch (e) {
     renderSignInButton();
-    if (e.code !== 'auth/popup-closed-by-user') showError('Sign-in failed: ' + e.message);
+    if (e.code !== 'auth/popup-closed-by-user') { showError('Sign-in failed: ' + e.message); diag.error('login', 'Google sign-in failed', e); }
   }
 }
 // Passwordless email link: works with any address (iCloud, Outlook,
@@ -402,6 +392,7 @@ async function runEmailSignIn(email) {
   } catch (e) {
     renderSignInButton();
     showError('Could not send sign-in link: ' + e.message);
+    diag.error('login', 'Could not send sign-in link', e);
   }
 }
 // If this page was opened from the link that runEmailSignIn() emailed out,
@@ -421,6 +412,7 @@ async function tryCompleteEmailLink() {
     // Success redirects from the onAuthStateChanged listener below.
   } catch (e) {
     showError('That sign-in link is invalid or expired: ' + e.message);
+    diag.warn('login', 'Sign-in link invalid or expired', e);
     return false;
   }
 }

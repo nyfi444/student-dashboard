@@ -76,11 +76,11 @@ html.dark {
    calendar cells, icon badges). Default state has one soft corner;
    on hover/focus/active that corner sharpens toward a point, a
    tactile response tied to real interaction, not decoration. */
-.card, .stat-card, .btn, .modal, .cal-cell, .empty .ic, .avatar, .nav-item {
+.card, .btn, .modal, .cal-cell, .empty .ic, .avatar, .nav-item {
   border-radius: var(--r-soft) var(--r-tight) var(--r-tight) var(--r-tight);
   transition: border-radius .16s cubic-bezier(.4,0,.2,1), background .15s, box-shadow .15s, color .15s;
 }
-.card:hover, .stat-card:hover, .btn:hover, .btn:focus-visible, .btn:active,
+.card:hover, .btn:hover, .btn:focus-visible, .btn:active,
 .cal-cell:hover, .avatar:hover, .nav-item:hover, .nav-item.active {
   border-radius: var(--r-tight-active);
 }
@@ -183,8 +183,7 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .grid { display: grid; gap: 18px; }
 .grid-2 { grid-template-columns: repeat(2, 1fr); }
 .grid-3 { grid-template-columns: repeat(3, 1fr); }
-.grid-4 { grid-template-columns: repeat(4, 1fr); }
-@media (max-width: 900px) { .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 900px) { .grid-3 { grid-template-columns: repeat(2, 1fr); } }
 
 /* Settings uses a masonry-style column flow instead of a strict grid. A
    CSS grid row locks its height to the tallest card in it, which left an
@@ -224,11 +223,6 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .focus-body .card { margin-bottom: 0; }
 @media (max-width: 700px) { .focus-layer { padding: 0; } .focus-sheet { border-radius: 0; max-height: 100vh; min-height: 100vh; width: 100%; } .focus-head { border-radius: 0; } }
 
-.stat-card { padding: 17px 19px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
-.stat-card .num { font-family: var(--font-serif); font-style: italic; font-size: 30px; font-weight: 400; letter-spacing: -.2px; color: var(--text); }
-.stat-card .lbl { font-size: 11.5px; color: var(--text-faint); margin-top: 3px; }
-.stat-card-link { cursor: pointer; }
-
 .empty { text-align: center; padding: 46px 20px; color: var(--text-faint); }
 .empty .ic {
   font-size: 30px; margin: 0 auto 12px; width: 56px; height: 56px;
@@ -237,7 +231,6 @@ button .i, .btn .i { vertical-align: -2.5px; }
 }
 .empty p { font-size: 13px; }
 .empty .empty-sub { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; max-width: 280px; margin-left: auto; margin-right: auto; }
-.stat-card .num.stat-dash, .stat-dash { color: var(--text-faint); font-style: normal; font-weight: 500; }
 
 /* ── Form controls ─────────────────────────────────────────── */
 .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
@@ -314,7 +307,6 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .row-meta { font-size: 11.5px; color: var(--text-faint); }
 
 /* ── Color swatches (theme customization) ─────────────────── */
-.swatch-grid { display: flex; flex-wrap: wrap; gap: 10px; }
 .swatch { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; transition: transform .12s; }
 .swatch:hover { transform: scale(1.08); }
 .swatch.active { border-color: var(--text); }
@@ -378,7 +370,6 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .flip-face.back { transform: rotateY(180deg); background: var(--accent-light); }
 
 /* ── Timer ─────────────────────────────────────────────────── */
-.timer-ring { width: 220px; height: 220px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }
 .timer-display { font-family: var(--font-serif); font-style: italic; font-size: 46px; }
 
 
@@ -405,11 +396,6 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .dash-wl-col.today .dash-wl-bar { background: var(--accent); }
 .dash-wl-count { font-size: 10.5px; font-weight: 700; color: var(--text-dim); min-height: 13px; }
 .dash-wl-day { font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; }
-.dash-overdue-row { box-shadow: inset 2px 0 0 var(--danger); background: var(--danger-light); border-radius: 10px; margin-bottom: 6px; }
-.dash-overdue-row:last-child { margin-bottom: 0; }
-.dash-overdue-row:hover { background: var(--danger-light); filter: brightness(0.98); }
-
-.dash-note-row { flex-wrap: wrap; }
 .sticky-note {
   background: var(--accent-light); padding: 14px 16px; box-shadow: var(--shadow);
   border-radius: var(--r-soft) var(--r-tight) var(--r-tight) var(--r-tight);
@@ -629,7 +615,7 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
   .sidebar-foot { margin-top: 0; padding-top: 0; border-top: none; flex-shrink: 0; }
   .sidebar-foot .user-chip { display: none; }
   .content { padding: 16px; padding-bottom: 88px; }
-  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .content.content-notebook { height: auto; overflow: visible; padding-bottom: 88px; }
   .content-notebook .page-head { padding: 16px; }
   .notebook-layout { flex-direction: column; overflow: visible; }
@@ -645,7 +631,6 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
   .cal-week-grid { grid-template-columns: 40px repeat(7, 1fr); }
   .cal-hour-label { font-size: 8.5px; padding-right: 3px; }
   .modal, .modal.wide { width: calc(100vw - 24px); }
-  .dash-note-row { flex-direction: column; }
   .sticky-note, .sticky-note.size-sm, .sticky-note.size-lg { width: 100%; transform: none; }
   .btn.sidebar-expand-fab { top: auto; bottom: 18px; left: 18px; }
 }

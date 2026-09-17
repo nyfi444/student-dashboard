@@ -1,11 +1,10 @@
 /* ── AI layer: Claude API calls for syllabus & assignment parsing ──
    Calls go through a Cloudflare Worker proxy (see /worker) that holds
    the real Anthropic API key server-side, so students never see or
-   supply their own key. Fill in AI_PROXY_URL with your deployed
-   Worker's URL (see worker/README.md for deploy steps); until then,
+   supply their own key. WORKER_URL is set in js/config.js; without it,
    AI features show as unavailable rather than erroring.
 ──────────────────────────────────────────────────────────────── */
-const AI_PROXY_URL = 'https://student-planner-ai-proxy.semesterhq.workers.dev/v1/messages';
+const AI_PROXY_URL = WORKER_URL ? `${WORKER_URL}/v1/messages` : '';
 
 function aiEnabled() { return !!AI_PROXY_URL; }
 
@@ -76,6 +75,7 @@ async function callClaude({ system, userContent, maxTokens = 2000 }) {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
+    if (res.status < 500 && ![401, 402, 429].includes(res.status)) diag.error('ai', `AI request failed (${res.status})`, null, { status: res.status, model: state.settings.aiModel || 'default', images: Array.isArray(userContent) });
     throw new AiError(`AI request failed (${res.status}). ${body.slice(0, 160)}`);
   }
   const json = await res.json();
@@ -89,7 +89,9 @@ function extractJson(text) {
   const endChar = raw[start] === '{' ? '}' : ']';
   const end = raw.lastIndexOf(endChar);
   const slice = start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
-  return JSON.parse(slice);
+  try { return JSON.parse(slice); }
+  // The parser's message quotes the reply, which comes from the student's document, so it isn't sent.
+  catch (e) { diag.warn('ai', 'AI reply wasn’t valid JSON', null, { length: text.length }); throw e; }
 }
 
 async function fileToBase64(file) {
