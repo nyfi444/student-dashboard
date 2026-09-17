@@ -139,7 +139,6 @@ function initApp() {
   capturePlanParam();
   save();
   bootFirebase();
-  if (typeof startReminderLoop === 'function') startReminderLoop();
   if (typeof registerServiceWorker === 'function') registerServiceWorker();
   if (typeof initInstallPrompt === 'function') initInstallPrompt();
   if (typeof handleSharedContent === 'function') handleSharedContent();

@@ -350,7 +350,6 @@ async function startGroupSync() {
   handlePendingJoin();
   if (typeof syncSharedClasses === 'function') syncSharedClasses();
   if (typeof startOrgSync === 'function') startOrgSync();
-  if (typeof ensurePushSubscription === 'function') ensurePushSubscription();
   if (typeof render === 'function') render();
 }
 // Anything in the planner that isn't a cloud membership entry: first-version

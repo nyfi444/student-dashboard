@@ -22,9 +22,6 @@ function registerServiceWorker() {
     reloading = true;
     location.reload();
   });
-  navigator.serviceWorker.addEventListener('message', (e) => {
-    if (e.data?.type === 'open-route' && typeof setState === 'function') setState({ route: e.data.route, subRoute: null });
-  });
 }
 function showUpdateBanner(reg) {
   if (document.getElementById('update-banner')) return;
@@ -71,7 +68,9 @@ window.addEventListener('online', () => {
 document.addEventListener('DOMContentLoaded', updateConnectionBanner);
 setTimeout(updateConnectionBanner, 0);
 
-// Notification clicks that had to open a fresh window pass the page to open.
+// Deep link: app.semester-hq.com/?open=assignments lands on that page. Used by
+// the installed app's shortcuts and by any link that wants to point at a
+// specific page rather than the dashboard.
 (function openRouteFromUrl() {
   const params = new URLSearchParams(location.search);
   const route = params.get('open');

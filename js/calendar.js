@@ -88,6 +88,22 @@ function dropTimeBlockOnSlot(ev, dIso, hour) {
   touch();
   toast(`Blocked ${fmtTime(start)}–${fmtTime(end)} for "${title}"`);
 }
+// Dragging something onto an hour slot leaves a planned-work block behind that
+// points back at it (linkedAssignmentId / linkedTodoId). Deleting the item used
+// to leave those blocks sitting on the calendar forever, pointing at nothing:
+// "Lab report 3" still blocked out Thursday afternoon for an assignment that no
+// longer exists. This clears them out, and hands them back so Undo restores the
+// plan along with the item. Changing a due date deliberately leaves them alone
+// — when you work on something is your call, not the deadline's.
+function dropLinkedBlocks(kind, ids) {
+  const set = new Set(ids);
+  const key = kind === 'todo' ? 'linkedTodoId' : 'linkedAssignmentId';
+  const removed = state.events.filter(e => set.has(e[key]) || (kind === 'assignment' && set.has(e.linkedExamId)));
+  if (removed.length) state.events = state.events.filter(e => !removed.includes(e));
+  return removed;
+}
+function restoreLinkedBlocks(blocks) { if (blocks && blocks.length) state.events.push(...blocks); }
+
 function setCalView(v) { setState({ calView: v }); }
 function calToday() { setState({ calDate: todayIso() }); }
 function calNav(dir) {
@@ -109,13 +125,25 @@ function meetingsOnDate(dateIso) {
 // position everything by start/end. Without mapping them, a time block never
 // appeared on either view (only in Month, which doesn't need a time).
 function customEventsOnDate(dateIso) { return state.events.filter(e => e.date === dateIso).map(e => ({ ...e, start: e.startTime || null, end: e.endTime || null, color: e.color || getCourseColor(e.courseId), kind: 'custom' })); }
-function examsOnDate(dateIso) { return state.assignments.filter(a => a.type === 'exam' && a.dueDate === dateIso && activeCourses().some(c => c.id === a.courseId)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || '09:00', end: null, color: getCourseColor(a.courseId), kind: 'exam', action: `openExamPrep('${a.id}')` })); }
-function deadlinesOnDate(dateIso) { return state.assignments.filter(a => a.type !== 'exam' && a.dueDate === dateIso && activeCourses().some(c => c.id === a.courseId)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || null, end: null, color: getCourseColor(a.courseId), kind: 'deadline' })); }
+// An assignment with no class attached is still real work with a real deadline:
+// the Assignments page lists it, the Heads up bell counts it, and the dashboard
+// shows it. The calendar used to require a matching active course, so anything
+// filed under "No course" silently never appeared on any day, and editing its
+// due date looked like it did nothing. Same scope rule as reminders.js and
+// dashboard.js: keep it unless it belongs to a course from another semester.
+function calInScope(a) { return !a.courseId || activeCourses().some(c => c.id === a.courseId); }
+function examsOnDate(dateIso) { return state.assignments.filter(a => a.type === 'exam' && a.dueDate === dateIso && calInScope(a)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || '09:00', end: null, color: getCourseColor(a.courseId), kind: 'exam', action: `openExamPrep('${a.id}')` })); }
+function deadlinesOnDate(dateIso) { return state.assignments.filter(a => a.type !== 'exam' && a.dueDate === dateIso && calInScope(a)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || null, end: null, color: getCourseColor(a.courseId), kind: 'deadline', action: `openAssignmentModal('${a.id}')` })); }
+// To-dos carry a due date and an optional time exactly like assignments do, but
+// they were never collected here, so a to-do due Friday appeared nowhere on the
+// calendar and rescheduling one looked like it hadn't saved. Finished ones stay
+// off: the calendar is for what's still ahead.
+function todosOnDate(dateIso) { return state.todos.filter(x => !x.done && x.dueDate === dateIso).map(x => ({ id: x.id, title: x.title, start: x.dueTime || null, end: null, color: getCourseColor(x.courseId), kind: 'todo', action: `openTodoModal('${x.id}')` })); }
 function itemsOnDate(dateIso) {
-  return [...meetingsOnDate(dateIso), ...customEventsOnDate(dateIso), ...examsOnDate(dateIso), ...deadlinesOnDate(dateIso), ...groupSessionsOnDate(dateIso), ...careerItemsOnDate(dateIso),
+  return [...meetingsOnDate(dateIso), ...customEventsOnDate(dateIso), ...examsOnDate(dateIso), ...deadlinesOnDate(dateIso), ...todosOnDate(dateIso), ...groupSessionsOnDate(dateIso), ...careerItemsOnDate(dateIso),
     ...officeHoursOnDate(dateIso), ...projectMilestonesOnDate(dateIso), ...orgEventsOnDate(dateIso)].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 }
-const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list', group: 'users', career: 'briefcase', office: 'clock', milestone: 'folder', org: 'shield' };
+const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list', todo: 'check-square', group: 'users', career: 'briefcase', office: 'clock', milestone: 'folder', org: 'shield' };
 
 function yearView() {
   const year = new Date(state.calDate + 'T00:00:00').getFullYear();
@@ -183,6 +211,7 @@ function weekView() {
         <div></div>
         ${days.map(d => `<div style="text-align:center" class="small ${iso(d) === todayIso() ? 'dim' : 'muted'}"><strong>${DOW_NAMES[d.getDay()]}</strong> ${d.getDate()}</div>`).join('')}
       </div>
+      ${allDayStrip(days.map(iso))}
       <div class="cal-week-grid" style="position:relative">
         <div>${CAL_HOURS.map(h => `<div class="cal-hour-label">${h > 12 ? h - 12 : h}${h >= 12 ? 'pm' : 'am'}</div>`).join('')}</div>
         ${days.map(d => weekDayColumn(iso(d))).join('')}
@@ -197,6 +226,21 @@ function weekDayColumn(dIso) {
     ${brk ? `<div class="small muted" style="position:absolute;top:2px;left:4px;z-index:1;font-style:italic">${esc(brk.name)}</div>` : ''}
     ${CAL_HOURS.map(h => `<div class="cal-hour-row" ondragover="allowDrop(event)" ondrop="event.stopPropagation();dropTimeBlockOnSlot(event,'${dIso}',${h})"></div>`).join('')}
     ${items.map(it => positionedBlock(it, dIso)).join('')}
+  </div>`;
+}
+// Week and Day lay events out on an hour grid, so anything without a time had
+// nowhere to go and simply wasn't drawn: a to-do due Thursday, or an assignment
+// whose due time was cleared, showed in Month but vanished the moment you
+// switched to Week. This is the row above the hours that holds those, the way
+// every calendar app handles all-day items.
+function allDayStrip(dates, cols = '') {
+  const perDay = dates.map(d => itemsOnDate(d).filter(it => !it.start));
+  if (!perDay.some(list => list.length)) return '';
+  return `<div class="cal-week-grid cal-allday" ${cols ? `style="grid-template-columns:${cols}"` : ''}>
+    <div class="cal-allday-label">All day</div>
+    ${dates.map((d, i) => `<div class="cal-allday-col" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${d}')">
+      ${perDay[i].map(it => `<div class="cal-evt kind-${it.kind}" style="--c:${it.color}" ${it.action ? `onclick="event.stopPropagation();${it.action}"` : ''} title="${esc(it.title)}">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 9, 2.2)}</span>` : ''}${esc(it.title)}</div>`).join('')}
+    </div>`).join('')}
   </div>`;
 }
 function positionedBlock(it, dIso) {
@@ -219,6 +263,7 @@ function dayView() {
   return `
     <div class="card card-pad">
       ${brk ? `<div class="small muted mb-8" style="font-style:italic">${icon('flag',12,2)} ${esc(brk.name)} (no classes)</div>` : ''}
+      ${allDayStrip([dIso], '52px 1fr')}
       <div class="cal-week-grid" style="grid-template-columns:52px 1fr;position:relative">
         <div>${CAL_HOURS.map(h => `<div class="cal-hour-label">${h > 12 ? h - 12 : h}${h >= 12 ? 'pm' : 'am'}</div>`).join('')}</div>
         <div class="cal-day-col" onclick="openEventModal(null,'${dIso}')" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">

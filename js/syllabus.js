@@ -292,7 +292,7 @@ function renderSyllabusMergeModal() {
         <div class="list-row">
           <button type="button" class="row-check ${a._include ? 'checked' : ''}" role="checkbox" aria-checked="${a._include}" aria-label="${a._include ? 'Skip' : 'Add'} ${esc(a.title)}" onclick="_sylMerge.assignments[${i}]._include=!_sylMerge.assignments[${i}]._include;renderSyllabusMergeModal()">${a._include ? checkGlyph(true) : ''}</button>
           <div class="row-title">${esc(a.title)} ${typeTag(ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment')}</div>
-          <div class="row-meta">${a.dueDate ? fmtDate(a.dueDate) : 'no date'}</div>
+          <div class="row-meta">${a.dueDate ? fmtDate(a.dueDate) : '<span class="muted">No due date</span>'}</div>
         </div>`).join('')}</div>` : '<p class="small muted">Everything in this syllabus is already in this class.</p>'}
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="commitSyllabusMerge()">Save${included ? ` and add ${included} deadline${included === 1 ? '' : 's'}` : ''}</button></div>
@@ -312,7 +312,7 @@ function commitSyllabusMerge() {
   const adding = m.assignments.filter(a => a._include);
   adding.forEach(a => state.assignments.push({
     id: uid(), courseId: c.id, title: cleanStr(a.title, 200), type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
-    dueDate: /^\d{4}-\d{2}-\d{2}$/.test(a.dueDate || '') ? a.dueDate : null, dueTime: /^\d{2}:\d{2}$/.test(a.dueTime || '') ? a.dueTime : '23:59', startByDate: null,
+    dueDate: cleanDueDate(a.dueDate), dueTime: cleanDueTime(a.dueTime), startByDate: null,
     maxPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
   }));
   touch(); closeModal();

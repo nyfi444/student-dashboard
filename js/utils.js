@@ -78,6 +78,14 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 // field's own value (now always '' when disabled) is what save handlers read,
 // via `.value || null`. This just makes clearing it an explicit, visible option
 // instead of something only discoverable by knowing a date input can be blanked.
+// An imported deadline (a syllabus, an assignment sheet, a pasted schedule)
+// only gets a due date when the document actually gave one. These used to fall
+// back to a week out, which quietly invented a deadline nobody wrote down: the
+// item then sat in "This week" looking real, and the student had no way to tell
+// a made-up date from a parsed one. No date in means no date out, and the item
+// lands under "No due date" until someone sets one on purpose.
+function cleanDueDate(v) { return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null; }
+function cleanDueTime(v, fallback = '23:59') { return /^\d{2}:\d{2}$/.test(v || '') ? v : fallback; }
 function toggleNoDueDate(inputId, checked) {
   const input = $('#' + inputId);
   if (!input) return;

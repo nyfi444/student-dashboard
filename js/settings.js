@@ -101,7 +101,6 @@ function pageSettings() {
     <div class="settings-columns">
       ${expandable('set-appearance', 'Appearance', appearanceSettingsCard(), { max: 320 })}
 
-      ${expandable('set-reminders', 'Reminders', remindersSettingsCard(), { max: 320 })}
 
       ${installSettingsCard()}
 

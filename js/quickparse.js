@@ -242,7 +242,7 @@ function qaPreviewHtml(id, text) {
   if (p.courseId) parts.push(`<span class="qa-chip qa-course" style="--c:${esc(getCourseColor(p.courseId))}"><span class="course-dot" style="--course:${esc(getCourseColor(p.courseId))}"></span><span>${esc(p.courseLabel)}${p.courseDefault ? ' <span class="muted">(default)</span>' : ''}</span>${!p.courseDefault ? `<button type="button" class="qa-chip-x" aria-label="Don’t use ${esc(p.courseLabel)}" onclick="${p.coursePicked ? `qaPickCourse('${id}','')` : `qaIgnore('${id}','course')`}">${icon('x', 10, 2.4)}</button>` : ''}</span>`);
   else if (courses.length && p.kind === 'assignment') parts.push(`<label class="qa-chip qa-pick">${icon('graduation-cap', 12, 1.9)}<select aria-label="Class" onchange="qaPickCourse('${id}',this.value)"><option value="">Pick a class</option>${courses.map(c => `<option value="${c.id}">${esc(c.code || c.name)}</option>`).join('')}</select></label>`);
   if (p.dueDate) parts.push(chip('date', 'calendar', relativeDay(p.dueDate).replace(' (overdue)', '') + (daysBetween(p.dueDate) > 6 || daysBetween(p.dueDate) < 0 ? '' : `, ${fmtDate(p.dueDate)}`)));
-  else if (p.kind === 'todo' && st.mode !== 'todo') parts.push(chip('date', 'calendar', 'Today', { dismiss: false, cls: 'is-default' }));
+  else parts.push(chip('date', 'calendar', 'No due date', { dismiss: false, cls: 'is-default' }));
   if (p.dueTime) parts.push(chip('time', 'clock', fmtTime(p.dueTime)));
   if (p.kind === 'assignment' && p.type !== 'assignment') parts.push(`<span class="qa-chip">${icon('flag', 12, 1.9)}<span>${esc(p.type)}</span></span>`);
   if (p.priority) parts.push(chip('priority', 'star', `${p.priority[0].toUpperCase() + p.priority.slice(1)} priority`));
@@ -265,18 +265,18 @@ function qaSubmit(id) {
   if (p.kind === 'assignment') {
     if (!p.courseId && activeCourses().length) { toast('Which class is this for? Pick one below, or add the class to what you typed.', 'error', 3800); return; }
     const a = {
-      id: uid(), courseId: p.courseId, title: p.title, type: p.type, dueDate: p.dueDate || (qaState(id).mode === 'assignment' ? addDays(todayIso(), 7) : todayIso()), dueTime: p.dueTime || '23:59',
+      id: uid(), courseId: p.courseId, title: p.title, type: p.type, dueDate: cleanDueDate(p.dueDate), dueTime: cleanDueTime(p.dueTime),
       startByDate: null, maxPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
     };
     state.assignments.push(a);
     qaReset(id);
     touch();
-    toast(`Added “${a.title}” · ${p.courseLabel} · due ${relativeDay(a.dueDate).replace(' (overdue)', '')}${a.dueTime !== '23:59' ? ` ${fmtTime(a.dueTime)}` : ''}`, 'success', 4500, { label: 'Undo', run: () => { state.assignments = state.assignments.filter(x => x.id !== a.id); touch(); } });
+    toast(`Added “${a.title}” · ${p.courseLabel} · ${a.dueDate ? `due ${relativeDay(a.dueDate).replace(' (overdue)', '')}${a.dueTime !== '23:59' ? ` ${fmtTime(a.dueTime)}` : ''}` : 'no due date'}`, 'success', 4500, { label: 'Undo', run: () => { state.assignments = state.assignments.filter(x => x.id !== a.id); touch(); } });
   } else {
     const st = qaState(id);
     const td = {
       id: uid(), courseId: p.courseId, sectionId: st.sectionId || null, title: p.title, done: false,
-      dueDate: p.dueDate || (st.mode === 'todo' && !p.dueTime ? null : todayIso()), dueTime: p.dueTime || null, priority: p.priority || 'medium', recurring: null,
+      dueDate: cleanDueDate(p.dueDate), dueTime: cleanDueTime(p.dueTime, null), priority: p.priority || 'medium', recurring: null,
     };
     state.todos.unshift(td);
     qaReset(id);

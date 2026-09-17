@@ -173,11 +173,14 @@ service cloud.firestore {
       }
     }
 
-    // Push notification subscriptions and each student's upcoming reminder
-    // schedule. Owner-only from the app; the Worker reads it with its
-    // service account to send notifications when the app is closed.
+    // Left over from the removed notification feature: this used to hold push
+    // subscriptions and a reminder schedule. Nothing writes it any more, and
+    // the app no longer reads it. Owners keep delete access so an existing doc
+    // can still be cleaned up (and "delete my account" removes it server-side);
+    // nobody can create a new one.
     match /push/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if false;
     }
 
     // Licenses are the source of truth for who has paid. Only the backend

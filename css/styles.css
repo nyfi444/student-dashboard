@@ -361,6 +361,14 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .cal-day-col { border-left: 1px solid var(--border); position: relative; }
 .cal-hour-row { height: 48px; border-bottom: 1px solid var(--border); }
 .cal-block { position: absolute; left: 3px; right: 3px; border-radius: 8px; padding: 4px 7px; font-size: 10.5px; color: #fff; font-weight: 600; overflow: hidden; }
+/* Untimed items (a to-do due Friday, a deadline with no set time) sit above the
+   hour grid instead of being dropped from Week and Day entirely. */
+.cal-allday { border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 6px; align-items: start; }
+.cal-allday-label { font-size: 10px; color: var(--text-faint); text-align: right; padding-right: 6px; padding-top: 3px; }
+/* min-width:0 on both: without it a long title (nowrap, so it can't wrap) makes
+   its grid column demand the full text width and every other day gets squeezed. */
+.cal-allday-col { border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; padding: 0 3px; min-height: 20px; min-width: 0; }
+.cal-allday-col .cal-evt { cursor: pointer; min-width: 0; }
 
 /* ── Flashcards ────────────────────────────────────────────── */
 .flip-card { perspective: 1200px; height: 220px; cursor: pointer; }
@@ -887,12 +895,16 @@ kbd { font-family: var(--font); font-size: 10.5px; font-weight: 600; padding: 1p
 .assign-group-head { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--bg-text-faint); margin: 0 0 8px 2px; }
 .assign-group.is-overdue .assign-group-head { color: var(--danger); }
 .assign-count { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--bg-text) 8%, transparent); color: var(--bg-text-dim); letter-spacing: 0; }
-.assign-list { padding: 4px; }
-.assign-row { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 10px; cursor: pointer; position: relative; }
-.assign-row + .assign-row { box-shadow: 0 -1px 0 var(--border); }
-.assign-row:hover { background: var(--surface-2); box-shadow: none; }
-.assign-row:hover + .assign-row { box-shadow: none; }
-.assign-row.selected { background: var(--accent-light); }
+/* Assignments, to-dos, past exams and applications all render through these.
+   They used to sit flush inside one card, separated only by a hairline, which
+   read as a dense spreadsheet: at a glance you couldn't tell where one piece of
+   work ended and the next began. Each row is now its own card with air around
+   it, matching .list-row (the spaced-row pattern used everywhere else), so a
+   list of deadlines scans as distinct things you have to do. */
+.assign-list { padding: 0; background: transparent; border: none; box-shadow: none; display: flex; flex-direction: column; gap: 8px; }
+.assign-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; cursor: pointer; position: relative; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); transition: background .12s, border-color .12s; }
+.assign-row:hover { background: var(--surface-2); border-color: var(--text-faint); }
+.assign-row.selected { background: var(--accent-light); border-color: var(--accent); }
 .assign-main { flex: 1; min-width: 0; }
 .assign-title { font-size: 14px; line-height: 1.35; }
 .assign-row.is-done .assign-title { color: var(--text-faint); text-decoration: line-through; }
@@ -1452,7 +1464,9 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
 
 /* ── To-do list ────────────────────────────────────────────────── */
 .todo-row { --course: var(--border); }
-.todo-row::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--course); opacity: .9; }
+/* Inset from the card's rounded edge (rows are their own cards now), so the
+   course stripe sits inside the corner curve instead of crossing it. */
+.todo-row::before { content: ''; position: absolute; left: 5px; top: 11px; bottom: 11px; width: 3px; border-radius: 3px; background: var(--course); opacity: .9; }
 .todo-flag { color: var(--danger); display: inline-flex; vertical-align: -1px; margin-right: 5px; }
 .todo-list-actions { margin-left: auto; display: inline-flex; gap: 2px; text-transform: none; letter-spacing: 0; }
 .todo-list-actions .btn { color: var(--bg-text-dim); }

@@ -343,7 +343,6 @@ function save({ localOnly = false } = {}) {
   if (localOnly) return;
   if (typeof markLocalUnsynced === 'function') markLocalUnsynced();
   if (typeof queueCloudSync === 'function') queueCloudSync();
-  if (typeof uploadPushSchedule === 'function') uploadPushSchedule();
 }
 
 function setState(patch) {

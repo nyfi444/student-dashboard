@@ -140,8 +140,9 @@ function deleteTodo(id) {
   const x = state.todos.find(y => y.id === id);
   if (x) trashItem('todo', x.title || 'Untitled to-do', x);
   state.todos = state.todos.filter(y => y.id !== id);
+  const blocks = dropLinkedBlocks('todo', [id]);
   touch();
-  if (x) toast(`Deleted “${x.title}”`, 'success', 5000, { label: 'Undo', run: () => { const tr = (state.trash || []).find(z => z.kind === 'todo' && z.data.id === x.id); if (tr) restoreTrashItem(tr.id); } });
+  if (x) toast(`Deleted “${x.title}”`, 'success', 5000, { label: 'Undo', run: () => { const tr = (state.trash || []).find(z => z.kind === 'todo' && z.data.id === x.id); if (tr) restoreTrashItem(tr.id); restoreLinkedBlocks(blocks); touch(); } });
 }
 function clearCompletedTodos() {
   const doneItems = state.todos.filter(x => x.done && todoInFilter(x, state.todoFilter || 'all'));
@@ -149,6 +150,7 @@ function clearCompletedTodos() {
   doneItems.forEach(x => trashItem('todo', x.title || 'Untitled to-do', x));
   const ids = new Set(doneItems.map(x => x.id));
   state.todos = state.todos.filter(x => !ids.has(x.id));
+  dropLinkedBlocks('todo', [...ids]);
   touch();
   toast(`Cleared ${doneItems.length} completed`, 'success', 5000, { label: 'Undo', run: () => { (state.trash || []).filter(z => z.kind === 'todo' && ids.has(z.data.id)).forEach(z => restoreTrashItem(z.id)); } });
 }

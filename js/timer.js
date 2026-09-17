@@ -159,7 +159,6 @@ function startTimer() {
   t.startedAt = Date.now();
   persistTimer();
   ensureTimerTicking();
-  if (typeof maybeAskNotificationPermission === 'function') maybeAskNotificationPermission();
   touch();
 }
 function pauseTimer() {
@@ -247,7 +246,6 @@ function completeTimerPhase() {
   const title = wasFocus ? 'Focus block done' : 'Break’s over';
   const body = wasFocus ? `Nice work${t.task ? ` on “${t.task}”` : ''}. Take a ${nextIsLong ? s.long : s.short}-minute break.` : 'Ready for another focus block?';
   if (s.sound) playChime();
-  if (typeof showSystemNotification === 'function') showSystemNotification(title, body, 'timer');
   toast(`${title}. ${body}`, 'info', 5000);
   advanceTimerPhase(true);
   if (t.running) ensureTimerTicking();
@@ -314,7 +312,6 @@ function openTimerSettings() {
       </div>
       <label class="checkbox-row mb-8"><input type="checkbox" id="ts-auto" ${s.autoBreaks ? 'checked' : ''}> Start breaks automatically</label>
       <label class="checkbox-row"><input type="checkbox" id="ts-sound" ${s.sound ? 'checked' : ''}> Play a sound when a block ends</label>
-      <p class="small muted mt-16">Semester HQ can also send a notification when a block ends, even if you’re in another tab. Turn notifications on under Settings → Reminders.</p>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveTimerSettings()">Save</button></div>
   `);

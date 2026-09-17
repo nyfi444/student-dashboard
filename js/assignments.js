@@ -134,6 +134,7 @@ function bulkDeleteAssignments() {
       if (a) trashItem('assignment', a.title || 'Untitled assignment', a);
     });
     state.assignments = state.assignments.filter(a => !ids.includes(a.id));
+    dropLinkedBlocks('assignment', ids);
     state._assignSelectedIds = [];
     state._assignSelectMode = false;
     touch();
@@ -451,11 +452,13 @@ function deleteAssignment(id) {
     // The series record stays, so restoring from Recently Deleted brings the
     // assignments back still linked as a series.
     state.assignments = state.assignments.filter(x => !ids.has(x.id));
+    const blocks = dropLinkedBlocks('assignment', [...ids]);
     touch(); closeModal();
     toast(gone.length > 1 ? `Deleted ${gone.length} assignments` : `Deleted “${a.title}”`, 'success', 5000, { label: 'Undo', run: () => {
       const entries = (state.trash || []).filter(t => t.kind === 'assignment' && ids.has(t.data.id));
       state.assignments.push(...entries.map(t => t.data));
       state.trash = state.trash.filter(t => !entries.includes(t));
+      restoreLinkedBlocks(blocks);
       touch();
       toast(entries.length > 1 ? `Restored ${entries.length} assignments` : `Restored “${a.title}”`);
     } });
@@ -535,7 +538,7 @@ function renderAssignmentReviewModal() {
             <div class="list-row">
               <button type="button" class="row-check ${a._include ? 'checked' : ''}" role="checkbox" aria-checked="${a._include}" aria-label="${a._include ? 'Exclude' : 'Include'} ${esc(a.title)}" onclick="toggleAuAssignment(${i})">${a._include ? checkGlyph(true) : ''}</button>
               <div class="row-title">${esc(a.title)} ${typeTag(a.type || 'assignment')}</div>
-              <div class="row-meta">${a.dueDate ? fmtDate(a.dueDate) : 'no date'}</div>
+              <div class="row-meta">${a.dueDate ? fmtDate(a.dueDate) : '<span class="muted">No due date</span>'}</div>
             </div>`).join('') : ''}
         </div>
       </div>
@@ -556,7 +559,7 @@ function commitAssignmentUpload() {
     toAdd.forEach(a => {
       state.assignments.push({
         id: uid(), courseId, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
-        dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59', startByDate: null,
+        dueDate: cleanDueDate(a.dueDate), dueTime: cleanDueTime(a.dueTime), startByDate: null,
         maxPoints: a.maxPoints || null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
       });
     });

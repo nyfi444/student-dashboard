@@ -8,14 +8,14 @@
    Bump VERSION whenever you deploy, so open tabs can offer "Refresh to
    update" and old cached files get cleaned up.
 ──────────────────────────────────────────────────────────────── */
-const VERSION = 'shq-2026-09-16-release11';
+const VERSION = 'shq-2026-09-17-release12';
 const APP_SHELL = [
   './', 'index.html', 'login.html', 'group-admin.html', 'manifest.json', 'css/styles.css',
   'assets/favicon.png', 'assets/apple-touch-icon.png', 'assets/icon-192.png', 'assets/icon-512.png',
   'js/config.js', 'js/diagnostics.js', 'js/utils.js', 'js/icons.js', 'js/colorwheel.js', 'js/state.js', 'js/firebase.js', 'js/ai.js', 'js/uploads.js',
   'js/checkout.js', 'js/groupplans.js', 'js/group-admin.js', 'js/ui.js', 'js/dashboard.js', 'js/courses.js', 'js/semestersetup.js', 'js/calendar.js', 'js/todos.js',
   'js/assignments.js', 'js/notebook.js', 'js/timer.js', 'js/exams.js', 'js/projects.js', 'js/studytools.js',
-  'js/studygroups.js', 'js/career.js', 'js/capture.js', 'js/wrapped.js', 'js/classes.js', 'js/quickparse.js', 'js/syllabus.js', 'js/orgs.js', 'js/appearance.js', 'js/reminders.js', 'js/push.js', 'js/settings.js', 'js/palette.js', 'js/install.js', 'js/offline.js', 'js/app.js',
+  'js/studygroups.js', 'js/career.js', 'js/capture.js', 'js/wrapped.js', 'js/classes.js', 'js/quickparse.js', 'js/syllabus.js', 'js/orgs.js', 'js/appearance.js', 'js/reminders.js', 'js/settings.js', 'js/palette.js', 'js/install.js', 'js/offline.js', 'js/app.js',
 ];
 const CDN_HOSTS = ['www.gstatic.com', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'fonts.gstatic.com', 'api.fontshare.com', 'cdn.fontshare.com'];
 
@@ -96,27 +96,3 @@ function fetchWithTimeout(req, ms) {
     fetch(req).then(r => { clearTimeout(timer); resolve(r); }, e => { clearTimeout(timer); reject(e); });
   });
 }
-
-// Reminders sent by the Worker while the app is closed (see js/push.js).
-self.addEventListener('push', (event) => {
-  let data = {};
-  try { data = event.data ? event.data.json() : {}; } catch { data = { title: 'Semester HQ', body: event.data?.text() || '' }; }
-  event.waitUntil(self.registration.showNotification(data.title || 'Semester HQ', {
-    body: data.body || '', tag: data.tag || 'semester-hq', icon: 'assets/icon-192.png', badge: 'assets/icon-192.png', data: { route: data.route || null },
-  }));
-});
-
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const route = event.notification.data?.route;
-  event.waitUntil((async () => {
-    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const client = all.find(c => new URL(c.url).origin === self.location.origin);
-    if (client) {
-      await client.focus();
-      if (route) client.postMessage({ type: 'open-route', route });
-      return;
-    }
-    await self.clients.openWindow(route ? `./?open=${encodeURIComponent(route)}` : './');
-  })());
-});

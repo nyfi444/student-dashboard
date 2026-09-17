@@ -435,7 +435,7 @@ function commitSyllabusCourse() {
   (window._sylAssignments || []).filter(a => a._include && a.title).forEach(a => {
     state.assignments.push({
       id: uid(), courseId: d.id, title: a.title, type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
-      dueDate: a.dueDate || addDays(todayIso(), 7), dueTime: a.dueTime || '23:59',
+      dueDate: cleanDueDate(a.dueDate), dueTime: cleanDueTime(a.dueTime),
       maxPoints: a.maxPoints || null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
     });
   });

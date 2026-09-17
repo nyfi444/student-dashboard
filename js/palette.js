@@ -146,13 +146,13 @@ function paletteQuickTodo() {
   closeCommandPalette(false);
   const p = parseQuickAdd(text);
   if (p.looksLikeAssignment) {
-    const a = { id: uid(), courseId: p.courseId, title: p.title, type: p.type, dueDate: p.dueDate || addDays(todayIso(), 7), dueTime: p.dueTime || '23:59', startByDate: null, maxPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
+    const a = { id: uid(), courseId: p.courseId, title: p.title, type: p.type, dueDate: cleanDueDate(p.dueDate), dueTime: cleanDueTime(p.dueTime), startByDate: null, maxPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
     state.assignments.push(a);
     touch();
-    toast(`Added “${a.title}” to ${p.courseLabel}, due ${relativeDay(a.dueDate).replace(' (overdue)', '')}`, 'success', 4500, { label: 'Undo', run: () => { state.assignments = state.assignments.filter(x => x.id !== a.id); touch(); } });
+    toast(`Added “${a.title}” to ${p.courseLabel}${a.dueDate ? `, due ${relativeDay(a.dueDate).replace(' (overdue)', '')}` : ', no due date'}`, 'success', 4500, { label: 'Undo', run: () => { state.assignments = state.assignments.filter(x => x.id !== a.id); touch(); } });
     return;
   }
-  const td = { id: uid(), courseId: p.courseId, title: p.title, done: false, dueDate: p.dueDate || todayIso(), dueTime: p.dueTime || null, priority: p.priority || 'medium', recurring: null };
+  const td = { id: uid(), courseId: p.courseId, title: p.title, done: false, dueDate: cleanDueDate(p.dueDate), dueTime: cleanDueTime(p.dueTime, null), priority: p.priority || 'medium', recurring: null };
   state.todos.unshift(td);
   touch();
   toast(`Added “${td.title}” to your to-dos`, 'success', 4500, { label: 'Undo', run: () => { state.todos = state.todos.filter(x => x.id !== td.id); touch(); } });

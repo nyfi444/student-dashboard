@@ -172,7 +172,6 @@ function onOrgSnapshot(code, doc) {
     const fresh = orgAnnouncementList(o).filter(a => a.uid !== _fbUser.uid && !Object.values(before.announcements || {}).some(b => b.id === a.id));
     if (fresh.length && !(state.route === 'orgs' && state.subRoute === code)) toast(`${o.name}: ${fresh[0].text.slice(0, 90)}${fresh[0].text.length > 90 ? '…' : ''}`, 'info', 6000, { label: 'Open', run: () => openOrg(code, 'announcements') });
   }
-  if (typeof uploadPushSchedule === 'function') uploadPushSchedule();
   renderRemote();
 }
 function dropOrgEntry(code, message) {
