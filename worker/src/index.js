@@ -949,7 +949,7 @@ async function fetchStripeSummary(env) {
   let startingAfter = '';
   let truncated = false;
   for (let page = 0; page < STRIPE_SUB_PAGE_CAP; page++) {
-    const qs = `limit=100&status=all&expand[]=data.items.data.price&expand[]=data.latest_invoice${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+    const qs = `limit=100&status=all&expand[]=data.items.data.price&expand[]=data.latest_invoice&expand[]=data.customer${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
     const res = await fetch(`https://api.stripe.com/v1/subscriptions?${qs}`, {
       headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
     });
@@ -967,6 +967,7 @@ async function fetchStripeSummary(env) {
   let payingCount = 0, compedCount = 0, pastDueCount = 0, cancelingCount = 0;
   let new7d = 0, new30d = 0, canceled30d = 0;
   const recent = [];
+  const subscribers = [];
   let groupPlanCount = 0, groupSeatCount = 0;
   for (const sub of subs) {
     // A group plan is one subscription for many seats, so its list price is
@@ -1001,19 +1002,111 @@ async function fetchStripeSummary(env) {
       amount_cents: listCents || null,
       charged_cents: chargedCents,
     });
+    subscribers.push(subscriberRow(sub, { created, listCents, chargedCents }));
   }
   recent.sort((a, b) => (b.created || 0) - (a.created || 0));
+  subscribers.sort((a, b) => (b.created || 0) - (a.created || 0));
 
   let revenue30d = null;
   try { revenue30d = await fetchStripeRevenue30d(env); }
   catch (e) { revenue30d = { error: e.message }; }
+
+  let books = null;
+  try { books = await fetchStripeBooks(env); }
+  catch (e) { books = { error: e.message }; }
 
   return {
     activeCount, mrrCents, netMrrCents, payingCount, compedCount, pastDueCount, cancelingCount,
     groupPlanCount, groupSeatCount,
     new7d, new30d, canceled30d, totalSubscriptions: subs.length, truncated,
     revenue30d, recent: recent.slice(0, 30), fetchedAt: now,
+    subscribers: subscribers.slice(0, 500), books,
   };
+}
+
+// One row of the Business OS's subscriber list. Only what Nyla needs to
+// recognize someone and see where they stand: who, which plan, since when,
+// what they pay. This route is ADMIN_TOKEN-only.
+function subscriberRow(sub, { created, listCents, chargedCents }) {
+  const customer = sub.customer && typeof sub.customer === 'object' && !sub.customer.deleted ? sub.customer : null;
+  const item = sub.items?.data?.[0] || {};
+  const periodEnd = sub.current_period_end || item.current_period_end || null;
+  const coupon = sub.discount?.coupon || (Array.isArray(sub.discounts) && typeof sub.discounts[0] === 'object' ? sub.discounts[0]?.coupon : null);
+  const isGroup = sub.metadata?.kind === 'group';
+  return {
+    id: sub.id,
+    customerId: typeof sub.customer === 'string' ? sub.customer : sub.customer?.id || null,
+    email: customer?.email || sub.metadata?.email || '',
+    name: customer?.name || '',
+    status: sub.status,
+    plan: isGroup ? 'group' : 'plus',
+    seats: isGroup ? (item.quantity || 0) : 1,
+    groupName: isGroup ? String(sub.metadata?.groupName || sub.metadata?.name || '').slice(0, 80) : '',
+    coupon: coupon ? String(coupon.name || coupon.id || '').slice(0, 60) : '',
+    comped: (sub.status === 'active' || sub.status === 'trialing') && chargedCents <= 0,
+    created,
+    canceledAt: sub.canceled_at ? sub.canceled_at * 1000 : null,
+    endedAt: sub.ended_at ? sub.ended_at * 1000 : null,
+    cancelAtPeriodEnd: !!sub.cancel_at_period_end,
+    periodEnd: periodEnd ? periodEnd * 1000 : null,
+    listCents: listCents || 0,
+    chargedCents: Math.max(0, chargedCents || 0),
+  };
+}
+
+// Bookkeeping from Stripe's balance history: per calendar month (UTC),
+// what was sold, refunded and paid in fees, plus the payouts that reached
+// the bank. Payouts are transfers, not income: they're here so the OS can
+// check the bank deposits against the books.
+const BOOKS_MONTHS = 14;
+const BOOKS_PAGE_CAP = 20;
+async function fetchStripeBooks(env) {
+  const start = new Date();
+  start.setUTCDate(1); start.setUTCHours(0, 0, 0, 0);
+  start.setUTCMonth(start.getUTCMonth() - (BOOKS_MONTHS - 1));
+  const since = Math.floor(start.getTime() / 1000);
+  const months = {};
+  const month = t => new Date(t * 1000).toISOString().slice(0, 7);
+  const row = key => (months[key] = months[key] || { grossCents: 0, refundCents: 0, feeCents: 0, disputeCents: 0, otherCents: 0, netCents: 0, charges: 0 });
+  let startingAfter = '', truncated = false;
+  for (let page = 0; page < BOOKS_PAGE_CAP; page++) {
+    const qs = `limit=100&created[gte]=${since}${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+    const data = await stripeGetJson(env, `/v1/balance_transactions?${qs}`);
+    for (const t of data.data || []) {
+      if (t.type === 'payout' || t.type === 'payout_cancel' || t.type === 'payout_failure') continue;
+      const r = row(month(t.created));
+      const amount = t.amount || 0, fee = t.fee || 0;
+      if (t.type === 'charge' || t.type === 'payment') { r.grossCents += amount; r.charges++; }
+      else if (t.type === 'refund' || t.type === 'payment_refund') r.refundCents += -amount;
+      else if (t.type === 'stripe_fee' || t.type === 'tax_fee') r.feeCents += -amount;
+      else if (t.type === 'adjustment' && /dispute/i.test(t.description || '')) r.disputeCents += -amount;
+      else r.otherCents += amount;
+      r.feeCents += fee;
+      r.netCents += (t.net ?? (amount - fee));
+    }
+    if (!data.has_more || !data.data?.length) break;
+    startingAfter = data.data[data.data.length - 1].id;
+    if (page === BOOKS_PAGE_CAP - 1) truncated = true;
+  }
+
+  const payouts = [];
+  startingAfter = '';
+  for (let page = 0; page < 5; page++) {
+    const qs = `limit=100&created[gte]=${since}${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+    const data = await stripeGetJson(env, `/v1/payouts?${qs}`);
+    for (const p of data.data || []) {
+      payouts.push({ id: p.id, amountCents: p.amount || 0, arrivalDate: p.arrival_date ? p.arrival_date * 1000 : null, status: p.status, currency: p.currency || 'usd' });
+    }
+    if (!data.has_more || !data.data?.length) break;
+    startingAfter = data.data[data.data.length - 1].id;
+  }
+  return { months, payouts, since: since * 1000, truncated, fetchedAt: Date.now() };
+}
+async function stripeGetJson(env, path) {
+  const res = await fetch(`https://api.stripe.com${path}`, { headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || `Stripe returned ${res.status}`);
+  return data;
 }
 
 // Actual money collected in the last 30 days (succeeded charges), plus
