@@ -646,6 +646,126 @@ async function handleCheckEmail(request, env, origin) {
 // back to the client rather than silently ignored, since the rest of the
 // erasure still succeeded and shouldn't be treated as a full failure the
 // user needs to retry.
+/* ── Leaving every shared space when an account is deleted ────────
+   Deleting an account used to remove the person's own data and their
+   group-plan seat, and leave them sitting in every study group and club
+   they had joined: still in the member list, still in the availability
+   grid, still counted, with a name nobody could remove because the
+   account behind it no longer existed.
+
+   Two things make this more than a filter on an array:
+
+   1. Ownership. A study group's owner is the only one who can remove
+      anyone or delete it, and firestore.rules requires a club's
+      createdBy to be in both memberUids and officerUids for any officer
+      edit to pass. Removing an owner without handing the role on would
+      leave the group intact and unmanageable by anybody. So the role
+      moves to the longest-standing member who is left (an officer first,
+      in a club), and a space with nobody left is deleted outright.
+
+   2. Concurrency. These documents are shared, and someone else may be
+      editing one while this runs, so each change is a read-modify-write
+      guarded by the document's updateTime and retried on a clash.
+
+   Chat messages are left where they are. They carry the author's name on
+   the message itself, so that gets replaced rather than the conversation
+   being torn out from under everyone else who was in it.
+──────────────────────────────────────────────────────────────── */
+const DELETED_PERSON_NAME = 'Deleted account';
+const SHARED_SPACE_SCAN_LIMIT = 100;
+// Used inside Firestore field paths (`people.<uid>`), where a stray dot or
+// backtick would change which field is addressed.
+function safeFieldKey(k) { return typeof k === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(k); }
+
+async function removeMemberFromSharedSpace(env, path, uid, kind) {
+  if (!safeFieldKey(uid)) throw new Error('Unsafe uid for a field path');
+  const [collection, docId] = path.split('/');
+  const subcollections = kind === 'org' ? ['messages'] : ['items', 'messages'];
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const snap = await readFirestoreDocWithTime(env, path);
+    if (!snap) return;
+    const d = snap.data;
+    const members = (d.memberUids || []).filter(u => u !== uid);
+
+    // Last one out. Nothing to hand over, and an empty group is only clutter.
+    if (!members.length) {
+      for (const sub of subcollections) await deleteFirestoreSubcollection(env, path, sub);
+      await deleteFirestoreDoc(env, collection, docId);
+      return;
+    }
+
+    const fields = { memberUids: members, updatedAt: Date.now() };
+    const clear = [`people.${uid}`];
+    if (kind === 'group') clear.push(`avail.${uid}`);
+    if (kind === 'org') {
+      fields.officerUids = (d.officerUids || []).filter(u => u !== uid);
+      clear.push(`rsvp.${uid}`, `titles.${uid}`);
+    }
+
+    if (d.createdBy === uid) {
+      const joined = (u) => Number(d.people?.[u]?.joinedAt) || 0;
+      const officers = kind === 'org' ? members.filter(u => (d.officerUids || []).includes(u)) : [];
+      const heir = [...(officers.length ? officers : members)].sort((a, b) => joined(a) - joined(b))[0];
+      fields.createdBy = heir;
+      if (kind === 'org' && !fields.officerUids.includes(heir)) fields.officerUids = [...fields.officerUids, heir];
+      // A study group shows its owner from people[uid].role, so the badge has
+      // to move with the role or the group looks like it still has no owner.
+      if (kind === 'group' && safeFieldKey(heir) && d.people?.[heir]) fields[`people.${heir}.role`] = 'owner';
+    }
+
+    // The group's own preview of the last message carries a name too.
+    if (d.lastMessage?.uid === uid) fields['lastMessage.name'] = DELETED_PERSON_NAME;
+
+    if (await commitFirestore(env, [{ path, fields, clear, updateTime: snap.updateTime }])) {
+      await anonymizeMessagesBy(env, path, uid);
+      return;
+    }
+  }
+  throw new Error(`Could not update ${path} after 5 attempts`);
+}
+
+// Their messages stay so the conversation still reads, but their name comes
+// off them. Capped: a long-running group's history is not worth an unbounded
+// number of writes inside a request the person is waiting on.
+async function anonymizeMessagesBy(env, path, uid) {
+  const msgs = await runFirestoreQuery(env, {
+    from: [{ collectionId: 'messages' }],
+    where: { fieldFilter: { field: { fieldPath: 'uid' }, op: 'EQUAL', value: { stringValue: uid } } },
+    limit: 300,
+  }, `${path}`);
+  const named = msgs.filter(m => m.name && m.name !== DELETED_PERSON_NAME);
+  for (let i = 0; i < named.length; i += 20) {
+    await commitFirestore(env, named.slice(i, i + 20).map(m => ({ path: `${path}/messages/${m.id}`, fields: { name: DELETED_PERSON_NAME } })));
+  }
+}
+
+async function leaveSharedSpaces(env, uid, planner) {
+  const failed = [];
+  const step = async (what, fn) => {
+    try { await fn(); }
+    catch (e) { failed.push(what); await logServerIssue(env, 'account', `Account delete could not ${what}`, e); }
+  };
+  const membersOf = (collectionId) => runFirestoreQuery(env, {
+    from: [{ collectionId }],
+    where: { fieldFilter: { field: { fieldPath: 'memberUids' }, op: 'ARRAY_CONTAINS', value: { stringValue: uid } } },
+    limit: SHARED_SPACE_SCAN_LIMIT,
+  });
+
+  let groups = [], orgs = [];
+  await step('list study groups', async () => { groups = await membersOf('studyGroups'); });
+  for (const g of groups) await step(`leave study group ${g.id}`, () => removeMemberFromSharedSpace(env, `studyGroups/${g.id}`, uid, 'group'));
+
+  await step('list clubs', async () => { orgs = await membersOf('orgs'); });
+  for (const o of orgs) await step(`leave club ${o.id}`, () => removeMemberFromSharedSpace(env, `orgs/${o.id}`, uid, 'org'));
+
+  // Shared classes have no member array to query, just a document per member,
+  // so the codes come from the planner being deleted. Read it before it goes.
+  const codes = [...new Set((planner?.courses || []).map(c => c?.sharedClass?.code).filter(safeFieldKey))];
+  for (const code of codes) await step(`leave class ${code}`, () => deleteFirestoreDoc(env, `classes/${code}/members`, uid));
+
+  return failed;
+}
+
 async function handleDeleteAccount(request, env, origin) {
   if (!env.FIREBASE_PROJECT_ID) return jsonError('Server misconfigured: FIREBASE_PROJECT_ID not set.', 500, env, origin);
   let body;
@@ -668,6 +788,14 @@ async function handleDeleteAccount(request, env, origin) {
     if (orphaned) return jsonError(`You’re the only admin of ${orphaned.name}’s group plan. Make someone else an admin or cancel the plan first (app.semester-hq.com/group-admin.html), then delete your account.`, 409, env, origin);
     for (const plan of adminPlans) await setGroupAdmins(env, plan, groupAdmins(plan).filter(a => a.uid !== uid));
     if (license?.groupPlanId) await removeGroupMember(env, license.groupPlanId, uid);
+
+    // Study groups, clubs and shared classes, before the planner doc is
+    // deleted below: it's the only record of which shared classes they
+    // joined. A failure here is logged and doesn't stop the deletion — being
+    // left in a group is bad, but refusing to delete an account someone asked
+    // to delete is worse, and the alternative is stopping halfway.
+    const planner = await readFirestoreDoc(env, 'planners', uid).catch(() => null);
+    const leftBehind = await leaveSharedSpaces(env, uid, planner);
     // Same fallback as handleCreatePortalSession: an account whose license was
     // claimed via email (bought before signing up) may be missing this field on
     // the uid-keyed doc even from before that path was fixed to copy it over.
@@ -707,7 +835,7 @@ async function handleDeleteAccount(request, env, origin) {
     try { await deleteFirebaseAuthUser(env, uid); }
     catch (e) { authDeleted = false; await logServerIssue(env, 'account', 'Auth user delete failed', e); }
 
-    return jsonOk({ ok: true, authDeleted }, env, origin);
+    return jsonOk({ ok: true, authDeleted, leftBehind: leftBehind.length }, env, origin);
   } catch (e) {
     return jsonError('Could not delete your account: ' + e.message, 500, env, origin);
   }
@@ -1863,7 +1991,15 @@ async function commitFirestore(env, writes) {
       const name = `${root}/${w.path}`;
       const condition = typeof w.exists === 'boolean' ? { currentDocument: { exists: w.exists } } : w.updateTime ? { currentDocument: { updateTime: w.updateTime } } : {};
       if (w.remove) return { delete: name, ...condition };
-      return { update: { name, fields: toFirestoreFields(w.fields) }, updateMask: { fieldPaths: Object.keys(w.fields) }, ...condition };
+      // `clear` names field paths to delete (e.g. one key of a map, like
+      // `people.abc123`): in the mask but absent from fields, which is how
+      // Firestore is told to remove just that key. Rewriting the whole map
+      // instead would mean decoding and re-encoding every other member's
+      // entry, and anything this Worker's decoder doesn't model — a null,
+      // say — would silently vanish from their data.
+      const fields = w.fields || {};
+      const paths = [...Object.keys(fields), ...(w.clear || [])];
+      return { update: { name, fields: toFirestoreFields(fields) }, updateMask: { fieldPaths: paths }, ...condition };
     }),
   };
   const res = await fetch(`https://firestore.googleapis.com/v1/${root}:commit`, {
@@ -1924,9 +2060,11 @@ async function deleteFirebaseAuthUser(env, uid) {
   });
   if (!res.ok) throw new Error('Identity Toolkit delete failed: ' + await res.text());
 }
-async function runFirestoreQuery(env, structuredQuery) {
+// `parent` scopes the query to a document's subcollections (e.g. the messages
+// under one study group); omitted, it queries the top level.
+async function runFirestoreQuery(env, structuredQuery, parent = '') {
   const token = await getFirebaseAccessToken(env);
-  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery`;
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents${parent ? `/${parent}` : ''}:runQuery`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },

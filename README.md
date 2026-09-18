@@ -4,7 +4,7 @@ A student planner covering dashboard, calendar, assignment tracking, notebook, s
 
 No build step: plain HTML/CSS/JS, runs by opening `index.html` or serving the folder with any static file server.
 
-**Tests:** `node tests/run.mjs`. There are deliberately only two things covered — quick add's plain-English parsing and the syllabus contract between `SYLLABUS_SCHEMA` (js/ai.js) and `sanitizeCourseDetails` (js/syllabus.js). Those are the two places where a regression is silent and costs trust; everything else fails loudly enough to find on its own.
+**Tests:** `node tests/run.mjs` and `node tests/worker-delete-account.mjs`. There are deliberately only two things covered — quick add's plain-English parsing and the syllabus contract between `SYLLABUS_SCHEMA` (js/ai.js) and `sanitizeCourseDetails` (js/syllabus.js). Those, plus what happens to a study group or club when a member deletes their account: all places where a regression is silent and costs trust (an owner who no longer exists leaves a club nobody can edit). Everything else fails loudly enough to find on its own.
 
 **What's free vs. paid:** local-only usage (no sign-in) is free forever: full features, on one device, no account needed, so people can try it before buying. Signing in unlocks cross-device sync and AI upload, and requires a $7.99/month subscription. See `worker/README.md` for how that's enforced (short version: a Cloudflare Worker is the only thing allowed to mark someone as paid, so it can't be bypassed from the browser).
 

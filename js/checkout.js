@@ -198,9 +198,11 @@ function pagePaywall() {
     </div>`;
 }
 // Self-serve "Delete my account": cancels any active subscription and erases
-// every server-side record (license, planner doc, Auth user) via the Worker.
-// Local-only data in this browser is untouched. Export a backup first if
-// the user wants to keep it, same as any other sign-out.
+// every server-side record (license, planner doc, Auth user) via the Worker,
+// and steps them out of every study group, club and shared class they had
+// joined, handing on ownership where they owned one. Local-only data in this
+// browser is untouched. Export a backup first if the user wants to keep it,
+// same as any other sign-out.
 async function deleteAccountFully() {
   if (!_fbUser) return;
   const idToken = await _fbUser.getIdToken();
