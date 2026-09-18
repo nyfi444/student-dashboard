@@ -149,9 +149,27 @@ const diag = (() => {
     report(level, feature, message, err, extra);
   };
 
+  // Product telemetry, not a crash report: counts about how a feature went,
+  // sent to the Worker's /track-event route (which allowlists both the event
+  // name and every detail field). Never carries anything from the student's
+  // documents — see EVENT_DETAIL_* in worker/src/index.js. Fire and forget:
+  // the app must never wait on it or fail because of it.
+  const EVENT_ENDPOINT = typeof WORKER_URL !== 'undefined' && WORKER_URL ? `${WORKER_URL}/track-event` : '';
+  function event(name, detail) {
+    crumb('event', `${name}${detail ? ` ${JSON.stringify(detail)}` : ''}`);
+    if (!EVENT_ENDPOINT) return;
+    nativeFetch(EVENT_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      keepalive: true,
+      body: JSON.stringify({ event: name, path: pagePath(), detail: detail || undefined }),
+    }).catch(() => {});
+  }
+
   return {
     session,
     crumb,
+    event,
     warn: log('warn', 'warn'),
     error: log('error', 'error'),
     // Plain text for someone to paste into a support email. No content, no account details.

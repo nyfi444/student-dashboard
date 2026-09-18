@@ -77,7 +77,6 @@ function fmtSessionDay(dIso) {
   return fmtDate(dIso, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 function fmtSessionWhen(s) { return `${fmtSessionDay(s.date)}${s.start ? ' · ' + fmtTime(s.start) + (s.end ? '–' + fmtTime(s.end) : '') : ''}`; }
-function isHttpUrl(u) { return /^https?:\/\/\S+$/i.test(String(u || '').trim()); }
 function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } }
 function linkifyText(text) {
   return esc(text).replace(/https?:\/\/[^\s<]+/g, (m) => `<a href="${m}" target="_blank" rel="noopener noreferrer">${m}</a>`);

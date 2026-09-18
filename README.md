@@ -4,6 +4,8 @@ A student planner covering dashboard, calendar, assignment tracking, notebook, s
 
 No build step: plain HTML/CSS/JS, runs by opening `index.html` or serving the folder with any static file server.
 
+**Tests:** `node tests/run.mjs`. There are deliberately only two things covered — quick add's plain-English parsing and the syllabus contract between `SYLLABUS_SCHEMA` (js/ai.js) and `sanitizeCourseDetails` (js/syllabus.js). Those are the two places where a regression is silent and costs trust; everything else fails loudly enough to find on its own.
+
 **What's free vs. paid:** local-only usage (no sign-in) is free forever: full features, on one device, no account needed, so people can try it before buying. Signing in unlocks cross-device sync and AI upload, and requires a $7.99/month subscription. See `worker/README.md` for how that's enforced (short version: a Cloudflare Worker is the only thing allowed to mark someone as paid, so it can't be bypassed from the browser).
 
 All setup below is one-time, done-by-the-app-owner configuration; regular students never see an API key, a Firebase config screen, or a Stripe key. Until you do it, the app still works fully in free/local-only mode; sign-in and AI upload just show as unavailable.
@@ -13,7 +15,7 @@ All setup below is one-time, done-by-the-app-owner configuration; regular studen
 1. Go to https://console.firebase.google.com → **Add project**
 2. **Build → Authentication → Get started → Sign-in method → Google → Enable**
 3. **Build → Firestore Database → Create database** (production mode)
-4. Deploy the security rules in [`firestore.rules`](firestore.rules): either paste its contents into **Firestore → Rules** in the console and click Publish, or if you have the Firebase CLI: `firebase deploy --only firestore:rules`. These rules scope each user's data to themselves, and make sure only the backend Worker (not the browser) can ever mark someone as paid.
+4. Deploy the security rules in [`firestore.rules`](firestore.rules) and [`storage.rules`](storage.rules). After the one-time setup in [`.github/workflows/deploy-rules.yml`](.github/workflows/deploy-rules.yml) this happens automatically on every push to `main` that touches them — publishing them by hand is how the repo and the console quietly end up disagreeing. To do it manually anyway: paste the contents into **Firestore → Rules** / **Storage → Rules** and click Publish, or run `firebase deploy --only firestore:rules,storage`. These rules scope each user's data to themselves, and make sure only the backend Worker (not the browser) can ever mark someone as paid.
 5. **Project settings (gear icon) → General → Your apps → Add app → Web** (`</>` icon), register it, copy the `firebaseConfig` object
 6. Paste those values into `FB_CONFIG` in `js/config.js` (the one file every page reads for shared settings):
    ```js

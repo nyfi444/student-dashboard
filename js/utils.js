@@ -117,6 +117,8 @@ const MIME_BY_EXT = {
   mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', mp4: 'video/mp4', mov: 'video/quicktime',
 };
 function fileExt(name) { const m = String(name || '').toLowerCase().match(/\.([a-z0-9]{1,8})$/); return m ? m[1] : ''; }
+// Used by study groups, clubs, and the syllabus reader's course-website field.
+function isHttpUrl(u) { return /^https?:\/\/\S+$/i.test(String(u || '').trim()); }
 // The extension wins when it's a known one: it's what the person sees, and
 // what their computer uses to decide which app opens the file.
 function mimeForFile(name, type) {

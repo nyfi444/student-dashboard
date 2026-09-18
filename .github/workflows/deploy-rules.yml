@@ -1,0 +1,58 @@
+# Publish Firestore and Storage rules whenever they change on main.
+#
+# The rules are the entire security boundary for the app: they are the only
+# thing standing between one student's planner and everybody else's. They live
+# in this repo, but the thing that actually enforces them is the copy in the
+# Firebase console — and until this workflow existed, getting the two to match
+# was a manual step done by hand after every change. The failure mode isn't an
+# attack; it's an ordinary Tuesday where the repo says one thing, the console
+# says another, and nobody finds out for a month.
+#
+# One-time setup: create a Google Cloud service account with the
+# "Firebase Rules Admin" role, download its JSON key, and add the whole JSON
+# as the repository secret FIREBASE_SERVICE_ACCOUNT (Settings → Secrets and
+# variables → Actions). Nothing else is needed; there is no build step.
+name: Deploy security rules
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - firestore.rules
+      - storage.rules
+      - firebase.json
+      - .github/workflows/deploy-rules.yml
+  # Also runnable by hand, for the first run and for re-publishing after a
+  # console edit has drifted from the repo.
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install the Firebase CLI
+        run: npm install --global firebase-tools@13
+
+      - name: Check the rules parse before publishing anything
+        run: |
+          test -s firestore.rules
+          test -s storage.rules
+
+      - name: Publish
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "FIREBASE_SERVICE_ACCOUNT secret is not set — see the comment at the top of this file." >&2
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          firebase deploy --only firestore:rules,storage --project semester-hq --non-interactive
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"

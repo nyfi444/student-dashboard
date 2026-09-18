@@ -199,7 +199,8 @@ async function setupUploadSyllabus(ci, files) {
     const material = await readUploadedFiles(list);
     c.syllabusStatus = 'Pulling out dates and class details…';
     renderSetupStep();
-    const data = await aiParseSyllabus(material);
+    const data = await aiParseSyllabus({ ...material, fileType: fileExt(list[0]?.name || '') });
+    c._syllabusFiles = list; // kept until the class is created, see keepSyllabusFile
     toastUploadProblems(material);
     c.code = c.code || data.code || '';
     c.instructor = data.instructor || c.instructor;
@@ -274,6 +275,7 @@ function setupFinish() {
       color: c.color, credits: Number(c.credits) || 0, location: c.location || '', status: 'in-progress', requirementType: 'required',
       meetings, resources: [], syllabusRaw: '', ...(courseDetailsCount(c.details) ? { details: c.details } : {}),
     });
+    if (c._syllabusFiles?.length) keepSyllabusFile(id, c._syllabusFiles);
     c._pendingAssignments.forEach(a => {
       assignments++;
       state.assignments.push({

@@ -50,8 +50,27 @@
       its members and runs them from group-admin.html. See section 9.
 ──────────────────────────────────────────────────────────────── */
 
-const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
+// claude-sonnet-5 is the default (see js/ai.js): newer than sonnet-4.6 and a
+// third cheaper on both sides ($2/$10 per MTok vs $3/$15). claude-opus-5 is
+// here for the one genuinely hard case, a scanned image-only syllabus where
+// the structure has to be inferred from the page layout; it costs 2.5x Sonnet
+// 5, so nothing else should route to it. claude-sonnet-4-6 stays allowed for
+// one release so a stored per-user aiModel setting doesn't start 400ing.
+const ALLOWED_MODELS = ['claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
 const MAX_TOKENS_CAP = 4000;
+// What one account may ask for in a day. A student in their heaviest setup
+// week runs maybe 10 calls; 40 leaves room for a bad day in the first week of
+// term without leaving the bill open-ended if an ID token is ever stolen.
+const AI_CALLS_PER_DAY = 40;
+// MAX_TOKENS_CAP bounds one reply; this bounds one request. A 40-page
+// syllabus packet, or a 600-page textbook uploaded to make flashcards, costs
+// real money and produces nothing useful, so it's refused before it's sent.
+const AI_MAX_INPUT_TOKENS = 60000;
+const AI_MAX_BODY_BYTES = 24 * 1024 * 1024;
+// Only these fields of the client's body ever reach Anthropic. Adding a field
+// here is deliberate: the alternative (forwarding the whole body) would let a
+// caller set anything the API accepts, on Nyla's key.
+const AI_FORWARDED_FIELDS = ['model', 'system', 'messages', 'output_config'];
 const ANTHROPIC_VERSION = '2023-06-01';
 const PLUS_PRICE_CENTS = 799; // $7.99/month, bump the marketing copy too if this changes
 const GROUP_SEAT_PRICE_CENTS = 599; // $5.99 per member per month, same note as above
@@ -187,6 +206,9 @@ async function handleAiProxy(request, env, origin) {
   if (!env.ANTHROPIC_API_KEY) return jsonError('Server misconfigured: ANTHROPIC_API_KEY secret not set.', 500, env, origin);
   if (!env.FIREBASE_PROJECT_ID) return jsonError('Server misconfigured: FIREBASE_PROJECT_ID not set.', 500, env, origin);
 
+  const declaredLength = Number(request.headers.get('content-length') || 0);
+  if (declaredLength > AI_MAX_BODY_BYTES) return jsonError('That upload is too large to read. Upload just the pages you need and try again.', 413, env, origin);
+
   let body;
   try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
 
@@ -205,28 +227,99 @@ async function handleAiProxy(request, env, origin) {
   if (!ALLOWED_MODELS.includes(body.model)) return jsonError(`Model not allowed. Use one of: ${ALLOWED_MODELS.join(', ')}`, 400, env, origin);
   if (!body.system || !Array.isArray(body.messages)) return jsonError('Request must include system and messages', 400, env, origin);
 
-  const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+  // Too big to be worth reading: refuse before it's sent, with a sentence
+  // that says what to do instead, rather than after it's been paid for.
+  const estimated = estimateInputTokens(body);
+  if (estimated > AI_MAX_INPUT_TOKENS) {
+    return jsonError('That’s too much to read at once. Upload just the pages you need — a syllabus is usually a few pages — and try again.', 413, env, origin);
+  }
+
+  // Nothing else bounds how many replies one account can ask for. Without
+  // this, one stolen ID token turns a variable cost into an unbounded one.
+  const quota = await checkAiDailyQuota(env, payload.sub);
+  if (!quota.ok) {
+    return jsonError(`You’ve used all ${AI_CALLS_PER_DAY} AI reads for today. They reset tomorrow — everything else in Semester HQ keeps working.`, 429, env, origin, { retryAfterHours: quota.hoursLeft });
+  }
+
+  const forwarded = {};
+  for (const field of AI_FORWARDED_FIELDS) if (body[field] !== undefined) forwarded[field] = body[field];
+  forwarded.max_tokens = Math.min(Number(body.max_tokens) || 1024, MAX_TOKENS_CAP);
+
+  const send = () => fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-api-key': env.ANTHROPIC_API_KEY,
       'anthropic-version': ANTHROPIC_VERSION,
     },
-    body: JSON.stringify({
-      model: body.model,
-      max_tokens: Math.min(Number(body.max_tokens) || 1024, MAX_TOKENS_CAP),
-      system: body.system,
-      messages: body.messages,
-    }),
+    body: JSON.stringify(forwarded),
   });
 
+  let upstream = await send();
+  // A burst — the first week of term, everyone setting up on the same
+  // afternoon — can hit this account's own Anthropic rate limit. One quiet
+  // retry turns most of those into a slightly slower upload rather than a
+  // failure the student sees. Exactly one: the daily quota was already spent
+  // above, and a retry loop would be a way to spend money in a circle.
+  if (upstream.status === 429) {
+    const wait = Math.min(Number(upstream.headers.get('retry-after')) * 1000 || 1500, 4000);
+    await new Promise(r => setTimeout(r, wait));
+    upstream = await send();
+  }
+
   const text = await upstream.text();
+  // Still rate limited after the retry. That isn't the student's fault and
+  // shouldn't read like an error they caused.
+  if (upstream.status === 429) {
+    await logServerIssue(env, 'ai', 'Anthropic rate limited this account', null, { model: body.model });
+    return jsonError('Semester HQ is busy right now — a lot of people are setting up at once. Give it a minute and try again.', 429, env, origin, { upstream: true });
+  }
   if (!upstream.ok && upstream.status < 500) {
     let upstreamError = {};
     try { upstreamError = JSON.parse(text).error || {}; } catch {}
     await logServerIssue(env, 'ai', `Anthropic returned ${upstream.status}`, null, { model: body.model, type: upstreamError.type || '', detail: String(upstreamError.message || '').slice(0, 200) });
   }
   return new Response(text, { status: upstream.status, headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
+}
+
+/* ── How much one request is about to cost, roughly ───────────────
+   Text is counted at the usual ~4 characters per token. An image is
+   counted at 1,800 tokens, about what a full syllabus page costs. This
+   only has to be right enough to catch a textbook, not to bill anyone. */
+function estimateInputTokens(body) {
+  let chars = typeof body.system === 'string' ? body.system.length : JSON.stringify(body.system || '').length;
+  let images = 0;
+  for (const message of body.messages || []) {
+    const content = message?.content;
+    if (typeof content === 'string') { chars += content.length; continue; }
+    for (const block of Array.isArray(content) ? content : []) {
+      if (block?.type === 'image') images++;
+      else if (typeof block?.text === 'string') chars += block.text.length;
+    }
+  }
+  return Math.round(chars / 4) + images * 1800;
+}
+
+/* ── Per-account daily AI quota (KV) ──────────────────────────────
+   Counted per uid, not per IP: the point is to bound what one account
+   can spend, and a student's IP changes between dorm and campus wifi.
+   No RATE_LIMIT KV bound (local `wrangler dev`) → no limiting, rather
+   than failing closed on a development machine. */
+async function checkAiDailyQuota(env, uid) {
+  if (!env.RATE_LIMIT) return { ok: true };
+  const now = new Date();
+  const day = now.toISOString().slice(0, 10);
+  const key = `ai:${uid}:${day}`;
+  let used = 0;
+  try { used = Number(await env.RATE_LIMIT.get(key)) || 0; }
+  catch { return { ok: true }; } // KV unavailable: don't lock a paying student out
+  if (used >= AI_CALLS_PER_DAY) {
+    return { ok: false, hoursLeft: Math.max(1, 24 - now.getUTCHours()) };
+  }
+  // Two days of TTL so a key written just before midnight UTC still expires
+  // on its own rather than lingering.
+  try { await env.RATE_LIMIT.put(key, String(used + 1), { expirationTtl: 60 * 60 * 48 }); } catch {}
+  return { ok: true, used: used + 1 };
 }
 
 /* ── 2. Checkout ──────────────────────────────────────────────── */
@@ -770,7 +863,35 @@ async function pruneOldIssues(env) {
 // pattern as error logging. Intentionally minimal (no cookies, no per-user
 // identity): just which CTA fired, from which page, so conversion is
 // measurable without turning this into a full analytics/tracking pipeline.
-const TRACKED_EVENTS = ['nav_login_click', 'nav_upgrade_click', 'try_it_free_click', 'checkout_started', 'checkout_error'];
+const TRACKED_EVENTS = [
+  'nav_login_click', 'nav_upgrade_click', 'try_it_free_click', 'checkout_started', 'checkout_error',
+  // The syllabus is the wedge, so its failure rate is the reliability number
+  // that matters most. `syllabus_read` fires on every upload attempt (with
+  // whether it parsed and what came back); `syllabus_kept` fires after the
+  // student has reviewed it, and says how much of it they actually kept.
+  // That second number is the real accuracy metric — see detail fields below.
+  'syllabus_read', 'syllabus_kept',
+];
+// The only extra fields an event may carry. Counts and short labels about the
+// document, never anything from inside it: no course names, no file names, no
+// text the student uploaded.
+const EVENT_DETAIL_NUMBERS = ['pages', 'images', 'chars', 'assignments', 'details', 'meetings', 'ms', 'cacheRead', 'cacheWrite', 'inputTokens', 'outputTokens', 'offered', 'kept', 'edited', 'removed'];
+const EVENT_DETAIL_LABELS = ['source', 'fileType', 'model', 'outcome', 'reason'];
+
+function cleanEventDetail(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const detail = {};
+  for (const key of EVENT_DETAIL_NUMBERS) {
+    const n = Number(raw[key]);
+    if (Number.isFinite(n)) detail[key] = Math.max(0, Math.min(Math.round(n), 10_000_000));
+  }
+  for (const key of EVENT_DETAIL_LABELS) {
+    const v = String(raw[key] ?? '').replace(/[^a-zA-Z0-9 ._-]/g, '').trim().slice(0, 40);
+    if (v) detail[key] = v;
+  }
+  return Object.keys(detail).length ? detail : null;
+}
+
 async function handleTrackEvent(request, env, origin) {
   if (!env.FIREBASE_PROJECT_ID) return jsonOk({ ok: true }, env, origin); // never block the page over a missing config
 
@@ -780,10 +901,11 @@ async function handleTrackEvent(request, env, origin) {
   const event = TRACKED_EVENTS.includes(body.event) ? body.event : null;
   if (!event) return jsonError('Unknown event', 400, env, origin);
   const path = String(body.path || '').trim().slice(0, 200);
+  const detail = cleanEventDetail(body.detail);
 
   try {
     const id = crypto.randomUUID();
-    await writeFirestoreDoc(env, 'events', id, { event, path, createdAt: new Date() });
+    await writeFirestoreDoc(env, 'events', id, { event, path, createdAt: new Date(), ...(detail ? { detail } : {}) });
   } catch (e) {
     console.error('Event track write failed', e); // never fail the click over a logging endpoint
   }
@@ -1124,7 +1246,48 @@ async function fetchEventFunnel(env) {
     d30[r.event] = (d30[r.event] || 0) + 1;
     if (t && now - t <= 7 * 24 * 60 * 60 * 1000) d7[r.event] = (d7[r.event] || 0) + 1;
   }
-  return { d7, d30, capped: rows.length >= 5000 };
+  return { d7, d30, syllabus: syllabusHealth(rows), capped: rows.length >= 5000 };
+}
+
+/* ── Is the wedge actually working? ───────────────────────────────
+   Everything in Semester HQ depends on a student dropping in a PDF and
+   getting their semester back. These are the numbers that say whether
+   that is happening: how often a read succeeds, how much it finds, and
+   — the honest one — how much of what it found the student kept after
+   looking at it. A high parse rate with a low keep rate means the
+   parser is confidently wrong, which is worse than failing. */
+function syllabusHealth(rows) {
+  const reads = rows.filter(r => r.event === 'syllabus_read');
+  const kepts = rows.filter(r => r.event === 'syllabus_kept');
+  const parsed = reads.filter(r => r.detail?.outcome === 'parsed');
+  const sum = (list, key) => list.reduce((n, r) => n + (Number(r.detail?.[key]) || 0), 0);
+  const offered = sum(kepts, 'offered');
+  const cacheReads = sum(parsed, 'cacheRead');
+  const failures = {};
+  for (const r of reads) {
+    if (r.detail?.outcome === 'parsed') continue;
+    const reason = r.detail?.reason || 'unknown';
+    failures[reason] = (failures[reason] || 0) + 1;
+  }
+  return {
+    reads: reads.length,
+    parsed: parsed.length,
+    parseRate: reads.length ? Math.round((parsed.length / reads.length) * 100) : null,
+    // What the parser found, per successful read.
+    assignmentsPerRead: parsed.length ? Math.round((sum(parsed, 'assignments') / parsed.length) * 10) / 10 : null,
+    // What survived review. This is the accuracy number.
+    reviewed: kepts.length,
+    offered,
+    kept: sum(kepts, 'kept'),
+    edited: sum(kepts, 'edited'),
+    removed: sum(kepts, 'removed'),
+    keepRate: offered ? Math.round((sum(kepts, 'kept') / offered) * 100) : null,
+    // Zero cache reads across many parses means something volatile is sitting
+    // in front of the cached system prompt (see SYLLABUS_SYSTEM in js/ai.js).
+    cacheReads,
+    cacheHitting: parsed.length >= 3 ? cacheReads > 0 : null,
+    failures,
+  };
 }
 
 async function fetchErrorSummary(env) {
@@ -1790,6 +1953,7 @@ function toFirestoreValue(v) {
   if (typeof v === 'number') return { integerValue: String(Math.trunc(v)) };
   if (v instanceof Date) return { timestampValue: v.toISOString() };
   if (Array.isArray(v)) return { arrayValue: { values: v.map(toFirestoreValue) } };
+  if (v && typeof v === 'object') return { mapValue: { fields: toFirestoreFields(v) } };
   return { stringValue: String(v) };
 }
 function toFirestoreFields(obj) {
@@ -1804,6 +1968,7 @@ function fromFirestoreValue(v) {
   if ('stringValue' in v) return v.stringValue;
   if ('timestampValue' in v) return v.timestampValue;
   if ('arrayValue' in v) return (v.arrayValue.values || []).map(fromFirestoreValue).filter(x => x !== undefined);
+  if ('mapValue' in v) return fromFirestoreFields(v.mapValue.fields || {});
   return undefined;
 }
 function fromFirestoreFields(fields) {

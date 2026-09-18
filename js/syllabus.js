@@ -138,7 +138,74 @@ function syllabusCard(c) {
       ${policyBlock('Late work', 'clock', d.latePolicy)}
       ${d.policies?.length ? `<details class="syl-more"><summary class="small">More policies (${d.policies.length})</summary>${d.policies.map(p => policyBlock(p.title, 'file-text', p.text)).join('')}</details>` : ''}
       ${d.textbook ? `<div class="syl-section"><div class="syl-label">${icon('book-open', 12, 1.9)} Textbook</div><p class="small">${esc(d.textbook)}</p></div>` : ''}
+      ${storedSyllabusHtml(c)}
     </div>`;
+}
+
+/* ── The original document, kept ──────────────────────────────────
+   The syllabus used to be read and thrown away. Keeping it means the
+   student can open the real thing from the class page instead of hunting
+   through email for it, and can have it read again later without finding
+   the file a second time. Only ever the student's own: it goes under
+   users/{uid}/syllabi, which storage.rules keeps private to them.
+──────────────────────────────────────────────────────────────── */
+function storedSyllabusHtml(c) {
+  const f = c.syllabusFile;
+  if (!f?.url) return '';
+  return `
+    <div class="syl-section syl-original">
+      <div class="syl-label">${icon('file-text', 12, 1.9)} The syllabus itself</div>
+      <div class="flex-between flex-gap wrap">
+        <a class="small sg-strong" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.name || 'Original file')}</a>
+        ${aiEnabled() ? `<button class="sg-link" onclick="rereadStoredSyllabus('${c.id}')">Read it again</button>` : ''}
+      </div>
+      <div class="small muted">Saved ${esc(fmtDate(f.savedAt, { month: 'short', day: 'numeric' }))}. Only you can open it.</div>
+    </div>`;
+}
+// Uploading is the moment a student is most likely to give up, so storing the
+// original must never be able to fail the upload itself: it runs after the
+// course is saved, and a failure is a diagnostic, not a message.
+async function keepSyllabusFile(courseId, files) {
+  const file = (files || [])[0];
+  const c = getCourse(courseId);
+  if (!file || !c || !_fbUser || !window._licensed || isEmbedded()) return;
+  if (file.size > SYLLABUS_KEEP_MAX_BYTES) return;
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+    const url = await uploadDataUrlToStorage(`users/${_fbUser.uid}/syllabi/${courseId}-${uid()}`, dataUrl, file.name);
+    const course = getCourse(courseId);
+    if (!course) return;
+    course.syllabusFile = { url, name: file.name, size: file.size, savedAt: todayIso() };
+    course.syllabusFileName = file.name;
+    touch();
+  } catch (e) {
+    diag.warn('syllabus', 'Could not keep the original syllabus', e);
+  }
+}
+const SYLLABUS_KEEP_MAX_BYTES = 25 * 1024 * 1024;
+
+// Re-read a syllabus already on file: the parser improves, and this is how
+// an existing class gets the benefit without the student finding the PDF again.
+async function rereadStoredSyllabus(courseId) {
+  const c = getCourse(courseId);
+  if (!c?.syllabusFile?.url || !requireAi('Reading a syllabus')) return;
+  toast('Reading your syllabus again…', 'info');
+  try {
+    const res = await fetch(c.syllabusFile.url);
+    if (!res.ok) throw new Error('That file couldn’t be opened.');
+    const blob = await res.blob();
+    const file = new File([blob], c.syllabusFile.name || 'syllabus.pdf', { type: blob.type });
+    const material = await readUploadedFiles([file]);
+    const data = await aiParseSyllabus({ ...material, fileType: fileExt(file.name) });
+    openSyllabusMergeModal(courseId, data);
+  } catch (e) {
+    toast(e.message || 'Couldn’t read that syllabus again.', 'error', 4000);
+  }
 }
 function toggleOfficeHoursOnCalendar(courseId, on) {
   const c = getCourse(courseId);
@@ -310,6 +377,9 @@ function commitSyllabusMerge() {
   if (m.useMeetings && m.meetings.length && !(c.meetings || []).length) c.meetings = m.meetings;
   if (!c.instructor && m.instructor) c.instructor = m.instructor;
   const adding = m.assignments.filter(a => a._include);
+  // Same accuracy measurement as the new-class path, see reportSyllabusReview
+  // in js/courses.js: what the parser offered against what the student kept.
+  reportSyllabusKept({ offered: m.assignments.length, kept: adding.length, edited: 0, removed: m.assignments.length - adding.length });
   adding.forEach(a => state.assignments.push({
     id: uid(), courseId: c.id, title: cleanStr(a.title, 200), type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
     dueDate: cleanDueDate(a.dueDate), dueTime: cleanDueTime(a.dueTime), startByDate: null,

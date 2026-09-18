@@ -55,9 +55,18 @@ function semesterStats(sem = currentSemester()) {
 function wrappedCards(st) {
   const name = (state.settings.displayName || '').split(' ')[0];
   const hrs = Math.round(st.focusMin / 60);
+  // A semester is a finite, countable thing — sixteen weeks, and then it's
+  // over. That framing is the most ownable thing Semester HQ says, so
+  // Wrapped opens on it: this is what those sixteen weeks were.
+  const term = computeSemesterProgress();
   const list = [
     { kind: 'cover', eyebrow: st.sem.name.replace(/\s*\(sample\)$/, ''), big: 'Wrapped', sub: `${name ? `${name}’s` : 'Your'} semester, by the numbers.` },
   ];
+  if (term) list.push({
+    eyebrow: term.week >= term.totalWeeks ? 'The whole thing was' : `You’re at week ${term.week} of`,
+    big: `${term.totalWeeks}`, unit: 'weeks',
+    sub: term.week >= term.totalWeeks ? 'and this is everything that fit inside them.' : 'and this is what’s fit inside it so far.',
+  });
   if (st.focusMin >= 30) list.push({ eyebrow: 'You focused for', big: hrs >= 2 ? `${hrs}` : `${st.focusMin}`, unit: hrs >= 2 ? 'hours' : 'minutes', sub: `across ${st.sessions} session${st.sessions === 1 ? '' : 's'}. That’s real, deep work.` });
   if (st.longest >= 2) list.push({ eyebrow: 'Longest streak', big: `${st.longest}`, unit: 'days', sub: 'in a row of studying. Consistency looks good on you.' });
   if (st.done >= 1) list.push({ eyebrow: 'Deadlines conquered', big: `${st.done}`, unit: '', sub: `assignments, labs, and papers done${st.exams ? `, plus ${st.exams} exam${st.exams === 1 ? '' : 's'}` : ''}.` });

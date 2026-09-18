@@ -647,7 +647,11 @@ async function loadUploadZone(key, fileList) {
   try {
     const result = await readUploadedFiles(files);
     if (_uploadZones[key]?.token !== token) return; // closed, or other files were picked meanwhile
-    _uploadZones[key] = { token, ready: true, fileNames: files.map(f => f.name), ...result };
+    // The File objects are kept alongside what was read out of them so the
+    // original can be stored (see keepSyllabusFile in js/syllabus.js): parsing
+    // and discarding means a syllabus can never be re-read when the parser
+    // improves, and a failed extraction can never be looked at afterwards.
+    _uploadZones[key] = { token, ready: true, fileNames: files.map(f => f.name), files, ...result };
     status(`${icon('check', 12, 2.2)} ${esc(name)} · ${uploadReadySummary(result)}`);
     toastUploadProblems(result);
   } catch (e) {
@@ -661,5 +665,5 @@ function uploadZoneMaterial(key, emptyMessage) {
   const zone = _uploadZones[key];
   if (!zone) { toast(emptyMessage, 'error'); return null; }
   if (!zone.ready) { toast('Still reading that file, one moment', 'info'); return null; }
-  return { text: zone.text, images: zone.images, fileNames: zone.fileNames || [] };
+  return { text: zone.text, images: zone.images, fileNames: zone.fileNames || [], files: zone.files || [] };
 }

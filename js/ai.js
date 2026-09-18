@@ -52,7 +52,29 @@ function openPlusOnlyModal(what) {
 
 class AiError extends Error {}
 
-async function callClaude({ system, userContent, maxTokens = 2000 }) {
+/* ── Models ───────────────────────────────────────────────────────
+   Sonnet 5 reads a normal syllabus well and costs $2/$10 per million
+   tokens in/out — a third less than the Sonnet 4.6 this used to run on,
+   on a newer model. Opus 5 is 2.5x the price and is used for exactly one
+   thing: a scan or photo with no extractable text, where the structure
+   has to be inferred from the page layout. A well-formatted PDF does not
+   pay for it. The Worker keeps the same allowlist (ALLOWED_MODELS).
+──────────────────────────────────────────────────────────────── */
+const AI_MODEL_DEFAULT = 'claude-sonnet-5';
+const AI_MODEL_HARD = 'claude-opus-5';
+// Structured outputs (output_config.format) exist on these; a student whose
+// stored settings still name an older model gets the old text-parsing path
+// rather than a 400. Remove claude-sonnet-4-6 from settings a release from now.
+const AI_STRUCTURED_MODELS = ['claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5'];
+function aiModel() {
+  const stored = state?.settings?.aiModel;
+  return stored || AI_MODEL_DEFAULT;
+}
+// Usage from the last call, so the syllabus telemetry can report whether the
+// cached system prompt is actually being read (see SYLLABUS_SYSTEM below).
+let _lastAiUsage = null;
+
+async function callClaude({ system, userContent, maxTokens = 2000, schema = null, model = aiModel() }) {
   if (!aiEnabled()) throw new AiError('AI features aren’t set up on this deployment yet.');
   if (isEmbedded()) throw new AiError('This is part of Semester HQ Plus, so it doesn’t run in the demo.');
   if (!navigator.onLine) throw new AiError('You’re offline. This needs an internet connection.');
@@ -62,24 +84,48 @@ async function callClaude({ system, userContent, maxTokens = 2000 }) {
   if (!_fbUser) throw new AiError('Sign in to use AI upload. It’s included with your subscription ($7.99/month).');
   if (!window._licensed) throw new AiError('AI upload requires a subscription ($7.99/month). Subscribe from the pricing page, then sign in.');
   const idToken = await _fbUser.getIdToken();
+  // The system prompt is long, identical on every call of its kind, and would
+  // otherwise be re-billed in full each time. The cache_control breakpoint at
+  // the end of it makes every upload after the first within the cache window
+  // read it instead. Nothing volatile may go in front of it (no timestamps,
+  // no per-student text) or the prefix stops matching and the cache silently
+  // never hits — diag reports that, see aiParseSyllabus.
+  const systemBlocks = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
+  const useSchema = schema && AI_STRUCTURED_MODELS.includes(model);
   const res = await fetch(AI_PROXY_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: state.settings.aiModel || 'claude-sonnet-4-6',
+      model,
       max_tokens: maxTokens,
-      system,
+      system: systemBlocks,
       messages: [{ role: 'user', content: userContent }],
+      // Constrains the reply to conforming JSON, so there is nothing to hunt
+      // for in prose afterwards. Without it (an older stored model), the
+      // caller falls back to extractJson.
+      ...(useSchema ? { output_config: { format: { type: 'json_schema', schema } } } : {}),
       idToken,
     }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    if (res.status < 500 && ![401, 402, 429].includes(res.status)) diag.error('ai', `AI request failed (${res.status})`, null, { status: res.status, model: state.settings.aiModel || 'default', images: Array.isArray(userContent) });
-    throw new AiError(`AI request failed (${res.status}). ${body.slice(0, 160)}`);
+    let message = '';
+    try { message = JSON.parse(body).error || ''; } catch {}
+    if (res.status < 500 && ![401, 402, 413, 429].includes(res.status)) diag.error('ai', `AI request failed (${res.status})`, null, { status: res.status, model, images: Array.isArray(userContent) });
+    // 402 (no subscription), 413 (too much to read) and 429 (out of reads for
+    // today, or everyone setting up at once) all come back from the Worker
+    // with a sentence written for a student. Show that, not a status code.
+    if (message && [402, 413, 429].includes(res.status)) throw new AiError(message);
+    throw new AiError(message || `AI request failed (${res.status}). ${body.slice(0, 160)}`);
   }
   const json = await res.json();
-  return (json.content || []).map(b => b.text || '').join('\n').trim();
+  _lastAiUsage = json.usage || null;
+  if (json.stop_reason === 'max_tokens') diag.warn('ai', 'AI reply hit the token cap', null, { model });
+  const text = (json.content || []).map(b => b.text || '').join('\n').trim();
+  if (!useSchema) return text;
+  // A constrained reply is already conforming JSON; extractJson is only here
+  // for the refusal/truncation edge, where it fails the same way it always did.
+  try { return JSON.parse(text); } catch { return extractJson(text); }
 }
 
 function extractJson(text) {
@@ -162,6 +208,102 @@ const SYLLABUS_SYSTEM = `You extract structured course information from a syllab
 }
 Infer the current or nearest upcoming year for dates when the syllabus only gives month/day. If a field is unknown, use an empty string, null, or empty array. Do not invent assignments, office hours, or policies that aren't in the syllabus. Keep policy summaries short and in plain language. Do not extract grading weights or grade scales.`;
 
+/* ── The shape, as a contract instead of a hope ────────────────────
+   This is sanitizeCourseDetails() in js/syllabus.js written out formally,
+   and it is passed to the model as output_config.format, so the reply is
+   constrained to conform rather than asked nicely to. That removes the
+   whole class of "syllabus upload failed" that came from a model wrapping
+   its JSON in a sentence — which happened at the single most important
+   moment in the product. Keep this in step with sanitizeCourseDetails:
+   the sanitizer is still the boundary that decides what gets stored.
+   Structured outputs don't take minimum/maximum or minLength/maxLength,
+   and every object needs additionalProperties:false and a full `required`. */
+const NULLABLE_NUMBER = { anyOf: [{ type: 'number' }, { type: 'null' }] };
+const ASSIGNMENT_SCHEMA = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    type: { type: 'string', enum: ['assignment', 'reading', 'discussion', 'quiz', 'exam', 'project', 'paper', 'lab'] },
+    dueDate: { type: 'string', description: 'YYYY-MM-DD, or an empty string if the document does not say' },
+    dueTime: { type: 'string', description: 'HH:MM in 24-hour time, or an empty string' },
+    maxPoints: NULLABLE_NUMBER,
+  },
+  required: ['title', 'type', 'dueDate', 'dueTime', 'maxPoints'],
+  additionalProperties: false,
+};
+const HOURS_SCHEMA = {
+  type: 'object',
+  properties: {
+    day: { type: 'integer', description: '0 = Sunday through 6 = Saturday' },
+    start: { type: 'string', description: 'HH:MM' },
+    end: { type: 'string', description: 'HH:MM' },
+    where: { type: 'string' },
+  },
+  required: ['day', 'start', 'end', 'where'],
+  additionalProperties: false,
+};
+const SYLLABUS_SCHEMA = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    code: { type: 'string' },
+    instructor: { type: 'string' },
+    location: { type: 'string' },
+    credits: NULLABLE_NUMBER,
+    meetings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { day: { type: 'integer' }, start: { type: 'string' }, end: { type: 'string' } },
+        required: ['day', 'start', 'end'],
+        additionalProperties: false,
+      },
+    },
+    assignments: { type: 'array', items: ASSIGNMENT_SCHEMA },
+    details: {
+      type: 'object',
+      properties: {
+        email: { type: 'string' }, phone: { type: 'string' }, office: { type: 'string' },
+        officeHours: { type: 'array', items: HOURS_SCHEMA },
+        officeHoursNote: { type: 'string' },
+        tas: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { name: { type: 'string' }, email: { type: 'string' }, officeHours: { type: 'string' } },
+            required: ['name', 'email', 'officeHours'],
+            additionalProperties: false,
+          },
+        },
+        absenceLimit: { anyOf: [{ type: 'integer' }, { type: 'null' }], description: 'Only if the syllabus gives a number' },
+        absencePolicy: { type: 'string' },
+        latePolicy: { type: 'string' },
+        policies: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { title: { type: 'string' }, text: { type: 'string' } },
+            required: ['title', 'text'],
+            additionalProperties: false,
+          },
+        },
+        website: { type: 'string' },
+        textbook: { type: 'string' },
+      },
+      required: ['email', 'phone', 'office', 'officeHours', 'officeHoursNote', 'tas', 'absenceLimit', 'absencePolicy', 'latePolicy', 'policies', 'website', 'textbook'],
+      additionalProperties: false,
+    },
+  },
+  required: ['name', 'code', 'instructor', 'location', 'credits', 'meetings', 'assignments', 'details'],
+  additionalProperties: false,
+};
+const ASSIGNMENTS_SCHEMA = {
+  type: 'object',
+  properties: { assignments: { type: 'array', items: ASSIGNMENT_SCHEMA } },
+  required: ['assignments'],
+  additionalProperties: false,
+};
+
 // `images` is an array of {base64, mediaType}: multiple photos of one syllabus
 // (e.g. a multi-page handout shot page by page) get sent as one message so the
 // model can read them together instead of parsing each page in isolation.
@@ -171,22 +313,72 @@ function imageBlocks(images) {
 
 // An upload can bring both text and images (a Word doc plus photos, or a
 // scan with a little text), so both go in the same message.
-async function aiParseSyllabus({ text = '', images = [] }) {
+async function aiParseSyllabus({ text = '', images = [], fileType = '' } = {}) {
   const userContent = images.length
     ? [...imageBlocks(images), { type: 'text', text: `Extract the course info from this syllabus (across all pages/photos if more than one) as specified.${text ? `\n\nText from the same upload:\n${text.slice(0, 15000)}` : ''}` }]
     : `Here is the syllabus text:\n\n${text.slice(0, 15000)}`;
-  const raw = await callClaude({ system: SYLLABUS_SYSTEM, userContent, maxTokens: 3000 });
-  return extractJson(raw);
+  // A scan or photo with no text at all is the hard case: nothing to read, so
+  // the structure has to come from the layout of the page. That one gets the
+  // better model. Anything with real text does not — it doesn't need it, and
+  // Opus costs 2.5x as much.
+  const scannedOnly = images.length > 0 && text.trim().length < 200;
+  const model = scannedOnly && aiModel() === AI_MODEL_DEFAULT ? AI_MODEL_HARD : aiModel();
+  const started = Date.now();
+  const measure = { source: images.length ? 'upload' : 'text', fileType: fileType || (images.length ? 'image' : 'text'), model, images: images.length, chars: text.length };
+  try {
+    const data = await callClaude({ system: SYLLABUS_SYSTEM, userContent, maxTokens: 3000, schema: SYLLABUS_SCHEMA, model });
+    reportSyllabusRead({ ...measure, outcome: 'parsed', ms: Date.now() - started, assignments: (data?.assignments || []).length, meetings: (data?.meetings || []).length, details: courseDetailsCount(sanitizeCourseDetails(data?.details)) });
+    return data;
+  } catch (e) {
+    reportSyllabusRead({ ...measure, outcome: 'failed', ms: Date.now() - started, reason: syllabusFailureReason(e) });
+    throw e;
+  }
 }
 
-const ASSIGNMENTS_SYSTEM = `You extract a list of assignments/deadlines from a document (syllabus, assignment sheet, or course schedule). Reply with ONLY a JSON array (no prose, no markdown fences) of objects matching this shape:
-[{"title": string, "type": "assignment"|"reading"|"discussion"|"quiz"|"exam"|"project"|"paper"|"lab", "dueDate": "YYYY-MM-DD or empty string if unknown", "dueTime": "HH:MM or empty string", "maxPoints": number|null}]
+/* ── Is the wedge working? ────────────────────────────────────────
+   The syllabus read is the one thing the whole product rests on, so its
+   failure rate is the reliability number that matters most, and it isn't
+   knowable without measuring it. These two calls are that measurement.
+   Only counts leave the browser — never a course name, a file name, or
+   anything out of the document (the Worker allowlists the fields too).
+──────────────────────────────────────────────────────────────── */
+function syllabusFailureReason(e) {
+  const m = String(e?.message || '').toLowerCase();
+  if (m.includes('subscription') || m.includes('sign in')) return 'not-subscribed';
+  if (m.includes('offline')) return 'offline';
+  if (m.includes('too much') || m.includes('too large')) return 'too-big';
+  if (m.includes('busy') || m.includes('reads for today')) return 'rate-limited';
+  if (e instanceof SyntaxError || m.includes('json')) return 'bad-json';
+  return 'error';
+}
+function reportSyllabusRead(detail) {
+  const usage = _lastAiUsage || {};
+  diag.event('syllabus_read', {
+    ...detail,
+    cacheRead: usage.cache_read_input_tokens || 0,
+    cacheWrite: usage.cache_creation_input_tokens || 0,
+    inputTokens: usage.input_tokens || 0,
+    outputTokens: usage.output_tokens || 0,
+  });
+}
+// Called once the student has looked at what came back and said yes. `offered`
+// is what the parser found, `kept` what survived, `edited` what they corrected
+// and `removed` what they deleted. The keep rate is the honest accuracy number:
+// a high parse rate with a low keep rate means the parser is confidently wrong.
+function reportSyllabusKept({ offered = 0, kept = 0, edited = 0, removed = 0 }) {
+  diag.event('syllabus_kept', { offered, kept, edited, removed });
+}
+
+const ASSIGNMENTS_SYSTEM = `You extract a list of assignments/deadlines from a document (syllabus, assignment sheet, or course schedule). Reply with ONLY a JSON object (no prose, no markdown fences) matching this shape:
+{"assignments": [{"title": string, "type": "assignment"|"reading"|"discussion"|"quiz"|"exam"|"project"|"paper"|"lab", "dueDate": "YYYY-MM-DD or empty string if unknown", "dueTime": "HH:MM or empty string", "maxPoints": number|null}]}
 Infer the current or nearest upcoming year for dates when only month/day is given. Do not invent assignments that aren't mentioned in the document.`;
 
 async function aiParseAssignments({ text = '', images = [] }) {
   const userContent = images.length
     ? [...imageBlocks(images), { type: 'text', text: `Extract the list of assignments/deadlines from these images (they may be multiple pages of one document) as specified.${text ? `\n\nText from the same upload:\n${text.slice(0, 15000)}` : ''}` }]
     : `Here is the document text:\n\n${text.slice(0, 15000)}`;
-  const raw = await callClaude({ system: ASSIGNMENTS_SYSTEM, userContent, maxTokens: 3000 });
-  return extractJson(raw);
+  const data = await callClaude({ system: ASSIGNMENTS_SYSTEM, userContent, maxTokens: 3000, schema: ASSIGNMENTS_SCHEMA });
+  // Constrained replies come back as {assignments:[...]} because a JSON Schema
+  // root has to be an object; the old prose path returned the bare array.
+  return Array.isArray(data) ? data : (data?.assignments || []);
 }

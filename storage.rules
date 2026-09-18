@@ -11,6 +11,16 @@ service firebase.storage {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
+    // The original syllabus a student uploaded, kept under the class it was
+    // read into (see keepSyllabusFile in js/syllabus.js). Strictly private to
+    // the one account: a syllabus carries a professor's email, office number
+    // and phone, so nothing here is readable by anyone else, group members
+    // included. 25MB matches the app's own limit for keeping one.
+    match /users/{uid}/syllabi/{fileId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid
+        && (request.resource == null || request.resource.size < 25 * 1024 * 1024);
+    }
+
     // Study group files, current format: uploaded when someone shares a file
     // (see addCloudGroupItem). Signed-in only, capped at 10MB to match the
     // app's limit. Members open them through the download URL stored in the

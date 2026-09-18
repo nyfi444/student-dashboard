@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#141414">
+<meta name="theme-color" content="#F8F6F2">
 <script>
   // Paint the chosen theme and app icon before anything else loads, so a
   // themed app never flashes the default colors (see applyTheme).
@@ -54,6 +54,19 @@
 <input type="file" id="hidden-file-input" style="display:none">
 <div id="print-area"></div>
 
+<!-- ── Script order is load-bearing ───────────────────────────────────
+     There is no build step, so this list IS the dependency graph and
+     nothing enforces it. Three rules, and one reordered line is a white
+     screen on every device at once:
+       1. js/version.js, js/config.js and js/diagnostics.js come first, in
+          that order — diagnostics needs WORKER_URL and APP_VERSION, and it
+          has to be listening before anything that can throw loads.
+       2. js/utils.js, then js/state.js, then js/firebase.js: firebase.js
+          syncs `state`, so state.js has to have defined it.
+       3. js/app.js comes LAST. It boots the app and calls into every file
+          above it.
+     Everything between rule 2 and rule 3 is a feature and is order-free;
+     add new ones there, not at either end. -->
 <script src="js/version.js"></script>
 <script src="js/config.js"></script>
 <script src="js/diagnostics.js"></script>

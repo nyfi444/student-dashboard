@@ -236,7 +236,7 @@ function seedData() {
       recentEventColors: [],
       stickyNoteSize: 'md',
       weekStartsMonday: true,
-      aiModel: 'claude-sonnet-4-6',
+      aiModel: 'claude-sonnet-5', // see AI_MODEL_DEFAULT in js/ai.js
       displayName: '',
       weeklyStudyGoalMinutes: 300,
       dashboardWidgets: ['quickAdd', 'dueThisWeek', 'studyGroups', 'orgs', 'exams', 'focus', 'workload', 'quickNote', 'projects', 'notes'],
@@ -303,6 +303,11 @@ function migrate(parsed) {
   const base = seedData();
   const merged = { ...base, ...parsed };
   merged.settings = { ...base.settings, ...(parsed.settings || {}) };
+  // Everyone moves to the current model (see AI_MODEL_DEFAULT in js/ai.js):
+  // claude-sonnet-5 is both newer and a third cheaper than the sonnet-4-6
+  // saved settings still name. The Worker keeps accepting the old id for a
+  // release, so a save that misses this migration still works.
+  if (merged.settings.aiModel === 'claude-sonnet-4-6') merged.settings.aiModel = 'claude-sonnet-5';
   // Older saves used a two-color gradient {color1,color2,angle}: collapse to the new solid {color}.
   if (merged.settings.background?.color1 && !merged.settings.background.color) {
     merged.settings.background = { color: merged.settings.background.color1 };

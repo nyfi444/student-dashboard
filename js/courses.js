@@ -366,11 +366,18 @@ async function runSyllabusParse() {
   window._sylRepeatOk = false;
   setBtnLoading(btn, true);
   try {
-    const data = await aiParseSyllabus(material);
+    const data = await aiParseSyllabus({ ...material, fileType: fileExt((material.fileNames || [])[0] || '') || (window._sylActiveTab === 'paste' ? 'paste' : '') });
     if (target && (material.fileNames || []).length) target.syllabusFileName = material.fileNames[0];
     closeModal();
-    if (window._sylTargetCourseId && getCourse(window._sylTargetCourseId)) openSyllabusMergeModal(window._sylTargetCourseId, data);
-    else openSyllabusReviewModal(data);
+    if (window._sylTargetCourseId && getCourse(window._sylTargetCourseId)) {
+      keepSyllabusFile(window._sylTargetCourseId, material.files);
+      openSyllabusMergeModal(window._sylTargetCourseId, data);
+    } else {
+      // The class doesn't exist until the student confirms, so the original
+      // is held until commitSyllabusCourse knows its id.
+      window._sylPendingFiles = material.files || [];
+      openSyllabusReviewModal(data);
+    }
   } catch (e) {
     toast(e.message || 'Could not parse that syllabus', 'error', 4000);
   } finally { setBtnLoading(btn, false); }
@@ -391,6 +398,13 @@ function openSyllabusReviewModal(data, forceNew = false) {
   };
   window._courseDraft = draft;
   window._sylAssignments = (data.assignments || []).map(a => ({ ...a, _include: true, id: uid() }));
+  // What the parser offered, before the student touched any of it. Compared
+  // against what they actually save (commitSyllabusCourse) this is the real
+  // accuracy measurement — see reportSyllabusKept in js/ai.js.
+  window._sylOffered = {
+    assignments: window._sylAssignments.map(a => ({ id: a.id, title: a.title || '', dueDate: a.dueDate || '', type: a.type || '' })),
+    name: draft.name, code: draft.code, instructor: draft.instructor, location: draft.location,
+  };
   const dd = draft.details;
   const detailBits = [
     dd.email ? esc(dd.email) : '', dd.officeHours.length ? `Office hours ${dd.officeHours.map(h => `${DOW_NAMES[h.day]} ${fmtTime(h.start)}`).join(', ')}` : '',
@@ -452,8 +466,31 @@ function commitSyllabusCourse() {
       maxPoints: a.maxPoints || null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null,
     });
   });
+  reportSyllabusReview(d);
+  if (window._sylPendingFiles?.length) { keepSyllabusFile(d.id, window._sylPendingFiles); window._sylPendingFiles = null; }
   touch();
   closeModal();
   toast(`Added ${d.name} with ${(window._sylAssignments || []).filter(a => a._include).length} assignments`);
   openCourse(d.id);
+}
+
+// Counts only: how many of the deadlines the parser found were kept as they
+// were, corrected, or dropped, plus whether the four course fields were
+// retyped. Nothing that was typed or uploaded leaves the browser.
+function reportSyllabusReview(saved) {
+  const offered = window._sylOffered;
+  window._sylOffered = null;
+  if (!offered) return;
+  const same = (a, b) => (a || '').trim() === (b || '').trim();
+  const current = new Map((window._sylAssignments || []).map(a => [a.id, a]));
+  let kept = 0, edited = 0, removed = 0;
+  offered.assignments.forEach(a => {
+    const now = current.get(a.id);
+    if (!now || !now._include) { removed++; return; }
+    if (same(now.title, a.title) && same(now.dueDate, a.dueDate) && same(now.type, a.type)) kept++;
+    else edited++;
+  });
+  const fields = ['name', 'code', 'instructor', 'location'];
+  const fieldsEdited = fields.filter(f => offered[f] && !same(saved[f], offered[f])).length;
+  reportSyllabusKept({ offered: offered.assignments.length + fields.filter(f => offered[f]).length, kept: kept + (fields.filter(f => offered[f]).length - fieldsEdited), edited: edited + fieldsEdited, removed });
 }

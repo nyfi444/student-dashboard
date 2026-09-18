@@ -1,16 +1,19 @@
 /* ── Appearance: themes, seasonal editions, app icons, sound, motion ──
    A theme sets the whole palette (page, surfaces, text, accent) for both
-   light and dark mode. Classic is the original black-and-white look. Any
+   light and dark mode. Bone & Ink is the default and the one the brand is
+   built on — warm paper, deep ink, the same palette as semester-hq.com, so
+   a student who comes from the site doesn't watch the brand change
+   underneath them. Classic is the original black-and-white look. Any
    theme can take a page color on top (pageColorSwatchesHtml). Autumn Term
    and Summer Session are seasonal editions that can only be picked during
    their season, but stay yours once chosen; Winter Finals and Spring Bloom
    are available all year.
 ──────────────────────────────────────────────────────────────── */
 const THEMES = [
-  { id: 'classic', name: 'Classic', note: 'Ink on white' },
   { id: 'bone', name: 'Bone & Ink', note: 'Warm paper, deep ink',
     light: { bg: '#F8F6F2', surface: '#FFFDF9', surface2: '#F1EDE5', border: '#E6DFD8', text: '#121212', accent: '#121212', accentLight: '#EDE7DE', accentText: '#F8F6F2' },
     dark: { bg: '#12110F', surface: '#1B1916', surface2: '#25221E', border: '#35312C', text: '#F3EFE8', accent: '#F3EFE8', accentLight: '#2E2A25', accentText: '#12110F' } },
+  { id: 'classic', name: 'Classic', note: 'Ink on white' },
   { id: 'midnight', name: 'Midnight', note: 'Navy and moonlight',
     light: { bg: '#F4F6FA', surface: '#FFFFFF', surface2: '#EAEEF5', border: '#DCE2EC', text: '#141B2D', accent: '#1B2A4A', accentLight: '#E3E9F4', accentText: '#F4F6FA' },
     dark: { bg: '#0B1020', surface: '#121A2E', surface2: '#1A2440', border: '#28334F', text: '#E6ECFA', accent: '#E6ECFA', accentLight: '#1F2A47', accentText: '#0B1020' } },
@@ -59,10 +62,12 @@ const THEMES = [
 ];
 const THEME_VAR_NAMES = ['--bg', '--bg-text', '--surface', '--surface-2', '--border', '--text', '--text-dim', '--text-faint', '--accent', '--accent-dark', '--accent-light', '--accent-text', '--danger', '--danger-light', '--success', '--success-light', '--warn', '--warn-light', '--badge', '--ink', '--cloud'];
 const APP_ICONS = [
-  { id: 'classic', name: 'Classic' }, { id: 'bone', name: 'Bone' }, { id: 'sandstone', name: 'Sandstone' }, { id: 'midnight', name: 'Midnight' },
+  { id: 'bone', name: 'Bone' }, { id: 'classic', name: 'Classic' }, { id: 'sandstone', name: 'Sandstone' }, { id: 'midnight', name: 'Midnight' },
   { id: 'sage', name: 'Sage' }, { id: 'rosewater', name: 'Rosewater' }, { id: 'espresso', name: 'Espresso' }, { id: 'autumn', name: 'Autumn' },
 ];
 
+// THEMES[0] is Bone & Ink: the default a student sees before they ever open
+// Settings, and the only first impression most of them get.
 function currentTheme() { return THEMES.find(t => t.id === state.settings.theme) || THEMES[0]; }
 function themeInSeason(t, d = new Date()) { return !t.season || t.season.months.includes(d.getMonth()); }
 
@@ -97,7 +102,7 @@ function applyTheme() {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', vars['--bg'] || (dark ? '#0f0f0f' : '#fafafa'));
   applyAppIcon();
-  try { localStorage.setItem('shq_boot_look', JSON.stringify({ dark, vars, icon: state.settings.appIcon && state.settings.appIcon !== 'classic' ? state.settings.appIcon : null })); } catch {}
+  try { localStorage.setItem('shq_boot_look', JSON.stringify({ dark, vars, icon: (state.settings.appIcon || APP_ICON_DEFAULT) === 'classic' ? null : (state.settings.appIcon || APP_ICON_DEFAULT) })); } catch {}
 }
 function setTheme(id) {
   const t = THEMES.find(x => x.id === id);
@@ -112,8 +117,11 @@ function setTheme(id) {
   touch();
 }
 
+// Default is Bone, to match the default theme — the icon on someone's home
+// screen is the same first impression as the app's first screen.
+const APP_ICON_DEFAULT = 'bone';
 function applyAppIcon() {
-  const id = APP_ICONS.some(i => i.id === state.settings.appIcon) ? state.settings.appIcon : 'classic';
+  const id = APP_ICONS.some(i => i.id === state.settings.appIcon) ? state.settings.appIcon : APP_ICON_DEFAULT;
   const touchHref = id === 'classic' ? 'assets/apple-touch-icon.png' : `assets/icons/${id}-180.png`;
   const iconHref = id === 'classic' ? 'assets/favicon.png' : `assets/icons/${id}-192.png`;
   document.querySelectorAll('link[rel="apple-touch-icon"]').forEach((l, i) => { if (i === 0) l.href = touchHref; else l.remove(); });
@@ -201,7 +209,7 @@ function pageColorSwatchesHtml(afterPick = '') {
 }
 
 function appearanceSettingsCard() {
-  const icon = state.settings.appIcon || 'classic';
+  const icon = state.settings.appIcon || APP_ICON_DEFAULT;
   return `
     <div class="card card-pad">
       <h3 style="font-size:15px" class="mb-8">Appearance</h3>
