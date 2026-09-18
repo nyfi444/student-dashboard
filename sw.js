@@ -5,14 +5,16 @@
    refreshed in the background. Firebase, Stripe, and the AI Worker are
    never cached; your data stays in the app's own offline copy.
 
-   Bump VERSION whenever you deploy, so open tabs can offer "Refresh to
-   update" and old cached files get cleaned up.
+   The version comes from js/version.js, which the app loads too, so
+   there's one line to bump per deploy and the page and the worker can
+   never disagree about what's running.
 ──────────────────────────────────────────────────────────────── */
-const VERSION = 'shq-2026-09-17-release12';
+importScripts('./js/version.js');
+const VERSION = 'shq-' + self.APP_VERSION;
 const APP_SHELL = [
   './', 'index.html', 'login.html', 'group-admin.html', 'manifest.json', 'css/styles.css',
   'assets/favicon.png', 'assets/apple-touch-icon.png', 'assets/icon-192.png', 'assets/icon-512.png',
-  'js/config.js', 'js/diagnostics.js', 'js/utils.js', 'js/icons.js', 'js/colorwheel.js', 'js/state.js', 'js/firebase.js', 'js/ai.js', 'js/uploads.js',
+  'js/version.js', 'js/config.js', 'js/diagnostics.js', 'js/utils.js', 'js/icons.js', 'js/colorwheel.js', 'js/state.js', 'js/firebase.js', 'js/ai.js', 'js/uploads.js',
   'js/checkout.js', 'js/groupplans.js', 'js/group-admin.js', 'js/ui.js', 'js/dashboard.js', 'js/courses.js', 'js/semestersetup.js', 'js/calendar.js', 'js/todos.js',
   'js/assignments.js', 'js/notebook.js', 'js/timer.js', 'js/exams.js', 'js/projects.js', 'js/studytools.js',
   'js/studygroups.js', 'js/career.js', 'js/capture.js', 'js/wrapped.js', 'js/classes.js', 'js/quickparse.js', 'js/syllabus.js', 'js/orgs.js', 'js/appearance.js', 'js/reminders.js', 'js/settings.js', 'js/palette.js', 'js/install.js', 'js/offline.js', 'js/app.js',
@@ -35,6 +37,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('message', (event) => {
   if (event.data === 'skipWaiting') self.skipWaiting();
+  // The page asks what's actually running rather than guessing from cache
+  // names, so Settings can show a version it's certain about.
+  if (event.data === 'version' && event.ports?.[0]) event.ports[0].postMessage({ version: self.APP_VERSION });
 });
 
 self.addEventListener('fetch', (event) => {
@@ -68,10 +73,17 @@ async function receiveShare(req) {
   } catch (e) {}
   return Response.redirect('/?shared=1', 303);
 }
+// `cache: 'no-cache'` is the whole reason a deploy reaches an installed app.
+// A plain fetch here goes through the browser's own HTTP cache, and GitHub
+// Pages serves app files with `max-age=600`: for ten minutes after a deploy
+// the worker would fetch the OLD file and write it over the fresh copy it
+// just installed, which is how a home-screen app could sit on last week's
+// code indefinitely. 'no-cache' revalidates with the server every time, so
+// an unchanged file still costs only a 304 and nothing stale gets stored.
 async function networkFirst(req) {
   const cache = await caches.open(VERSION);
   try {
-    const res = await fetchWithTimeout(req, 6000);
+    const res = await fetchWithTimeout(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }), 6000);
     if (res && res.ok) cache.put(req, res.clone());
     return res;
   } catch {

@@ -74,7 +74,7 @@ function pageProjects() {
         </div>
       </div>
       ${view === 'active' && active.some(p => p.dueDate) ? projectTimeline(active) : ''}
-      ${list.length ? `<div class="grid grid-2 proj-grid">${list.map(projectCard).join('')}</div>` : emptyState(icon('folder', 26, 1.4), view === 'done' ? 'Nothing finished yet' : 'Nothing in progress', view === 'done' ? '' : `<button class="btn btn-primary" onclick="openProjectModal()">+ New project</button>`, view === 'done' ? 'Projects you mark finished land here.' : '')}
+      ${list.length ? expandable(`proj-${view}`, view === 'done' ? 'Finished projects' : 'Projects in progress', `<div class="grid grid-2 proj-grid">${list.map(projectCard).join('')}</div>`, { max: 560, count: list.length }) : emptyState(icon('folder', 26, 1.4), view === 'done' ? 'Nothing finished yet' : 'Nothing in progress', view === 'done' ? '' : `<button class="btn btn-primary" onclick="openProjectModal()">+ New project</button>`, view === 'done' ? 'Projects you mark finished land here.' : '')}
       ${view === 'active' ? `<div class="sg-section-label mt-16">Start from a template</div>${projectTemplateRow()}` : ''}
     ` : projectsEmptyHero()}
   `;

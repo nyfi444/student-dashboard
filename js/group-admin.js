@@ -9,7 +9,13 @@
 ──────────────────────────────────────────────────────────────── */
 const SEAT_PRICE_CENTS = 599;
 const MIN_SEATS = 5;
-const MAX_SEATS = 500;
+// Self-serve stops at 50 on purpose. A 50-seat plan is already $299.50 a
+// month, and a check that size deserves a conversation: a first-term rate, a
+// named contact, a renewal date on the calendar. Anything bigger (and
+// anything needing an invoice, a PO, a W-9, or covering a department or a
+// whole campus) goes through semester-hq.com/group-pricing.html instead.
+const MAX_SEATS = 50;
+const GROUP_QUOTE_URL = 'https://semester-hq.com/group-pricing.html';
 const PLAN_KINDS = [['club', 'Student club or organization'], ['team', 'Sports or club team'], ['chapter', 'Sorority or fraternity chapter'], ['class', 'Class or course section'], ['department', 'Academic department'], ['other', 'Something else']];
 
 let _auth = null;
@@ -76,6 +82,7 @@ function startPlan(btn) {
   const kind = $('#ga-new-kind').value;
   const seats = Number($('#ga-new-seats').value);
   if (!name) { toast('Give your group a name', 'error'); return; }
+  if (seats > MAX_SEATS) { toast(`Over ${MAX_SEATS} seats we'll put a quote together for you. Opening the form…`, 'info', 5000); setTimeout(() => { location.href = GROUP_QUOTE_URL; }, 1200); return; }
   if (!(seats >= MIN_SEATS && seats <= MAX_SEATS)) { toast(`Choose between ${MIN_SEATS} and ${MAX_SEATS} seats`, 'error'); return; }
   act(btn, async () => {
     const data = await api('create-checkout', { name, kind, seats, orgCode: params.get('org') || '', planId: view.planId && view.details?.plan?.status === 'pending' ? view.planId : '' });
@@ -95,6 +102,13 @@ function saveSeats(btn) {
   const seats = Number($('#ga-seats-input').value);
   const plan = view.details.plan;
   if (seats === plan.seats) return;
+  // Growing past self-serve is a good problem: hand them the quote form
+  // rather than an error from the server.
+  if (seats > MAX_SEATS) {
+    confirmDialog(`Plans over ${MAX_SEATS} seats we put together with you, so the rate and the term fit your group. Want to send us the details?`, () => { location.href = GROUP_QUOTE_URL; }, 'Ask for a quote');
+    return;
+  }
+  if (seats < MIN_SEATS) { toast(`Plans start at ${MIN_SEATS} seats. Cancel the plan instead if you're down to fewer than that.`, 'error', 5000); return; }
   const change = seats > plan.seats
     ? `Add ${seats - plan.seats} seat${seats - plan.seats === 1 ? '' : 's'}? Your plan becomes ${monthly(seats)} a month, and Stripe charges the difference for the rest of this month on your next bill.`
     : `Drop to ${seats} seat${seats === 1 ? '' : 's'}? Your plan becomes ${monthly(seats)} a month, and the unused part of what you've paid comes off your next bill.`;
@@ -211,7 +225,7 @@ function newPlanHtml() {
   const seats = Number(params.get('seats')) || 10;
   return `
     <h1 class="ga-title">Start a group plan</h1>
-    <p class="ga-lede mb-16">${money(SEAT_PRICE_CENTS)} per member each month, ${MIN_SEATS} members minimum. Cancel or change your seat count anytime.</p>
+    <p class="ga-lede mb-16">${money(SEAT_PRICE_CENTS)} per member each month, for ${MIN_SEATS} to ${MAX_SEATS} members. Cancel or change your seat count anytime. Covering more than ${MAX_SEATS}, or need an invoice or a PO? <a href="${GROUP_QUOTE_URL}">Ask for a quote</a>.</p>
     ${view.plans.length ? `<div class="ga-plan-tabs">${view.plans.map(p => `<button class="btn btn-sm" onclick="pickPlan('${p.id}')">${esc(p.name)}</button>`).join('')}</div>` : ''}
     ${card(`
       <div class="field"><label for="ga-new-name">Group name</label><input class="input" id="ga-new-name" value="${esc(params.get('name') || '')}" placeholder="Chem Club" maxlength="80"></div>
@@ -259,6 +273,7 @@ function planHtml() {
       <div>
         <h1 class="ga-title" style="margin-bottom:6px">${esc(plan.name)}</h1>
         <div class="flex-gap">${statusPill}<button class="btn btn-ghost btn-sm" onclick="renamePlan(this)">Rename</button></div>
+        ${plan.orgCode ? `<div class="small mt-8" style="opacity:.75">Runs the plan for a club or team on Semester HQ · <a href="index.html?org=${encodeURIComponent(plan.orgCode)}&tab=admin">Open its admin page</a></div>` : ''}
       </div>
     </div>
     ${plan.status === 'canceled' ? `<div class="ga-error">This plan is canceled, so its members no longer have Semester HQ Plus through it. Start a new plan to bring them back.</div>` : ''}
@@ -277,7 +292,8 @@ function planHtml() {
           <input class="input" id="ga-seats-input" type="number" min="${MIN_SEATS}" max="${MAX_SEATS}" value="${plan.seats}">
           <button class="btn btn-icon btn-sm" aria-label="More seats" onclick="stepSeats('ga-seats-input',1)">+</button>
           <button class="btn btn-sm" onclick="saveSeats(this)">Change seats</button>
-        </div>` : ''}
+        </div>
+        <p class="small mt-8" style="opacity:.7">Up to ${MAX_SEATS} seats here. Outgrown that, or need an invoice or a PO? <a href="${GROUP_QUOTE_URL}">Ask for a quote</a> and we'll sort it out with you.</p>` : ''}
     `)}
     ${plan.status !== 'canceled' ? card(`
       <h3 style="font-size:15px" class="mb-8">Invite your members</h3>

@@ -61,7 +61,23 @@ async function redirectToPortal() {
       `);
       return;
     }
-    toast('Could not open billing portal: ' + e.message, 'error', 5000);
+    // Anything else is a real failure, and a red toast that vanishes in five
+    // seconds is the wrong way to tell someone their billing page won't open.
+    // Say what happened, promise their subscription is untouched, and hand
+    // them a way to reach a human with the support code attached.
+    diag.error('checkout', 'Billing portal would not open', e);
+    openModal(`
+      <div class="modal-head"><h3>Couldn’t open the billing page</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+      <div class="modal-body">
+        <p class="small">Stripe, which handles billing, didn’t answer just now. Nothing about your subscription changed, and you haven’t been charged anything extra.</p>
+        <p class="small muted mt-8">Try again in a minute. If it keeps happening, email <a href="mailto:hello@semester-hq.com?subject=Billing%20portal">hello@semester-hq.com</a> with your support code <strong>${esc(diag.session)}</strong> and I’ll sort it out by hand, including cancelling for you if that’s what you want.</p>
+        <p class="small muted mt-8">What it said: ${esc(e.message || 'no details')}</p>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" onclick="closeModal();redirectToPortal()">Try again</button>
+        <button class="btn btn-primary" onclick="closeModal()">Close</button>
+      </div>
+    `);
   }
 }
 

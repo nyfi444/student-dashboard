@@ -1262,11 +1262,22 @@ function buildSharePayload(kind, itemId) {
   return { title: p?.title || 'Project', dueDate: p?.dueDate || '', milestones: JSON.parse(JSON.stringify(p?.milestones || [])) };
 }
 async function confirmShareResource() {
-  const { code, file } = window._shareResource;
-  const kind = $('#sr-kind').value;
+  const st = window._shareResource;
+  const { code, file } = st;
+  // The duplicate question below replaces this modal, so the picked kind is
+  // stashed and read back from there once the form is gone.
+  if ($('#sr-kind')) st.kind = $('#sr-kind').value;
+  const kind = st.kind;
   let item;
   if (kind === 'file') {
     if (!file) { toast('Choose a file first', 'error'); return; }
+    // The group already has a file with this name: ask before adding a second
+    // copy everyone has to tell apart (see askAboutDuplicateFile).
+    const existing = st.dupOk ? null : findFileByName(groupItems(findGroup(code)), file.name);
+    if (existing) {
+      askAboutDuplicateFile(file.name, 'shared with this group', { onKeepBoth: () => { st.dupOk = true; confirmShareResource(); } });
+      return;
+    }
     item = { kind, title: file.name, fileName: file.name, size: file.size, dataUrl: file.dataUrl };
   } else if (kind === 'link') {
     const url = $('#sr-link-url').value.trim();

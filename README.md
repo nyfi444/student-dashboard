@@ -51,4 +51,6 @@ Every page loads `js/diagnostics.js` right after `js/config.js`. It reports unca
 
 ## Deploying updates
 
-The app works offline through a service worker (`sw.js`). When you deploy a change, bump `VERSION` at the top of `sw.js` (any new string works, e.g. the date). That tells people with the app already open that "a new version is ready" and clears out old cached files. App files are always fetched fresh when online, so forgetting this won't serve stale code, it just skips the refresh prompt.
+The app works offline through a service worker (`sw.js`). When you deploy a change, bump `APP_VERSION` in **`js/version.js`** (any new string works, e.g. the date). That one line is the whole version: `sw.js` imports it and names its cache after it, Settings shows it under "App version", and diagnostics reports it, so there's never a disagreement about what's running.
+
+Bumping it is what makes an already-open tab or an installed home-screen app pick the change up: the browser notices the imported file changed, installs the new worker, and the app applies it (silently if it was only just opened, otherwise with a "new version is ready" banner). App files are fetched with `cache: 'no-cache'` so the browser's own ten-minute cache on GitHub Pages can never serve stale code, but **without a bump an installed app can keep running the old version until it's next reopened**, so don't skip it. Settings → App version has "Check for updates" and, as a last resort, "Reload the app from scratch", which clears the cached copy of the app (never the planner's data).

@@ -207,9 +207,23 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .xp { position: relative; }
 .xp > .xp-body { max-height: var(--xp-max, 360px); overflow: hidden; }
 .xp.is-clipped > .xp-body { -webkit-mask-image: linear-gradient(#000 calc(100% - 72px), transparent); mask-image: linear-gradient(#000 calc(100% - 72px), transparent); }
+/* The whole strip across the bottom of a clipped section is the target, not
+   just a small button in it: "there's more, tap to see it all" has to be
+   obvious on a phone. */
 .xp > .xp-fade { display: none; }
-.xp.is-clipped > .xp-fade { display: flex; justify-content: center; position: absolute; left: 0; right: 0; bottom: 8px; pointer-events: none; }
-.xp.is-clipped > .xp-fade .btn { pointer-events: auto; box-shadow: var(--shadow); background: var(--surface); }
+.xp.is-clipped > .xp-fade {
+  display: flex; align-items: flex-end; justify-content: center;
+  position: absolute; left: 0; right: 0; bottom: 0; height: 64px;
+  border: 0; background: none; padding: 0 0 8px; cursor: pointer;
+}
+.xp.is-clipped > .xp-fade .xp-fade-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+  padding: 6px 14px; box-shadow: var(--shadow);
+}
+.xp.is-clipped > .xp-fade:hover .xp-fade-btn { background: var(--surface-2); }
+.xp.is-clipped > .xp-fade:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; border-radius: 12px; }
 .xp.is-open > .xp-body { max-height: none; overflow: visible; }
 .xp.is-open > .xp-fade { display: none; }
 /* display:flex would otherwise beat the browser's [hidden] rule and leave an
@@ -1022,6 +1036,31 @@ button.dash-next-title:hover { text-decoration: underline; text-decoration-thick
 .setup-swatch-any { background: conic-gradient(#e05252, #e0c752, #6fe052, #52e0d0, #5271e0, #b852e0, #e05252); position: relative; }
 .setup-swatch-any::after { content: "+"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
 .setup-wheel { max-width: 230px; margin: 12px 0 2px 20px; }
+
+/* The full spectrum, always on screen, so the preset swatches never read
+   as the only choices (see spectrumHtml). */
+.spectrum { display: flex; flex-direction: column; gap: 8px; }
+.spec-bar {
+  position: relative; height: 16px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); touch-action: none;
+}
+.spec-bar:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.spec-hue { background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%); }
+.spec-shade { background: linear-gradient(to right, #fff, var(--spec-hue, #888) 50%, #000); }
+.spec-knob {
+  position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%;
+  transform: translate(-50%, -50%); border: 2px solid #fff; pointer-events: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .45);
+}
+/* The club Admin tab: a column of cards, each one job (see orgAdminTab). */
+.org-admin { display: flex; flex-direction: column; gap: 14px; }
+.org-admin .card { margin-bottom: 0; }
+.org-admin .field:last-of-type { margin-bottom: 0; }
+
+.setup-spectrum { max-width: 260px; margin: 10px 0 2px 20px; }
+.setup-hexrow { display: flex; align-items: center; gap: 8px; margin: 8px 0 0 20px; max-width: 260px; }
+.setup-hexrow .input { font-family: monospace; font-size: 12px; padding: 5px 8px; }
+@media (max-width: 700px) { .setup-spectrum, .setup-hexrow { max-width: none; margin-left: 0; } .setup-swatches { margin-left: 0; } }
 .setup-install { text-align: left; margin: 18px 0 4px; }
 .setup-install-head { display: flex; align-items: center; gap: 12px; }
 .setup-install .install-steps { margin-bottom: 8px; }

@@ -77,13 +77,13 @@ function pageTodos() {
           <span>${esc(label)}</span><span class="assign-count">${items.length}</span>
           ${view === 'lists' && k !== '_none' ? `<span class="todo-list-actions"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Add a to-do to ${esc(label)}" onclick="openTodoModal(null,{sectionId:'${k}'})">${icon('plus', 13, 2)}</button><button class="btn btn-ghost btn-icon btn-sm" aria-label="Rename or delete ${esc(label)}" onclick="openSectionModal('${k}')">${icon('pencil', 12)}</button></span>` : ''}
         </div>
-        <div class="card assign-list">${items.length ? items.map(x => todoRow(x, { selectMode, selected, showList: view === 'date' })).join('') : `<div class="todo-list-empty small muted">Nothing in this list. <button class="sg-link" onclick="openTodoModal(null,{sectionId:'${k}'})">Add one</button></div>`}</div>
+        ${expandable(`todo-${k}`, label, `<div class="card assign-list">${items.length ? items.map(x => todoRow(x, { selectMode, selected, showList: view === 'date' })).join('') : `<div class="todo-list-empty small muted">Nothing in this list. <button class="sg-link" onclick="openTodoModal(null,{sectionId:'${k}'})">Add one</button></div>`}</div>`, { max: 420, count: items.length })}
       </section>`).join('') : emptyState(icon('check-square', 26, 1.4), scoped.length ? 'All done. Nice.' : 'A clear list', '', scoped.length ? 'Everything here is checked off.' : 'Type above like you’d text yourself: “laundry sunday”, “email advisor tomorrow 3pm !”')}
 
     ${done.length ? `
       <details class="todo-done" ${state._todoDoneOpen ? 'open' : ''} ontoggle="state._todoDoneOpen=this.open">
         <summary><span>${icon('check', 12, 2.4)} Completed</span><span class="assign-count">${done.length}</span></summary>
-        <div class="card assign-list">${done.slice(0, 50).map(x => todoRow(x, { showList: view === 'date' })).join('')}</div>
+        ${expandable('todo-done', 'Completed', `<div class="card assign-list">${done.slice(0, 50).map(x => todoRow(x, { showList: view === 'date' })).join('')}</div>`, { max: 420, count: Math.min(done.length, 50) })}
         <button class="btn btn-ghost btn-sm mt-8" onclick="clearCompletedTodos()">${icon('trash', 12)} Clear completed</button>
       </details>` : ''}
 

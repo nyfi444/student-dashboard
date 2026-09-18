@@ -44,7 +44,7 @@ function pageCourses() {
       ${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}
       <button class="btn btn-primary" onclick="openCourseModal()">+ Add course</button>
     `)}
-    ${courses.length ? `<div class="grid grid-2 course-grid">${courses.map(courseCard).join('')}</div>` : `
+    ${courses.length ? expandable('course-grid', 'Courses', `<div class="grid grid-2 course-grid">${courses.map(courseCard).join('')}</div>`, { max: 620, count: courses.length }) : `
       <div class="card welcome-inline">
         <div class="sg-feature-ic">${icon('graduation-cap', 18, 1.7)}</div>
         <div style="flex:1;min-width:220px">
@@ -352,9 +352,22 @@ async function runSyllabusParse() {
     material = uploadZoneMaterial('syllabus', 'Choose your syllabus file first');
     if (!material) return;
   }
+  // Uploading the same syllabus file to the same class twice is easy to do
+  // and costs an AI parse, so it asks first. Only a name match on the same
+  // class counts: a different class's "syllabus.pdf" is a different file.
+  const target = window._sylTargetCourseId ? getCourse(window._sylTargetCourseId) : null;
+  const repeated = target && (material.fileNames || []).find(n => findFileByName([{ name: target.syllabusFileName }], n));
+  if (repeated && !window._sylRepeatOk) {
+    askAboutDuplicateFile(repeated, `the syllabus already read for ${target.code || target.name}`, {
+      onKeepBoth: () => { window._sylRepeatOk = true; runSyllabusParse(); },
+    });
+    return;
+  }
+  window._sylRepeatOk = false;
   setBtnLoading(btn, true);
   try {
     const data = await aiParseSyllabus(material);
+    if (target && (material.fileNames || []).length) target.syllabusFileName = material.fileNames[0];
     closeModal();
     if (window._sylTargetCourseId && getCourse(window._sylTargetCourseId)) openSyllabusMergeModal(window._sylTargetCourseId, data);
     else openSyllabusReviewModal(data);

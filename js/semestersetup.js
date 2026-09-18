@@ -99,11 +99,11 @@ function setupStepClasses() {
           <input class="input setup-credits" type="number" min="0" max="12" value="${c.credits}" aria-label="Credits" title="Credits" oninput="window._setup.courses[${i}].credits=Number(this.value)||0">
           <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove class" onclick="window._setup.courses.splice(${i},1);if(!window._setup.courses.length)window._setup.courses.push(setupNewCourse());renderSetupStep()">${icon('x', 13, 2.2)}</button>
         </div>
-        <div class="setup-swatches" role="group" aria-label="Color">
+        <div class="setup-swatches" role="group" aria-label="Quick colors">
           ${COURSE_PALETTE.map(p => `<button class="setup-swatch ${p.toLowerCase() === c.color.toLowerCase() ? 'active' : ''}" style="background:${p}" aria-label="Color ${p}" onclick="setSetupCourseColor(${i},'${p}')"></button>`).join('')}
-          <button class="setup-swatch setup-swatch-any ${COURSE_PALETTE.some(p => p.toLowerCase() === c.color.toLowerCase()) ? '' : 'active'}" aria-label="Any other color" aria-expanded="${window._setupColorFor === i}" title="Any color" onclick="toggleSetupColorWheel(${i})"></button>
         </div>
-        ${window._setupColorFor === i ? `<div class="setup-wheel">${colorWheelHtml(`setup-cw-${i}`, c.color)}</div>` : ''}
+        <div class="setup-spectrum">${spectrumHtml(`setup-spec-${i}`, c.color)}</div>
+        <div class="setup-hexrow"><span class="course-dot setup-course-dot" aria-hidden="true"></span><input class="input" id="setup-hex-${i}" value="${esc(c.color)}" aria-label="Color hex code" onchange="setSetupCourseHex(${i},this.value)"></div>
       </div>`).join('')}
     <button class="btn btn-sm" onclick="window._setup.courses.push(setupNewCourse());renderSetupStep()">+ Add another class</button>
     <div class="small muted mt-8">Columns: name, course code, credits.</div>`;
@@ -131,28 +131,33 @@ function setupStepTimes() {
         </div>`;
     }).join('')}`;
 }
-// The swatches are quick picks, not the whole choice: the last one opens a
-// color wheel so a class can be any color at all.
+// The swatches are quick picks sitting above the full spectrum, not the
+// choice itself: every class can be any color at all, and the gradient
+// bars say so without anyone having to find a button first.
 function setSetupCourseColor(ci, hex) {
   window._setup.courses[ci].color = hex;
-  window._setupColorFor = null;
   renderSetupStep();
 }
-function toggleSetupColorWheel(ci) {
-  window._setupColorFor = window._setupColorFor === ci ? null : ci;
-  renderSetupStep();
+function setSetupCourseHex(ci, value) {
+  let hex = String(value || '').trim();
+  if (hex && !hex.startsWith('#')) hex = '#' + hex;
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) { renderSetupStep(); return; }
+  setSetupCourseColor(ci, hex.toLowerCase());
 }
 // Live-updates the card while dragging instead of re-rendering the step,
 // which would cancel the drag.
 function wireSetupColorWheel() {
-  const ci = window._setupColorFor;
-  if (ci == null || !window._setup?.courses[ci]) return;
-  const course = window._setup.courses[ci];
-  wireColorWheel(`setup-cw-${ci}`, () => course.color, (hex) => {
-    course.color = hex;
-    const card = $(`#setup-cw-${ci}`)?.closest('.setup-course');
-    if (card) card.style.setProperty('--course', hex);
-    $$(`.setup-course:nth-of-type(${ci + 1}) .setup-swatch`).forEach(el => el.classList.remove('active'));
+  (window._setup?.courses || []).forEach((course, ci) => {
+    wireSpectrum(`setup-spec-${ci}`, () => course.color, (hex) => {
+      course.color = hex;
+      const card = $(`#setup-spec-${ci}`)?.closest('.setup-course');
+      if (card) card.style.setProperty('--course', hex);
+      const hexInput = $(`#setup-hex-${ci}`);
+      if (hexInput) hexInput.value = hex;
+      // Dragging the spectrum means it's a custom color now, so no preset
+      // swatch is the one selected.
+      card?.querySelectorAll('.setup-swatch').forEach(el => el.classList.remove('active'));
+    });
   });
 }
 function setupToggleDay(ci, si, d) {

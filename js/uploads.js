@@ -647,7 +647,7 @@ async function loadUploadZone(key, fileList) {
   try {
     const result = await readUploadedFiles(files);
     if (_uploadZones[key]?.token !== token) return; // closed, or other files were picked meanwhile
-    _uploadZones[key] = { token, ready: true, ...result };
+    _uploadZones[key] = { token, ready: true, fileNames: files.map(f => f.name), ...result };
     status(`${icon('check', 12, 2.2)} ${esc(name)} · ${uploadReadySummary(result)}`);
     toastUploadProblems(result);
   } catch (e) {
@@ -661,5 +661,5 @@ function uploadZoneMaterial(key, emptyMessage) {
   const zone = _uploadZones[key];
   if (!zone) { toast(emptyMessage, 'error'); return null; }
   if (!zone.ready) { toast('Still reading that file, one moment', 'info'); return null; }
-  return { text: zone.text, images: zone.images };
+  return { text: zone.text, images: zone.images, fileNames: zone.fileNames || [] };
 }

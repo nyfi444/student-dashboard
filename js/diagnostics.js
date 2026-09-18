@@ -33,7 +33,9 @@ const diag = (() => {
   const recent = [];
   const seen = new Set();
   let sent = 0;
-  let release = '';
+  // js/version.js is loaded before this file on every page, so the running
+  // version is simply known rather than inferred from cache names.
+  let release = typeof APP_VERSION === 'string' ? APP_VERSION : '';
 
   let session = '';
   try { session = sessionStorage.getItem('shq_diag_session') || ''; } catch {}
@@ -41,13 +43,11 @@ const diag = (() => {
     session = Math.random().toString(36).slice(2, 10).toUpperCase();
     try { sessionStorage.setItem('shq_diag_session', session); } catch {}
   }
-  // The service worker's cache name is the deploy's VERSION (see sw.js). Cache
-  // names come back oldest first, and an update waiting to activate already has
-  // its cache, so the last one matches the code actually running (app files are
-  // network-first). On a first visit the cache appears after load, so it's
-  // looked up again if needed.
+  // Kept as a fallback for a page that somehow loads without js/version.js:
+  // the service worker names its cache after the same version (see sw.js).
   const lookupRelease = () => {
-    try { return caches.keys().then(keys => { release = keys.filter(k => /^shq-\d{4}/.test(k)).pop() || release; }).catch(() => {}); }
+    if (release) return Promise.resolve();
+    try { return caches.keys().then(keys => { release = (keys.filter(k => /^shq-/.test(k)).pop() || '').replace(/^shq-/, '') || release; }).catch(() => {}); }
     catch { return Promise.resolve(); }
   };
   lookupRelease();

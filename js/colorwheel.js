@@ -102,3 +102,82 @@ function wireColorWheel(id, getHex, onChange) {
     else hexInput.value = getHex();
   };
 }
+
+/* ── The full spectrum, laid out flat ─────────────────────────────
+   The wheel above is precise but it hides behind a button, which made
+   the handful of preset swatches next to it look like the whole choice.
+   These two gradient bars sit out in the open instead: drag the rainbow
+   for the hue, drag the second bar from pale through pure to dark. Same
+   any-color-at-all result, but nothing about it reads as a short list.
+
+   Position along the shade bar maps to saturation for the first half and
+   to brightness for the second, so one bar covers pastel to near-black. */
+const SHADE_FLOOR = 0.25; // darkest end of the shade bar, still a usable color
+function shadePosition(hex) {
+  const { s, v } = hexToHsv(hex);
+  if (v > 0.94 && s < 0.99) return (s / 2);
+  return 0.5 + ((1 - v) / (1 - SHADE_FLOOR)) * 0.5;
+}
+function shadeToHex(hue, t) {
+  t = Math.max(0, Math.min(1, t));
+  return t <= 0.5 ? hsvToHex(hue, t / 0.5, 1) : hsvToHex(hue, 1, 1 - ((t - 0.5) / 0.5) * (1 - SHADE_FLOOR));
+}
+function spectrumHtml(id, hex, { shade = true } = {}) {
+  const { h } = hexToHsv(hex);
+  return `
+    <div class="spectrum" id="${id}">
+      <div class="spec-bar spec-hue" data-spec="hue" role="slider" tabindex="0" aria-label="Color" aria-valuetext="${esc(hex)}">
+        <span class="spec-knob" data-knob="hue" style="left:${(h / 360) * 100}%;background:${hsvToHex(h, 1, 1)}"></span>
+      </div>
+      ${shade ? `
+        <div class="spec-bar spec-shade" data-spec="shade" role="slider" tabindex="0" aria-label="Shade" aria-valuetext="${esc(hex)}" style="--spec-hue:${hsvToHex(h, 1, 1)}">
+          <span class="spec-knob" data-knob="shade" style="left:${shadePosition(hex) * 100}%;background:${hex}"></span>
+        </div>` : ''}
+    </div>`;
+}
+/* Wires both bars. onChange(hex) fires on every move; the caller still owns
+   the value, same contract as wireColorWheel. */
+function wireSpectrum(id, getHex, onChange) {
+  const root = document.getElementById(id);
+  if (!root) return;
+  const hueBar = root.querySelector('[data-spec="hue"]');
+  const shadeBar = root.querySelector('[data-spec="shade"]');
+  const paint = (hex) => {
+    const { h } = hexToHsv(hex);
+    const hueKnob = root.querySelector('[data-knob="hue"]');
+    const shadeKnob = root.querySelector('[data-knob="shade"]');
+    if (hueKnob) { hueKnob.style.left = (h / 360) * 100 + '%'; hueKnob.style.background = hsvToHex(h, 1, 1); }
+    if (shadeKnob) { shadeKnob.style.left = shadePosition(hex) * 100 + '%'; shadeKnob.style.background = hex; }
+    if (shadeBar) shadeBar.style.setProperty('--spec-hue', hsvToHex(h, 1, 1));
+    root.querySelectorAll('[role="slider"]').forEach(el => el.setAttribute('aria-valuetext', hex));
+  };
+  const fraction = (bar, clientX) => {
+    const rect = bar.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  };
+  const drag = (bar, toHex) => {
+    if (!bar) return;
+    const set = (clientX) => { const hex = toHex(fraction(bar, clientX)); paint(hex); onChange(hex); };
+    bar.onpointerdown = (e) => {
+      bar.setPointerCapture?.(e.pointerId);
+      set(e.clientX);
+      const move = (e2) => { e2.preventDefault(); set(e2.clientX); };
+      const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+      window.addEventListener('pointermove', move, { passive: false });
+      window.addEventListener('pointerup', up);
+    };
+    // Arrow keys nudge, so the bars aren't drag-only.
+    bar.onkeydown = (e) => {
+      const step = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+      if (!step) return;
+      e.preventDefault();
+      const rect = bar.getBoundingClientRect();
+      const knob = bar.querySelector('.spec-knob');
+      const at = parseFloat(knob.style.left) / 100 || 0;
+      const hex = toHex(Math.max(0, Math.min(1, at + step * 0.02)));
+      paint(hex); onChange(hex);
+    };
+  };
+  drag(hueBar, (t) => { const { s, v } = hexToHsv(getHex()); return hsvToHex(t * 360, s < 0.08 ? 0.75 : s, v < 0.3 ? 0.85 : v); });
+  drag(shadeBar, (t) => shadeToHex(hexToHsv(getHex()).h, t));
+}

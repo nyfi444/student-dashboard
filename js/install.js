@@ -163,7 +163,11 @@ function openInstallHelp() {
 // the students who put Semester HQ on their home screen are the ones who
 // keep using it (on iPhone it's also what lets reminders through).
 function installSetupCard() {
-  if (isEmbedded() || isStandaloneApp() || installInfo().installed || installInfo().bookmarked) return '';
+  // Shown to everyone finishing setup who isn't already in the app, even if
+  // they waved off the floating prompt earlier: this is the screen where
+  // "put it on your home screen" actually lands, and it's the step people
+  // ask for by name.
+  if (isEmbedded() || isStandaloneApp()) return '';
   const { platform: p, title, steps, note } = installGuide();
   return `
     <div class="card card-pad setup-install">

@@ -56,7 +56,10 @@ const ANTHROPIC_VERSION = '2023-06-01';
 const PLUS_PRICE_CENTS = 799; // $7.99/month, bump the marketing copy too if this changes
 const GROUP_SEAT_PRICE_CENTS = 599; // $5.99 per member per month, same note as above
 const GROUP_MIN_SEATS = 5;
-const GROUP_MAX_SEATS = 500;
+// Self-serve ceiling, enforced here because the client can't be trusted with
+// it. Bigger groups, invoices, POs, and departments go through the quote form
+// on the marketing site (see js/group-admin.js for the reasoning).
+const GROUP_MAX_SEATS = 50;
 const GROUP_KINDS = ['club', 'team', 'chapter', 'class', 'department', 'other'];
 
 export default {

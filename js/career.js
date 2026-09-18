@@ -68,7 +68,7 @@ function pageCareer() {
         <div class="chip-row">${['all', 'Internship', 'Job', 'Scholarship', 'Other'].map(t => `<button class="chip ${typeFilter === t ? 'active' : ''}" onclick="state._careerType='${t}';touch()">${t === 'all' ? 'All' : t === 'Other' ? 'Other' : t + 's'}</button>`).join('')}</div>
         <div class="segmented"><button class="${view === 'board' ? 'active' : ''}" onclick="state._careerView='board';touch()">Board</button><button class="${view === 'list' ? 'active' : ''}" onclick="state._careerView='list';touch()">List</button></div>
       </div>
-      ${view === 'board' ? careerBoard(shown) : careerList(shown)}
+      ${expandable(`career-${view}`, 'Applications', view === 'board' ? careerBoard(shown) : careerList(shown), { max: 620, count: shown.length })}
     ` : `
       <div class="card welcome career-welcome">
         <div class="welcome-copy">

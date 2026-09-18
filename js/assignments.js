@@ -381,6 +381,27 @@ function addAttachmentLink() {
 }
 async function addAttachmentFile(files) {
   if (!files || !files.length) return;
+  const input = $('#af-attach-file');
+  if (input) input.value = '';
+  // Something already attached here under this name: ask before quietly
+  // ending up with two copies of the same screenshot (see askAboutDuplicateFile).
+  const clash = [...files].map(f => ({ file: f, existing: findFileByName(_assignDraft.attachments, f.name) })).find(x => x.existing);
+  if (clash) {
+    // The question replaces this modal, so anything typed is written to the
+    // draft first and comes back with the modal afterwards.
+    syncAssignDraftFields();
+    askAboutDuplicateFile(clash.file.name, 'attached to this assignment', {
+      onReplace: () => {
+        _assignDraft.attachments = _assignDraft.attachments.filter(a => a.id !== clash.existing.id);
+        storeAttachmentFiles(files);
+      },
+      onKeepBoth: () => storeAttachmentFiles(files),
+    });
+    return;
+  }
+  storeAttachmentFiles(files);
+}
+async function storeAttachmentFiles(files) {
   let skipped = 0;
   for (const file of files) {
     if (file.size > 3 * 1024 * 1024) { skipped++; continue; }
@@ -390,8 +411,6 @@ async function addAttachmentFile(files) {
   if (skipped) toast(`${skipped} file${skipped > 1 ? 's' : ''} too large to store in the browser (max ~3MB). Add ${skipped > 1 ? 'them' : 'it'} as a link instead`, 'error', 4000);
   syncAssignmentAttachmentsIfExisting();
   renderAssignmentModal(state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null);
-  const input = $('#af-attach-file');
-  if (input) input.value = '';
 }
 function rubricRow(r, i) {
   return `<div class="field-row" style="align-items:center;margin-bottom:6px">

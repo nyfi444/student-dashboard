@@ -135,6 +135,41 @@ document.addEventListener('keydown', (e) => {
    already in the planner. Skipping is the default: the copy already
    there may have notes, steps, or a different due date on it. `run` is
    called with true to skip the repeats, false to add them anyway. */
+/* ── A file you already have here ─────────────────────────────────
+   Uploading the same screenshot or handout twice is easy to do and
+   there's no way to notice afterwards, so anything arriving with a
+   name that's already in this place stops and asks first. Names are
+   compared the loose way (see normalizedTitle), so "Lab 3.png" and
+   "lab-3.PNG" count as the same file, and only within one place:
+   the same handout shared to two clubs is two different things.
+   run(true) replaces what's there, run(false) keeps both. */
+function askAboutDuplicateFile(name, where, { onReplace = null, onKeepBoth } = {}) {
+  window._dupFileKeepBoth = onKeepBoth;
+  window._dupFileReplace = onReplace;
+  openModal(`
+    <div class="modal-head"><h3>You already have that one</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <p class="small"><strong>${esc(name)}</strong> is already ${esc(where)}.</p>
+      <p class="small muted mt-8">${onReplace ? 'Replace it with this new copy, or keep both if they’re genuinely different files.' : 'Add it again if they’re genuinely different files, or cancel and use the one that’s already there.'}</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="closeModal();window._dupFileKeepBoth&&window._dupFileKeepBoth()">Keep both</button>
+      ${onReplace ? `<button class="btn btn-primary" onclick="closeModal();window._dupFileReplace&&window._dupFileReplace()">Replace</button>` : ''}
+    </div>
+  `);
+}
+// Finds an existing entry whose name matches, across the several shapes files
+// take in the app (attachments, club files, group resources).
+function findFileByName(list, name) {
+  const key = normalizedTitle(String(name || '').replace(/\.[a-z0-9]{1,6}$/i, ''));
+  if (!key) return null;
+  return (list || []).find(f => {
+    const candidates = [f.fileName, f.name, f.title].filter(Boolean);
+    return candidates.some(c => normalizedTitle(String(c).replace(/\.[a-z0-9]{1,6}$/i, '')) === key);
+  }) || null;
+}
+
 function askAboutDuplicates(duplicates, total, noun, run) {
   if (!duplicates.length) { run(false); return; }
   const all = duplicates.length >= total;
@@ -162,10 +197,11 @@ function askAboutDuplicates(duplicates, total, noun, run) {
    making someone scroll past everything else to reach the next thing.
    Nothing is hidden permanently: a section that fits is left alone. */
 let _openSection = null;
-function expandable(key, title, html, { max = 360, style = '' } = {}) {
+function expandable(key, title, html, { max = 360, style = '', count = null } = {}) {
+  const label = count ? `Show all ${count}` : 'Show all';
   return `<div class="xp" data-xp="${esc(key)}" data-xp-title="${esc(title)}" style="--xp-max:${max}px;${style}">
     <div class="xp-body">${html}</div>
-    <div class="xp-fade"><button class="btn btn-sm" onclick="openSection('${esc(key)}')">Show all</button></div>
+    <button class="xp-fade" onclick="openSection('${esc(key)}')" aria-label="${esc(label)} of ${esc(title)}"><span class="xp-fade-btn">${esc(label)} ${icon('maximize', 12, 2)}</span></button>
   </div>`;
 }
 function openSection(key) { _openSection = key; render(); }
@@ -182,7 +218,7 @@ function applyExpandables(root) {
   if (target) {
     layer.hidden = false;
     layer.innerHTML = `<div class="focus-sheet" role="dialog" aria-modal="true" aria-label="${esc(target.dataset.xpTitle || 'Section')}">
-      <div class="focus-head"><h3>${esc(target.dataset.xpTitle || '')}</h3><button class="btn btn-sm" onclick="closeSection()">${icon('x', 12, 2.4)} Close</button></div>
+      <div class="focus-head"><h3>${esc(target.dataset.xpTitle || '')}</h3><button class="btn btn-sm" onclick="closeSection()">${icon('minimize', 12, 2)} Collapse</button></div>
       <div class="focus-body"></div>
     </div>`;
     layer.querySelector('.focus-body').appendChild(target);

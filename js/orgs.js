@@ -24,6 +24,11 @@ const ORG_KINDS = [['club', 'Club', 'flag'], ['team', 'Team', 'trophy'], ['chapt
 const ORG_EVENT_CATEGORIES = [['meeting', 'Meeting'], ['practice', 'Practice'], ['game', 'Game or match'], ['social', 'Social'], ['service', 'Service or philanthropy'], ['deadline', 'Deadline or dues'], ['other', 'Other']];
 const ORG_COLORS = ['#1B2A4A', '#8C3B1F', '#2F4A3A', '#6E2E3A', '#3b6ea5', '#7A4A68', '#1F5F6B', '#5a4a1f'];
 const ORG_TABS = [['overview', 'Overview'], ['events', 'Calendar'], ['announcements', 'Announcements'], ['chat', 'Chat'], ['files', 'Files'], ['members', 'Members']];
+// Officers get one more: everything that comes with running the club, which
+// was otherwise spread across a settings gear, an invite popup, the members
+// list, and a link buried in the invite modal (see orgAdminTab).
+const ORG_ADMIN_TAB = ['admin', 'Admin'];
+function orgTabsFor(o) { return isOrgOfficer(o) ? [...ORG_TABS, ORG_ADMIN_TAB] : ORG_TABS; }
 const ORG_CACHE_KEY = storeKey + '.orgs';
 const PENDING_ORG_KEY = 'shq_pending_org';
 const ORG_ANNOUNCEMENT_MAX = 1200;
@@ -352,12 +357,12 @@ async function setOrgRsvp(code, eventId, val) {
 
 /* ── Org page ──────────────────────────────────────────────────── */
 function pageOrgDetail(o) {
-  const tab = ORG_TABS.some(([k]) => k === state.orgTab) ? state.orgTab : 'overview';
+  const tab = orgTabsFor(o).some(([k]) => k === state.orgTab) ? state.orgTab : 'overview';
   const unread = orgUnreadCount(o);
   if (tab === 'announcements' && unread) setTimeout(() => markOrgSeen(o.code), 0);
   const kind = orgKind(o);
   const chatUnread = orgChatUnread(o);
-  const body = { overview: orgOverviewTab, events: orgEventsTab, announcements: orgAnnouncementsTab, chat: orgChatTab, files: orgFilesTab, members: orgMembersTab }[tab];
+  const body = { overview: orgOverviewTab, events: orgEventsTab, announcements: orgAnnouncementsTab, chat: orgChatTab, files: orgFilesTab, members: orgMembersTab, admin: orgAdminTab }[tab];
   return `
     <div style="--org:${esc(orgColor(o))}">
     <button class="btn btn-ghost btn-sm sg-back" onclick="setState({subRoute:null})">${icon('arrow-left', 14, 1.9)} Clubs & teams</button>
@@ -372,12 +377,12 @@ function pageOrgDetail(o) {
         ${signInHeaderButton()}
         ${isOrgOfficer(o) ? `<button class="btn btn-sm" onclick="openOrgEventModal('${o.code}')">+ Event</button><button class="btn btn-sm" onclick="openAnnouncementModal('${o.code}')">${icon('megaphone', 13, 1.8)} Announce</button>` : ''}
         <button class="btn btn-primary btn-sm" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 13, 1.8)} Invite</button>
-        <button class="btn btn-icon" aria-label="Settings for ${esc(o.name)}" title="Settings" onclick="openOrgSettingsModal('${o.code}')">${icon('settings', 16, 1.6)}</button>
+        <button class="btn btn-icon" aria-label="${isOrgOfficer(o) ? `Admin for ${esc(o.name)}` : `Settings for ${esc(o.name)}`}" title="${isOrgOfficer(o) ? 'Admin' : 'Settings'}" onclick="${isOrgOfficer(o) ? `setState({orgTab:'admin'})` : `openOrgSettingsModal('${o.code}')`}">${icon(isOrgOfficer(o) ? 'shield' : 'settings', 16, 1.6)}</button>
       </div>
     </div>
     ${o.loading ? '<div class="small muted mb-16">Loading…</div>' : ''}
     <div class="sg-tabs" role="tablist">
-      ${ORG_TABS.map(([k, label]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}" onclick="setState({orgTab:'${k}'})">${label}${(k === 'announcements' && unread || k === 'chat' && chatUnread) && tab !== k ? '<span class="sg-tab-dot" aria-label="new"></span>' : ''}</button>`).join('')}
+      ${orgTabsFor(o).map(([k, label]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}" onclick="setState({orgTab:'${k}'})">${k === 'admin' ? `${icon('shield', 12, 1.9)} ` : ''}${label}${(k === 'announcements' && unread || k === 'chat' && chatUnread) && tab !== k ? '<span class="sg-tab-dot" aria-label="new"></span>' : ''}</button>`).join('')}
     </div>
     <div class="sg-tab-body">${body(o)}</div>
     </div>`;
@@ -501,6 +506,98 @@ function orgMembersTab(o) {
       </div>
     </details>`;
 }
+/* ── Admin: one page for running a club or team ───────────────────
+   Officers had to hunt: the join link lived in a popup, roles in the
+   members list, club details behind a gear, and paying for everyone's
+   Semester HQ in a sentence inside the invite modal. This gathers all
+   of it, including a direct link an officer can bookmark or hand to a
+   co-officer, and it's only ever shown to officers. */
+function orgAdminTab(o) {
+  if (!isOrgOfficer(o)) return `<div class="card card-pad"><p class="small muted">Officers run ${esc(o.name)}. Ask the founder for officer access if you should have it.</p></div>`;
+  const people = orgPeople(o);
+  const officers = people.filter(p => p.officer);
+  const requests = isOrgOwner(o) ? people.filter(p => p.title && !p.officer && !p.reviewed) : [];
+  const noEvents = !upcomingOrgEvents(o).length;
+  const plan = typeof orgGroupPlan === 'function' ? orgGroupPlan(o) : null;
+  return `
+    <div class="org-admin">
+      ${requests.length ? `<div class="sg-callout org-request mb-8"><span>${icon('shield', 14, 1.8)}</span>
+        <div class="small" style="flex:1">${requests.length} ${requests.length === 1 ? 'person' : 'people'} joined with a position and ${requests.length === 1 ? 'is' : 'are'} waiting on officer access.</div>
+        <button class="btn btn-sm" onclick="setState({orgTab:'members'})">Review</button></div>` : ''}
+
+      <div class="card card-pad">
+        <h3 class="sg-h3 mb-8">${icon('user-plus', 14, 1.8)} Getting people in</h3>
+        <p class="small muted mb-8">One link, one code. Members who join see every event on their own calendar.</p>
+        <div class="field"><label for="oa-invite">Invite link</label>
+          <div class="sg-invite-row"><input class="input" id="oa-invite" value="${esc(orgInviteLink(o.code))}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyText(orgInviteMessage('${o.code}'),'Invite copied')">${icon('copy', 13, 1.8)} Copy</button></div>
+        </div>
+        <div class="field" style="margin-bottom:0"><label for="oa-direct">Direct link to this page</label>
+          <div class="sg-invite-row"><input class="input" id="oa-direct" value="${esc(orgAdminLink(o.code))}" readonly onclick="this.select()"><button class="btn" onclick="copyText(orgAdminLink('${o.code}'),'Link copied')">${icon('copy', 13, 1.8)} Copy</button></div>
+          <div class="small muted mt-8">Bookmark it, or send it to a co-officer. It opens ${esc(o.name)} straight to this Admin page (officers only).</div>
+        </div>
+      </div>
+
+      <div class="card card-pad">
+        <h3 class="sg-h3 mb-8">${icon('users', 14, 1.8)} Who's who</h3>
+        <div class="small muted mb-8">${people.length} member${people.length === 1 ? '' : 's'} · ${officers.length} officer${officers.length === 1 ? '' : 's'}</div>
+        ${officers.map(p => `<div class="sg-person">
+          ${personAvatar(p.uid, p.name, 26, orgColor(o))}
+          <div class="row-title small"><span class="sg-strong">${esc(p.name)}</span>${p.uid === myOrgUid(o) ? ' <span class="muted">(you)</span>' : ''} <span class="muted">· ${esc(orgRoleLabel(o, p))}</span></div>
+          ${o.local ? '' : `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>`}
+        </div>`).join('')}
+        <div class="flex-gap wrap mt-8">
+          <button class="btn btn-sm" onclick="setState({orgTab:'members'})">All ${people.length} member${people.length === 1 ? '' : 's'}</button>
+          ${isOrgOwner(o) ? '' : `<span class="small muted">Only the founder can add officers.</span>`}
+        </div>
+      </div>
+
+      <div class="card card-pad">
+        <h3 class="sg-h3 mb-8">${icon('megaphone', 14, 1.8)} What officers can post</h3>
+        <div class="flex-gap wrap">
+          <button class="btn btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('calendar', 13, 1.8)} Add an event</button>
+          <button class="btn btn-sm" onclick="openAnnouncementModal('${o.code}')">${icon('megaphone', 13, 1.8)} Post an announcement</button>
+          <button class="btn btn-sm" onclick="openOrgFileModal('${o.code}')">${icon('upload', 13, 1.8)} Share a file</button>
+        </div>
+        ${noEvents ? `<p class="small muted mt-8">Nothing on the calendar yet. The first meeting or practice you add shows up for every member.</p>` : ''}
+      </div>
+
+      ${orgPlanAdminCard(o, plan)}
+
+      <div class="card card-pad">
+        <h3 class="sg-h3 mb-8">${icon('settings', 14, 1.8)} ${esc(o.name)} details</h3>
+        <div class="field"><label for="oa-name">Name</label><input class="input" id="oa-name" maxlength="80" value="${esc(o.name)}"></div>
+        <div class="field-row">
+          <div class="field"><label for="oa-kind">Kind</label><select class="select" id="oa-kind">${ORG_KINDS.map(([k, l]) => `<option value="${k}" ${o.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div class="field"><label for="oa-school">School</label><input class="input" id="oa-school" maxlength="80" value="${esc(o.school || '')}"></div>
+        </div>
+        <div class="field"><label for="oa-desc">Description</label><input class="input" id="oa-desc" maxlength="200" value="${esc(o.description || '')}"></div>
+        <div class="field"><label>Color</label><div class="org-colors" role="group" aria-label="Color">${ORG_COLORS.map((c, i) => `<button type="button" class="page-color ${orgColor(o) === c ? 'active' : ''}" style="background:${c}" aria-label="Color ${i + 1}" aria-pressed="${orgColor(o) === c}" onclick="orgWrite('${o.code}',{color:'${c}'})"></button>`).join('')}</div></div>
+        <button class="btn btn-primary btn-sm" onclick="saveOrgAdminDetails('${o.code}')">Save details</button>
+      </div>
+
+      <div class="card card-pad">
+        <h3 class="sg-h3 mb-8">${icon('log-out', 14, 1.8)} Leaving and closing</h3>
+        <p class="small muted mb-8">${isOrgOwner(o) ? 'As founder, make someone else an officer before you leave so the club still has someone running it.' : 'Leaving takes this club’s events off your calendar. Other members keep theirs.'}</p>
+        <div class="sg-danger">
+          <button class="btn btn-sm" onclick="confirmLeaveOrg('${o.code}')">${icon('log-out', 13, 1.8)} ${o.sample ? 'Remove sample' : 'Leave ' + esc(o.name)}</button>
+          ${isOrgOwner(o) && !o.local ? `<button class="btn btn-danger btn-sm" onclick="confirmDeleteOrg('${o.code}')">${icon('trash', 13, 1.8)} Delete for everyone</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+// A link straight to a club's Admin page, for bookmarking or handing to a
+// co-officer. Non-officers who open it land on the club's Overview instead.
+function orgAdminLink(code) { return `${location.origin}${location.pathname.replace(/[^/]*$/, '')}?org=${code}&tab=admin`; }
+async function saveOrgAdminDetails(code) {
+  const name = $('#oa-name').value.trim();
+  if (!name) { toast('It needs a name', 'error'); return; }
+  const school = $('#oa-school').value.trim().slice(0, 80);
+  const ops = { name: name.slice(0, 80), kind: $('#oa-kind').value, school, schoolKey: normKey(school), description: $('#oa-desc').value.trim().slice(0, 200) };
+  const entry = orgEntry(code);
+  if (entry?.cloud) entry.name = ops.name;
+  if (await orgWrite(code, ops)) toast('Saved');
+}
+
 async function reviewOrgRole(code, memberUid, makeOfficer) {
   const o = findOrg(code);
   if (!o || !isOrgOwner(o) || !safeId(memberUid)) return;
@@ -827,12 +924,31 @@ async function saveOrgFile() {
   const o = findOrg(st?.code);
   if (!o || !isOrgOfficer(o)) return;
   if (orgFileList(o).length >= ORG_FILES_MAX) { toast(`${o.name} already has ${ORG_FILES_MAX} files. Remove an old one first.`, 'error', 5000); return; }
+  // Read the form now: the duplicate question below replaces this modal, and
+  // the answer comes back to a screen where these fields no longer exist.
+  if ($('#ofl-title')) {
+    st.title = cleanStr($('#ofl-title').value, 120);
+    if (st.kind === 'link') st.linkUrl = ($('#ofl-link-url')?.value || '').trim();
+  }
+  // A file the club already has under this name: ask rather than posting a
+  // second copy to everyone (see askAboutDuplicateFile).
+  if (!st.dupOk && st.kind === 'file' && st.file) {
+    const existing = findFileByName(orgFileList(o), st.title || st.file.name);
+    if (existing) {
+      const proceed = () => { st.dupOk = true; saveOrgFile(); };
+      askAboutDuplicateFile(st.file.name, `shared with ${o.name}`, {
+        onReplace: () => { removeOrgFile(o.code, existing.id, { silent: true }); proceed(); },
+        onKeepBoth: proceed,
+      });
+      return;
+    }
+  }
   const id = uid();
   const base = { id, uid: myOrgUid(o), name: myGroupName(), at: Date.now() };
-  const title = cleanStr($('#ofl-title').value, 120);
+  const title = st.title;
   let item;
   if (st.kind === 'link') {
-    const url = $('#ofl-link-url').value.trim();
+    const url = st.linkUrl || '';
     if (!isHttpUrl(url)) { toast('Enter a full link starting with https://', 'error'); return; }
     item = { ...base, kind: 'link', title: title || hostOf(url) || 'Link', url };
   } else {
@@ -855,14 +971,18 @@ async function saveOrgFile() {
     toast('Couldn’t upload that file. Check your connection and try again.', 'error', 5000);
   }
 }
-function removeOrgFile(code, id) {
+// silent: the caller already asked (replacing a file of the same name, say),
+// so this just does it instead of stacking a second confirmation.
+function removeOrgFile(code, id, { silent = false } = {}) {
   const o = findOrg(code);
   const f = o && orgFileList(o).find(x => x.id === id);
   if (!f || !isOrgOfficer(o)) return;
-  confirmDialog(`Remove “${f.title}” for everyone?`, async () => {
+  const remove = async () => {
     if (!(await orgWrite(code, { [`files.${id}`]: GW_DELETE }))) return;
     if (f.kind === 'file' && String(f.url || '').includes('firebasestorage')) fbStorage().then(s => s.refFromURL(f.url).delete()).catch(() => {});
-  }, 'Remove');
+  };
+  if (silent) { remove(); return; }
+  confirmDialog(`Remove “${f.title}” for everyone?`, remove, 'Remove');
 }
 
 /* ── Chat ─────────────────────────────────────────────────────────
@@ -1227,11 +1347,17 @@ function captureOrgParam() {
   const params = new URLSearchParams(location.search);
   if (!params.has('org')) return;
   const code = normalizeCode(params.get('org'));
+  // ?org=CODE&tab=admin is the direct link an officer bookmarks or sends a
+  // co-officer (see orgAdminLink); a member who opens it just lands on the
+  // club, since the Admin tab only exists for officers.
+  const tab = params.get('tab') || '';
   params.delete('org');
+  params.delete('tab');
   history.replaceState({}, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
-  if (code.length === 6 && !isEmbedded()) try { localStorage.setItem(PENDING_ORG_KEY, JSON.stringify({ code, at: Date.now() })); } catch {}
+  if (code.length === 6 && !isEmbedded()) try { localStorage.setItem(PENDING_ORG_KEY, JSON.stringify({ code, at: Date.now(), tab })); } catch {}
 }
 function pendingOrgCode() { try { const p = JSON.parse(localStorage.getItem(PENDING_ORG_KEY) || 'null'); return p?.code && Date.now() - p.at < 14 * 86400000 ? p.code : null; } catch { return null; } }
+function pendingOrgTab() { try { const p = JSON.parse(localStorage.getItem(PENDING_ORG_KEY) || 'null'); return p?.tab || ''; } catch { return ''; } }
 function clearPendingOrg() { try { localStorage.removeItem(PENDING_ORG_KEY); } catch {} }
 let _orgInviteShown = false;
 async function handlePendingOrg() {
@@ -1248,7 +1374,14 @@ async function handlePendingOrg() {
     return;
   }
   if (!window._licensed) return;
-  if (orgEntry(code)?.cloud) { clearPendingOrg(); openOrg(code); return; }
+  if (orgEntry(code)?.cloud) {
+    const tab = pendingOrgTab();
+    clearPendingOrg();
+    // Already a member: honor the tab the link asked for, when it's one this
+    // person can actually see.
+    openOrg(code, tab && orgTabsFor(findOrg(code) || {}).some(([k]) => k === tab) ? tab : undefined);
+    return;
+  }
   try { const snap = await _fbDb.collection('orgs').doc(code).get(); if (snap.exists) showOrgPreview(code, snap.data()); else clearPendingOrg(); } catch {}
 }
 

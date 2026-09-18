@@ -6,7 +6,7 @@ const FAQ_ITEMS = [
   { q: 'What happens when I start a new semester?', a: 'Settings → Semester reset archives your current semester (nothing is deleted, you can still view it from the semester dropdown) and sets up a fresh one, optionally carrying over your course names and instructors as a starting point.' },
   { q: 'How do I change the colors?', a: 'Settings → Appearance (or Customize on the dashboard) has themes, each with a matching dark mode, plus page colors. Turn on Dark mode and the page colors switch to deep tints of the same colors, with light text so everything stays readable.' },
   { q: 'How do study groups work?', a: 'Start a group from Study Groups and invite classmates with its 6-character code or an invite link. Inside a group you can schedule sessions (they show up on every member’s calendar, with RSVPs), paint your weekly availability so Semester HQ can suggest the best time to meet, split up tasks with owners and due dates, chat, and share notes, flashcards, files, and links. Everyone in a group needs their own Semester HQ Plus account. Organizing a whole class, club, or team? A group plan covers all of them, see the next question.' },
-  { q: 'Can I pay for my whole club, team, or class?', a: 'Yes. A group plan is $5.99 per member each month (five members or more) instead of $7.99 each. Open group-admin.html from Settings, pick how many members you\u2019re covering, and share the invite link it gives you: each person signs in, takes a seat, and gets their own full Semester HQ. Add or remove seats whenever your roster changes, and cancel anytime.' },
+  { q: 'Can I pay for my whole club, team, or class?', a: 'Yes. A group plan is $5.99 per member each month instead of $7.99 each, and you can buy it yourself for 5 to 50 members. Open group-admin.html from Settings, pick how many members you\u2019re covering, and share the invite link it gives you: each person signs in, takes a seat, and gets their own full Semester HQ. Add or remove seats whenever your roster changes, and cancel anytime. Covering more than 50, or need an invoice, a PO, or a W-9 (or you\u2019re an academic department or a whole campus)? Ask for a quote at semester-hq.com/group-pricing.html and we\u2019ll set it up with you.' },
   { q: 'What can I share with a study group?', a: 'Notes, whole notebooks, flashcard decks, and projects each have a Share button that sends a copy to one of your groups. You can also open a group’s Resources tab to share any of those, plus files and links, without leaving the group. Members can add their own copy to their notebook, flashcards, or projects. It’s a one-time copy, not a live sync, so edits after sharing stay with whoever made them.' },
   { q: 'Can I assign tasks to people in my study group?', a: 'Yes. On a group’s Tasks tab, give each task an owner and an optional due date, and filter to just yours. Tasks assigned to you also show up on your Dashboard, and the group’s Overview shows a feed of who scheduled, shared, and finished what.' },
   { q: 'Can I add a PDF or other file to my notes?', a: 'Yes. Open a note and click Upload file. A PDF comes in as page images, so figures and handwriting look like the original. Photos come in as pictures, and Word docs, slides, spreadsheets, and text files come in as text you can edit. This doesn’t use AI, and it’s separate from syllabus upload under Courses.' },
@@ -104,6 +104,8 @@ function pageSettings() {
 
       ${installSettingsCard()}
 
+      ${versionSettingsCard()}
+
       <div class="card card-pad">
         <h3 style="font-size:15px" class="mb-8">Account & Sync</h3>
         ${_fbUser ? `
@@ -171,6 +173,47 @@ function pageSettings() {
     </div>
   `;
 }
+/* ── What version am I running, and is it the latest? ──────────────
+   Installed home-screen apps can't be hard-refreshed by hand, so this
+   is the one place that answers the question out loud and can force
+   the issue (see js/offline.js). */
+function versionSettingsCard() {
+  if (isEmbedded()) return '';
+  const running = window._runningVersion || (typeof APP_VERSION === 'string' ? APP_VERSION : '');
+  return `
+    <div class="card card-pad">
+      <h3 style="font-size:15px" class="mb-8">App version</h3>
+      <p class="small muted">You're running <strong id="app-version-label">${esc(running || 'unknown')}</strong>. Semester HQ updates itself when you open it, so you shouldn't have to think about this.</p>
+      <div class="flex-gap wrap mt-8">
+        <button class="btn btn-sm" onclick="runUpdateCheck(this)">${icon('refresh-cw', 13, 2)} Check for updates</button>
+      </div>
+      <p class="small muted mt-8" id="app-version-status"></p>
+      <details class="settings-collapse mt-8">
+        <summary>Still seeing an old version?</summary>
+        <div class="settings-collapse-body">
+          <p class="small muted">This clears the app's saved copy of itself and loads it again from scratch. Your classes, notes, and everything else stay exactly where they are: your planner isn't part of what gets cleared.</p>
+          <button class="btn btn-sm btn-danger mt-8" onclick="confirmForceUpdate()">Reload the app from scratch</button>
+        </div>
+      </details>
+    </div>`;
+}
+async function runUpdateCheck(btn) {
+  const status = $('#app-version-status');
+  setBtnLoading(btn, true);
+  if (status) status.textContent = 'Checking\u2026';
+  const result = typeof checkForAppUpdate === 'function' ? await checkForAppUpdate() : 'unknown';
+  setBtnLoading(btn, false);
+  if (!status) return;
+  if (result === 'updating') status.textContent = 'A new version is ready. Reloading\u2026';
+  else if (result === 'current') status.textContent = `You're on the latest version (${window._runningVersion || APP_VERSION}).`;
+  else status.textContent = "Couldn't reach the server to check. Try again when you're back online.";
+}
+function confirmForceUpdate() {
+  confirmDialog('Reload Semester HQ from scratch? Your planner data stays put. This just throws away the app\u2019s saved copy of its own code and downloads it fresh.', () => {
+    if (typeof forceAppUpdate === 'function') forceAppUpdate();
+  }, 'Reload');
+}
+
 async function copyDiagnostics() {
   const text = await diag.summary();
   try { await navigator.clipboard.writeText(text); toast(`Copied. Your support code is ${diag.session}.`, 'success', 5000); }

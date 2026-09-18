@@ -184,3 +184,56 @@ function orgGroupPlanUrl(o) {
   return `${GROUP_ADMIN_PAGE}?${params}`;
 }
 const ORG_PLAN_KINDS = { club: 'club', team: 'team', chapter: 'chapter', org: 'club' };
+
+// The group plan (if any) that this club's officer set up for it. Plans carry
+// the club's code, so a club page can show its own plan rather than making an
+// officer go hunting through Settings for it.
+function orgGroupPlan(o) {
+  if (!o || o.local || !_fbUser || !checkoutEnabled()) return null;
+  ensureGroupMine();
+  return (window._groupMine?.plans || []).find(p => p.orgCode && p.orgCode === o.code) || null;
+}
+/* The club Admin tab's plan section: what's paid for, how many seats are
+   used, the one link members join with, and a way into the plan's own admin
+   page. Officers who haven't started a plan get the pitch and the price. */
+function orgPlanAdminCard(o, plan) {
+  if (!checkoutEnabled()) return '';
+  const kindWord = o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club';
+  if (!_fbUser) {
+    return `<div class="card card-pad">
+      <h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} Covering your members</h3>
+      <p class="small muted">A group plan covers every member's Semester HQ for ${GROUP_SEAT_PRICE} each a month, paid from your budget or dues. <a href="login.html">Log in</a> to set one up.</p>
+    </div>`;
+  }
+  if (window._groupMineLoading && !window._groupMine) {
+    return `<div class="card card-pad"><h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} Covering your members</h3><p class="small muted">Checking for a group plan…</p></div>`;
+  }
+  if (!plan) {
+    return `<div class="card card-pad">
+      <h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} Covering your members</h3>
+      <p class="small muted mb-8">Every member needs Semester HQ for your events and files to reach them. A group plan pays for all of them at ${GROUP_SEAT_PRICE} per member each month, in one bill you can put through your budget or dues, and members claim their own seat from a single link.</p>
+      <div class="flex-gap wrap">
+        <a class="btn btn-primary btn-sm" href="${orgGroupPlanUrl(o)}">${icon('shield', 13, 1.8)} Start a plan for ${esc(o.name)}</a>
+        <a class="btn btn-sm" href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">How group pricing works</a>
+      </div>
+    </div>`;
+  }
+  const live = plan.status === 'active' || plan.status === 'past_due';
+  const statusLine = plan.status === 'active' ? `${plan.memberCount} of ${plan.seats} seats claimed`
+    : plan.status === 'past_due' ? 'A payment didn’t go through. Members still have access for now.'
+    : plan.status === 'pending' ? 'Not finished: the checkout was never completed.'
+    : 'Canceled.';
+  return `<div class="card card-pad">
+    <h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} ${esc(plan.name || o.name)} group plan</h3>
+    <div class="small muted mb-8">${esc(statusLine)}${plan.cancelAtPeriodEnd ? ' Ends at the close of this billing period.' : ''}</div>
+    ${plan.status === 'active' ? `<div class="progress mb-8"><div style="width:${plan.seats ? Math.min(100, Math.round((plan.memberCount / plan.seats) * 100)) : 0}%"></div></div>` : ''}
+    ${live && plan.inviteUrl ? `<div class="field"><label for="oa-plan-link">Link members use to claim a seat</label>
+      <div class="sg-invite-row"><input class="input" id="oa-plan-link" value="${esc(plan.inviteUrl)}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyText('${esc(plan.inviteUrl)}','Seat link copied')">${icon('copy', 13, 1.8)} Copy</button></div>
+      <div class="small muted mt-8">Anyone in the ${esc(kindWord)} who opens it and signs in is covered. Members can also join with the ${esc(o.name)} code.</div>
+    </div>` : ''}
+    <div class="flex-gap wrap">
+      <a class="btn btn-primary btn-sm" href="${GROUP_ADMIN_PAGE}?plan=${encodeURIComponent(plan.id)}">${icon('settings', 13, 1.8)} Seats, billing and members</a>
+      ${plan.status === 'pending' ? `<a class="btn btn-sm" href="${GROUP_ADMIN_PAGE}?plan=${encodeURIComponent(plan.id)}">Finish setting it up</a>` : ''}
+    </div>
+  </div>`;
+}
