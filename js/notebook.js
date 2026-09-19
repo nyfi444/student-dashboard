@@ -642,7 +642,7 @@ function renderNoteEditor(note) {
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','P')" title="Clear formatting" aria-label="Clear formatting">${icon('x', 13, 2.2)}</button>
       </div>
       <div class="nb-hint">Type <code>/</code> for blocks, or select text to format</div>
-      <div class="rich-editor nb-editor-body" id="note-editor" contenteditable="true" data-placeholder="Start writing…" oninput="onNoteEdit('${note.id}', this)">${note.content || ''}</div>
+      <div class="rich-editor nb-editor-body" id="note-editor" contenteditable="true" data-placeholder="Start writing…" oninput="onNoteEdit('${note.id}', this)">${sanitizeHtml(note.content || '')}</div>
     </div>
   `;
 }
@@ -660,14 +660,14 @@ const saveNoteContentDebounced = debounce((id, html) => {
   if (status) { const words = plainTextOfNote(n).trim().split(/\s+/).filter(Boolean).length; status.textContent = `Saved just now · ${words} word${words === 1 ? '' : 's'}`; }
 }, 500);
 
-function plainTextOfNote(note) { const d = document.createElement('div'); d.innerHTML = note.content || ''; return d.textContent || ''; }
+function plainTextOfNote(note) { return textOfHtml(note.content || ''); }
 
 function notePrintHtml(note, crumbs, courseName) {
   return `
     ${crumbs.length ? `<div class="print-meta">${crumbs.map(esc).join(' / ')}</div>` : ''}
     <div class="print-title">${esc(note.name || 'Untitled')}</div>
     <div class="print-meta">${courseName ? esc(courseName) + ' · ' : ''}${fmtDateLong(todayIso())}</div>
-    <div class="rich-editor" style="color:#000">${note.content || '<p><em>This note is empty.</em></p>'}</div>
+    <div class="rich-editor" style="color:#000">${sanitizeHtml(note.content || '') || '<p><em>This note is empty.</em></p>'}</div>
   `;
 }
 // Falls back to the browser's own print dialog: still produces a real PDF via

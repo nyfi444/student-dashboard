@@ -1312,15 +1312,16 @@ function importGroupResource(code, itemId) {
   const s = groupItems(g).find(x => x.id === itemId);
   if (!s) return;
   if (s.kind === 'note') {
-    state.notes.push({ id: uid(), type: 'note', name: s.title, parentId: 'root', courseId: null, content: s.content || '', updatedAt: Date.now() });
+    // Written by another member: sanitized here and again when rendered.
+    state.notes.push({ id: uid(), type: 'note', name: String(s.title || 'Shared note').slice(0, 200), parentId: 'root', courseId: null, content: sanitizeHtml(s.content || ''), updatedAt: Date.now() });
     toast(`Added “${s.title}” to your notebook`);
   } else if (s.kind === 'note-bundle') {
     const folderId = uid();
     state.notes.push({ id: folderId, type: 'folder', name: s.title, parentId: 'root', courseId: null, open: true });
-    (s.notes || []).forEach(n => state.notes.push({ id: uid(), type: 'note', name: n.name, parentId: folderId, courseId: null, content: n.content || '', updatedAt: Date.now() }));
+    (s.notes || []).forEach(n => state.notes.push({ id: uid(), type: 'note', name: String(n.name || 'Shared note').slice(0, 200), parentId: folderId, courseId: null, content: sanitizeHtml(n.content || ''), updatedAt: Date.now() }));
     toast(`Added “${s.title}” to your notebook`);
   } else if (s.kind === 'deck') {
-    state.decks.push({ id: uid(), name: s.title, courseId: null, cards: (s.cards || []).map(c => ({ id: uid(), front: c.front, back: c.back })) });
+    state.decks.push({ id: uid(), name: String(s.title || 'Shared deck').slice(0, 200), courseId: null, cards: (s.cards || []).slice(0, 2000).map(c => ({ id: uid(), front: String(c.front || '').slice(0, 2000), back: String(c.back || '').slice(0, 2000) })) });
     toast(`Added “${s.title}” to your flashcards`);
   } else if (s.kind === 'project') {
     state.projects.push({
