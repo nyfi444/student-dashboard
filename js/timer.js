@@ -141,8 +141,15 @@ function pageTimer() {
 /* ── Controls ──────────────────────────────────────────────────── */
 function setTimerMode(mode) {
   const t = window._timer;
-  if (timerElapsed(t) > 60000 && !confirm('Switching modes resets the current timer. Continue?')) return;
-  Object.assign(t, { mode, phase: 'focus', running: false, startedAt: null, elapsedMs: 0 });
+  if (t.mode === mode) return;
+  if (timerElapsed(t) > 60000) {
+    confirmDialog('Switching modes resets the timer that is running now.', () => applyTimerMode(mode), 'Switch anyway', 'Reset the current timer?');
+    return;
+  }
+  applyTimerMode(mode);
+}
+function applyTimerMode(mode) {
+  Object.assign(window._timer, { mode, phase: 'focus', running: false, startedAt: null, elapsedMs: 0 });
   persistTimer(); updateTimerChrome(); touch();
 }
 function setTimerPhase(phase) {

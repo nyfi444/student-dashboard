@@ -348,9 +348,24 @@ function closeNbColorPopover() {
   document.removeEventListener('mousedown', nbColorPopoverOutsideClick);
   document.removeEventListener('keydown', nbColorPopoverKeydown);
 }
+// The editor's selection is captured on mouseup/keyup (see wireBubbleToolbar)
+// and put back by runNbCommand, so a dialog can sit in between without the
+// link landing somewhere else.
 function promptInsertLink() {
-  const url = prompt('Link URL?');
-  if (url) runNbCommand('createLink', url);
+  openModal(`
+    <div class="modal-head"><h3>Insert a link</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <div class="field"><label for="nb-link-url">Link</label><input class="input" id="nb-link-url" type="url" placeholder="https://" onkeydown="if(event.key==='Enter'){event.preventDefault();insertNbLink()}"></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="insertNbLink()">Insert</button></div>
+  `);
+}
+function insertNbLink() {
+  let url = ($('#nb-link-url')?.value || '').trim();
+  if (url && !/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url;
+  if (!isHttpUrl(url)) { toast('Paste a link that starts with http:// or https://', 'error'); return; }
+  closeModal();
+  runNbCommand('createLink', url);
 }
 
 /* ── Font family / size / color: the editor otherwise had no way to change
@@ -526,7 +541,20 @@ function notebookTree(parentId, depth, search, sort) {
 function toggleFolder(id) { const f = state.notes.find(n => n.id === id); f.open = !f.open; touch(); }
 function selectNote(id) { setState({ notebookSelected: id }); }
 function createFolder(parentId) {
-  const name = prompt('Folder name?'); if (!name) return;
+  const parent = state.notes.find(n => n.id === parentId);
+  openModal(`
+    <div class="modal-head"><h3>New folder</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <div class="field"><label for="nb-folder-name">Folder name</label><input class="input" id="nb-folder-name" maxlength="80" placeholder="Bio 101, Week 3, Exam prep" onkeydown="if(event.key==='Enter'){event.preventDefault();commitCreateFolder('${parentId}')}"></div>
+      ${parent && parent.id !== 'root' ? `<p class="small muted">Inside ${esc(parent.name)}.</p>` : ''}
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="commitCreateFolder('${parentId}')">Create folder</button></div>
+  `);
+}
+function commitCreateFolder(parentId) {
+  const name = ($('#nb-folder-name')?.value || '').trim();
+  if (!name) { toast('Give the folder a name', 'error'); return; }
+  closeModal();
   state.notes.push({ id: uid(), type: 'folder', name, parentId, courseId: null, open: true });
   // Expand the parent too, so a subfolder created inside a currently-collapsed
   // folder is actually visible right away instead of looking like nothing happened.

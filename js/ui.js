@@ -23,8 +23,10 @@ function openModal(html, { wide = false, onClose } = {}) {
   if (!wasOpen) _modalReturnFocus = document.activeElement;
   modal.className = 'modal' + (wide ? ' wide' : '');
   modal.innerHTML = html;
-  const title = modal.querySelector('.modal-head h3');
-  if (title) { title.id = 'modal-title'; modal.setAttribute('aria-labelledby', 'modal-title'); } else modal.removeAttribute('aria-labelledby');
+  // Every dialog is named by its first heading, wherever that heading sits.
+  // One that already has an id keeps it; otherwise it gets one here.
+  const title = modal.querySelector('h2, h3');
+  if (title) { if (!title.id) title.id = 'modal-title'; modal.setAttribute('aria-labelledby', title.id); } else modal.removeAttribute('aria-labelledby');
   $('#overlay').classList.add('show');
   $('#modal-wrap').classList.add('show');
   _modalCloseHandler = onClose || null;
@@ -52,9 +54,12 @@ function requestCloseModal() {
   if (setupOpen && typeof closeSemesterSetup === 'function') { closeSemesterSetup(); return; }
   closeModal();
 }
-function confirmDialog(message, onConfirm, confirmLabel = 'Delete') {
+// `title` is the heading that names the dialog for screen readers. The
+// default asks the plain question; a caller with a sharper one passes it in.
+function confirmDialog(message, onConfirm, confirmLabel = 'Delete', title = 'Are you sure?') {
   openModal(`
-    <div class="modal-body" style="padding-top:22px">
+    <div class="modal-head"><h3 id="confirm-title">${esc(title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
       <p style="font-size:14px">${esc(message)}</p>
     </div>
     <div class="modal-foot">

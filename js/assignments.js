@@ -347,6 +347,11 @@ function renderAssignmentModal(id) {
           <button class="btn btn-sm" onclick="$('#af-attach-file').click()">${icon('upload',13,1.8)} Upload file</button>
           <input type="file" id="af-attach-file" multiple style="display:none" onchange="addAttachmentFile(this.files)">
         </div>
+        <div class="field-row mt-8" id="af-link-row" style="display:none;align-items:center">
+          <input class="input" id="af-link-url" type="url" placeholder="https://" aria-label="Link to attach" onkeydown="if(event.key==='Enter'){event.preventDefault();commitAttachmentLink()}">
+          <button class="btn btn-sm" onclick="commitAttachmentLink()">Attach</button>
+          <button class="btn btn-ghost btn-sm" onclick="$('#af-link-row').style.display='none'">Cancel</button>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -372,9 +377,20 @@ function syncAssignmentAttachmentsIfExisting() {
   const existing = state.assignments.find(a => a.id === _assignDraft.id);
   if (existing) { existing.attachments = _assignDraft.attachments; save(); }
 }
+// The link field opens inside the assignment form. There is one modal, so a
+// second dialog would replace the form someone is halfway through, and a
+// native prompt() is unstyled, unlabeled, and blocked in some installed apps.
 function addAttachmentLink() {
-  const url = prompt('Paste a link (rubric, prompt, reading, etc.)');
-  if (!url) return;
+  const row = $('#af-link-row');
+  if (!row) return;
+  row.style.display = '';
+  $('#af-link-url')?.focus();
+}
+function commitAttachmentLink() {
+  let url = ($('#af-link-url')?.value || '').trim();
+  if (url && !/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url;
+  if (!isHttpUrl(url)) { toast('Paste a link that starts with http:// or https://', 'error'); return; }
+  syncAssignDraftFields();
   _assignDraft.attachments.push({ id: uid(), kind: 'reference', name: url.replace(/^https?:\/\//, '').slice(0, 40), url, dataUrl: null });
   syncAssignmentAttachmentsIfExisting();
   renderAssignmentModal(state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null);
