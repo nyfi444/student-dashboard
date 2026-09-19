@@ -16,20 +16,29 @@ const FAQ_ITEMS = [
 ];
 
 function confirmDeleteAccount() {
-  confirmDialog(
-    'This cancels your subscription and permanently deletes your account, your synced planner, and your uploaded files. This can’t be undone. Want a copy first? Cancel and use Settings → Data → Export backup. Continue?',
-    async () => {
-      try {
-        toast('Deleting your account…', 'info', 4000);
-        const result = await deleteAccountFully();
-        toast(result.authDeleted ? 'Your account has been deleted.' : 'Data deleted. Email hello@semester-hq.com to finish removing your sign-in.', 'success', 5000);
-      } catch (e) {
-        toast('Could not delete your account: ' + e.message, 'error', 5000);
-        diag.error('account', 'Account deletion failed', e);
-      }
-    },
-    'Delete account'
-  );
+  openModal(`
+    <div class="modal-head"><h3>Delete your account?</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <p class="small">This cancels your subscription and permanently deletes your account, your synced planner, and your uploaded files. It cannot be undone.</p>
+      <p class="small muted mt-8">Want a copy first? Download everything as one file before you go.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" style="margin-right:auto" onclick="exportData()">Download my data</button>
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="confirm-delete-account">Delete account</button>
+    </div>
+  `);
+  $('#confirm-delete-account').onclick = async () => {
+    closeModal();
+    try {
+      toast('Deleting your account…', 'info', 4000);
+      const result = await deleteAccountFully();
+      toast(result.authDeleted ? 'Your account has been deleted.' : 'Data deleted. Email hello@semester-hq.com to finish removing your sign-in.', 'success', 5000);
+    } catch (e) {
+      toast('Could not delete your account: ' + e.message, 'error', 5000);
+      diag.error('account', 'Account deletion failed', e);
+    }
+  };
 }
 
 /* ── Leave a review ───────────────────────────────────────────────

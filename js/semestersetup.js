@@ -26,7 +26,40 @@ function openSemesterSetup() {
     courses: [setupNewCourse([])],
     weeklyStudyGoalMinutes: state.settings.weeklyStudyGoalMinutes || 300,
   };
+  // Picks up where a closed or interrupted setup left off (this tab only).
+  const draft = loadSetupDraft();
+  if (draft) { window._setup = draft; toast('Picked up where you left off.', 'info', 3000); }
   renderSetupStep();
+}
+// Anything typed beyond the blank first course counts as content.
+function setupHasContent() {
+  const w = window._setup;
+  return !!w && (w.step > 0 || (w.courses || []).some(c => (c.name || '').trim() || (c.code || '').trim()));
+}
+const SETUP_DRAFT_KEY = 'shq_setup_draft';
+function saveSetupDraft() {
+  const w = window._setup;
+  if (!w || w.step >= SETUP_STEPS.length || !setupHasContent()) return;
+  try { sessionStorage.setItem(SETUP_DRAFT_KEY, JSON.stringify(w)); } catch {}
+}
+function clearSetupDraft() { try { sessionStorage.removeItem(SETUP_DRAFT_KEY); } catch {} }
+function loadSetupDraft() {
+  try {
+    const raw = sessionStorage.getItem(SETUP_DRAFT_KEY);
+    const draft = raw ? JSON.parse(raw) : null;
+    return draft && Array.isArray(draft.courses) && typeof draft.step === 'number' && draft.step < SETUP_STEPS.length ? draft : null;
+  } catch { return null; }
+}
+// The X and Escape used to throw away every class typed so far. What was
+// typed is now kept for this tab, and opening setup again resumes it.
+function closeSemesterSetup() {
+  const w = window._setup;
+  if (w && w.step < SETUP_STEPS.length && setupHasContent()) {
+    saveSetupDraft();
+    toast('Saved where you were. Open Set up my semester to continue.', 'info', 3500);
+  }
+  window._setup = null;
+  closeModal();
 }
 function setupNewCourse(existing = window._setup?.courses || []) {
   return { _wid: uid(), name: '', code: '', credits: 3, color: nextCourseColor(existing.map(c => c.color)), slots: [], instructor: '', location: '', syllabusStatus: '', _pendingAssignments: [] };
@@ -35,12 +68,13 @@ function setupCourses() { return window._setup.courses.filter(c => c.name.trim()
 
 function renderSetupStep() {
   const w = window._setup;
+  saveSetupDraft();
   const done = w.step >= SETUP_STEPS.length;
   const body = done ? setupStepDone() : [setupStepYou, setupStepClasses, setupStepTimes, setupStepSyllabi, setupStepGoal][w.step]();
   openModal(`
     <div class="modal-head">
       <h3>${done ? 'You’re all set' : 'Set up your semester'}</h3>
-      <button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button>
+      <button class="close-x" aria-label="Close" onclick="closeSemesterSetup()">${icon('x', 13, 2.2)}</button>
     </div>
     ${done ? '' : `<div class="setup-progress" aria-label="Step ${w.step + 1} of ${SETUP_STEPS.length}">
       ${SETUP_STEPS.map((label, i) => `<div class="setup-step ${i < w.step ? 'done' : ''} ${i === w.step ? 'current' : ''}"><span class="setup-dot">${i < w.step ? icon('check', 10, 2.8) : i + 1}</span><span class="setup-label">${label}</span></div>`).join('')}
@@ -256,6 +290,7 @@ function setupStepDone() {
     </div>`;
 }
 function setupFinish() {
+  clearSetupDraft();
   const w = window._setup;
   let semId = w.reuseSemesterId;
   if (semId && state.semesters.some(s => s.id === semId)) {

@@ -45,6 +45,13 @@ function closeModal() {
   const gen = _modalGen;
   setTimeout(() => { if (_modalGen === gen) $('#modal').innerHTML = ''; }, 180);
 }
+// What Escape and the backdrop call. While the semester setup is open it
+// keeps a draft of what was typed instead of losing it; anything else closes.
+function requestCloseModal() {
+  const setupOpen = window._setup && $('#modal-wrap').classList.contains('show') && $('#modal .setup-body');
+  if (setupOpen && typeof closeSemesterSetup === 'function') { closeSemesterSetup(); return; }
+  closeModal();
+}
 function confirmDialog(message, onConfirm, confirmLabel = 'Delete') {
   openModal(`
     <div class="modal-body" style="padding-top:22px">
@@ -110,7 +117,7 @@ function setBtnLoading(btn, loading, labelWhenDone) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeModal(); return; }
+  if (e.key === 'Escape') { requestCloseModal(); return; }
   // Keep Tab inside an open dialog.
   if (e.key === 'Tab' && $('#modal-wrap').classList.contains('show')) {
     const f = [...$('#modal').querySelectorAll('button:not([disabled]), [href], input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(el => el.offsetParent !== null);

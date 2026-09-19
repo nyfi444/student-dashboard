@@ -167,6 +167,17 @@ function shouldShowPaywall() {
 }
 
 function pagePaywall() {
+  // A subscriber on a new device: the license check takes a moment, and
+  // until it answers this must not read as "no plan yet, subscribe".
+  if (typeof _fbUser !== 'undefined' && _fbUser && !window._licenseChecked) {
+    return `
+      <div class="paywall-wrap">
+        <div class="paywall-card">
+          <h2>Checking your plan…</h2>
+          <p class="small muted">Signed in as ${esc(_fbUser.email || _fbUser.displayName || 'you')}. One moment.</p>
+        </div>
+      </div>`;
+  }
   if (window._checkoutPending) {
     return `
       <div class="paywall-wrap">
