@@ -153,7 +153,7 @@ async function routeRequest(request, env) {
     return handleClaimLicense(request, env, origin);
   }
   if (url.pathname === '/check-email') {
-    if (!(await checkRateLimit(env, ip, 'check-email', 20))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    if (!(await checkRateLimit(env, ip, 'check-email', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
     return handleCheckEmail(request, env, origin);
   }
   if (url.pathname === '/delete-account') {
@@ -171,6 +171,10 @@ async function routeRequest(request, env) {
   if (url.pathname === '/track-event') {
     if (!(await checkRateLimit(env, ip, 'track-event', 60))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
     return handleTrackEvent(request, env, origin);
+  }
+  if (url.pathname === '/account/attest') {
+    if (!(await checkRateLimit(env, ip, 'attest', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleAccountAttest(request, env, origin);
   }
   if (url.pathname.startsWith('/group/')) {
     if (!(await checkRateLimit(env, ip, 'group', 40))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
@@ -209,8 +213,12 @@ async function handleAiProxy(request, env, origin) {
   const declaredLength = Number(request.headers.get('content-length') || 0);
   if (declaredLength > AI_MAX_BODY_BYTES) return jsonError('That upload is too large to read. Upload just the pages you need and try again.', 413, env, origin);
 
+  // Read as text first: the content-length check above only sees what the
+  // client declared, and a chunked upload declares nothing.
+  const raw = await request.text();
+  if (raw.length > AI_MAX_BODY_BYTES) return jsonError('That upload is too large to read. Upload just the pages you need and try again.', 413, env, origin);
   let body;
-  try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
+  try { body = JSON.parse(raw); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
 
   if (!body.idToken) return jsonError('Sign in and subscribe to use AI upload.', 402, env, origin);
   let payload;
@@ -221,11 +229,16 @@ async function handleAiProxy(request, env, origin) {
     const license = await readFirestoreDoc(env, 'licenses', payload.sub);
     if (!license?.paid) return jsonError('AI upload requires a subscription ($7.99/month).', 402, env, origin);
   } catch (e) {
-    return jsonError('Could not verify access: ' + e.message, 500, env, origin);
+    await logServerIssue(env, 'ai', 'Could not read a license before an AI call', e);
+    return jsonError('Could not verify access right now. Try again in a moment.', 500, env, origin);
   }
 
   if (!ALLOWED_MODELS.includes(body.model)) return jsonError(`Model not allowed. Use one of: ${ALLOWED_MODELS.join(', ')}`, 400, env, origin);
   if (!body.system || !Array.isArray(body.messages)) return jsonError('Request must include system and messages', 400, env, origin);
+  // Only the block shapes the app sends. Anything else (URL sources, tool
+  // results, unknown kinds) is refused rather than priced blind.
+  const badBlock = findDisallowedBlock(body.messages);
+  if (badBlock) return jsonError(`Unsupported content block: ${badBlock}`, 400, env, origin);
 
   // Too big to be worth reading: refuse before it's sent, with a sentence
   // that says what to do instead, rather than after it's been paid for.
@@ -288,16 +301,33 @@ async function handleAiProxy(request, env, origin) {
    only has to be right enough to catch a textbook, not to bill anyone. */
 function estimateInputTokens(body) {
   let chars = typeof body.system === 'string' ? body.system.length : JSON.stringify(body.system || '').length;
-  let images = 0;
+  let images = 0, documentBytes = 0;
   for (const message of body.messages || []) {
     const content = message?.content;
     if (typeof content === 'string') { chars += content.length; continue; }
     for (const block of Array.isArray(content) ? content : []) {
       if (block?.type === 'image') images++;
+      else if (block?.type === 'document') documentBytes += Math.round(String(block.source?.data || '').length * 0.75);
       else if (typeof block?.text === 'string') chars += block.text.length;
     }
   }
-  return Math.round(chars / 4) + images * 1800;
+  // A PDF costs roughly its text plus one image per page. Sizing it by bytes
+  // (about 30 bytes per token for an ordinary document) is close enough to
+  // stop a textbook without counting pages here.
+  return Math.round(chars / 4) + images * 1800 + (documentBytes ? Math.max(1500, Math.round(documentBytes / 30)) : 0);
+}
+const AI_BLOCK_TYPES = new Set(['text', 'image', 'document']);
+function findDisallowedBlock(messages) {
+  for (const message of messages || []) {
+    const content = message?.content;
+    if (typeof content === 'string') continue;
+    if (!Array.isArray(content)) return 'content';
+    for (const block of content) {
+      if (!block || !AI_BLOCK_TYPES.has(block.type)) return String(block?.type || 'unknown').slice(0, 40);
+      if ((block.type === 'image' || block.type === 'document') && block.source?.type !== 'base64') return `${block.type}:${String(block.source?.type || 'missing').slice(0, 20)}`;
+    }
+  }
+  return '';
 }
 
 /* ── Per-account daily AI quota (KV) ──────────────────────────────
@@ -331,6 +361,26 @@ async function handleCreateCheckoutSession(request, env, origin) {
   let body;
   try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
 
+  // Who this purchase is for. A signed-in buyer proves it with an ID token,
+  // and the uid and email come from that token, never from the body: before
+  // this, anyone could start a checkout naming somebody else's uid, and the
+  // cancellation webhook would then switch that person off. A buyer who
+  // isn't signed in (the marketing site) gets an email-only session and
+  // claims it after signing in (see handleClaimLicense).
+  let uid = null, email = '';
+  if (body.idToken) {
+    let payload;
+    try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
+    catch { return jsonError('Your session expired, sign in again.', 401, env, origin); }
+    uid = payload.sub;
+    email = verifiedEmailOf(payload);
+  } else if (body.uid) {
+    return jsonError('Sign in again before subscribing.', 401, env, origin);
+  } else if (body.email) {
+    email = String(body.email).toLowerCase().trim().slice(0, 320);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) email = '';
+  }
+
   const params = new URLSearchParams();
   params.set('mode', 'subscription');
   params.set('submit_type', 'subscribe');
@@ -349,13 +399,13 @@ async function handleCreateCheckoutSession(request, env, origin) {
   // accounts (content partnerships, gifted access, etc.) can be handled
   // entirely via Stripe Coupons, see SEMESTER_HQ_COUPON_PROCESS.md.
   params.set('allow_promotion_codes', 'true');
-  if (body.uid) params.set('client_reference_id', String(body.uid));
-  if (body.email) params.set('customer_email', String(body.email));
+  if (uid) params.set('client_reference_id', uid);
+  if (email) params.set('customer_email', email);
   // Stamped onto the Subscription object Stripe creates, so later lifecycle
   // events (renewal, cancellation) can be resolved back to a uid/email
   // without a separate customer-id lookup table.
-  if (body.uid) params.set('subscription_data[metadata][uid]', String(body.uid));
-  if (body.email) params.set('subscription_data[metadata][email]', String(body.email).toLowerCase().trim());
+  if (uid) params.set('subscription_data[metadata][uid]', uid);
+  if (email) params.set('subscription_data[metadata][email]', email);
 
   const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
@@ -363,7 +413,10 @@ async function handleCreateCheckoutSession(request, env, origin) {
     body: params.toString(),
   });
   const data = await res.json();
-  if (!res.ok) return jsonError('Could not start checkout: ' + (data.error?.message || 'unknown error'), 500, env, origin);
+  if (!res.ok) {
+    await logServerIssue(env, 'checkout', 'Stripe refused to start a checkout', null, { stripe: String(data.error?.message || '').slice(0, 200) });
+    return jsonError('Could not start checkout right now. Try again in a moment.', 500, env, origin);
+  }
 
   return new Response(JSON.stringify({ url: data.url }), { headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
 }
@@ -389,7 +442,10 @@ async function handleCreatePortalSession(request, env, origin) {
 
   let license;
   try { license = await readFirestoreDoc(env, 'licenses', payload.sub); }
-  catch (e) { return jsonError('Could not look up your subscription: ' + e.message, 500, env, origin); }
+  catch (e) {
+    await logServerIssue(env, 'checkout', 'Could not read a license for the billing portal', e);
+    return jsonError('Could not look up your subscription right now. Try again in a moment.', 500, env, origin);
+  }
 
   // licenses/{uid}.stripeCustomerId can be missing even for a genuinely paying
   // account: anyone who bought from the marketing site before creating an
@@ -397,19 +453,20 @@ async function handleCreatePortalSession(request, env, origin) {
   // and older claims didn't carry stripeCustomerId across (see handleClaimLicense).
   // Fall back to the email-keyed doc (written by the same webhook) rather than
   // telling a paying customer they have no subscription.
+  const verifiedEmail = verifiedEmailOf(payload);
   let stripeCustomerId = license?.stripeCustomerId;
-  if (!stripeCustomerId && payload.email) {
+  if (!stripeCustomerId && verifiedEmail) {
     try {
-      const byEmail = await readFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(payload.email.toLowerCase().trim()));
+      const byEmail = await readFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(verifiedEmail));
       if (byEmail?.paid) stripeCustomerId = byEmail.stripeCustomerId;
     } catch (e) { await logServerIssue(env, 'license', 'licensesByEmail fallback lookup failed', e); }
   }
   // Last try: a Stripe customer under this email that was never linked to the
   // account (paid with the same email some other way). Linked now, so the
   // next visit doesn't need the search.
-  if (!stripeCustomerId && payload.email) {
+  if (!stripeCustomerId && verifiedEmail) {
     try {
-      stripeCustomerId = await findStripeCustomerByEmail(env, payload.email);
+      stripeCustomerId = await findStripeCustomerByEmail(env, verifiedEmail);
       if (stripeCustomerId) await patchFirestoreDoc(env, `licenses/${payload.sub}`, { stripeCustomerId });
     } catch (e) { await logServerIssue(env, 'checkout', 'Stripe customer lookup failed', e); }
   }
@@ -424,7 +481,8 @@ async function handleCreatePortalSession(request, env, origin) {
   try {
     return jsonOk({ url: await createStripePortalSession(env, stripeCustomerId, appUrl) }, env, origin);
   } catch (e) {
-    return jsonError('Could not open billing portal: ' + e.message, 500, env, origin);
+    await logServerIssue(env, 'checkout', 'Could not open the billing portal', e);
+    return jsonError('Could not open the billing portal right now. Try again in a moment.', 500, env, origin);
   }
 }
 
@@ -491,6 +549,7 @@ async function handleStripeWebhook(request, env) {
 
   let event;
   try { event = JSON.parse(rawBody); } catch { return new Response('Invalid JSON', { status: 400 }); }
+  if (event.id && !(await claimWebhookEvent(env, event.id))) return new Response('ok (already handled)', { status: 200 });
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
@@ -515,8 +574,8 @@ async function handleStripeWebhook(request, env) {
         purchasedAt: new Date(),
       };
       try {
-        if (uid) await setIndividualLicense(env, uid, licenseFields, true);
-        if (email) await writeFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email), { ...licenseFields, email });
+        if (uid) await setIndividualLicense(env, uid, licenseFields, true, session.subscription || '');
+        if (email) await setEmailLicense(env, email, licenseFields, session.subscription || '');
       } catch (e) {
         console.error('License write failed', e);
         return new Response(`License write failed: ${e.message}`, { status: 500 }); // non-2xx makes Stripe retry
@@ -538,8 +597,13 @@ async function handleStripeWebhook(request, env) {
       }
       return new Response('ok', { status: 200 });
     }
-    const uid = sub.metadata?.uid || null;
-    const email = (sub.metadata?.email || '').toLowerCase().trim();
+    let uid = sub.metadata?.uid || null;
+    let email = (sub.metadata?.email || '').toLowerCase().trim();
+    // A purchase from the marketing site carries no uid: the person signed in
+    // later and claimed it by email. Find the license by the subscription
+    // itself, so a cancellation still reaches the account it belongs to.
+    if (!uid) uid = await licenseIdForSubscription(env, 'licenses', sub.id);
+    if (!email) email = await licenseIdForSubscription(env, 'licensesByEmail', sub.id, true);
     const active = event.type === 'customer.subscription.updated' && ['active', 'trialing'].includes(sub.status);
     const licenseFields = {
       paid: active,
@@ -548,8 +612,8 @@ async function handleStripeWebhook(request, env) {
       updatedAt: new Date(),
     };
     try {
-      if (uid) await setIndividualLicense(env, uid, licenseFields, active);
-      if (email) await writeFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email), { ...licenseFields, email });
+      if (uid) await setIndividualLicense(env, uid, licenseFields, active, sub.id);
+      if (email) await setEmailLicense(env, email, licenseFields, sub.id);
     } catch (e) {
       console.error('License update failed', e);
       return new Response(`License update failed: ${e.message}`, { status: 500 }); // non-2xx makes Stripe retry
@@ -562,9 +626,45 @@ async function handleStripeWebhook(request, env) {
 // A person's own subscription, kept apart from any group seat they hold:
 // `paid` is true when either one is. Merged into the doc rather than
 // replacing it, so a renewal or cancellation never wipes a group seat.
-async function setIndividualLicense(env, uid, fields, individualPaid) {
+async function setIndividualLicense(env, uid, fields, individualPaid, subscriptionId = '') {
   const existing = await readFirestoreDoc(env, 'licenses', uid);
+  if (!subscriptionBelongsHere(existing, subscriptionId, individualPaid)) {
+    await logServerIssue(env, 'checkout', 'Ignored an event from a subscription this license does not follow', null, { subscriptionId });
+    return;
+  }
   await patchFirestoreDoc(env, `licenses/${uid}`, { ...fields, individualPaid, paid: individualPaid || !!existing?.groupPaid });
+}
+// The email-keyed twin, same rule.
+async function setEmailLicense(env, email, fields, subscriptionId = '') {
+  const id = encodeEmailDocId(email);
+  const existing = await readFirestoreDoc(env, 'licensesByEmail', id);
+  if (!subscriptionBelongsHere(existing, subscriptionId, fields.paid === true)) return;
+  await writeFirestoreDoc(env, 'licensesByEmail', id, { ...fields, email });
+}
+// A license follows one subscription at a time. An event about some other
+// subscription may not switch the person off, and may only take over when
+// the one on record has already lapsed. This is what stops a second checkout
+// that names an account from being able to cancel that account's access.
+function subscriptionBelongsHere(existing, subscriptionId, activating) {
+  const current = existing?.stripeSubscriptionId || '';
+  if (!current || !subscriptionId || current === subscriptionId) return true;
+  return activating && individualPaidOf(existing) === false;
+}
+// Which license document (by id) records this subscription, if exactly one does.
+async function licenseIdForSubscription(env, collectionId, subscriptionId, asEmail = false) {
+  if (!subscriptionId) return asEmail ? '' : null;
+  try {
+    const rows = await runFirestoreQuery(env, {
+      from: [{ collectionId }],
+      where: { fieldFilter: { field: { fieldPath: 'stripeSubscriptionId' }, op: 'EQUAL', value: { stringValue: subscriptionId } } },
+      limit: 2,
+    });
+    if (rows.length !== 1) return asEmail ? '' : null;
+    return asEmail ? String(rows[0].email || '').toLowerCase().trim() : rows[0].id;
+  } catch (e) {
+    await logServerIssue(env, 'checkout', 'Could not look up the license for a subscription', e);
+    return asEmail ? '' : null;
+  }
 }
 // Docs from before group plans have no individualPaid; their `paid` was
 // the person's own subscription.
@@ -586,7 +686,7 @@ async function handleClaimLicense(request, env, origin) {
   catch { return jsonError('Invalid session, please sign in again.', 401, env, origin); }
 
   const uid = payload.sub;
-  const email = (payload.email || '').toLowerCase().trim();
+  const email = verifiedEmailOf(payload);
 
   try {
     const existing = await readFirestoreDoc(env, 'licenses', uid);
@@ -610,7 +710,8 @@ async function handleClaimLicense(request, env, origin) {
     }
     return jsonOk({ paid: false }, env, origin);
   } catch (e) {
-    return jsonError('Could not check license: ' + e.message, 500, env, origin);
+    await logServerIssue(env, 'license', 'Could not check a license', e);
+    return jsonError('Could not check your plan right now. Try again in a moment.', 500, env, origin);
   }
 }
 
@@ -627,12 +728,20 @@ async function handleCheckEmail(request, env, origin) {
   try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
   const email = String(body.email || '').toLowerCase().trim();
   if (!email || !email.includes('@')) return jsonError('Missing or invalid email', 400, env, origin);
+  // This answers "has this address paid" to anyone who asks, so it gets the
+  // bot check when one is configured, and a daily ceiling on top of the
+  // per-minute limit. Past the ceiling the login page falls back to the
+  // sign-in link, which works for everyone.
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (!(await turnstileOk(env, body.turnstileToken, ip))) return jsonError('Please complete the verification and try again.', 400, env, origin);
+  if (!(await underDailyCap(env, 'check-email', 2000))) return jsonError('Too many lookups today. Use the sign-in link instead.', 429, env, origin);
 
   try {
     const byEmail = await readFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email));
     return jsonOk({ paid: !!byEmail?.paid }, env, origin);
   } catch (e) {
-    return jsonError('Could not check email: ' + e.message, 500, env, origin);
+    await logServerIssue(env, 'license', 'Could not check an email', e);
+    return jsonError('Could not check that right now. Try again in a moment.', 500, env, origin);
   }
 }
 
@@ -777,7 +886,7 @@ async function handleDeleteAccount(request, env, origin) {
   catch { return jsonError('Your session expired, sign in again.', 401, env, origin); }
 
   const uid = payload.sub;
-  const email = (payload.email || '').toLowerCase().trim();
+  const email = verifiedEmailOf(payload);
 
   try {
     const license = await readFirestoreDoc(env, 'licenses', uid);
@@ -830,14 +939,23 @@ async function handleDeleteAccount(request, env, origin) {
     await deleteFirestoreSubcollection(env, `planners/${uid}`, 'notes');
     await deleteFirestoreDoc(env, 'planners', uid);
     await deleteFirestoreDoc(env, 'push', uid).catch(() => {});
+    // Firebase Storage: the syllabus originals and attachments under
+    // users/{uid}/. Deleting the Firestore documents never touched these, and
+    // a syllabus carries a professor's contact details, so they go too.
+    // Logged rather than blocking: the account is still deleted if Storage
+    // is having a bad day, and the leftover prefix is easy to find by uid.
+    let filesDeleted = 0;
+    try { filesDeleted = await deleteStorageFolder(env, `users/${uid}/`); }
+    catch (e) { await logServerIssue(env, 'account', 'Account delete could not remove stored files', e, { uid }); }
 
     let authDeleted = true;
     try { await deleteFirebaseAuthUser(env, uid); }
     catch (e) { authDeleted = false; await logServerIssue(env, 'account', 'Auth user delete failed', e); }
 
-    return jsonOk({ ok: true, authDeleted, leftBehind: leftBehind.length }, env, origin);
+    return jsonOk({ ok: true, authDeleted, leftBehind: leftBehind.length, filesDeleted }, env, origin);
   } catch (e) {
-    return jsonError('Could not delete your account: ' + e.message, 500, env, origin);
+    await logServerIssue(env, 'account', 'Account deletion failed', e);
+    return jsonError('Could not delete your account right now. Try again in a moment, or email hello@semester-hq.com.', 500, env, origin);
   }
 }
 
@@ -864,6 +982,13 @@ async function handleContactMessage(request, env, origin) {
   const message = String(body.message || '').trim().slice(0, 5000);
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonError('Enter a valid email so we can reply.', 400, env, origin);
+  // Brakes on top of the per-minute limit, so one person or one script can't
+  // turn the form into an outbound email cannon or fill the inbox.
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (!(await turnstileOk(env, body.turnstileToken, ip))) return jsonError('Please complete the verification and try again.', 400, env, origin);
+  if (!(await underDailyCap(env, 'contact', 100)) || !(await underDailyCap(env, `contact:${email.toLowerCase()}`, 5))) {
+    return jsonError('That is a lot of messages for one day. Email hello@semester-hq.com directly and we will get back to you.', 429, env, origin);
+  }
   if (!message) return jsonError('Message can’t be empty.', 400, env, origin);
 
   try {
@@ -876,7 +1001,8 @@ async function handleContactMessage(request, env, origin) {
     await notifyNewContactMessage(env, { name, email, category, message }).catch(e => logServerIssue(env, 'feedback', 'Contact notification email failed', e));
     return jsonOk({ ok: true }, env, origin);
   } catch (e) {
-    return jsonError('Could not send your message: ' + e.message, 500, env, origin);
+    await logServerIssue(env, 'feedback', 'Could not save a contact message', e);
+    return jsonError('Could not send your message right now. Email hello@semester-hq.com instead.', 500, env, origin);
   }
 }
 // Sends the site owner an email via Resend (https://resend.com) so a new
@@ -917,6 +1043,13 @@ async function handleLogError(request, env, origin) {
   let context = '';
   try { context = body.context && typeof body.context === 'object' ? clip(JSON.stringify(body.context), 1500) : ''; } catch {}
 
+  // The same problem reported over and over is one problem: after twenty
+  // copies in an hour the rest are counted and not stored, and the whole
+  // collection takes at most a few thousand new reports a day, so a stuck
+  // client or a script can't fill Firestore.
+  const fingerprint = await issueFingerprint(source, feature, message);
+  if (!(await underDailyCap(env, 'errors', 3000)) || !(await underHourlyCap(env, `errfp:${fingerprint}`, 20))) return jsonOk({ ok: true, dropped: true }, env, origin);
+
   try {
     await writeFirestoreDoc(env, 'errors', crypto.randomUUID(), {
       source, feature, message,
@@ -928,7 +1061,7 @@ async function handleLogError(request, env, origin) {
       userAgent: clip(body.userAgent, 300),
       breadcrumbs: (Array.isArray(body.breadcrumbs) ? body.breadcrumbs : []).slice(-25).map(c => clip(c, 160)),
       context,
-      fingerprint: await issueFingerprint(source, feature, message),
+      fingerprint,
       createdAt: new Date(),
     });
   } catch (e) {
@@ -945,7 +1078,7 @@ async function handleLogError(request, env, origin) {
 const _recentIssues = new Map();
 async function logServerIssue(env, feature, message, err, extra = {}) {
   const text = scrubPII(err?.message ? `${message}: ${err.message}` : message).slice(0, 2000);
-  console.error(JSON.stringify({ level: 'error', feature, message: text, ...extra, stack: err?.stack }));
+  console.error(JSON.stringify({ level: 'error', feature, message: text, ...extra, stack: scrubPII(String(err?.stack || '')) }));
   if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) return;
   try {
     const fingerprint = await issueFingerprint('worker', feature, text);
@@ -953,7 +1086,7 @@ async function logServerIssue(env, feature, message, err, extra = {}) {
     _recentIssues.set(fingerprint, Date.now());
     await writeFirestoreDoc(env, 'errors', crypto.randomUUID(), {
       source: 'worker', level: 'error', feature, message: text,
-      stack: String(err?.stack || '').slice(0, 4000),
+      stack: scrubPII(String(err?.stack || '')).slice(0, 4000),
       context: scrubPII(JSON.stringify(extra)).slice(0, 1500),
       fingerprint, createdAt: new Date(),
     });
@@ -977,13 +1110,21 @@ async function issueFingerprint(source, feature, message) {
 // Daily: reports older than 30 days are deleted, so the collection stays small.
 async function pruneOldIssues(env) {
   if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) return;
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  await pruneCollection(env, 'errors', 30, 400);
+  // Click and syllabus-read events: 90 days shows every trend that matters,
+  // and nothing pruned them before.
+  await pruneCollection(env, 'events', 90, 800);
+}
+async function pruneCollection(env, collectionId, days, limit) {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const old = await runFirestoreQuery(env, {
-    from: [{ collectionId: 'errors' }],
+    from: [{ collectionId }],
     where: { fieldFilter: { field: { fieldPath: 'createdAt' }, op: 'LESS_THAN', value: { timestampValue: cutoff } } },
-    limit: 400,
+    limit,
   });
-  if (old.length) await commitFirestore(env, old.map(r => ({ path: `errors/${r.id}`, remove: true })));
+  for (let i = 0; i < old.length; i += 400) {
+    await commitFirestore(env, old.slice(i, i + 400).map(r => ({ path: `${collectionId}/${r.id}`, remove: true })));
+  }
 }
 
 /* ── 7. Event tracking ────────────────────────────────────────── */
@@ -1030,6 +1171,7 @@ async function handleTrackEvent(request, env, origin) {
   if (!event) return jsonError('Unknown event', 400, env, origin);
   const path = String(body.path || '').trim().slice(0, 200);
   const detail = cleanEventDetail(body.detail);
+  if (!(await underDailyCap(env, 'events', 20000))) return jsonOk({ ok: true, dropped: true }, env, origin);
 
   try {
     const id = crypto.randomUUID();
@@ -1048,9 +1190,7 @@ async function handleAdminErrors(request, env) {
   if (!env.ADMIN_TOKEN) return new Response(JSON.stringify({ error: 'Server misconfigured: ADMIN_TOKEN not set.' }), { status: 500, headers: adminCors });
   if (!env.FIREBASE_PROJECT_ID) return new Response(JSON.stringify({ error: 'Server misconfigured: FIREBASE_PROJECT_ID not set.' }), { status: 500, headers: adminCors });
 
-  const authHeader = request.headers.get('Authorization') || '';
-  const token = authHeader.replace(/^Bearer\s+/i, '');
-  if (!token || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
+  if (!(await adminTokenOk(request, env))) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: adminCors });
   }
 
@@ -1077,9 +1217,7 @@ async function handleAdminBusinessSummary(request, env) {
   const adminCors = { 'Access-Control-Allow-Origin': '*', 'content-type': 'application/json', 'X-Content-Type-Options': 'nosniff' };
   if (!env.ADMIN_TOKEN) return new Response(JSON.stringify({ error: 'Server misconfigured: ADMIN_TOKEN not set.' }), { status: 500, headers: adminCors });
 
-  const authHeader = request.headers.get('Authorization') || '';
-  const token = authHeader.replace(/^Bearer\s+/i, '');
-  if (!token || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
+  if (!(await adminTokenOk(request, env))) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: adminCors });
   }
 
@@ -1441,15 +1579,24 @@ async function fetchErrorSummary(env) {
 
 /* ── Stripe signature verification ───────────────────────────── */
 async function verifyStripeSignature(rawBody, sigHeader, secret) {
-  const parts = Object.fromEntries(sigHeader.split(',').map(p => p.split('=')));
-  const timestamp = parts.t, expectedSig = parts.v1;
-  if (!timestamp || !expectedSig) return false;
+  // The header can carry more than one v1 signature while a webhook secret
+  // is being rotated; any one of them matching is a valid delivery.
+  let timestamp = '';
+  const signatures = [];
+  for (const part of String(sigHeader).split(',')) {
+    const i = part.indexOf('=');
+    if (i < 0) continue;
+    const k = part.slice(0, i).trim(), v = part.slice(i + 1).trim();
+    if (k === 't' && !timestamp) timestamp = v;
+    else if (k === 'v1' && v) signatures.push(v);
+  }
+  if (!timestamp || !signatures.length) return false;
   if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false; // 5 min replay window
 
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${timestamp}.${rawBody}`));
   const computed = [...new Uint8Array(sigBuf)].map(b => b.toString(16).padStart(2, '0')).join('');
-  return timingSafeEqual(computed, expectedSig);
+  return signatures.some(sig => timingSafeEqual(computed, sig));
 }
 function timingSafeEqual(a, b) {
   if (a.length !== b.length) return false;
@@ -1522,7 +1669,7 @@ async function handleGroupRoute(action, request, env, origin) {
     let user;
     try { user = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
     catch { throw new HttpError(401, 'Your session expired. Sign in again.'); }
-    const email = (user.email || '').toLowerCase().trim();
+    const email = verifiedEmailOf(user);
     const name = cleanGroupText(user.name, 80) || email.split('@')[0] || 'Member';
     return jsonOk(await run(env, { body, uid: user.sub, email, name }), env, origin);
   } catch (e) {
@@ -1866,19 +2013,22 @@ async function stripeRequest(env, method, path, params) {
    Mirrors what the Admin SDK does: check standard claims, then verify the
    RS256 signature against Google's public JWK set for Firebase Auth. ─── */
 async function verifyFirebaseIdToken(idToken, projectId) {
-  const [headerB64, payloadB64, sigB64] = idToken.split('.');
+  const [headerB64, payloadB64, sigB64] = String(idToken || '').split('.');
   if (!headerB64 || !payloadB64 || !sigB64) throw new Error('Malformed token');
   const header = JSON.parse(atob(base64urlToBase64(headerB64)));
   const payload = JSON.parse(atob(base64urlToBase64(payloadB64)));
   const now = Math.floor(Date.now() / 1000);
+  if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid) throw new Error('Unexpected token header');
   if (payload.aud !== projectId) throw new Error('Bad audience');
   if (payload.iss !== `https://securetoken.google.com/${projectId}`) throw new Error('Bad issuer');
-  if (payload.exp < now) throw new Error('Expired');
-  if (!payload.sub) throw new Error('No subject');
+  if (typeof payload.exp !== 'number' || payload.exp <= now) throw new Error('Expired');
+  if (typeof payload.iat !== 'number' || payload.iat > now + 300) throw new Error('Issued in the future');
+  if (typeof payload.sub !== 'string' || !payload.sub || payload.sub.length > 128) throw new Error('No subject');
 
-  const jwkRes = await fetch('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com');
-  const { keys } = await jwkRes.json();
-  const jwk = keys.find(k => k.kid === header.kid);
+  // Google rotates these keys; they are cached for as long as Google says
+  // and fetched again once when a token names a key that isn't cached.
+  let jwk = (await googleSigningKeys()).find(k => k.kid === header.kid);
+  if (!jwk) jwk = (await googleSigningKeys(true)).find(k => k.kid === header.kid);
   if (!jwk) throw new Error('Unknown key id');
   const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
   const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, base64urlToBuffer(sigB64), new TextEncoder().encode(`${headerB64}.${payloadB64}`));
@@ -1910,7 +2060,7 @@ async function getFirebaseAccessToken(env) {
     exp: now + 3600,
     // datastore covers Firestore reads/writes; identitytoolkit is needed
     // only for handleDeleteAccount's Auth-user deletion step.
-    scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit',
+    scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/devstorage.read_write',
   }));
   const signingInput = `${header}.${claims}`;
   const key = await importPrivateKey(env.FIREBASE_PRIVATE_KEY);
@@ -2123,13 +2273,30 @@ function encodeEmailDocId(email) { return email.replace(/[^a-zA-Z0-9@._-]/g, '_'
    No RATE_LIMIT KV bound → limiting is skipped (e.g. local `wrangler dev`)
    rather than failing closed, so local development isn't blocked. ──── */
 async function checkRateLimit(env, ip, routeKey, limit) {
+  // Cloudflare's own rate limiter when one is bound (atomic, and free of
+  // KV's one-write-per-second-per-key rule, which used to turn a busy campus
+  // network into 500s). See wrangler.toml. KV is the fallback, and a
+  // limiter hiccup lets the request through: every route still validates.
+  const native = pickRateLimiter(env, limit);
+  if (native) {
+    try { const { success } = await native.limit({ key: `${routeKey}:${ip}` }); return success; } catch {}
+  }
   if (!env.RATE_LIMIT) return true;
   const bucket = Math.floor(Date.now() / 60000);
   const key = `${routeKey}:${ip}:${bucket}`;
-  const current = Number(await env.RATE_LIMIT.get(key)) || 0;
-  if (current >= limit) return false;
-  await env.RATE_LIMIT.put(key, String(current + 1), { expirationTtl: 120 });
+  try {
+    const current = Number(await env.RATE_LIMIT.get(key)) || 0;
+    if (current >= limit) return false;
+    await env.RATE_LIMIT.put(key, String(current + 1), { expirationTtl: 120 });
+  } catch {}
   return true;
+}
+// Native limiters come in three sizes; a route takes the smallest one that
+// is at least its limit. No bindings means KV.
+function pickRateLimiter(env, limit) {
+  const tiers = [[5, env.RL_TIGHT], [20, env.RL_NORMAL], [60, env.RL_LOOSE]];
+  const tier = tiers.find(([size, binding]) => binding && typeof binding.limit === 'function' && size >= limit);
+  return tier ? tier[1] : null;
 }
 
 /* ── CORS / origin allow-list ────────────────────────────────── */
@@ -2159,6 +2326,123 @@ function jsonOk(obj, env, origin) {
 }
 function jsonError(message, status, env, origin, extra = {}) {
   return new Response(JSON.stringify({ ...extra, error: message }), { status, headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
+}
+
+/* ── Small shared guards ─────────────────────────────────────── */
+// The email on a Firebase token is only trustworthy when Firebase verified
+// it. Google and email-link sign-in both do, so this changes nothing today;
+// it matters the day another sign-in method is switched on.
+function verifiedEmailOf(payload) {
+  if (!payload || payload.email_verified !== true) return '';
+  return String(payload.email || '').toLowerCase().trim();
+}
+// Global ceilings for the anonymous routes, in KV, best effort: a KV hiccup
+// lets the write through rather than dropping a real report.
+async function underCap(env, key, cap, ttlSeconds) {
+  if (!env.RATE_LIMIT) return true;
+  try {
+    const used = Number(await env.RATE_LIMIT.get(key)) || 0;
+    if (used >= cap) return false;
+    await env.RATE_LIMIT.put(key, String(used + 1), { expirationTtl: ttlSeconds });
+  } catch {}
+  return true;
+}
+function underDailyCap(env, name, cap) { return underCap(env, `cap:${name}:${new Date().toISOString().slice(0, 10)}`, cap, 60 * 60 * 48); }
+function underHourlyCap(env, name, cap) { return underCap(env, `cap:${name}:h${Math.floor(Date.now() / 3600000)}`, cap, 60 * 60 * 2); }
+// Cloudflare Turnstile, on only once TURNSTILE_SECRET is set (wrangler secret
+// put) and the site renders the widget. Until then this is a no-op, so the
+// forms keep working while the widget is being created.
+async function turnstileOk(env, token, ip) {
+  if (!env.TURNSTILE_SECRET) return true;
+  if (!token || typeof token !== 'string') return false;
+  try {
+    const form = new URLSearchParams({ secret: env.TURNSTILE_SECRET, response: token.slice(0, 2048), remoteip: ip });
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form });
+    const data = await res.json();
+    return data.success === true;
+  } catch { return false; }
+}
+// Stripe retries until it sees a 2xx and can deliver an event twice. The
+// handlers are idempotent, but a late duplicate could rewrite state with
+// older facts, so each event id is handled once (KV, best effort).
+async function claimWebhookEvent(env, id) {
+  if (!env.RATE_LIMIT) return true;
+  const key = `stripe-evt:${String(id).slice(0, 80)}`;
+  try {
+    if (await env.RATE_LIMIT.get(key)) return false;
+    await env.RATE_LIMIT.put(key, '1', { expirationTtl: 60 * 60 * 72 });
+  } catch {}
+  return true;
+}
+// Bearer token compared in constant time, with a per-IP brake on wrong
+// guesses. The token is long and random, so the brake is belt and braces.
+async function adminTokenOk(request, env) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const key = `cap:admin401:${ip}:h${Math.floor(Date.now() / 3600000)}`;
+  try { if (env.RATE_LIMIT && (Number(await env.RATE_LIMIT.get(key)) || 0) >= 20) return false; } catch {}
+  const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (token && timingSafeEqual(token, env.ADMIN_TOKEN)) return true;
+  await underCap(env, key, 1000, 7200);
+  return false;
+}
+// Google's public keys for Firebase ID tokens, cached for as long as Google
+// allows (capped at six hours) instead of fetched on every single check.
+let _googleJwks = { keys: [], expiresAt: 0 };
+async function googleSigningKeys(forceRefresh = false) {
+  if (!forceRefresh && _googleJwks.keys.length && Date.now() < _googleJwks.expiresAt) return _googleJwks.keys;
+  const res = await fetch('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com');
+  if (!res.ok) throw new Error(`Could not fetch signing keys (${res.status})`);
+  const { keys } = await res.json();
+  const maxAge = Number((res.headers.get('cache-control') || '').match(/max-age=(\d+)/)?.[1]) || 3600;
+  _googleJwks = { keys: Array.isArray(keys) ? keys : [], expiresAt: Date.now() + Math.min(maxAge, 6 * 3600) * 1000 };
+  return _googleJwks.keys;
+}
+// Deletes every object under a prefix in the project's Storage bucket, using
+// the same service account as Firestore (the token carries the storage scope).
+async function deleteStorageFolder(env, prefix) {
+  const bucket = env.FIREBASE_STORAGE_BUCKET;
+  if (!bucket) return 0;
+  const token = await getFirebaseAccessToken(env);
+  const base = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o`;
+  let deleted = 0, pageToken = '';
+  do {
+    const listUrl = `${base}?prefix=${encodeURIComponent(prefix)}&fields=items(name),nextPageToken&maxResults=500${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const res = await fetch(listUrl, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`Storage list ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const data = await res.json();
+    for (const item of data.items || []) {
+      const del = await fetch(`${base}/${encodeURIComponent(item.name)}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } });
+      if (!del.ok && del.status !== 404) throw new Error(`Storage delete ${del.status}`);
+      deleted++;
+    }
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return deleted;
+}
+// The age and terms checkbox lives in the browser. This records, on the
+// account, that it was ticked and which terms were current, so the fact
+// survives a cleared browser. It writes only to the license document the
+// Worker already owns; nothing here grants access.
+const TERMS_VERSION = '2026-09-19';
+async function handleAccountAttest(request, env, origin) {
+  if (!env.FIREBASE_PROJECT_ID) return jsonError('Server misconfigured: FIREBASE_PROJECT_ID not set.', 500, env, origin);
+  let body;
+  try { body = await request.json(); } catch { return jsonError('Invalid JSON body', 400, env, origin); }
+  if (!body.idToken) return jsonError('Missing idToken', 400, env, origin);
+  let payload;
+  try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
+  catch { return jsonError('Your session expired, sign in again.', 401, env, origin); }
+  if (body.ageConfirmed !== true) return jsonError('Confirm your age and the terms first.', 400, env, origin);
+  try {
+    const existing = await readFirestoreDoc(env, 'licenses', payload.sub);
+    if (!existing?.termsAcceptedAt || existing.termsVersion !== TERMS_VERSION) {
+      await patchFirestoreDoc(env, `licenses/${payload.sub}`, { termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION, ageConfirmed: true });
+    }
+    return jsonOk({ ok: true, termsVersion: TERMS_VERSION }, env, origin);
+  } catch (e) {
+    await logServerIssue(env, 'account', 'Could not record the terms acceptance', e);
+    return jsonError('Could not save that right now.', 500, env, origin);
+  }
 }
 
 /* ── base64url helpers ───────────────────────────────────────── */
@@ -2313,9 +2597,8 @@ async function buildBusinessEvents(env) {
 // GET /admin/biz-events — what the Business OS hasn't collected yet.
 async function handleAdminBizEvents(request, env) {
   const headers = { 'Access-Control-Allow-Origin': '*', 'content-type': 'application/json', 'X-Content-Type-Options': 'nosniff' };
-  const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   if (!env.ADMIN_TOKEN) return new Response(JSON.stringify({ error: 'Server misconfigured: ADMIN_TOKEN not set.' }), { status: 500, headers });
-  if (!token || !timingSafeEqual(token, env.ADMIN_TOKEN)) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers });
+  if (!(await adminTokenOk(request, env))) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers });
 
   if (request.method === 'POST') {
     let body = {};

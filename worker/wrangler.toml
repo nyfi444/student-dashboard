@@ -21,6 +21,10 @@ APP_URL = "https://app.semester-hq.com/"
 
 # Firebase project id (from Project settings; NOT secret, safe as a var).
 FIREBASE_PROJECT_ID = "semester-hq"
+# Default Storage bucket (Firebase console → Storage). Public, like the project
+# id; the service account's token is what allows deletes. Used only by
+# "delete my account" to remove a person's syllabi and attachments.
+FIREBASE_STORAGE_BUCKET = "semester-hq.firebasestorage.app"
 
 # Where contact-form/group-pricing submissions get emailed (only sent at all
 # once RESEND_API_KEY below is set, otherwise it's silently skipped and
@@ -37,6 +41,26 @@ NOTIFY_FROM = "Semester HQ <onboarding@resend.dev>"
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
 id = "c159c4afb7cc45619d6db5fd2fcde97d"
+
+# Cloudflare's own per-minute rate limiters (Workers Rate Limiting, GA since
+# September 2025). Atomic and free of KV's one-write-per-second-per-key rule,
+# which used to turn a busy campus network into 500s. checkRateLimit picks the
+# smallest one at least as large as a route's limit and falls back to the KV
+# namespace above when a binding is missing (local dev).
+[[ratelimits]]
+name = "RL_TIGHT"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+[[ratelimits]]
+name = "RL_NORMAL"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }
+
+[[ratelimits]]
+name = "RL_LOOSE"
+namespace_id = "1003"
+simple = { limit = 60, period = 60 }
 
 # The following are secrets, NOT set here; they never land in source
 # control or this config file. Set each with:
@@ -65,6 +89,11 @@ id = "c159c4afb7cc45619d6db5fd2fcde97d"
 #                            https://dash.cloudflare.com/profile/api-tokens). Powers the
 #                            Cloudflare traffic numbers on the business dashboard; the
 #                            dashboard just shows "not connected" without it.
+#   TURNSTILE_SECRET:      optional. The secret key of a Cloudflare Turnstile widget for
+#                            semester-hq.com. Once set, the contact form, the group quote
+#                            form, and the login page's email lookup require a Turnstile
+#                            token (the pages render the widget when their sitekey is set).
+#                            Unset, those routes work as before, with their rate limits.
 #   CLOUDFLARE_ZONE_ID:    optional, required alongside CLOUDFLARE_API_TOKEN above. Find
 #                            it on the semester-hq.com zone's Overview page in the
 #                            Cloudflare dashboard (right sidebar, "Zone ID").
