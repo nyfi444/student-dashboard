@@ -343,10 +343,18 @@ function migrate(parsed) {
 }
 
 let _suspendSave = false;
+let _lastBackupAt = 0;
 function save({ localOnly = false } = {}) {
   if (_suspendSave) return;
   const json = JSON.stringify(state);
-  dataStore.setItem(storeKey + '.bak', dataStore.getItem(storeKey) || json);
+  // The .bak copy is the safety net against a corrupted save. It used to be
+  // rewritten on every keystroke, doubling the work of each save; once every
+  // fifteen seconds still keeps a copy that is at most fifteen seconds old.
+  if (Date.now() - _lastBackupAt > 15000) {
+    const previous = dataStore.getItem(storeKey);
+    if (previous) dataStore.setItem(storeKey + '.bak', previous);
+    _lastBackupAt = Date.now();
+  }
   dataStore.setItem(storeKey, json);
   if (localOnly) return;
   if (typeof markLocalUnsynced === 'function') markLocalUnsynced();
