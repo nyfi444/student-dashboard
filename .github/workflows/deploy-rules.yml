@@ -3,7 +3,7 @@
 # The rules are the entire security boundary for the app: they are the only
 # thing standing between one student's planner and everybody else's. They live
 # in this repo, but the thing that actually enforces them is the copy in the
-# Firebase console — and until this workflow existed, getting the two to match
+# Firebase console, and until this workflow existed, getting the two to match
 # was a manual step done by hand after every change. The failure mode isn't an
 # attack; it's an ordinary Tuesday where the repo says one thing, the console
 # says another, and nobody finds out for a month.
@@ -12,6 +12,9 @@
 # "Firebase Rules Admin" role, download its JSON key, and add the whole JSON
 # as the repository secret FIREBASE_SERVICE_ACCOUNT (Settings → Secrets and
 # variables → Actions). Nothing else is needed; there is no build step.
+#
+# Actions are pinned to commit hashes, not tags, so a moved tag can't change
+# what runs next to the service-account key.
 name: Deploy security rules
 
 on:
@@ -26,20 +29,37 @@ on:
   # console edit has drifted from the repo.
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+      - name: Run the tests
+        run: |
+          node tests/run.mjs
+          node tests/worker-delete-account.mjs
+          node tests/worker-security.mjs
 
-      - uses: actions/setup-node@v4
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
       - name: Install the Firebase CLI
         run: npm install --global firebase-tools@13
 
-      - name: Check the rules parse before publishing anything
+      - name: Check the rules files are present
         run: |
           test -s firestore.rules
           test -s storage.rules
@@ -50,9 +70,12 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            echo "FIREBASE_SERVICE_ACCOUNT secret is not set — see the comment at the top of this file." >&2
+            echo "FIREBASE_SERVICE_ACCOUNT secret is not set. See the comment at the top of this file." >&2
             exit 1
           fi
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
           firebase deploy --only firestore:rules,storage --project semester-hq --non-interactive
-          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+
+      - name: Remove the key file
+        if: always()
+        run: rm -f "${{ github.workspace }}/service-account.json"

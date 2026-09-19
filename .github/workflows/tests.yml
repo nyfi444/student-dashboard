@@ -1,0 +1,28 @@
+# Every push and pull request: syntax-check every script and run the tests.
+# There is no build step, so this is the whole check. It has no secrets and
+# no write access to anything.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+      - name: Syntax-check every script
+        run: |
+          for f in js/*.js sw.js worker/src/index.js; do node --check "$f"; done
+      - name: Run the tests
+        run: |
+          node tests/run.mjs
+          node tests/worker-delete-account.mjs
+          node tests/worker-security.mjs
