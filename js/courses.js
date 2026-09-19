@@ -311,6 +311,7 @@ function openSyllabusUploadModal(targetCourseId = null) {
       <div id="syl-paste" style="display:none">
         <textarea class="input" id="syl-text" placeholder="Paste your syllabus text here…" style="min-height:180px"></textarea>
       </div>
+      <div id="syl-error"></div>
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal()">Cancel</button>
@@ -340,6 +341,8 @@ function sylTab(tab) {
 }
 async function runSyllabusParse() {
   const btn = $('#syl-parse-btn');
+  const errSlot = $('#syl-error');
+  if (errSlot) errSlot.innerHTML = '';
   let material;
   if (window._sylActiveTab === 'paste') {
     const text = $('#syl-text').value.trim();
@@ -376,8 +379,17 @@ async function runSyllabusParse() {
       openSyllabusReviewModal(data);
     }
   } catch (e) {
-    toast(e.message || 'Could not parse that syllabus', 'error', 4000);
+    showSyllabusError(e.message || 'Could not read that syllabus');
   } finally { setBtnLoading(btn, false); }
+}
+// The failure stays in the modal, next to the button that caused it, with a
+// retry, rather than in a toast that is gone before anyone has read it. If
+// the modal is already closed there is nowhere to put it, so it toasts.
+function showSyllabusError(message) {
+  const slot = $('#syl-error');
+  if (!slot || !$('#modal-wrap').classList.contains('show')) { toast(message, 'error', 4000); return; }
+  slot.innerHTML = inlineErrorHtml(message, 'runSyllabusParse()');
+  slot.scrollIntoView({ block: 'nearest' });
 }
 
 function openSyllabusReviewModal(data, forceNew = false) {

@@ -178,6 +178,8 @@ try { _liveGroups = JSON.parse(dataStore.getItem(GROUP_CACHE_KEY) || '{}') || {}
 const persistGroupCache = debounce(() => { try { dataStore.setItem(GROUP_CACHE_KEY, JSON.stringify(_liveGroups)); } catch {} }, 800);
 const _groupItems = {};
 const _groupMessages = {};
+// code -> the error its listener died with. Cleared by the next good snapshot.
+const _groupLoadErrors = {};
 
 function groupEntries() { return state.studyGroups || (state.studyGroups = []); }
 function groupEntry(code) { return groupEntries().find(e => e.code === code); }
@@ -384,12 +386,13 @@ function reconcileGroupSubscriptions() {
     if (_groupDocUnsubs[code]) return;
     _groupDocUnsubs[code] = _fbDb.collection('studyGroups').doc(code).onSnapshot(
       doc => onGroupSnapshot(code, doc),
-      err => diag.error('studygroups', 'Group listener failed', err),
+      err => { _groupLoadErrors[code] = err; diag.error('studygroups', 'Group listener failed', err); renderRemote(); },
     );
   });
 }
 const _legacyDocsRepaired = new Set();
 function onGroupSnapshot(code, doc) {
+  delete _groupLoadErrors[code];
   const entry = groupEntry(code);
   if (!entry?.cloud || !_fbUser) return;
   const myUid = _fbUser.uid;
@@ -429,6 +432,29 @@ function dropGroupEntry(code, message) {
   if (state.subRoute === code) state.subRoute = null;
   touch();
   if (message) toast(message, 'info', 4200);
+}
+// A listener that fails stays failed (Firestore does not retry it), so the
+// group page used to sit on "Loading…" for good. Dropping the dead
+// subscription and reconciling attaches a fresh one.
+function retryGroupLoad(code) {
+  delete _groupLoadErrors[code];
+  if (_groupDocUnsubs[code]) { try { _groupDocUnsubs[code](); } catch {} delete _groupDocUnsubs[code]; }
+  reconcileGroupSubscriptions();
+  render();
+}
+// What sits under the group's title while its live copy is missing: the
+// error with a way forward if the listener failed, otherwise a quiet
+// loading line. A denied read means the group is gone or you were removed,
+// so that case also offers to take it off the list.
+function groupLoadNotice(g) {
+  const err = _groupLoadErrors[g.code];
+  if (!err) return g.loading ? `<div class="small muted mb-16">Loading the latest from your group…</div>` : '';
+  const denied = err.code === 'permission-denied';
+  return `<div class="mb-16">${inlineErrorHtml(
+    denied ? 'You don’t have access to this group anymore. It may have been deleted, or you were removed.' : 'This group didn’t load. Check your connection and try again.',
+    `retryGroupLoad('${g.code}')`,
+    { extra: denied ? `<button class="btn btn-sm btn-ghost" onclick="dropGroupEntry('${g.code}')">Remove it from my list</button>` : '' },
+  )}</div>`;
 }
 function replaceWithCloudEntry(code, name) {
   const list = groupEntries().filter(e => e.code !== code);
@@ -652,7 +678,7 @@ function pageGroupDetail(g) {
         <button class="btn btn-icon" aria-label="Group settings" title="Group settings" onclick="openGroupSettingsModal('${g.code}')">${icon('settings', 16, 1.6)}</button>
       </div>
     </div>
-    ${g.loading ? `<div class="small muted mb-16">Loading the latest from your group…</div>` : ''}
+    ${groupLoadNotice(g)}
     <div class="sg-tabs" role="tablist">
       ${GROUP_TABS.map(([k, label]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}" onclick="setGroupTab('${k}')">${label}${k === 'chat' && unread ? '<span class="sg-tab-dot" aria-label="unread"></span>' : ''}</button>`).join('')}
     </div>

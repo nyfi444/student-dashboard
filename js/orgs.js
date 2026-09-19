@@ -139,6 +139,8 @@ async function orgWrite(code, ops) {
 }
 
 /* ── Sync ──────────────────────────────────────────────────────── */
+// code -> the error its listener died with. Cleared by the next good snapshot.
+const _orgLoadErrors = {};
 function startOrgSync() {
   if (!cloudGroupsEnabled()) return;
   if (orgEntries().some(e => e.sample)) { state.orgs = orgEntries().filter(e => !e.sample); save(); }
@@ -154,10 +156,11 @@ function reconcileOrgSubscriptions() {
   Object.keys(_orgDocUnsubs).forEach(code => { if (!want.has(code)) { _orgDocUnsubs[code](); delete _orgDocUnsubs[code]; } });
   want.forEach(code => {
     if (_orgDocUnsubs[code]) return;
-    _orgDocUnsubs[code] = _fbDb.collection('orgs').doc(code).onSnapshot(doc => onOrgSnapshot(code, doc), err => diag.error('clubs', 'Club listener failed', err));
+    _orgDocUnsubs[code] = _fbDb.collection('orgs').doc(code).onSnapshot(doc => onOrgSnapshot(code, doc), err => { _orgLoadErrors[code] = err; diag.error('clubs', 'Club listener failed', err); renderRemote(); });
   });
 }
 function onOrgSnapshot(code, doc) {
+  delete _orgLoadErrors[code];
   const entry = orgEntry(code);
   if (!entry?.cloud || !_fbUser) return;
   const data = doc.exists ? doc.data() : null;
@@ -186,6 +189,25 @@ function dropOrgEntry(code, message) {
   if (state.route === 'orgs' && state.subRoute === code) state.subRoute = null;
   touch();
   if (message) toast(message, 'info', 4500);
+}
+// Same shape as retryGroupLoad / groupLoadNotice in studygroups.js: a failed
+// listener never comes back on its own, so the page says so and offers a
+// retry instead of a permanent "Loading…".
+function retryOrgLoad(code) {
+  delete _orgLoadErrors[code];
+  if (_orgDocUnsubs[code]) { try { _orgDocUnsubs[code](); } catch {} delete _orgDocUnsubs[code]; }
+  reconcileOrgSubscriptions();
+  render();
+}
+function orgLoadNotice(o) {
+  const err = _orgLoadErrors[o.code];
+  if (!err) return o.loading ? '<div class="small muted mb-16">Loading…</div>' : '';
+  const denied = err.code === 'permission-denied';
+  return `<div class="mb-16">${inlineErrorHtml(
+    denied ? 'You don’t have access to this club anymore. It may have been deleted, or you were removed.' : 'This club didn’t load. Check your connection and try again.',
+    `retryOrgLoad('${o.code}')`,
+    { extra: denied ? `<button class="btn btn-sm btn-ghost" onclick="dropOrgEntry('${o.code}')">Remove it from my list</button>` : '' },
+  )}</div>`;
 }
 async function unusedOrgCode() {
   for (let i = 0; i < 6; i++) {
@@ -367,7 +389,7 @@ function pageOrgDetail(o) {
         <button class="btn btn-icon" aria-label="${isOrgOfficer(o) ? `Admin for ${esc(o.name)}` : `Settings for ${esc(o.name)}`}" title="${isOrgOfficer(o) ? 'Admin' : 'Settings'}" onclick="${isOrgOfficer(o) ? `setState({orgTab:'admin'})` : `openOrgSettingsModal('${o.code}')`}">${icon(isOrgOfficer(o) ? 'shield' : 'settings', 16, 1.6)}</button>
       </div>
     </div>
-    ${o.loading ? '<div class="small muted mb-16">Loading…</div>' : ''}
+    ${orgLoadNotice(o)}
     <div class="sg-tabs" role="tablist">
       ${orgTabsFor(o).map(([k, label]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}" onclick="setState({orgTab:'${k}'})">${k === 'admin' ? `${icon('shield', 12, 1.9)} ` : ''}${label}${(k === 'announcements' && unread || k === 'chat' && chatUnread) && tab !== k ? '<span class="sg-tab-dot" aria-label="new"></span>' : ''}</button>`).join('')}
     </div>

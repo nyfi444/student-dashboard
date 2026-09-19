@@ -503,7 +503,7 @@ function startRealtimeSync() {
     if (typeof reconcileGroupSubscriptions === 'function') reconcileGroupSubscriptions(); // joined/left a group on another device
     if (typeof adoptStrayGroupEntries === 'function') adoptStrayGroupEntries({ throttle: true });
     if (typeof renderRemote === 'function') renderRemote(); else if (typeof render === 'function') render();
-  }, (e) => diag.error('sync', 'Planner realtime listener failed', e));
+  }, (e) => { diag.error('sync', 'Planner realtime listener failed', e); noteRealtimeListenerFailure(e); });
 
   _notesUnsub = planner.collection('notes').onSnapshot((snap) => {
     if (_syncQueued || _applyingRemote) return;
@@ -533,7 +533,20 @@ function startRealtimeSync() {
     _suspendSave = false;
     _applyingRemote = false;
     if (typeof render === 'function') render();
-  }, (e) => diag.error('sync', 'Notes realtime listener failed', e));
+  }, (e) => { diag.error('sync', 'Notes realtime listener failed', e); noteRealtimeListenerFailure(e); });
+}
+// A realtime listener that errors is dead: Firestore does not retry it, so
+// from then on edits made on another device never arrive here. That used to
+// go only to diagnostics. One toast a session says so, with a retry that
+// re-attaches both listeners. Being offline is the offline banner's job.
+let _syncFailureToasted = false;
+function noteRealtimeListenerFailure(e) {
+  if (_syncFailureToasted || !_fbUser || !navigator.onLine || e?.code === 'unavailable' || typeof toast !== 'function') return;
+  _syncFailureToasted = true;
+  toast('Live sync stopped. Changes from your other devices won’t show up here until you retry.', 'error', 9000, {
+    label: 'Retry',
+    run: () => { _syncFailureToasted = false; startRealtimeSync(); },
+  });
 }
 function stopRealtimeSync() {
   if (_plannerUnsub) { _plannerUnsub(); _plannerUnsub = null; }
