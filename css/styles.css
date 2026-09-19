@@ -1842,3 +1842,6 @@ textarea.input.ex-topic-input { resize: none; min-height: 36px; height: 36px; li
 .input:focus-visible, .select:focus-visible, textarea.input:focus-visible,
 .quick-add-input:focus-visible, .cmdk-input:focus-visible, .proj-task-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rich-editor:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-tight); }
+
+/* ── Slash menu keyboard highlight ────────────────────────────────── */
+.nb-slash-item.is-active { background: var(--accent-light); }

@@ -447,12 +447,36 @@ function wireSlashMenu() {
   window._nbSlashCheck = check;
   editor.addEventListener('input', check);
   if (window._nbSlashKeydown) editor.removeEventListener('keydown', window._nbSlashKeydown);
-  window._nbSlashKeydown = (e) => { if (e.key === 'Escape') hideSlashMenu(); };
+  // Keyboard: arrows move the highlight, Enter or Tab runs it, Escape
+  // closes. Before this the menu could only be used with a mouse, and Enter
+  // on a highlighted command just inserted a blank line under "/todo".
+  window._nbSlashKeydown = (e) => {
+    if (menu.style.display !== 'block') return;
+    if (e.key === 'Escape') { hideSlashMenu(); return; }
+    const items = Array.from($$('.nb-slash-item', menu)).filter(el => el.style.display !== 'none');
+    if (!items.length) return;
+    const current = Math.max(0, items.findIndex(el => el.classList.contains('is-active')));
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const next = (current + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+      items.forEach((el, i) => el.classList.toggle('is-active', i === next));
+      items[next].scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      runSlashCommand(items[current].dataset.key);
+    }
+  };
   editor.addEventListener('keydown', window._nbSlashKeydown);
 }
 function showSlashMenu(rect, query) {
   const menu = $('#nb-slash-menu');
   $$('.nb-slash-item', menu).forEach(el => { el.style.display = !query || el.dataset.key.includes(query) || el.querySelector('.nb-slash-label').textContent.toLowerCase().includes(query) ? 'flex' : 'none'; });
+  // The first match is highlighted, so Enter always has something to run.
+  const visible = Array.from($$('.nb-slash-item', menu)).filter(el => el.style.display !== 'none');
+  Array.from($$('.nb-slash-item', menu)).forEach(el => el.classList.remove('is-active'));
+  if (visible[0]) visible[0].classList.add('is-active');
   menu.style.display = 'block';
   menu.style.left = Math.max(8, rect.left) + 'px';
   menu.style.top = (rect.bottom + 6) + 'px';
