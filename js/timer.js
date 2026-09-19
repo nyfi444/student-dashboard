@@ -125,7 +125,13 @@ function pageTimer() {
               <span class="small">${fmtDuration(x.minutes)}</span>
               <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete session" onclick="deleteTimerSession('${x.id}')">${icon('trash', 13)}</button>
             </div>`;
-          }).join('') : `<p class="small muted">Finished sessions show up here.</p>`}
+          }).join('') : emptyStateHtml({
+            compact: true,
+            icon: 'timer',
+            title: 'No sessions yet',
+            body: 'Finished focus blocks are logged here automatically.',
+            actions: t.running ? [] : [{ label: timerElapsed(t) ? 'Resume' : t.mode === 'pomodoro' ? 'Start a focus block' : 'Start the stopwatch', onclick: 'startTimer()', icon: 'play' }],
+          })}
         </div>
       </div>
     </div>

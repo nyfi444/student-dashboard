@@ -69,22 +69,12 @@ function pageCareer() {
         <div class="segmented"><button class="${view === 'board' ? 'active' : ''}" onclick="state._careerView='board';touch()">Board</button><button class="${view === 'list' ? 'active' : ''}" onclick="state._careerView='list';touch()">List</button></div>
       </div>
       ${expandable(`career-${view}`, 'Applications', view === 'board' ? careerBoard(shown) : careerList(shown), { max: 620, count: shown.length })}
-    ` : `
-      <div class="card welcome career-welcome">
-        <div class="welcome-copy">
-          <div class="sg-eyebrow">${icon('briefcase', 13, 1.8)} Applications</div>
-          <h3 class="welcome-title">Your next move, organized.</h3>
-          <p class="muted">Track every internship, job, and scholarship from saved to offer. Deadlines, interviews, and follow-ups show up on your dashboard and calendar so nothing slips.</p>
-          <div class="sg-hero-actions">
-            <button class="btn btn-primary" onclick="openApplicationModal()">+ Add an application</button>
-            ${aiButton('Paste a job posting', 'openPastePostingModal()')}
-          </div>
-        </div>
-        <div class="welcome-steps">
-          ${[['bookmark', 'Save what you want to apply to', 'Keep the deadline, link, and what each one needs.'], ['send', 'Track where each one stands', 'Drag it from Applied to Interviewing to Offer.'], ['calendar', 'Never miss a next step', 'Interviews and deadlines land on your calendar with reminders.']].map(([ic, t, d], i) => `
-            <div class="welcome-step"><span class="welcome-num">${i + 1}</span><div><div class="sg-strong">${t}</div><div class="small muted">${d}</div></div></div>`).join('')}
-        </div>
-      </div>`}
+    ` : emptyStateHtml({
+      icon: 'briefcase',
+      title: 'Your next move, organized.',
+      body: 'Track every internship, job, and scholarship from saved to offer, with deadlines and interviews on your dashboard and calendar.',
+      actions: [{ label: '+ Add an application', onclick: 'openApplicationModal()' }, { label: 'Paste a job posting', onclick: 'openPastePostingModal()', icon: 'sparkles' }],
+    })}
   `;
 }
 function careerBoard(list) {

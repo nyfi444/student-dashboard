@@ -21,9 +21,26 @@ function pageCalendar() {
       <button class="btn btn-sm" onclick="openBreaksModal()">${icon('flag', 13, 2)} Breaks</button>
       <button class="btn btn-primary" onclick="openEventModal(null,'${state.calDate}')">+ Time block</button>
     `)}
-    ${v !== 'year' ? `<div class="small muted mb-8">Drag a to-do or assignment from Dashboard/To-Do/Assignments onto a day to reschedule it, or onto a time slot to plan when you'll work on it.</div>` : `<div class="small muted mb-8">Click a month name to jump into it, or a day to jump straight to that day.</div>`}
+    ${!calendarHasAnything() ? `<div class="mb-16">${emptyStateHtml({
+      icon: 'calendar',
+      title: 'Nothing on the calendar yet',
+      body: 'Add your classes and every meeting time, deadline, and exam lands here, next to any time you block out for yourself.',
+      actions: [{ label: 'Set up my semester', onclick: 'openSemesterSetup()', icon: 'sparkles' }, { label: '+ Time block', onclick: `openEventModal(null,'${state.calDate}')` }],
+    })}</div>` : v !== 'year' ? `<div class="small muted mb-8">Drag a to-do or assignment from Dashboard/To-Do/Assignments onto a day to reschedule it, or onto a time slot to plan when you'll work on it.</div>` : `<div class="small muted mb-8">Click a month name to jump into it, or a day to jump straight to that day.</div>`}
     <div id="cal-body">${v === 'year' ? yearView() : v === 'month' ? monthView() : v === 'week' ? weekView() : dayView()}</div>
   `;
+}
+// Before the first class or deadline is in, the grid is a wall of empty
+// boxes with nothing to say, so the page leads with the empty state instead
+// of the drag-to-reschedule hint. Anything that can put something on a day
+// counts, including a club or group joined before any classes were added.
+function calendarHasAnything() {
+  if (activeCourses().length || state.events.length || state.assignments.length || state.breaks.length) return true;
+  if (state.todos.some(t => t.dueDate)) return true;
+  if ((state.applications || []).length) return true;
+  if (typeof allGroups === 'function' && allGroups().length) return true;
+  if (typeof allOrgs === 'function' && allOrgs().length) return true;
+  return false;
 }
 function isBreakDate(dIso) { return state.breaks.some(b => dIso >= b.startDate && dIso <= b.endDate); }
 function breakOnDate(dIso) { return state.breaks.find(b => dIso >= b.startDate && dIso <= b.endDate); }

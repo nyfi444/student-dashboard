@@ -622,28 +622,13 @@ function groupIndexCard(g) {
     </div>`;
 }
 function groupsEmptyHero() {
-  const features = [
-    ['grid', 'Find a time that works', 'Everyone paints when they’re free, and a heatmap shows the best overlap instantly.'],
-    ['calendar', 'Plan sessions and RSVP', 'Sessions land on everyone’s calendar, with who’s going at a glance.'],
-    ['check-square', 'Split the work', 'Assign tasks with due dates so nothing falls through the cracks.'],
-    ['message-circle', 'Chat and share', 'Talk it through, and pass around notes and flashcard decks.'],
-  ];
-  return `
-    <div class="card sg-hero">
-      <div class="sg-hero-copy">
-        <div class="sg-eyebrow">${icon('users', 13, 1.8)} Study Groups</div>
-        <h3 class="sg-hero-title">Study better, together.</h3>
-        <p class="muted">Start a group for a class, invite classmates with a link, and let Semester HQ handle the logistics.</p>
-        <div class="sg-hero-actions">
-          <button class="btn btn-primary" onclick="openCreateGroupModal()">+ Start a group</button>
-          <button class="btn" onclick="openJoinGroupModal()">Join with code</button>
-        </div>
-        ${!cloudGroupsEnabled() ? `<button class="btn btn-ghost btn-sm sg-sample-btn" onclick="createSampleGroup()">${icon('eye', 13, 1.8)} Explore a sample group first</button>` : ''}
-      </div>
-      <div class="sg-hero-features">
-        ${features.map(([ic, t, d]) => `<div class="sg-feature"><span class="sg-feature-ic">${icon(ic, 16, 1.7)}</span><div><div class="sg-strong">${t}</div><div class="small muted">${d}</div></div></div>`).join('')}
-      </div>
-    </div>`;
+  return emptyStateHtml({
+    icon: 'users',
+    title: 'Study better, together.',
+    body: 'Start a group for a class and invite classmates with a link, then find a time everyone is free, plan sessions, split up the work, and chat in one place.',
+    actions: [{ label: '+ Start a group', onclick: 'openCreateGroupModal()' }, { label: 'Join with code', onclick: 'openJoinGroupModal()' }],
+    extra: cloudGroupsEnabled() ? '' : `<button class="btn btn-ghost btn-sm" onclick="createSampleGroup()">${icon('eye', 13, 1.8)} Explore a sample group first</button>`,
+  });
 }
 
 /* ── Group page ────────────────────────────────────────────────── */
@@ -671,8 +656,23 @@ function pageGroupDetail(g) {
     <div class="sg-tabs" role="tablist">
       ${GROUP_TABS.map(([k, label]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}" onclick="setGroupTab('${k}')">${label}${k === 'chat' && unread ? '<span class="sg-tab-dot" aria-label="unread"></span>' : ''}</button>`).join('')}
     </div>
-    <div class="sg-tab-body">${body(g)}</div>
+    <div class="sg-tab-body">${tab === 'overview' && groupIsBrandNew(g) ? groupFirstStepsHtml(g) : body(g)}</div>
   `;
+}
+// A group with one person in it and nothing scheduled, assigned, shared, or
+// said yet: the overview would be five cards each saying "nothing yet". The
+// one thing that matters at that point is getting classmates in.
+function groupIsBrandNew(g) {
+  if (g.loading || g.legacyPending || g.sample) return false;
+  return groupPeople(g).length <= 1 && !sessionList(g).length && !taskList(g).length && !groupMessages(g).length && !groupItems(g).length && !Object.values(g.avail || {}).some(availHasAny);
+}
+function groupFirstStepsHtml(g) {
+  return emptyStateHtml({
+    icon: 'user-plus',
+    title: 'It’s just you so far',
+    body: 'Invite classmates with the group code or a link, and once they join you can find a time that works for everyone.',
+    actions: [{ label: 'Invite classmates', onclick: `openInviteModal('${g.code}')`, icon: 'user-plus' }, { label: 'Schedule a session', onclick: `openSessionModal('${g.code}')`, icon: 'calendar' }],
+  });
 }
 
 function groupOverviewTab(g) {

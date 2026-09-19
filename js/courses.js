@@ -44,15 +44,12 @@ function pageCourses() {
       ${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}
       <button class="btn btn-primary" onclick="openCourseModal()">+ Add course</button>
     `)}
-    ${courses.length ? expandable('course-grid', 'Courses', `<div class="grid grid-2 course-grid">${courses.map(courseCard).join('')}</div>`, { max: 620, count: courses.length }) : `
-      <div class="card welcome-inline">
-        <div class="sg-feature-ic">${icon('graduation-cap', 18, 1.7)}</div>
-        <div style="flex:1;min-width:220px">
-          <div class="sg-strong">Add your classes</div>
-          <div class="small muted">Upload a syllabus and Semester HQ fills in meeting times, assignments, and exam dates. Or add a class by hand.</div>
-        </div>
-        <div class="flex-gap wrap"><button class="btn btn-sm" onclick="openJoinClassModal()">Join a shared class</button>${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}<button class="btn btn-primary btn-sm" onclick="openCourseModal()">+ Add course</button></div>
-      </div>`}
+    ${courses.length ? expandable('course-grid', 'Courses', `<div class="grid grid-2 course-grid">${courses.map(courseCard).join('')}</div>`, { max: 620, count: courses.length }) : emptyStateHtml({
+      icon: 'graduation-cap',
+      title: 'Add your classes',
+      body: 'Semester setup reads each syllabus and fills in meeting times, deadlines, and exam dates, or you can add a class by hand.',
+      actions: [{ label: 'Set up my semester', onclick: 'openSemesterSetup()', icon: 'sparkles' }, { label: '+ Add a course', onclick: 'openCourseModal()' }],
+    })}
   `;
 }
 

@@ -181,7 +181,12 @@ function pageProjectDetail(p) {
 
     <div class="sg-overview">
       <div class="sg-col">
-        ${!projectIsDone(p) ? `
+        ${projectIsDone(p) ? '' : !next && !ms.length ? emptyStateHtml({
+          icon: 'folder',
+          title: 'Break it into milestones',
+          body: 'Pick a template below, add your own, or let AI plan it from the assignment details, and the next step always shows up here.',
+          actions: [{ label: '+ Add a milestone', onclick: "document.getElementById('proj-new-ms')?.focus()" }],
+        }) : `
         <div class="card proj-up-next">
           <div class="sg-eyebrow">Up next</div>
           ${next ? `
@@ -195,10 +200,8 @@ function pageProjectDetail(p) {
               ${p.courseId ? `<button class="btn btn-sm" onclick="startCourseFocus('${p.courseId}')">${icon('play', 11, 1.5)} Focus session</button>` : ''}
               <button class="btn btn-sm" onclick="blockProjectTime('${p.id}')">${icon('calendar', 12, 1.8)} Block time for it</button>
             </div>
-          ` : ms.length ? `<div class="proj-up-title">Every milestone is done.</div><button class="btn btn-primary btn-sm mt-8" onclick="setProjectDone('${p.id}',true)">${icon('check', 13, 2.4)} Mark the project finished</button>` : `
-            <div class="proj-up-title">Break it into milestones</div>
-            <p class="small muted">Pick a template below, add your own, or let AI plan it from the assignment details.</p>`}
-        </div>` : ''}
+          ` : `<div class="proj-up-title">Every milestone is done.</div><button class="btn btn-primary btn-sm mt-8" onclick="setProjectDone('${p.id}',true)">${icon('check', 13, 2.4)} Mark the project finished</button>`}
+        </div>`}
 
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Milestones</h3>${ms.length && p.dueDate ? `<button class="sg-link" onclick="respaceMilestones('${p.id}')">Space out dates</button>` : ''}</div>

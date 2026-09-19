@@ -261,26 +261,13 @@ function pageOrgs() {
   `;
 }
 function orgsEmptyHero() {
-  const features = [
-    ['calendar', 'One calendar for everyone', 'Meetings, practices, games, and deadlines land on every member’s Semester HQ calendar.'],
-    ['check-square', 'See who’s going', 'Everyone RSVPs, and you can see who’s coming, who can’t, and who hasn’t answered.'],
-    ['message-circle', 'Chat, announcements, and files', 'Talk in one place, post updates that get seen, and share forms and schedules.'],
-    ['shield', 'Officers and titles', 'Officers run the calendar. Everyone’s title, like President or Treasurer, shows next to their name.'],
-  ];
-  return `
-    <div class="card sg-hero">
-      <div class="sg-hero-copy">
-        <div class="sg-eyebrow">${icon('shield', 13, 1.8)} Clubs & Teams</div>
-        <h3 class="sg-hero-title">Your org’s calendar, in everyone’s planner.</h3>
-        <p class="muted">For clubs, sports teams, sororities, fraternities, etc. Officers post it once, and it shows up for every member next to their classes and deadlines.</p>
-        <div class="sg-hero-actions">
-          <button class="btn btn-primary" onclick="openCreateOrgModal()">+ Start a club or team</button>
-          <button class="btn" onclick="openJoinOrgModal()">Join with code</button>
-        </div>
-        ${!cloudGroupsEnabled() ? `<button class="btn btn-ghost btn-sm sg-sample-btn" onclick="createSampleOrg()">${icon('eye', 13, 1.8)} Explore a sample club first</button>` : ''}
-      </div>
-      <div class="sg-hero-features">${features.map(([ic, t, d]) => `<div class="sg-feature"><span class="sg-feature-ic">${icon(ic, 16, 1.7)}</span><div><div class="sg-strong">${t}</div><div class="small muted">${d}</div></div></div>`).join('')}</div>
-    </div>`;
+  return emptyStateHtml({
+    icon: 'shield',
+    title: 'Your org’s calendar, in everyone’s planner.',
+    body: 'For clubs, teams, and chapters: officers post a meeting or practice once, and it shows up for every member next to their classes and deadlines.',
+    actions: [{ label: '+ Start a club or team', onclick: 'openCreateOrgModal()' }, { label: 'Join with code', onclick: 'openJoinOrgModal()' }],
+    extra: cloudGroupsEnabled() ? '' : `<button class="btn btn-ghost btn-sm" onclick="createSampleOrg()">${icon('eye', 13, 1.8)} Explore a sample club first</button>`,
+  });
 }
 function orgIndexCard(o) {
   const next = upcomingOrgEvents(o)[0];
@@ -384,8 +371,24 @@ function pageOrgDetail(o) {
     <div class="sg-tabs" role="tablist">
       ${orgTabsFor(o).map(([k, label]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}" onclick="setState({orgTab:'${k}'})">${k === 'admin' ? `${icon('shield', 12, 1.9)} ` : ''}${label}${(k === 'announcements' && unread || k === 'chat' && chatUnread) && tab !== k ? '<span class="sg-tab-dot" aria-label="new"></span>' : ''}</button>`).join('')}
     </div>
-    <div class="sg-tab-body">${body(o)}</div>
+    <div class="sg-tab-body">${tab === 'overview' && orgIsBrandNew(o) ? orgFirstStepsHtml(o) : body(o)}</div>
     </div>`;
+}
+// One member, no events, no announcements, no files: the overview would be
+// a stack of "nothing yet" cards, so the page leads with the two things
+// that make a club real, people and the first event.
+function orgIsBrandNew(o) {
+  if (o.loading || o.sample) return false;
+  return o.memberUids.length <= 1 && !orgEventList(o).length && !orgAnnouncementList(o).length && !orgFileList(o).length;
+}
+function orgFirstStepsHtml(o) {
+  const officer = isOrgOfficer(o);
+  return emptyStateHtml({
+    icon: 'user-plus',
+    title: 'It’s just you so far',
+    body: officer ? 'Invite your members with the club code or a link, then add the first meeting or practice and it shows up on everyone’s calendar.' : 'Invite the rest of the group with the club code or a link.',
+    actions: [{ label: 'Invite members', onclick: `openOrgInviteModal('${o.code}')`, icon: 'user-plus' }, ...(officer ? [{ label: '+ Add an event', onclick: `openOrgEventModal('${o.code}')` }] : [])],
+  });
 }
 function orgOverviewTab(o) {
   const upcoming = upcomingOrgEvents(o);

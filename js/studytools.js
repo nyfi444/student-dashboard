@@ -105,11 +105,12 @@ function pageStudyTools() {
       </div>
     </div>
     <div class="grid grid-3">${decks.map(deckCard).join('')}</div>`
-    : `<div class="card welcome-inline">
-        <div class="sg-feature-ic">${icon('layers', 18, 1.7)}</div>
-        <div style="flex:1;min-width:220px"><div class="sg-strong">Make your first deck</div><div class="small muted">Build one by hand, paste a list of terms, upload a Quizlet export or your class slides, or turn any note into flashcards automatically. Semester HQ schedules each card so you review it right before you’d forget.</div></div>
-        <div class="flex-gap wrap"><button class="btn btn-sm" onclick="openFlashcardFileModal()">${icon('upload', 13, 1.8)} Upload a file</button>${aiButton('Make from a note', 'openGenerateDeckModal()')}<button class="btn btn-primary btn-sm" onclick="openDeckModal()">+ New deck</button></div>
-      </div>`}
+    : emptyStateHtml({
+      icon: 'layers',
+      title: 'Make your first deck',
+      body: 'Type the cards in, paste a list of terms, or upload your class slides or a Quizlet export, and each card comes back right before you’d forget it.',
+      actions: [{ label: '+ New deck', onclick: 'openDeckModal()' }, { label: 'Upload a file', onclick: 'openFlashcardFileModal()', icon: 'upload' }],
+    })}
   `;
 }
 function deckCard(d) {
