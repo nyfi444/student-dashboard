@@ -1,8 +1,8 @@
 /* ── Settings: theme, account/sync, AI, grading, data, semesters ─── */
 const FAQ_ITEMS = [
   { q: 'How does AI syllabus upload work?', a: 'Go to Courses → Upload syllabus and paste, upload a PDF, or upload a photo of your syllabus. Claude reads it and fills in the course name, meeting times, and assignments. You review and edit everything before it’s added. No API key needed: AI requests are proxied through a server that holds the key, so you never see or manage one.' },
-  { q: 'Where is my data stored, and is it private?', a: 'Everything lives in your browser’s local storage by default. Nothing is sent anywhere unless you turn on cross-device sync or use an AI feature (which sends only the text/image you’re asking about, routed through our AI proxy, never directly to Anthropic from your browser).' },
-  { q: 'How do I sync across devices?', a: 'Sign in with Google or any email under Settings → Account & Sync to turn it on. Semester HQ Plus ($7.99/month) activates sync, AI upload, and cross-device Study Groups for that account. Without it, everything still works great locally on one device.' },
+  { q: 'Where is my data stored, and is it private?', a: 'Signed in, your planner is saved to your account and kept on each device you use for offline access. Only you can read it. Without an account the app is a demo and nothing is saved. AI features send only the text or image you are asking about, through our own server, never straight from your browser to Anthropic.' },
+  { q: 'How do I sync across devices?', a: 'Sign in with Google or any email under Settings → Account & Sync. Semester HQ Plus ($7.99/month) saves your semester, syncs it to every device, and turns on AI upload and Study Groups. The demo without an account does not save anything.' },
   { q: 'What happens when I start a new semester?', a: 'Settings → Semester reset archives your current semester (nothing is deleted, you can still view it from the semester dropdown) and sets up a fresh one, optionally carrying over your course names and instructors as a starting point.' },
   { q: 'How do I change the colors?', a: 'Settings → Appearance (or Customize on the dashboard) has themes, each with a matching dark mode, plus page colors. Turn on Dark mode and the page colors switch to deep tints of the same colors, with light text so everything stays readable.' },
   { q: 'How do study groups work?', a: 'Start a group from Study Groups and invite classmates with its 6-character code or an invite link. Inside a group you can schedule sessions (they show up on every member’s calendar, with RSVPs), paint your weekly availability so Semester HQ can suggest the best time to meet, split up tasks with owners and due dates, chat, and share notes, flashcards, files, and links. Everyone in a group needs their own Semester HQ Plus account. Organizing a whole class, club, or team? A group plan covers all of them, see the next question.' },
@@ -17,7 +17,7 @@ const FAQ_ITEMS = [
 
 function confirmDeleteAccount() {
   confirmDialog(
-    'This cancels your subscription and permanently deletes your synced data and account. This can’t be undone. Local data in this browser is untouched. Continue?',
+    'This cancels your subscription and permanently deletes your account, your synced planner, and your uploaded files. This can’t be undone. Want a copy first? Cancel and use Settings → Data → Export backup. Continue?',
     async () => {
       try {
         toast('Deleting your account…', 'info', 4000);
@@ -114,7 +114,7 @@ function pageSettings() {
           <button class="btn mt-16" onclick="signOutUser()">Sign out</button>
           ${checkoutEnabled() ? `<button class="btn btn-danger mt-8" onclick="confirmDeleteAccount()">Delete account</button>` : ''}
         ` : `
-          <p class="small muted mb-16">${fbConfigured() ? 'Already subscribed? Sign in with the same account to pick up right where you left off. New here? Signing in creates your account automatically. Everything then syncs across devices, backups, and study groups. Any email works, not just Google. Local storage still covers offline caching and resilience underneath.' : 'Not set up on this deployment yet. The app owner needs to create a Firebase project and fill in FB_CONFIG in js/config.js (see README.md). Until then, everything is saved locally in this browser only.'}</p>
+          <p class="small muted mb-16">${fbConfigured() ? 'Already subscribed? Sign in with the same account to pick up right where you left off. New here? Signing in creates your account automatically. Everything then syncs across devices, backups, and study groups. Any email works, not just Google.' : 'Not set up on this deployment yet. The app owner needs to create a Firebase project and fill in FB_CONFIG in js/config.js (see README.md). Until then, everything is saved locally in this browser only.'}</p>
           <button class="btn btn-primary" onclick="signIn()" ${fbConfigured() ? '' : 'disabled'}>Continue with Google</button>
           <button class="btn mt-8" onclick="openEmailSignInModal()" ${fbConfigured() ? '' : 'disabled'}>Continue with email</button>
         `}

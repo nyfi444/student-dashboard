@@ -30,7 +30,8 @@ function render() {
   const isNewView = viewKey !== _lastViewKey;
   _lastViewKey = viewKey;
   if (isNewView) diag.crumb('view', viewKey.replace(/\|+$/, ''));
-  $('#content').innerHTML = `<div class="${isNewView ? 'fade-in' : ''}">${fn()}</div>`;
+  const demoBar = typeof demoBannerHtml === 'function' ? demoBannerHtml() : '';
+  $('#content').innerHTML = `${demoBar}<div class="${isNewView ? 'fade-in' : ''}">${fn()}</div>`;
   enhanceAccessibility($('#content'));
   enhanceAccessibility($('#sidebar'));
   applyExpandables($('#content'));

@@ -1,6 +1,6 @@
 /* ── Paywall: $7.99/month subscription for sign-in and sync ───────
-   Local-only usage (no sign-in) is always free. Signing in unlocks
-   cross-device sync + AI upload, gated behind this subscription. The only
+   Without an account the app is a demo that saves nothing. Signing in
+   unlocks saving, cross-device sync and AI upload, behind this subscription. The only
    thing that can ever mark a user as "paid" is the backend Worker (via
    Stripe webhook, using a service account); see worker/README.md and
    firestore.rules. This file just talks to that Worker and reflects
@@ -9,6 +9,16 @@
 // Same Worker as everything else (WORKER_URL in js/config.js).
 const CHECKOUT_PROXY_URL = WORKER_URL;
 function checkoutEnabled() { return !!CHECKOUT_PROXY_URL; }
+
+// The app without an account is a demo that keeps nothing. Said on every
+// page, not only in Settings, so nobody types a whole semester in and loses
+// it on the next reload. Gone the moment someone signs in.
+function demoBannerHtml() {
+  if (typeof isDemoMode !== 'function' || !isDemoMode()) return '';
+  if (typeof _fbUser !== 'undefined' && _fbUser) return '';
+  const plan = typeof isEmbedded === 'function' && isEmbedded() ? '' : ', or <a href="https://semester-hq.com/#pricing" target="_blank" rel="noopener">see the plan</a>';
+  return `<div class="demo-bar" role="status"><strong>Demo.</strong>&nbsp;Nothing here is saved. <a href="#" onclick="event.preventDefault();signIn()">Sign in</a> to keep your semester${plan}.</div>`;
+}
 
 function checkoutReturnPending() { return new URLSearchParams(window.location.search).get('checkout') === 'success'; }
 function clearCheckoutReturnParam() {
@@ -25,7 +35,9 @@ async function redirectToCheckout() {
     const res = await fetch(`${CHECKOUT_PROXY_URL}/create-checkout-session`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ uid: _fbUser?.uid || null, email: _fbUser?.email || null }),
+      // The Worker takes the buyer's identity from the token, never from a
+      // uid in the body, so nobody can start a checkout in someone else's name.
+      body: JSON.stringify(_fbUser ? { idToken: await _fbUser.getIdToken() } : {}),
     });
     const data = await res.json();
     if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout');
@@ -193,7 +205,7 @@ function pagePaywall() {
         <p class="small muted mt-16">Already bought on another device? <a href="#" onclick="event.preventDefault();retryLicenseCheck()">Check again</a>.</p>
         <button class="btn btn-sm mt-8" style="width:100%" onclick="switchGoogleAccount()">Wrong account? Switch Google account</button>
         <button class="btn btn-sm mt-8" style="width:100%" onclick="openEmailSignInModal()">Or log in with a different email</button>
-        <button class="btn btn-ghost btn-sm mt-8" onclick="signOutUser()">Not now, use local only on this device</button>
+        <button class="btn btn-ghost btn-sm mt-8" onclick="signOutUser()">Not now, sign out</button>
       </div>
     </div>`;
 }

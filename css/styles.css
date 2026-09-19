@@ -1774,3 +1774,9 @@ textarea.input.ex-topic-input { resize: none; min-height: 36px; height: 36px; li
 .install-glyph { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 4px; border-radius: var(--r-tight); background: var(--surface-2); border: 1px solid var(--border); vertical-align: -6px; font-weight: 700; }
 .install-steps kbd { font-family: inherit; font-size: 12px; font-weight: 600; padding: 1px 7px; border-radius: var(--r-tight-active); border: 1px solid var(--border); background: var(--surface-2); box-shadow: 0 1px 0 var(--border); }
 @media (max-width: 760px) { .install-actions { width: 100%; } .install-actions .btn { flex: 1; justify-content: center; } }
+
+/* ── Demo bar: shown on every page while nothing is being saved ──── */
+.demo-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; padding: 9px 14px; margin: 0 0 14px; font-size: 12.5px; line-height: 1.4; color: var(--text-dim); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-tight); }
+.demo-bar strong { color: var(--text); font-weight: 600; }
+.demo-bar a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.demo-bar a:hover { color: var(--accent); }

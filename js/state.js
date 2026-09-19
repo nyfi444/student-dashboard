@@ -36,6 +36,9 @@ function makeMemoryStore() {
 // the source of truth for who's actually licensed.
 const LICENSE_DEVICE_FLAG = 'shq_licensed_device';
 let dataStore = (!isEmbedded() && localStorage.getItem(LICENSE_DEVICE_FLAG) === '1') ? localStorage : makeMemoryStore();
+// True while nothing is being kept: the no-account demo, and the embedded
+// demo on the marketing site. The demo bar (see demoBannerHtml) reads this.
+function isDemoMode() { return dataStore !== localStorage; }
 
 // Called from firebase.js the moment a signed-in user's license check comes
 // back paid. Switches future saves to real localStorage (as an offline

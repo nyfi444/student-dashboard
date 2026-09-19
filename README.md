@@ -6,9 +6,9 @@ No build step: plain HTML/CSS/JS, runs by opening `index.html` or serving the fo
 
 **Tests:** `node tests/run.mjs` and `node tests/worker-delete-account.mjs`. There are deliberately only two things covered — quick add's plain-English parsing and the syllabus contract between `SYLLABUS_SCHEMA` (js/ai.js) and `sanitizeCourseDetails` (js/syllabus.js). Those, plus what happens to a study group or club when a member deletes their account: all places where a regression is silent and costs trust (an owner who no longer exists leaves a club nobody can edit). Everything else fails loudly enough to find on its own.
 
-**What's free vs. paid:** local-only usage (no sign-in) is free forever: full features, on one device, no account needed, so people can try it before buying. Signing in unlocks cross-device sync and AI upload, and requires a $7.99/month subscription. See `worker/README.md` for how that's enforced (short version: a Cloudflare Worker is the only thing allowed to mark someone as paid, so it can't be bypassed from the browser).
+**What's free vs. paid:** without an account the app is a live demo: the full interface, nothing saved. Semester HQ Plus ($7.99/month) is what saves a semester, syncs it across devices, and turns on AI upload and study groups. See `worker/README.md` for how that's enforced (short version: a Cloudflare Worker is the only thing allowed to mark someone as paid, so it can't be bypassed from the browser).
 
-All setup below is one-time, done-by-the-app-owner configuration; regular students never see an API key, a Firebase config screen, or a Stripe key. Until you do it, the app still works fully in free/local-only mode; sign-in and AI upload just show as unavailable.
+All setup below is one-time, done-by-the-app-owner configuration; regular students never see an API key, a Firebase config screen, or a Stripe key. Until you do it, the app runs as the no-account demo; sign-in and AI upload just show as unavailable.
 
 ## Setup: sign-in + cross-device sync
 
