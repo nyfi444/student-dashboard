@@ -152,8 +152,7 @@ async function fileToBase64(file) {
 async function extractPdfText(file) {
   await ensurePdfJs();
   const buf = await file.arrayBuffer();
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pdf = await openPdf(buf);
   let text = '';
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
@@ -171,8 +170,7 @@ async function extractPdfText(file) {
 async function extractPdfPageImages(file, { scale = 1.3, quality = 0.78, maxPages = 20 } = {}) {
   await ensurePdfJs();
   const buf = await file.arrayBuffer();
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pdf = await openPdf(buf);
   const pageCount = Math.min(pdf.numPages, maxPages);
   const images = [];
   for (let i = 1; i <= pageCount; i++) {

@@ -8,6 +8,7 @@
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#F8F6F2">
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'">
 <script>
   // Paint the chosen theme and app icon before anything else loads, so a
   // themed app never flashes the default colors (see applyTheme).
@@ -32,9 +33,9 @@
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "78e77abf3a0d4bfbac8638a1ff1ffdd3"}'></script><!-- End Cloudflare Web Analytics -->
 
 <!-- Firebase (sign-in + cross-device sync) -->
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" integrity="sha384-ZaR6mWzmJtrRibZ1Vm7SoHFr8OXjyAuGAXalGDKqbxFT18oi/z+oZLIRFkpeNor1" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" integrity="sha384-I1LYojsZ5RM1cOda44Z2h42Qa6YfsQ1XkXxREnhp4ueYBR/4d1pG1K+NZM537Vsj" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js" integrity="sha384-Ke0FJhH7LyRqDxZ0wt+/OXV38yfQVu7g9VPEEGjYmB4RVOY/ta04uecRhsMwT7V3" crossorigin="anonymous"></script>
 <!-- PDF reading/export and file storage libraries load on demand (see loadScriptOnce in js/utils.js) -->
 </head>
 <body>
@@ -71,6 +72,7 @@
 <script src="js/config.js"></script>
 <script src="js/diagnostics.js"></script>
 <script src="js/utils.js"></script>
+<script src="js/sanitize.js"></script>
 <script src="js/icons.js"></script>
 <script src="js/colorwheel.js"></script>
 <script src="js/state.js"></script>

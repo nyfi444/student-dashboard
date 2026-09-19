@@ -68,10 +68,31 @@ function loadScriptOnce(src) {
   }
   return _scriptLoads[src];
 }
-const PDFJS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-const HTML2PDF_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.14.0/html2pdf.bundle.min.js';
+// Vendored copies (vendor/, versions and hashes in vendor/VENDOR.md) instead
+// of a CDN: the app's own service worker caches them, nothing outside the
+// repo can change what runs here, and pdf.js is current. 3.11.174 had a bug
+// that let a crafted PDF run script (CVE-2024-4367); 4.x fixes it, and eval
+// is switched off below on top of that.
+const PDFJS_SRC = 'vendor/pdfjs/pdf.min.mjs';
+const PDFJS_WORKER_SRC = 'vendor/pdfjs/pdf.worker.min.mjs';
+const HTML2PDF_SRC = 'vendor/html2pdf/html2pdf.bundle.min.js';
 const FIREBASE_STORAGE_SRC = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js';
-async function ensurePdfJs() { if (typeof pdfjsLib === 'undefined') await loadScriptOnce(PDFJS_SRC); }
+let _pdfjsLoad = null;
+// pdf.js 4 ships as an ES module, so it comes in through import() rather than
+// a script tag; the global stays so callers read the same as before.
+async function ensurePdfJs() {
+  if (typeof pdfjsLib !== 'undefined') return;
+  if (!_pdfjsLoad) {
+    _pdfjsLoad = import(new URL(PDFJS_SRC, document.baseURI).href).then(mod => {
+      window.pdfjsLib = mod;
+      mod.GlobalWorkerOptions.workerSrc = new URL(PDFJS_WORKER_SRC, document.baseURI).href;
+    }).catch(e => { _pdfjsLoad = null; throw new Error('Couldn’t load the PDF reader. Check your connection and try again.'); });
+  }
+  await _pdfjsLoad;
+}
+// Every PDF opened in the app goes through here, with eval off: a PDF's
+// fonts and forms can carry code, and nothing this app does needs it.
+function openPdf(data) { return pdfjsLib.getDocument({ data, isEvalSupported: false }).promise; }
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 // Backs the "No due date" checkbox next to a date <input> (assignments, to-dos):
 // disables + clears the field when checked, hands it back when unchecked. The
@@ -143,7 +164,10 @@ function storageFileMetadata(name, type) {
   }
   const ascii = clean.normalize('NFKD').replace(/[^\x20-\x7e]/g, '').replace(/[\\;]/g, '').replace(/\s{2,}/g, ' ') || 'file';
   const encoded = encodeURIComponent(clean).replace(/['()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
-  return { contentType: mimeForFile(clean, type), contentDisposition: `inline; filename="${ascii}"; filename*=UTF-8''${encoded}` };
+  // uploadedBy lets storage.rules let the person who shared a file remove it
+  // again; the group owner can remove anything regardless.
+  const customMetadata = typeof _fbUser !== 'undefined' && _fbUser?.uid ? { uploadedBy: _fbUser.uid } : undefined;
+  return { contentType: mimeForFile(clean, type), contentDisposition: `inline; filename="${ascii}"; filename*=UTF-8''${encoded}`, ...(customMetadata ? { customMetadata } : {}) };
 }
 
 function lighten(hex, amt) {

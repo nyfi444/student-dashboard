@@ -11,7 +11,7 @@
    file that can't be read says what to do instead.
 ──────────────────────────────────────────────────────────────── */
 const UPLOAD_MAX_BYTES = 60 * 1024 * 1024;
-const HEIC2ANY_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js';
+const HEIC2ANY_SRC = 'vendor/heic2any/heic2any.min.js';
 const IMAGE_EXTS = ['jpg', 'jpeg', 'jfif', 'png', 'gif', 'webp', 'heic', 'heif', 'avif', 'bmp', 'tif', 'tiff'];
 const TEXT_EXTS = ['txt', 'text', 'md', 'markdown', 'csv', 'tsv', 'json', 'xml', 'tex', 'log', 'srt', 'vtt', 'ics', 'yaml', 'yml', 'eml'];
 const SPREADSHEET_EXTS = ['xlsx', 'xlsm', 'xltx', 'ods'];

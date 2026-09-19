@@ -14,7 +14,7 @@ const VERSION = 'shq-' + self.APP_VERSION;
 const APP_SHELL = [
   './', 'index.html', 'login.html', 'group-admin.html', 'manifest.json', 'css/styles.css',
   'assets/favicon.png', 'assets/apple-touch-icon.png', 'assets/icon-192.png', 'assets/icon-512.png',
-  'js/version.js', 'js/config.js', 'js/diagnostics.js', 'js/utils.js', 'js/icons.js', 'js/colorwheel.js', 'js/state.js', 'js/firebase.js', 'js/ai.js', 'js/uploads.js',
+  'js/version.js', 'js/config.js', 'js/diagnostics.js', 'js/utils.js', 'js/sanitize.js', 'js/icons.js', 'js/colorwheel.js', 'js/state.js', 'js/firebase.js', 'js/ai.js', 'js/uploads.js',
   'js/checkout.js', 'js/groupplans.js', 'js/group-admin.js', 'js/ui.js', 'js/dashboard.js', 'js/courses.js', 'js/semestersetup.js', 'js/calendar.js', 'js/todos.js',
   'js/assignments.js', 'js/notebook.js', 'js/timer.js', 'js/exams.js', 'js/projects.js', 'js/studytools.js',
   'js/studygroups.js', 'js/career.js', 'js/capture.js', 'js/wrapped.js', 'js/classes.js', 'js/quickparse.js', 'js/syllabus.js', 'js/orgs.js', 'js/appearance.js', 'js/reminders.js', 'js/settings.js', 'js/palette.js', 'js/install.js', 'js/offline.js', 'js/app.js',
@@ -54,6 +54,8 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin === self.location.origin) {
     if (url.pathname.startsWith('/admin/') || url.pathname.endsWith('/sw.js')) return;
+    // Big libraries live in vendor/: served from cache, refreshed behind.
+    if (url.pathname.includes('/vendor/')) { event.respondWith(staleWhileRevalidate(req)); return; }
     event.respondWith(networkFirst(req));
     return;
   }
@@ -84,7 +86,10 @@ async function networkFirst(req) {
   const cache = await caches.open(VERSION);
   try {
     const res = await fetchWithTimeout(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }), 6000);
-    if (res && res.ok) cache.put(req, res.clone());
+    // A navigation with a query string can carry a one-time sign-in code or a
+    // Stripe session id. The page is the same shell either way, so cache the
+    // plain address and never the one with the secret in it.
+    if (res && res.ok) cache.put(req.mode === 'navigate' && new URL(req.url).search ? new Request(new URL(req.url).pathname) : req, res.clone());
     return res;
   } catch {
     const cached = await cache.match(req, { ignoreSearch: true });
