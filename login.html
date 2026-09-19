@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'">
 <title>Log In – Semester HQ</title>
 <meta name="robots" content="noindex">
@@ -11,11 +11,12 @@
 <meta name="theme-color" content="#171512">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- Same font pairing as the marketing site (semester-hq.com): Playfair
-     Display + Inter, not the app's own Instrument Serif/General Sans, so
-     this page reads as the front door of the same brand rather than a
-     sudden switch to app chrome. -->
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
+<!-- The same type as semester-hq.com and the app itself: Instrument Serif
+     (one weight) and General Sans, so the front door and the rooms match. -->
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
 
 <!-- Firebase (sign-in only; the full sync bundle loads once inside the app) -->
@@ -34,18 +35,18 @@
     --lp-ink-2: #201c16;
     --lp-cloud: #f7f2ea;
     --lp-cloud-dim: rgba(247, 242, 234, .64);
-    --lp-cloud-faint: rgba(247, 242, 234, .4);
+    --lp-cloud-faint: rgba(247, 242, 234, .62);
     --lp-cloud-line: rgba(247, 242, 234, .07);
     --lp-paper: #f7f2ea;
     --lp-paper-2: #efe8db;
     --lp-text: #17140f;
     --lp-text-dim: rgba(23, 20, 15, .66);
-    --lp-text-faint: rgba(23, 20, 15, .42);
+    --lp-text-faint: rgba(23, 20, 15, .6);
     --lp-border: rgba(23, 20, 15, .13);
-    --lp-rose: #ad9686;
+    --lp-rose: #B49F90;
     --lp-radius: 3px;
-    --lp-font-serif: 'Playfair Display', Georgia, serif;
-    --lp-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --lp-font-serif: 'Instrument Serif', Georgia, serif;
+    --lp-font-sans: 'General Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
   /* A real two-panel page filling the viewport, not a card floating on

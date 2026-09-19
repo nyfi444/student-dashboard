@@ -13,7 +13,11 @@ const THEMES = [
   { id: 'bone', name: 'Bone & Ink', note: 'Warm paper, deep ink',
     light: { bg: '#F8F6F2', surface: '#FFFDF9', surface2: '#F1EDE5', border: '#E6DFD8', text: '#121212', accent: '#121212', accentLight: '#EDE7DE', accentText: '#F8F6F2' },
     dark: { bg: '#12110F', surface: '#1B1916', surface2: '#25221E', border: '#35312C', text: '#F3EFE8', accent: '#F3EFE8', accentLight: '#2E2A25', accentText: '#12110F' } },
-  { id: 'classic', name: 'Classic', note: 'Ink on white' },
+  // The original black-and-white look. Spelled out because the stylesheet's
+  // defaults are now Bone & Ink, not this.
+  { id: 'classic', name: 'Classic', note: 'Ink on white',
+    light: { bg: '#fafafa', surface: '#ffffff', surface2: '#f0f0f0', border: '#e4e4e4', text: '#000000', accent: '#141414', accentLight: '#efefef', accentText: '#ffffff' },
+    dark: { bg: '#0f0f0f', surface: '#1a1a1a', surface2: '#242424', border: '#333333', text: '#ffffff', accent: '#f2f2f2', accentLight: '#2a2a2a', accentText: '#000000' } },
   { id: 'midnight', name: 'Midnight', note: 'Navy and moonlight',
     light: { bg: '#F4F6FA', surface: '#FFFFFF', surface2: '#EAEEF5', border: '#DCE2EC', text: '#141B2D', accent: '#1B2A4A', accentLight: '#E3E9F4', accentText: '#F4F6FA' },
     dark: { bg: '#0B1020', surface: '#121A2E', surface2: '#1A2440', border: '#28334F', text: '#E6ECFA', accent: '#E6ECFA', accentLight: '#1F2A47', accentText: '#0B1020' } },
