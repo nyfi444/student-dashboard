@@ -1,7 +1,6 @@
 /* ── Add to Home Screen / bookmark ─────────────────────────────────
    Students who put Semester HQ on their home screen come back far more
-   often, and on iPhone it's also what makes reminders work. This picks
-   the right ask for the device:
+   often. This picks the right ask for the device:
    - Chrome, Edge, Android: a real "Install" button (beforeinstallprompt)
    - iPhone and iPad: Share, then Add to Home Screen
    - Android browsers without the install event: menu, then Add to Home screen
@@ -57,10 +56,10 @@ function shouldShowInstallCard() {
 function installCopy() {
   const p = installPlatform();
   if (p === 'prompt') return isMobileDevice()
-    ? { title: 'Put Semester HQ on your home screen', sub: 'One tap to open, works offline, and reminders arrive even when it’s closed.', action: 'Install' }
+    ? { title: 'Put Semester HQ on your home screen', sub: 'One tap to open, and it works offline.', action: 'Install' }
     : { title: 'Install Semester HQ on this computer', sub: 'It opens in its own window from your dock or taskbar, like any other app.', action: 'Install' };
-  if (p === 'ios') return { title: 'Add Semester HQ to your Home Screen', sub: 'It opens like an app, works offline, and it’s what turns on reminders on iPhone.', action: 'Show me how' };
-  if (p === 'android') return { title: 'Put Semester HQ on your home screen', sub: 'One tap to open, works offline, and reminders arrive even when it’s closed.', action: 'Show me how' };
+  if (p === 'ios') return { title: 'Add Semester HQ to your Home Screen', sub: 'It opens like an app and works offline.', action: 'Show me how' };
+  if (p === 'android') return { title: 'Put Semester HQ on your home screen', sub: 'One tap to open, and it works offline.', action: 'Show me how' };
   if (p === 'mac-safari') return { title: 'Keep Semester HQ in your Dock', sub: 'Add it to your Dock and it opens in its own window, one click away.', action: 'Show me how' };
   return { title: 'Bookmark Semester HQ', sub: `Press ${isMac() ? '⌘D' : 'Ctrl+D'} so your semester is one click away, or install it if your browser offers.`, action: 'Show me how' };
 }
@@ -119,7 +118,6 @@ function installGuide() {
       step(2, `Scroll down and tap <strong>Add to Home Screen</strong> <span class="install-glyph" aria-hidden="true">${icon('plus', 14, 2)}</span>.`),
       step(3, 'Tap <strong>Add</strong>. Open Semester HQ from your Home Screen from now on.'),
     ];
-    note = 'Opening it from your Home Screen is what lets reminders show up on iPhone. Turn them on in Settings after.';
   } else if (p === 'android') {
     title = 'Add to your home screen';
     steps = [
@@ -161,7 +159,7 @@ function openInstallHelp() {
 }
 // Shown at the end of semester setup: the one moment everyone reaches, and
 // the students who put Semester HQ on their home screen are the ones who
-// keep using it (on iPhone it's also what lets reminders through).
+// keep using it.
 function installSetupCard() {
   // Shown to everyone finishing setup who isn't already in the app, even if
   // they waved off the floating prompt earlier: this is the screen where
@@ -203,7 +201,7 @@ function installSettingsCard() {
     <div class="card card-pad">
       <h3 style="font-size:15px" class="mb-8">${standalone ? 'App' : installPlatform() === 'desktop' ? 'Bookmark or install' : 'Add to home screen'}</h3>
       ${standalone
-        ? `<p class="small muted">You’re using Semester HQ as an app. It works offline, and reminders can reach you when it’s closed.</p>`
+        ? `<p class="small muted">You’re using Semester HQ as an app. It works offline and opens straight from your home screen or dock.</p>`
         : `<p class="small muted mb-8">${esc(c.sub)}</p><button class="btn btn-sm" onclick="startInstall()">${icon(installPlatform() === 'prompt' ? 'download' : 'share', 13, 1.9)} ${installPlatform() === 'prompt' ? 'Install Semester HQ' : 'Show me how'}</button>`}
     </div>`;
 }

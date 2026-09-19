@@ -197,7 +197,7 @@ const card = (inner) => `<div class="ga-card">${inner}</div>`;
 function signedOutHtml() {
   return `
     <h1 class="ga-title">Semester HQ for your whole group</h1>
-    <p class="ga-lede mb-16">Cover Semester HQ for your club, team, chapter, class, or department at ${money(SEAT_PRICE_CENTS)} per member each month, instead of $7.99 each. Members join with a link and get everything: their own planner, syllabus upload, reminders, study groups, and your group's calendar.</p>
+    <p class="ga-lede mb-16">Cover Semester HQ for your club, team, chapter, class, or department at ${money(SEAT_PRICE_CENTS)} per member each month, instead of $7.99 each. Members join with a link and get everything: their own planner, syllabus upload, study groups, and your group's calendar.</p>
     ${card(`
       <h3 style="font-size:15px" class="mb-8">Sign in to start or manage a plan</h3>
       <p class="small muted mb-16">Use the account you want to run the plan from. You don't need a Semester HQ subscription of your own to pay for a group.</p>

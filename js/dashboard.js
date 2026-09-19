@@ -279,7 +279,7 @@ function policyUpdateNotice() {
   return `
     <div class="sg-callout mb-16 policy-notice" role="status">
       <span>${icon('file-text', 14, 1.8)}</span>
-      <div class="small" style="flex:1">We updated our <a href="https://semester-hq.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://semester-hq.com/terms.html" target="_blank" rel="noopener">Terms</a> for group plans (one person paying for a club or team: what their admins can see, and what happens if the plan ends), and for shared classes, clubs and teams, study groups, and reminders.</div>
+      <div class="small" style="flex:1">We updated our <a href="https://semester-hq.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://semester-hq.com/terms.html" target="_blank" rel="noopener">Terms</a> for group plans (one person paying for a club or team: what their admins can see, and what happens if the plan ends), and for shared classes, clubs and teams, and study groups.</div>
       <button class="btn btn-sm" onclick="state.settings.policySeen=POLICY_VERSION;touch()">Got it</button>
     </div>`;
 }

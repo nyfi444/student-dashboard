@@ -239,7 +239,7 @@ function onAssignDateChange() {
   updateAssignRepeatSummary();
 }
 // Copies of an assignment for the rest of its series: same class, type,
-// time, notes, and steps (unchecked), the start-by reminder shifted with the
+// time, notes, and steps (unchecked), the start-by date shifted with the
 // due date, and linked attachments (files still stored only on this device
 // stay on the first one, so a long series doesn't copy them over and over).
 function seriesCopy(a, dueDate, seriesId, index, title) {
@@ -328,7 +328,7 @@ function renderAssignmentModal(id) {
         <div class="field"><label>Status</label><select class="select" id="af-status">${Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       </div>
       ${assignRepeatFieldsHtml(a)}
-      <div class="field"><label>Start by <span class="small muted">(optional reminder)</span></label><input class="input" type="date" id="af-startby" value="${a.startByDate || ''}"></div>
+      <div class="field"><label>Start by <span class="small muted">(optional)</span></label><input class="input" type="date" id="af-startby" value="${a.startByDate || ''}"></div>
       <div class="field"><label>Notes</label><textarea class="input" id="af-notes">${esc(a.notes || '')}</textarea></div>
 
       <div class="field">

@@ -2,7 +2,7 @@
    One calendar that officers run and every member gets: meetings,
    practices, games, philanthropy events, dues deadlines. Officers post
    events and announcements; members RSVP, and events land on their own
-   Semester HQ calendar with reminders. Built for clubs, sports teams,
+   Semester HQ calendar. Built for clubs, sports teams,
    and chapters buying a group plan.
 
    Firestore: orgs/{CODE}. The 6-character code is the invite, like study
@@ -226,7 +226,7 @@ function newOrgDoc({ code, name, kind, school, color, description, ownerUid, own
   };
 }
 
-/* ── Calendar, dashboard, reminders ────────────────────────────── */
+/* ── Calendar, dashboard, Heads up ─────────────────────────────── */
 // Events that belong on your own calendar: anything you haven't said no to.
 function orgEventsOnDate(dateIso) {
   if (typeof allOrgs !== 'function') return [];

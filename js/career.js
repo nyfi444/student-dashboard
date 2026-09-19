@@ -2,7 +2,7 @@
    A pipeline board (Saved → Applied → Interviewing → Offer → Closed)
    for everything a student applies to beyond class. Deadlines and next
    steps (an interview, an essay due) flow into the dashboard, calendar,
-   and reminders like any assignment.
+   and Heads up like any assignment.
 ──────────────────────────────────────────────────────────────── */
 const APP_STAGES = [['saved', 'Saved'], ['applied', 'Applied'], ['interviewing', 'Interviewing'], ['offer', 'Offer'], ['closed', 'Closed']];
 const APP_TYPES = ['Internship', 'Job', 'Scholarship', 'Research', 'Fellowship', 'Grad school', 'Other'];
