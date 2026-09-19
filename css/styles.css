@@ -1807,3 +1807,38 @@ textarea.input.ex-topic-input { resize: none; min-height: 36px; height: 36px; li
   .nb-folder-actions, .nb-note-del, .sg-msg-del { opacity: 1; pointer-events: auto; }
   .sg-msg-del { width: 28px; height: 28px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   Launch phase 2 (appended block, nothing above it was changed):
+   the shared empty state, inline errors, and visible focus on fields
+   that used to switch the outline off.
+   ══════════════════════════════════════════════════════════════════ */
+.empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 48px 24px 44px; }
+.empty-state-ic { width: 54px; height: 54px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--sandstone); color: var(--ink); margin-bottom: 18px; }
+.empty-state-title { font-family: var(--font-serif); font-weight: 400; font-size: 28px; line-height: 1.08; letter-spacing: -.2px; margin: 0 0 8px; color: var(--text); }
+.empty-state-body { font-size: 14px; line-height: 1.55; color: var(--text-dim); max-width: 440px; margin: 0; }
+.empty-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 20px; }
+.empty-state-extra { margin-top: 10px; }
+.empty-state.compact { padding: 24px 16px 22px; }
+.empty-state.compact .empty-state-ic { width: 40px; height: 40px; margin-bottom: 12px; }
+.empty-state.compact .empty-state-title { font-size: 21px; margin-bottom: 4px; }
+.empty-state.compact .empty-state-body { font-size: 13px; }
+.empty-state.compact .empty-state-actions { margin-top: 14px; }
+@media (max-width: 760px) {
+  .empty-state { padding: 36px 18px 32px; }
+  .empty-state-title { font-size: 25px; }
+  .empty-state-actions { width: 100%; }
+  .empty-state-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
+
+.inline-error { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 14px; margin-top: 12px; border: 1px solid var(--border); border-left: 3px solid var(--rose-deep); border-radius: var(--r-tight); background: var(--surface-2); color: var(--text); font-size: 13.5px; line-height: 1.5; }
+.inline-error-ic { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--rose-deep); color: #FFFDF9; }
+.inline-error-msg { flex: 1 1 200px; min-width: 0; }
+.inline-error .btn { flex-shrink: 0; }
+
+/* These fields set outline: none, so a keyboard user had no idea where
+   they were. Buttons already get the ring from the global :focus-visible
+   rule, so only the text fields and editors are listed here. */
+.input:focus-visible, .select:focus-visible, textarea.input:focus-visible,
+.quick-add-input:focus-visible, .cmdk-input:focus-visible, .proj-task-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rich-editor:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-tight); }

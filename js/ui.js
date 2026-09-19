@@ -82,6 +82,41 @@ function priorityDot(p) {
 function emptyState(icon, text, actionHtml = '', sub = '') {
   return `<div class="empty"><div class="ic">${icon}</div><p>${esc(text)}</p>${sub ? `<div class="empty-sub">${esc(sub)}</div>` : ''}${actionHtml}</div>`;
 }
+/* ── Empty state: what a page shows before it has anything ────────
+   One shared look for every first visit: a calm card with a serif
+   title, one sentence, and the one or two buttons that lead to the
+   obvious next step. `actions` is [{ label, onclick, primary, icon }];
+   the first one is primary unless told otherwise. `onclick` is code
+   written by the caller, never user data. `compact` fits the same
+   thing inside another card. `extra` is optional html under the
+   buttons, for a quieter third choice like a sample-data link. */
+function emptyStateHtml({ icon: iconName = 'sparkles', title = '', body = '', actions = [], compact = false, extra = '' } = {}) {
+  const buttons = actions.filter(a => a && a.label && a.onclick).map((a, i) => {
+    const primary = a.primary != null ? a.primary : i === 0;
+    return `<button class="btn${primary ? ' btn-primary' : ''}${compact ? ' btn-sm' : ''}" onclick="${a.onclick}">${a.icon ? icon(a.icon, 13, 1.8) + ' ' : ''}${esc(a.label)}</button>`;
+  }).join('');
+  return `<div class="${compact ? 'empty-state compact' : 'card empty-state'}">
+    <span class="empty-state-ic" aria-hidden="true">${icon(iconName, compact ? 17 : 22, 1.6)}</span>
+    <h3 class="empty-state-title">${esc(title)}</h3>
+    ${body ? `<p class="empty-state-body">${esc(body)}</p>` : ''}
+    ${buttons ? `<div class="empty-state-actions">${buttons}</div>` : ''}
+    ${extra ? `<div class="empty-state-extra">${extra}</div>` : ''}
+  </div>`;
+}
+/* ── Inline error: a failure that stays on the page ───────────────
+   A toast disappears in a few seconds, which is fine for "saved" and
+   useless for "this did not load". This sits where the content should
+   have been, says what went wrong in one line, and offers a retry.
+   `retryOnclick` is code written by the caller; `extra` is optional
+   html for a second way out (leave, remove, go back). */
+function inlineErrorHtml(message, retryOnclick = '', { retryLabel = 'Try again', extra = '' } = {}) {
+  return `<div class="inline-error" role="alert">
+    <span class="inline-error-ic" aria-hidden="true">${icon('x', 12, 2.6)}</span>
+    <div class="inline-error-msg">${esc(message)}</div>
+    ${retryOnclick ? `<button class="btn btn-sm" onclick="${retryOnclick}">${icon('refresh-cw', 12, 2)} ${esc(retryLabel)}</button>` : ''}
+    ${extra}
+  </div>`;
+}
 function pageHead(title, sub, actionsHtml = '') {
   return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions"><button class="btn btn-icon btn-sm mobile-search" aria-label="Search" onclick="openCommandPalette()">${typeof searchIcon === 'function' ? searchIcon() : ''}</button><button class="btn btn-icon btn-sm mobile-search" aria-label="Quick capture" onclick="openQuickCapture()">${icon('camera', 15, 1.8)}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}${signInHeaderButton()}${actionsHtml}</div></div>`;
 }
