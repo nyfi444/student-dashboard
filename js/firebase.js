@@ -44,6 +44,7 @@ function bootFirebase() {
       window._licensed = false;
       if (typeof render === 'function') render(); // show a "checking" state rather than flash stale content
       if (user) {
+        recordTermsAcceptance(user); // nothing waits on this
         // Captured before resolveLicenseStatus()/pollForLicense() below, since
         // a successful license check clears this param. Need to know whether
         // this moment is "just paid" to show "Your HQ is ready" instead of the
@@ -129,6 +130,7 @@ async function runGoogleSignIn() {
 // separate, unlabeled steps.
 async function switchGoogleAccount() {
   await signOutUser();
+  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { openAgeGateModal(); return; }
   await runGoogleSignIn();
 }
 
@@ -224,6 +226,17 @@ async function confirmAgeGateAndSignIn() {
   } else {
     await runGoogleSignIn();
   }
+}
+// Records on the account that the age and terms box was ticked (see
+// openAgeGateModal): a browser can be cleared, the account record can't.
+// Once per session per account; failures are only logged.
+async function recordTermsAcceptance(user) {
+  try {
+    if (!WORKER_URL || localStorage.getItem(AGE_TOS_KEY) !== '1' || sessionStorage.getItem('shq_terms_recorded') === user.uid) return;
+    const idToken = await user.getIdToken();
+    const res = await fetch(`${WORKER_URL}/account/attest`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idToken, ageConfirmed: true }) });
+    if (res.ok) sessionStorage.setItem('shq_terms_recorded', user.uid);
+  } catch (e) { diag.warn('auth', 'Could not record the terms acceptance', e); }
 }
 async function signOutUser() { if (_fbAuth) await _fbAuth.signOut(); }
 
