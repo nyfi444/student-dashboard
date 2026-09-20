@@ -23,6 +23,10 @@ const src = readFileSync(join(root, 'worker/src/index.js'), 'utf8').replace(/^ex
 let fetchImpl = () => { throw new Error('no network in tests'); };
 const sandbox = {
   console, crypto, setTimeout, clearTimeout, TextEncoder, TextDecoder, atob, btoa, URL, URLSearchParams, Response, Request, Headers,
+  // The typed-array constructors from this realm: Node 20's WebCrypto refuses
+  // a Uint8Array made inside the vm context ("not instance of ArrayBuffer"),
+  // which Node 24 and Cloudflare accept. Workers run in one realm anyway.
+  Uint8Array, ArrayBuffer, DataView,
   fetch: (...args) => fetchImpl(...args),
 };
 sandbox.globalThis = sandbox;

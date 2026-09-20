@@ -79,3 +79,5 @@ jobs:
       - name: Remove the key file
         if: always()
         run: rm -f "${{ github.workspace }}/service-account.json"
+
+# Re-run trigger: the security test suite now runs under Node 20 as well as 24.
