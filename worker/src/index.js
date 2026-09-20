@@ -2352,6 +2352,15 @@ function underHourlyCap(env, name, cap) { return underCap(env, `cap:${name}:h${M
 // Cloudflare Turnstile, on only once TURNSTILE_SECRET is set (wrangler secret
 // put) and the site renders the widget. Until then this is a no-op, so the
 // forms keep working while the widget is being created.
+//
+// The hostname check matters. siteverify's `success` only says the token is a
+// real, unused solve for this site key; it does not say where it was solved.
+// The site key is public, so without this anyone could host their own page,
+// solve the challenge there, and replay the token here. Only the hostnames
+// this product actually serves are accepted. Note the deliberate absence of
+// localhost: adding it to the widget in the dashboard would hand out exactly
+// that bypass to anyone running a page on their own machine.
+const TURNSTILE_HOSTS = new Set(['semester-hq.com', 'www.semester-hq.com', 'app.semester-hq.com']);
 async function turnstileOk(env, token, ip) {
   if (!env.TURNSTILE_SECRET) return true;
   if (!token || typeof token !== 'string') return false;
@@ -2359,7 +2368,8 @@ async function turnstileOk(env, token, ip) {
     const form = new URLSearchParams({ secret: env.TURNSTILE_SECRET, response: token.slice(0, 2048), remoteip: ip });
     const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form });
     const data = await res.json();
-    return data.success === true;
+    if (data.success !== true) return false;
+    return typeof data.hostname === 'string' && TURNSTILE_HOSTS.has(data.hostname);
   } catch { return false; }
 }
 // Stripe retries until it sees a 2xx and can deliver an event twice. The

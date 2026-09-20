@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'">
+<!-- Cloudflare Turnstile. The Worker gates /check-email with it once its
+     TURNSTILE_SECRET is set; without this tag the widget never mounts and
+     the page behaves exactly as it did before. -->
+<meta name="turnstile-sitekey" content="0x4AAAAAAE-MikzYTD2NWIO8">
 <title>Log In – Semester HQ</title>
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="assets/favicon.png">
@@ -262,12 +266,14 @@ function renderSignInButton() {
   document.getElementById('login-body').innerHTML = `
     <form onsubmit="event.preventDefault();startEmailSignIn()">
       <input class="input" type="email" id="login-email-input" placeholder="you@example.com" required autocomplete="email" style="width:100%;margin-bottom:12px;box-sizing:border-box">
+      <div data-turnstile style="margin-bottom:12px"></div>
       <button class="btn btn-primary" type="submit" style="width:100%">Continue with email</button>
     </form>
     <div class="login-divider"><span>or</span></div>
     <button class="btn btn-google" style="width:100%" onclick="startSignIn()">Continue with Google</button>
     <p class="login-note">Students use Google to securely access their Semester HQ account. Any email works too: existing subscribers get a sign-in link, new ones go straight to checkout.</p>
   `;
+  mountTurnstile(); // the form above was just replaced, so the widget goes in again
 }
 function renderEmailSent(email) {
   document.getElementById('login-body').innerHTML = `
@@ -288,15 +294,48 @@ function startSignIn() {
 // of their inbox just to land on a "no plan yet, subscribe" screen. Returns
 // null (not false) on any failure, so a flaky network never blocks sign-in.
 // It just falls back to the original verified-link path.
+// Cloudflare Turnstile, mirroring the marketing site's js/contact.js. It
+// switches on only when the meta tag above is present, and the Worker only
+// checks the token once TURNSTILE_SECRET is set, so both sides switch on
+// together. The form is re-rendered on every return to the sign-in screen,
+// which is why mountTurnstile() is called from renderSignInButton rather
+// than once at load.
+const TURNSTILE_SITEKEY = document.querySelector('meta[name="turnstile-sitekey"]')?.content || '';
+let _tsWidget = null, _tsScriptStarted = false;
+function turnstileToken() {
+  try { return TURNSTILE_SITEKEY && window.turnstile && _tsWidget !== null ? window.turnstile.getResponse(_tsWidget) : ''; }
+  catch { return ''; }
+}
+// A token is good for one use. Reset after every lookup so a second attempt
+// on the same screen is not rejected for reusing the first one.
+function resetTurnstile() { try { if (window.turnstile && _tsWidget !== null) window.turnstile.reset(_tsWidget); } catch {} }
+function renderTurnstile() {
+  const slot = document.querySelector('[data-turnstile]');
+  if (!TURNSTILE_SITEKEY || !slot || !window.turnstile) return;
+  try { _tsWidget = window.turnstile.render(slot, { sitekey: TURNSTILE_SITEKEY, theme: 'light' }); }
+  catch { _tsWidget = null; }
+}
+function mountTurnstile() {
+  if (!TURNSTILE_SITEKEY) return;
+  if (window.turnstile) { renderTurnstile(); return; }
+  if (_tsScriptStarted) return; // already loading; its onload renders into whatever slot exists then
+  _tsScriptStarted = true;
+  const el = document.createElement('script');
+  el.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+  el.async = true; el.defer = true;
+  el.onload = renderTurnstile;
+  document.head.appendChild(el);
+}
 async function checkEmailHasPlan(email) {
   try {
     const res = await fetch(`${WORKER_URL}/check-email`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, turnstileToken: turnstileToken() }),
     });
+    resetTurnstile();
     if (!res.ok) return null;
     const data = await res.json();
     return !!data.paid;
-  } catch { return null; }
+  } catch { resetTurnstile(); return null; }
 }
 async function redirectToCheckoutForEmail(email) {
   try {
