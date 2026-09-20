@@ -1133,7 +1133,7 @@ async function pruneCollection(env, collectionId, days, limit) {
 // identity): just which CTA fired, from which page, so conversion is
 // measurable without turning this into a full analytics/tracking pipeline.
 const TRACKED_EVENTS = [
-  'nav_login_click', 'nav_upgrade_click', 'try_it_free_click', 'checkout_started', 'checkout_error',
+  'nav_login_click', 'nav_upgrade_click', 'try_it_free_click', 'get_started_click', 'checkout_started', 'checkout_error',
   // The syllabus is the wedge, so its failure rate is the reliability number
   // that matters most. `syllabus_read` fires on every upload attempt (with
   // whether it parsed and what came back); `syllabus_kept` fires after the

@@ -228,13 +228,13 @@
     <a href="https://semester-hq.com/" class="login-back">&larr; semester-hq.com</a>
     <div class="login-form-wrap">
       <div class="login-form">
-        <h2>Welcome back.</h2>
-        <p class="login-sub">Your semester is right where you left it.</p>
+        <h2 id="login-title">Welcome back.</h2>
+        <p class="login-sub" id="login-sub">Your semester is right where you left it.</p>
         <div class="login-error" id="login-error"></div>
         <div id="login-body">
           <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
         </div>
-        <p class="login-foot">New to Semester HQ? Enter your email above. If it's new, we'll take you straight to checkout instead of an inbox.</p>
+        <p class="login-foot" id="login-foot">New to Semester HQ? Enter your email above. If it's new, we'll take you straight to checkout instead of an inbox.</p>
       </div>
     </div>
     <div class="login-sitefoot">
@@ -253,6 +253,17 @@ let _auth = null;
 // Holds an email waiting on the age gate, so confirmAgeGate() knows to
 // resume the email flow instead of defaulting to Google.
 let _pendingEmail = null;
+
+// The marketing site's primary CTA is "Get started", which lands here with
+// ?signup=1. The page is the same one either way (a new email goes to
+// checkout, an existing one gets a sign-in link), but greeting a first-time
+// visitor with "Welcome back" reads like they're in the wrong place.
+if (new URLSearchParams(location.search).has('signup')) {
+  document.title = 'Get Started \u2013 Semester HQ';
+  document.getElementById('login-title').textContent = 'Start your semester.';
+  document.getElementById('login-sub').textContent = 'Enter your email and we\u2019ll set your account up.';
+  document.getElementById('login-foot').textContent = 'Already have an account? Use the same email and we\u2019ll send you a sign-in link instead.';
+}
 
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function showError(msg) {
