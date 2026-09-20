@@ -29,14 +29,21 @@ FIREBASE_STORAGE_BUCKET = "semester-hq.firebasestorage.app"
 # Where contact-form/group-pricing submissions get emailed (only sent at all
 # once RESEND_API_KEY below is set, otherwise it's silently skipped and
 # submissions still land in Firestore's `feedback` collection either way).
-# While NOTIFY_FROM below is still Resend's shared sandbox sender, Resend
-# only allows delivery to the email address the Resend account itself was
-# signed up with; this MUST match that address until you verify your own
-# domain (see worker/README.md), or sends fail with a 403 from Resend.
+# This is the only address the Worker ever emails: the person who filled in
+# the form never hears from Resend, they're set as reply-to so a reply from
+# this inbox goes straight back to them.
+#
+# The sandbox restriction is gone now that send.semester-hq.com is verified,
+# so this can be any address you actually read.
 NOTIFY_EMAIL = "semesterhq@gmail.com"
-# Must be "onboarding@resend.dev" (Resend's shared sandbox sender) unless
-# you've verified your own sending domain in Resend, see worker/README.md.
-NOTIFY_FROM = "Semester HQ <onboarding@resend.dev>"
+# Must be an address at a domain verified in Resend. send.semester-hq.com was
+# verified 2026-09-20: DKIM plus two CNAMEs, all unproxied, in Cloudflare.
+#
+# A subdomain on purpose. The apex already publishes an SPF record for Google
+# Workspace, and a domain can only have one; adding a second would have broken
+# mail to hello@semester-hq.com rather than adding to it. The DMARC policy on
+# the apex uses relaxed alignment, so a subdomain sender still aligns.
+NOTIFY_FROM = "Semester HQ <notifications@send.semester-hq.com>"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT"

@@ -50,7 +50,11 @@ Optional. Without it, contact-form and group-pricing submissions still save to F
 1. Sign up at [resend.com](https://resend.com) (free tier: 3,000 emails/month, plenty for a contact form) and create an API key: dashboard → API Keys → Create API Key.
 2. `wrangler secret put RESEND_API_KEY`, paste the key.
 3. In `wrangler.toml`, set `NOTIFY_EMAIL` to the address you want submissions sent to (defaults to `hello@semester-hq.com`).
-4. Leave `NOTIFY_FROM` as `Semester HQ <onboarding@resend.dev>` to start; that's Resend's shared sandbox sender and works immediately, no setup. Once you've verified your own domain in Resend (dashboard → Domains → Add Domain, then add the DNS records it gives you), change `NOTIFY_FROM` to something like `Semester HQ <notifications@semester-hq.com>` instead: mail from your own domain is less likely to land in spam.
+4. `NOTIFY_FROM` is `Semester HQ <notifications@send.semester-hq.com>`. The sending domain `send.semester-hq.com` was verified in Resend on 2026-09-20; its DKIM record and two CNAMEs live in Cloudflare, all unproxied.
+
+   It is a subdomain deliberately. The apex already publishes an SPF record for Google Workspace, which handles mail for `hello@semester-hq.com`, and a domain may only have one SPF record. Adding a second would have broken delivery to that inbox rather than adding to it. The apex DMARC policy uses relaxed alignment, so a subdomain sender still aligns with it.
+
+   Note what this code actually does: it emails **you** (`NOTIFY_EMAIL`) and nobody else. Whoever filled in the form is set as reply-to, so replying from your inbox reaches them directly. No student ever receives mail from Resend.
 5. Redeploy (`wrangler deploy`) after changing `wrangler.toml`.
 
 Each email's `reply_to` is set to the submitter's address, so replying to the notification goes straight back to them.
