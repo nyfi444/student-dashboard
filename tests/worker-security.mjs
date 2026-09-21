@@ -170,6 +170,58 @@ check('blocks: plain string content is fine', sandbox.findDisallowedBlock([{ con
   check('token: an unknown kid triggers exactly one refetch', jwksFetches, 2);
 }
 
+/* ── Calendar feeds: a URL fetcher kept on a short leash ─────────── */
+{
+  check('feed url: plain https is fine', sandbox.feedUrlProblem('https://school.instructure.com/feeds/calendars/user_abc.ics'), '');
+  ok('feed url: http is refused', sandbox.feedUrlProblem('http://school.instructure.com/x.ics'));
+  ok('feed url: a literal IP is refused', sandbox.feedUrlProblem('https://10.0.0.5/x.ics'));
+  ok('feed url: an IPv6 literal is refused', sandbox.feedUrlProblem('https://[::1]/x.ics'));
+  ok('feed url: localhost is refused', sandbox.feedUrlProblem('https://localhost/x.ics'));
+  ok('feed url: an internal name is refused', sandbox.feedUrlProblem('https://calendar.corp/x.ics'));
+  ok('feed url: credentials in the link are refused', sandbox.feedUrlProblem('https://u:p@school.edu/x.ics'));
+  ok('feed url: garbage is refused', sandbox.feedUrlProblem('not a link'));
+
+  const env = { FIREBASE_PROJECT_ID: 'semester-hq', ALLOWED_ORIGIN: '', RATE_LIMIT: fakeKV() };
+  const origVerify = sandbox.verifyFirebaseIdToken, origRead = sandbox.readFirestoreDoc;
+  sandbox.verifyFirebaseIdToken = async (t) => { if (t !== 'good') throw new Error('bad'); return { sub: 'u-feed' }; };
+  sandbox.readFirestoreDoc = async (env, col, id) => (col === 'licenses' && id === 'u-feed' ? { paid: true } : null);
+  const post = (body) => new Request('https://w/calendar-feed', { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } });
+  const fetched = [];
+  fetchImpl = async (url, init) => {
+    fetched.push(String(url));
+    if (String(url).includes('redirect-me')) return new Response(null, { status: 302, headers: { location: 'https://192.168.1.1/x.ics' } });
+    if (String(url).includes('hop')) return new Response(null, { status: 302, headers: { location: 'https://school.edu/final.ics' } });
+    if (String(url).includes('html')) return new Response('<html>login</html>', { status: 200 });
+    if (String(url).includes('huge')) return new Response('BEGIN:VCALENDAR\n' + 'X'.repeat(3 * 1024 * 1024), { status: 200 });
+    return new Response('\uFEFFBEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:x\nEND:VEVENT\nEND:VCALENDAR', { status: 200 });
+  };
+  let res = await sandbox.handleCalendarFeed(post({ url: 'https://school.edu/a.ics' }), env, '');
+  check('feed: no token is a 401', res.status, 401);
+  res = await sandbox.handleCalendarFeed(post({ idToken: 'good', url: 'https://school.edu/a.ics' }), env, '');
+  check('feed: a paid account gets the calendar text', res.status, 200);
+  ok('feed: the text is the calendar, BOM stripped or not', (await jsonOf(res)).text.includes('BEGIN:VEVENT'));
+  res = await sandbox.handleCalendarFeed(post({ idToken: 'good', url: 'webcal://school.edu/a.ics' }), env, '');
+  check('feed: webcal links are read as https', res.status, 200);
+  check('feed: and fetched over https', fetched.at(-1), 'https://school.edu/a.ics');
+  sandbox.readFirestoreDoc = async () => ({ paid: false });
+  res = await sandbox.handleCalendarFeed(post({ idToken: 'good', url: 'https://school.edu/a.ics' }), env, '');
+  check('feed: an unpaid account is a 402', res.status, 402);
+  sandbox.readFirestoreDoc = async () => ({ paid: true });
+  fetched.length = 0;
+  res = await sandbox.handleCalendarFeed(post({ idToken: 'good', url: 'https://10.1.1.1/a.ics' }), env, '');
+  check('feed: a private address is refused before any fetch', [res.status, fetched.length], [400, 0]);
+  res = await sandbox.handleCalendarFeed(post({ idToken: 'good', url: 'https://school.edu/redirect-me.ics' }), env, '');
+  check('feed: a redirect into a private network is refused', res.status, 400);
+  check('feed: and the private address is never fetched', fetched.some(u => u.includes('192.168')), false);
+  res = await sandbox.handleCalendarFeed(post({ idToken: 'good', url: 'https://school.edu/hop.ics' }), env, '');
+  check('feed: an ordinary redirect is followed', res.status, 200);
+  res = await sandbox.handleCalendarFeed(post({ idToken: 'good', url: 'https://school.edu/html.ics' }), env, '');
+  check('feed: a login page instead of a calendar is a 400', res.status, 400);
+  res = await sandbox.handleCalendarFeed(post({ idToken: 'good', url: 'https://school.edu/huge.ics' }), env, '');
+  check('feed: an oversized body is a 413', res.status, 413);
+  sandbox.verifyFirebaseIdToken = origVerify; sandbox.readFirestoreDoc = origRead;
+}
+
 /* ── Checkout identity ─────────────────────────────────────────── */
 {
   const env = { STRIPE_SECRET_KEY: 'sk_test_x', APP_URL: 'https://app.semester-hq.com/', FIREBASE_PROJECT_ID: 'semester-hq', ALLOWED_ORIGIN: '' };

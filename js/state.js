@@ -265,6 +265,7 @@ function seedData() {
     applications: [],
     studyGroups: [],
     orgs: [],
+    feeds: [],
     recurringTemplates: [],
     assignmentSeries: [],
     trash: [],

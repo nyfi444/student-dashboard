@@ -12,6 +12,7 @@ function paletteItems() {
   add('Actions', 'New assignment', '', 'plus', () => openAssignmentModal(), 'add create homework');
   add('Actions', 'New to-do', '', 'check-square', () => openTodoModal(), 'add create task');
   add('Actions', 'New note', '', 'file-text', () => createNote('root'), 'add create write');
+  add('Actions', 'Import from Canvas or your LMS', 'Every due date from your calendar feed', 'calendar', () => openFeedImportModal(), 'import canvas blackboard brightspace moodle d2l ics feed deadlines');
   add('Actions', 'Upload a syllabus', 'Fills in class times and deadlines', 'upload', () => { setState({ route: 'courses', subRoute: null }); openSyllabusUploadModal(); }, 'import pdf ai');
   add('Actions', 'Start a focus session', '', 'play', () => { setState({ route: 'timer', subRoute: null }); if (!window._timer.running) startTimer(); }, 'timer pomodoro study');
   add('Actions', 'Add a time block', '', 'calendar', () => { setState({ route: 'calendar', subRoute: null }); openEventModal(null, todayIso()); }, 'event schedule');

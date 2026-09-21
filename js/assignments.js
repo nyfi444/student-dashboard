@@ -32,6 +32,7 @@ function pageAssignments() {
 
   return `
     ${pageHead('Assignments', `${open.length} to do · ${weekCount} due this week${overdueCount ? ` · ${overdueCount} overdue` : ''}`, `
+      <button class="btn btn-sm" onclick="openFeedImportModal()" title="Import every due date from Canvas, Blackboard, Brightspace, or Moodle">${icon('calendar', 13, 1.8)} Import from Canvas</button>
       ${aiButton('Quick capture', 'openQuickCapture()')}
       <button class="btn btn-sm ${selectMode ? 'btn-primary' : ''}" onclick="toggleAssignSelectMode()">${icon('check-square', 13, 2)} ${selectMode ? 'Cancel' : 'Select'}</button>
       <button class="btn btn-primary" onclick="openAssignmentModal(null, state._assignCourseFilter !== 'all' ? state._assignCourseFilter : null)">+ Add assignment</button>
@@ -65,7 +66,7 @@ function pageAssignments() {
       <section class="assign-group ${k === 'overdue' ? 'is-overdue' : ''}">
         <div class="assign-group-head"><span>${label}</span><span class="assign-count">${items.length}</span></div>
         ${expandable(`assign-${k}`, label, `<div class="card assign-list">${items.map(a => assignmentRow(a, selectMode, selected)).join('')}</div>`, { max: 420 })}
-      </section>`).join('') : emptyState(icon('cloud-sun', 26, 1.4), total ? 'All caught up' : 'No assignments yet', total ? '' : `<button class="btn btn-primary mt-8" onclick="openAssignmentUploadModal()">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 13, 1.6)} Upload a syllabus or assignment sheet</button>`, total ? 'Nothing left to do here. Nice work.' : 'Add one above, or upload a document and Semester HQ pulls out every deadline.'))
+      </section>`).join('') : emptyState(icon('cloud-sun', 26, 1.4), total ? 'All caught up' : 'No assignments yet', total ? '' : `<div class="flex-gap wrap mt-8" style="justify-content:center"><button class="btn btn-primary" onclick="openFeedImportModal()">${icon('calendar', 13, 1.8)} Import from Canvas or your LMS</button><button class="btn" onclick="openAssignmentUploadModal()">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 13, 1.6)} Upload a syllabus</button></div>`, total ? 'Nothing left to do here. Nice work.' : 'Paste your LMS calendar link and every due date lands here in one go, or upload a syllabus and Semester HQ reads the deadlines out of it.'))
       : expandable(`assign-${view}`, view === 'done' ? 'Done' : 'All assignments', `<div class="card assign-list">${visible.length ? visible.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list', 26, 1.4), view === 'done' ? 'Nothing finished yet.' : 'No assignments match.')}</div>`}</div>`, { max: 420 })}
   `;
 }

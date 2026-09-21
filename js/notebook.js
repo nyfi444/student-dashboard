@@ -1,5 +1,7 @@
 /* ── Notebook: Notion-style folders + notes, per-course tagging ──── */
 const SLASH_COMMANDS = [
+  { key: 'cornell', glyph: '▥', label: 'Cornell layout', desc: 'Cues, notes, and a summary', run: () => insertTemplateBlock('cornell') },
+  { key: 'lab', glyph: '⚗', label: 'Lab report', desc: 'Purpose through conclusion, with a data table', run: () => insertTemplateBlock('lab') },
   { key: 'text', label: 'Text', desc: 'Plain paragraph', glyph: '¶', run: () => document.execCommand('formatBlock', false, 'P') },
   { key: 'h1', label: 'Heading 1', desc: 'Big section heading', glyph: 'H1', run: () => document.execCommand('formatBlock', false, 'H1') },
   { key: 'h2', label: 'Heading 2', desc: 'Medium heading', glyph: 'H2', run: () => document.execCommand('formatBlock', false, 'H2') },
@@ -25,6 +27,7 @@ function pageNotebook() {
     ${pageHead('Notebook', 'Organize notes by class', `
       <button class="btn btn-sm" id="nb-list-toggle" aria-controls="notebook-tree-panel" aria-expanded="${!listHidden}" onclick="toggleNotebookList()">${notebookListToggleLabel(listHidden)}</button>
       <button class="btn btn-sm" onclick="createFolder('root')">${icon('folder', 13)} Folder</button>
+      <button class="btn btn-sm" onclick="openNoteTemplateModal('root')">${icon('grid', 13, 1.8)} Templates</button>
       <button class="btn btn-primary" onclick="createNote('root')">${icon('plus', 13, 2.2)} Note</button>
     `)}
     <div class="notebook-layout ${listHidden ? 'list-hidden' : ''}">
@@ -633,13 +636,197 @@ function deleteNoteItem(id) {
     touch();
   });
 }
+/* ── Templates: pages with a shape, not pages with filler ─────────
+   A template is real structure inside the note (divs the sanitizer
+   keeps, see SANITIZE_ALLOWED_TAGS), styled by CSS so the labels, the
+   ruled lines, and the section numbers are drawn rather than typed and
+   never end up in the saved text. The page around the editor changes
+   too: a Cornell note gets a "cover the notes" switch for self-testing,
+   a lab report gets a section tracker with a row-adding button, and
+   both get a date. Sharing a note keeps the layout, since it is just
+   HTML with nb- classes. ───────────────────────────────────────── */
+const NOTE_TEMPLATES = {
+  cornell: {
+    label: 'Cornell notes', icon: 'grid',
+    desc: 'Cues on the left, notes on the right, a summary at the bottom. Cover the notes afterward to quiz yourself from the cues.',
+    html: () => '<div class="nb-cornell"><div class="nb-cornell-cues"><p><br></p></div><div class="nb-cornell-notes"><p><br></p></div></div><div class="nb-cornell-summary"><p><br></p></div>',
+    name: (n) => `${getCourse(n.courseId)?.code || 'Lecture'} notes · ${fmtDate(todayIso(), { month: 'short', day: 'numeric' })}`,
+  },
+  lab: {
+    label: 'Lab report', icon: 'clipboard-list',
+    desc: 'Purpose through conclusion in numbered sections, with a data table you can grow and a tracker that shows what’s still empty.',
+    html: () => ['Purpose', 'Hypothesis', 'Materials', 'Procedure', 'Data &amp; observations', 'Analysis', 'Conclusion', 'Sources of error'].map((title, i) => {
+      const body = i === 2 ? '<ul><li><br></li></ul>' : i === 3 ? '<ol><li><br></li></ol>'
+        : i === 4 ? `<table class="nb-lab-table"><thead><tr><th>Trial</th><th>Measurement</th><th>Units</th><th>Notes</th></tr></thead><tbody>${[1, 2, 3].map(r => `<tr><td>${r}</td><td><br></td><td><br></td><td><br></td></tr>`).join('')}</tbody></table><p><br></p>`
+        : '<p><br></p>';
+      return `<div class="nb-lab-section"><h2>${title}</h2>${body}</div>`;
+    }).join('').replace(/^/, '<div class="nb-lab">') + '</div>',
+    name: (n) => `${getCourse(n.courseId)?.code ? getCourse(n.courseId).code + ' ' : ''}Lab report · ${fmtDate(todayIso(), { month: 'short', day: 'numeric' })}`,
+  },
+};
+// A note knows its template; one shared in from a classmate only carries the layout.
+function noteTemplateOf(note) {
+  if (note?.template && NOTE_TEMPLATES[note.template]) return note.template;
+  const c = String(note?.content || '');
+  return /class="nb-cornell"/.test(c) ? 'cornell' : /class="nb-lab"/.test(c) ? 'lab' : '';
+}
+function noteIsBlank(note) { return !noteTemplateOf(note) && !plainTextOfNote(note).trim() && !/<(img|table|input)\b/i.test(note.content || ''); }
+function openNoteTemplateModal(parentId = 'root', noteId = null) {
+  window._nbTplPick = 'cornell';
+  const preview = {
+    blank: '<i style="top:14px;left:12px;width:40%"></i><i style="top:26px;left:12px;width:70%"></i><i style="top:38px;left:12px;width:55%"></i><i style="top:50px;left:12px;width:64%"></i>',
+    cornell: '<i style="top:12px;left:8px;width:16%"></i><i style="top:30px;left:8px;width:14%"></i><i style="top:12px;left:36%;width:50%"></i><i style="top:22px;left:36%;width:44%"></i><i style="top:32px;left:36%;width:56%"></i><i style="top:42px;left:36%;width:38%"></i><i style="top:70px;left:8px;width:80%"></i>',
+    lab: '<i style="top:10px;left:12px;width:22%;height:5px"></i><i style="top:22px;left:12px;width:60%"></i><i style="top:36px;left:12px;width:22%;height:5px"></i><i style="top:48px;left:12px;width:70%"></i><i style="top:62px;left:12px;width:22%;height:5px"></i><i style="top:72px;left:12px;width:76%;height:8px;opacity:.18"></i>',
+  };
+  const cards = [['blank', 'Blank page', 'Start typing. Type / for headings, lists, and blocks.'], ...Object.entries(NOTE_TEMPLATES).map(([k, t]) => [k, t.label, t.desc])];
+  const note = noteId ? state.notes.find(n => n.id === noteId) : null;
+  openModal(`
+    <div class="modal-head"><h3>${note ? 'Give this note a shape' : 'New note'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <div class="nb-tpl-grid" role="radiogroup" aria-label="Template">
+        ${cards.filter(([k]) => !note || k !== 'blank').map(([k, label, desc]) => `
+          <button type="button" class="nb-tpl-card ${k === window._nbTplPick ? 'active' : ''}" role="radio" aria-checked="${k === window._nbTplPick}" onclick="window._nbTplPick='${k}';$$('.nb-tpl-card').forEach(b=>{const on=b===this;b.classList.toggle('active',on);b.setAttribute('aria-checked',on)})">
+            <div class="nb-tpl-preview ${k}" aria-hidden="true">${preview[k]}</div>
+            <div class="nb-tpl-title">${label}</div>
+            <div class="nb-tpl-desc">${desc}</div>
+          </button>`).join('')}
+      </div>
+      ${note ? '' : `<div class="field mt-16" style="margin-bottom:0"><label for="nt-course">Class <span class="muted">(optional)</span></label><select class="select" id="nt-course"><option value="">No class</option>${activeCourses().map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>`}
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="${note ? `applyNoteTemplate('${note.id}', window._nbTplPick);closeModal()` : `createNoteFromTemplate('${parentId}')`}">${note ? 'Apply' : 'Create note'}</button></div>
+  `, { wide: true });
+}
+function createNoteFromTemplate(parentId) {
+  const key = window._nbTplPick;
+  const id = uid();
+  const courseId = $('#nt-course')?.value || null;
+  state.notes.push({ id, type: 'note', name: 'Untitled note', parentId, courseId, pinned: false, content: '', updatedAt: Date.now() });
+  closeModal();
+  if (NOTE_TEMPLATES[key]) applyNoteTemplate(id, key);
+  else setState({ route: 'notebook', notebookSelected: id });
+}
+// Puts the layout on a note. A blank note becomes the template; a note
+// with writing in it keeps that writing and gets the layout added below.
+function applyNoteTemplate(id, key) {
+  const n = state.notes.find(x => x.id === id && x.type === 'note');
+  const t = NOTE_TEMPLATES[key];
+  if (!n || !t) return;
+  const editor = $('#note-editor');
+  if (editor && window._nbCurrentNoteId === id) n.content = editor.innerHTML; // anything typed but not yet saved
+  const html = t.html();
+  n.content = noteIsBlank(n) ? html : `${n.content}${html}`;
+  n.template = key;
+  if (!n.date) n.date = todayIso();
+  if (!n.name || n.name === 'Untitled note') n.name = t.name(n);
+  n.updatedAt = Date.now();
+  setState({ route: 'notebook', notebookSelected: id, subRoute: null });
+  setTimeout(() => focusTemplateStart(key), 80);
+}
+// From the slash menu: the template lands where the caret is, replacing the "/cornell" line.
+function insertTemplateBlock(key) {
+  const t = NOTE_TEMPLATES[key];
+  const editor = $('#note-editor');
+  const n = state.notes.find(x => x.id === window._nbCurrentNoteId);
+  if (!t || !editor || !n) return;
+  const block = window._slashBlock;
+  if (block && block.parentElement && editor.contains(block)) { block.insertAdjacentHTML('beforebegin', t.html()); block.remove(); }
+  else runNbInsertHtml(t.html());
+  n.content = editor.innerHTML;
+  n.template = key;
+  if (!n.date) n.date = todayIso();
+  n.updatedAt = Date.now();
+  touch();
+  setTimeout(() => focusTemplateStart(key), 80);
+}
+function focusTemplateStart(key) {
+  const target = $(key === 'cornell' ? '#note-editor .nb-cornell-cues p' : '#note-editor .nb-lab-section p');
+  if (!target) return;
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  range.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(range);
+  $('#note-editor')?.focus();
+}
+function setNoteDate(id, value) { const n = state.notes.find(x => x.id === id); if (n) { n.date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null; save(); } }
+// Cornell's whole point: hide the notes column and answer from the cues.
+function toggleCornellCover() {
+  window._nbCovered = !window._nbCovered;
+  const editor = $('#note-editor');
+  if (editor) editor.classList.toggle('is-covered', window._nbCovered);
+  const btn = $('#nb-cover-btn');
+  if (btn) { btn.classList.toggle('btn-primary', window._nbCovered); btn.innerHTML = `${icon(window._nbCovered ? 'eye' : 'lock', 13)} ${window._nbCovered ? 'Reveal notes' : 'Cover notes'}`; }
+}
+// Lab report tracker: one chip per section, filled once there is more in it than its heading.
+function labSectionsOf(root) {
+  return [...root.querySelectorAll('.nb-lab-section')].map(sec => {
+    const title = (sec.querySelector('h2, h3')?.textContent || 'Section').trim();
+    const rest = [...sec.children].filter(el => !/^H[1-3]$/.test(el.tagName));
+    const filled = rest.some(el => el.tagName === 'TABLE'
+      ? [...el.querySelectorAll('tbody td:not(:first-child)')].some(td => td.textContent.trim().length > 0)
+      : el.textContent.trim().length > 2);
+    return { title, filled };
+  });
+}
+function labRailHtml(sections) {
+  const filled = sections.filter(x => x.filled).length;
+  return `
+    <div class="nb-lab-rail-head"><span class="sg-eyebrow">Report</span><span class="small muted">${filled} of ${sections.length} sections written</span><div class="progress nb-lab-progress"><div style="width:${sections.length ? Math.round((filled / sections.length) * 100) : 0}%"></div></div></div>
+    <div class="nb-lab-chips">
+      ${sections.map((x, i) => `<button type="button" class="nb-lab-chip ${x.filled ? 'is-filled' : ''}" onmousedown="event.preventDefault()" onclick="scrollToLabSection(${i})"><span class="nb-lab-dot"></span>${esc(x.title)}</button>`).join('')}
+      <button type="button" class="nb-lab-chip is-action" onmousedown="event.preventDefault()" onclick="addLabTableRow()">${icon('plus', 11, 2.4)} Table row</button>
+    </div>`;
+}
+const refreshLabRailDebounced = debounce(() => {
+  const rail = $('#nb-lab-rail'), editor = $('#note-editor');
+  if (rail && editor) rail.innerHTML = labRailHtml(labSectionsOf(editor));
+}, 400);
+function scrollToLabSection(i) {
+  const sec = $$('#note-editor .nb-lab-section')[i];
+  if (!sec) return;
+  sec.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  const target = sec.querySelector('p, li, td') || sec;
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  range.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(range);
+  $('#note-editor')?.focus({ preventScroll: true });
+}
+function addLabTableRow() {
+  const editor = $('#note-editor');
+  if (!editor) return;
+  const sel = window.getSelection();
+  const anchor = sel?.anchorNode ? (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode) : null;
+  let table = anchor?.closest?.('table');
+  if (!table || !editor.contains(table)) table = editor.querySelector('table');
+  if (!table) { toast('No table in this note yet', 'info'); return; }
+  const body = table.tBodies[0] || table;
+  const cols = (table.querySelector('tr')?.children.length) || 4;
+  const n = body.rows.length + 1;
+  const tr = document.createElement('tr');
+  for (let i = 0; i < cols; i++) { const td = document.createElement('td'); td.innerHTML = i === 0 ? String(n) : '<br>'; tr.appendChild(td); }
+  body.appendChild(tr);
+  onNoteEdit(window._nbCurrentNoteId, editor);
+  const cell = tr.children[1] || tr.children[0];
+  const range = document.createRange();
+  range.selectNodeContents(cell); range.collapse(true);
+  sel.removeAllRanges(); sel.addRange(range);
+  editor.focus({ preventScroll: true });
+}
+
 function renderNoteEditor(note) {
   window._nbCurrentNoteId = note.id;
   const words = plainTextOfNote(note).trim().split(/\s+/).filter(Boolean).length;
   const crumbs = notePath(note);
   const iconColor = note.courseId ? getCourseColor(note.courseId) : 'var(--text-faint)';
+  const tpl = noteTemplateOf(note);
+  const tplDef = tpl ? NOTE_TEMPLATES[tpl] : null;
+  const blank = !tpl && noteIsBlank(note);
+  if (tpl !== 'cornell') window._nbCovered = false;
+  const labSections = tpl === 'lab' ? labSectionsOf(new DOMParser().parseFromString('<!doctype html><html><body>' + sanitizeHtml(note.content || '') + '</body></html>', 'text/html').body) : [];
   return `
-    <div class="nb-page-inner">
+    <div class="nb-page-inner ${tpl ? `tpl-${tpl}` : ''}">
       <div class="nb-breadcrumb-row">
         ${crumbs.length ? `<div class="nb-breadcrumb">Notebook<span class="nb-crumb-sep">/</span>${crumbs.map(c => `${esc(c)}<span class="nb-crumb-sep">/</span>`).join('')}</div>` : `<div class="nb-breadcrumb">Notebook</div>`}
         <div class="nb-page-actions">
@@ -650,18 +837,23 @@ function renderNoteEditor(note) {
           <button class="btn btn-ghost btn-sm" onclick="triggerNoteFileUpload('${note.id}')">${icon('upload', 13)} Upload file</button>
           <button class="btn btn-ghost btn-sm" onclick="openGenerateDeckModal('${note.id}')">${icon('layers', 13)} Flashcards</button>
           <button class="btn btn-ghost btn-sm" onclick="shareNoteToGroup('${note.id}')">${icon('users', 13)} Share</button>
+          ${tpl === 'cornell' ? `<button class="btn btn-sm ${window._nbCovered ? 'btn-primary' : ''}" id="nb-cover-btn" title="Hide the notes column and answer from your cues" onclick="toggleCornellCover()">${icon(window._nbCovered ? 'eye' : 'lock', 13)} ${window._nbCovered ? 'Reveal notes' : 'Cover notes'}</button>` : ''}
         </div>
       </div>
-      <div class="nb-icon-avatar" style="background:${iconColor}18;color:${iconColor}">${icon('file-text', 20, 1.6)}</div>
-      <input class="nb-title-input" value="${esc(note.name)}" placeholder="Untitled" oninput="renameNote('${note.id}',this.value)">
+      <div class="nb-icon-avatar" style="background:${iconColor}18;color:${iconColor}">${icon(tplDef ? tplDef.icon : 'file-text', 20, 1.6)}</div>
+      <input class="nb-title-input" value="${esc(note.name)}" placeholder="${tpl === 'cornell' ? 'Lecture topic' : tpl === 'lab' ? 'Experiment title' : 'Untitled'}" oninput="renameNote('${note.id}',this.value)">
       <div class="nb-meta-row">
-        <div class="flex-gap">
+        <div class="flex-gap wrap">
           <select class="select nb-course-select" onchange="setNoteCourse('${note.id}',this.value)">
             <option value="">No course</option>${activeCourses().map(c => `<option value="${c.id}" ${c.id === note.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
           </select>
+          ${tpl ? `<input type="date" class="nb-date-input" value="${esc(note.date || '')}" aria-label="${tpl === 'lab' ? 'Lab date' : 'Lecture date'}" title="${tpl === 'lab' ? 'Lab date' : 'Lecture date'}" onchange="setNoteDate('${note.id}',this.value)">` : ''}
+          ${tpl ? `<span class="small muted nb-tpl-badge">${icon(tplDef.icon, 11, 2)} ${tplDef.label}</span>` : ''}
           <span class="small muted" id="nb-save-status">Edited ${fmtRelativeTime(note.updatedAt) || 'now'} · ${words} word${words === 1 ? '' : 's'}</span>
         </div>
       </div>
+      ${tpl === 'lab' ? `<div class="nb-lab-rail" id="nb-lab-rail" data-keep-scroll>${labRailHtml(labSections)}</div>` : ''}
+      ${blank ? `<div class="nb-tpl-start"><span class="small muted">Give it a shape:</span>${Object.entries(NOTE_TEMPLATES).map(([k, t]) => `<button class="chip" onclick="applyNoteTemplate('${note.id}','${k}')">${icon(t.icon, 12, 1.8)} ${t.label}</button>`).join('')}</div>` : ''}
       <div class="nb-toolbar" id="nb-toolbar">
         <select class="nb-toolbar-select" title="Font family" aria-label="Font family" onmousedown="event.stopPropagation()" onchange="runNbFontFamily(this.value);this.selectedIndex=0">
           <option value="">Font</option>
@@ -693,8 +885,8 @@ function renderNoteEditor(note) {
         <button onmousedown="event.preventDefault()" onclick="promptInsertLink()" title="Link" aria-label="Insert link">${icon('link', 13)}</button>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','P')" title="Clear formatting" aria-label="Clear formatting">${icon('x', 13, 2.2)}</button>
       </div>
-      <div class="nb-hint">Type <code>/</code> for blocks, or select text to format</div>
-      <div class="rich-editor nb-editor-body" id="note-editor" contenteditable="true" data-placeholder="Start writing…" oninput="onNoteEdit('${note.id}', this)">${sanitizeHtml(note.content || '')}</div>
+      <div class="nb-hint">${tpl === 'cornell' ? 'Cues and questions on the left, notes on the right. Afterward, sum it up at the bottom and use Cover notes to test yourself.' : tpl === 'lab' ? 'Work down the sections. The tracker above fills in as you go, and Table row grows the data table.' : 'Type <code>/</code> for blocks, or select text to format'}</div>
+      <div class="rich-editor nb-editor-body ${tpl ? `nb-tpl-${tpl}` : ''} ${window._nbCovered ? 'is-covered' : ''}" id="note-editor" contenteditable="true" data-placeholder="Start writing…" oninput="onNoteEdit('${note.id}', this)">${sanitizeHtml(note.content || '')}</div>
     </div>
   `;
 }
@@ -702,6 +894,7 @@ function onNoteEdit(id, el) {
   const status = $('#nb-save-status');
   if (status) status.textContent = 'Saving…';
   saveNoteContentDebounced(id, el.innerHTML);
+  if ($('#nb-lab-rail')) refreshLabRailDebounced();
 }
 function renameNote(id, name) { const n = state.notes.find(x => x.id === id); n.name = name; save(); }
 function setNoteCourse(id, courseId) { const n = state.notes.find(x => x.id === id); n.courseId = courseId || null; touch(); }

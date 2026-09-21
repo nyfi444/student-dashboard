@@ -464,6 +464,7 @@ async function cloudPull() {
   // about a second of it happening, instead of only at the next full reload.
   startRealtimeSync();
   if (typeof startGroupSync === 'function') startGroupSync();
+  if (typeof syncFeedsIfStale === 'function') syncFeedsIfStale().catch(() => {});
 }
 
 // Keeps this session's planner doc + notes live-synced with Firestore instead

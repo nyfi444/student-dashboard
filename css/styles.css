@@ -1913,3 +1913,105 @@ textarea.input.ex-topic-input { resize: none; min-height: 36px; height: 36px; li
   .org-head .sg-head-actions { flex-basis: 100%; }
   .org-att { margin: 0 -14px; padding: 0 14px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   Notebook templates (Cornell, lab report) and LMS calendar feeds.
+   The template labels, ruled lines and section numbers are all CSS,
+   so nothing decorative is ever part of the saved note.
+   ══════════════════════════════════════════════════════════════════ */
+.nb-tpl-start { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.nb-tpl-badge { display: inline-flex; align-items: center; gap: 4px; }
+.nb-date-input { padding: 5px 9px; font-size: 12px; background: var(--surface-2); border: none; border-radius: var(--r-tight); font-family: inherit; color: var(--text); }
+
+/* Cornell: a paper-like frame with a cue column, ruled notes, and a summary band */
+.rich-editor .nb-cornell { position: relative; display: grid; grid-template-columns: minmax(150px, 30%) minmax(0, 1fr); border: 1px solid var(--border); border-radius: var(--r-tight) var(--r-tight) 0 0; overflow: hidden; margin: 10px 0 0; min-height: 460px; background: var(--surface); }
+.rich-editor .nb-cornell-cues, .rich-editor .nb-cornell-notes { position: relative; padding: 36px 16px 18px; min-width: 0; }
+.rich-editor .nb-cornell-cues { border-right: 1px solid var(--border); background: color-mix(in srgb, var(--accent-light) 55%, var(--surface)); font-size: 14px; }
+.rich-editor .nb-cornell-cues::before, .rich-editor .nb-cornell-notes::before, .rich-editor .nb-cornell-summary::before { content: 'Cues & questions'; position: absolute; top: 11px; left: 16px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); pointer-events: none; }
+.rich-editor .nb-cornell-notes::before { content: 'Notes'; }
+.rich-editor .nb-cornell-summary::before { content: 'Summary'; }
+.rich-editor .nb-cornell-notes { line-height: 28px; background-image: repeating-linear-gradient(to bottom, transparent 0 27px, color-mix(in srgb, var(--border) 75%, transparent) 27px 28px); background-origin: content-box; }
+.rich-editor .nb-cornell-notes p, .rich-editor .nb-cornell-notes li, .rich-editor .nb-cornell-notes h3, .rich-editor .nb-cornell-notes blockquote { margin: 0; line-height: 28px; }
+.rich-editor .nb-cornell-notes ul, .rich-editor .nb-cornell-notes ol { margin: 0; }
+.rich-editor .nb-cornell-notes h3 { font-size: 15.5px; }
+.rich-editor .nb-cornell-cues p { margin: 0 0 8px; }
+.rich-editor .nb-cornell-cues strong { color: var(--accent-dark); }
+.rich-editor .nb-cornell-summary { position: relative; padding: 36px 16px 16px; border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--r-tight) var(--r-tight); background: var(--surface-2); min-height: 112px; margin-bottom: 10px; }
+.rich-editor .nb-cornell-summary p { margin: 0 0 6px; }
+.rich-editor .nb-cornell-cues > p:only-child:has(> br:only-child)::before { content: 'Key questions, terms, and prompts'; color: var(--text-faint); pointer-events: none; }
+.rich-editor .nb-cornell-notes > p:only-child:has(> br:only-child)::before { content: 'Take notes here during the lecture'; color: var(--text-faint); pointer-events: none; }
+.rich-editor .nb-cornell-summary > p:only-child:has(> br:only-child)::before { content: 'Afterward: the whole lecture in two or three sentences'; color: var(--text-faint); pointer-events: none; }
+.nb-editor-body.is-covered .nb-cornell-notes { filter: blur(7px); user-select: none; pointer-events: none; }
+.nb-editor-body.is-covered .nb-cornell::after { content: 'Notes covered · answer from your cues, then reveal'; position: absolute; right: 12px; top: 8px; font-size: 11px; font-weight: 600; color: var(--accent-text); background: var(--accent); padding: 3px 9px; border-radius: var(--r-pill); pointer-events: none; }
+
+/* Lab report: numbered sections with a hairline between, a real data table */
+.rich-editor .nb-lab { counter-reset: labsec; margin-top: 6px; }
+.rich-editor .nb-lab-section { counter-increment: labsec; position: relative; padding: 6px 0 16px 50px; border-top: 1px solid var(--border); }
+.rich-editor .nb-lab-section:first-child { border-top: none; }
+.rich-editor .nb-lab-section::before { content: counter(labsec, decimal-leading-zero); position: absolute; left: 0; top: 18px; font-family: var(--font-serif); font-size: 24px; line-height: 1; color: var(--text-faint); pointer-events: none; }
+.rich-editor .nb-lab-section > h2 { margin: 12px 0 4px; font-size: 21px; }
+.rich-editor .nb-lab-section > p:last-child:has(> br:only-child)::before, .rich-editor .nb-lab-section > ul > li:only-child:has(> br:only-child)::before, .rich-editor .nb-lab-section > ol > li:only-child:has(> br:only-child)::before { color: var(--text-faint); pointer-events: none; content: 'Write here'; }
+.rich-editor .nb-lab-section:nth-of-type(1) > p:last-child:has(> br:only-child)::before { content: 'What question is this experiment answering?'; }
+.rich-editor .nb-lab-section:nth-of-type(2) > p:last-child:has(> br:only-child)::before { content: 'If … then … because …'; }
+.rich-editor .nb-lab-section:nth-of-type(3) > ul > li:only-child:has(> br:only-child)::before { content: 'One item per line, with amounts'; }
+.rich-editor .nb-lab-section:nth-of-type(4) > ol > li:only-child:has(> br:only-child)::before { content: 'Step by step, enough for someone to repeat it'; }
+.rich-editor .nb-lab-section:nth-of-type(5) > p:last-child:has(> br:only-child)::before { content: 'Anything you noticed that the table can’t hold'; }
+.rich-editor .nb-lab-section:nth-of-type(6) > p:last-child:has(> br:only-child)::before { content: 'What the data shows, with calculations'; }
+.rich-editor .nb-lab-section:nth-of-type(7) > p:last-child:has(> br:only-child)::before { content: 'Was the hypothesis supported? Say why.'; }
+.rich-editor .nb-lab-section:nth-of-type(8) > p:last-child:has(> br:only-child)::before { content: 'What could have skewed the results, and how much'; }
+.rich-editor table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 14px; }
+.rich-editor th, .rich-editor td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; min-width: 56px; }
+.rich-editor th { background: var(--surface-2); font-weight: 600; font-size: 12.5px; }
+.rich-editor td:first-child { color: var(--text-dim); }
+.nb-lab-rail { margin-top: 14px; padding: 12px 0 0; border-top: 1px dashed var(--border); }
+.nb-lab-rail-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.nb-lab-progress { width: 110px; height: 5px; }
+.nb-lab-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.nb-lab-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 8px; border-radius: var(--r-pill); border: 1px solid var(--border); background: var(--surface); font-size: 12px; font-weight: 600; color: var(--text-dim); font-family: inherit; cursor: pointer; }
+.nb-lab-chip:hover { background: var(--surface-2); color: var(--text); }
+.nb-lab-chip.is-filled { color: var(--text); }
+.nb-lab-dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--text-faint); flex-shrink: 0; }
+.nb-lab-chip.is-filled .nb-lab-dot { background: var(--success); border-color: var(--success); }
+.nb-lab-chip.is-action { border-style: dashed; margin-left: auto; }
+
+/* Picking a template: three cards with a sketch of each page */
+.nb-tpl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.nb-tpl-card { text-align: left; border: 1px solid var(--border); border-radius: var(--r-card); padding: 10px; background: var(--surface); cursor: pointer; display: flex; flex-direction: column; gap: 6px; font-family: inherit; color: inherit; }
+.nb-tpl-card:hover { background: var(--surface-2); }
+.nb-tpl-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
+.nb-tpl-preview { height: 88px; border-radius: var(--r-tight); background: var(--surface-2); position: relative; overflow: hidden; border: 1px solid var(--border); }
+.nb-tpl-preview i { position: absolute; display: block; background: var(--text-faint); opacity: .38; height: 3px; border-radius: 2px; }
+.nb-tpl-preview.cornell::before { content: ''; position: absolute; left: 30%; top: 0; bottom: 24px; width: 1px; background: var(--text-faint); opacity: .5; }
+.nb-tpl-preview.cornell::after { content: ''; position: absolute; left: 0; right: 0; bottom: 24px; height: 1px; background: var(--text-faint); opacity: .5; }
+.nb-tpl-title { font-weight: 600; font-size: 13px; }
+.nb-tpl-desc { font-size: 11.5px; color: var(--text-dim); line-height: 1.4; }
+
+/* LMS feed import */
+.feed-map-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+.feed-map-row:first-child { border-top: none; padding-top: 0; }
+.feed-map-info { flex: 1; min-width: 0; }
+.feed-map-info .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-map-row .select { max-width: 210px; flex-shrink: 0; }
+.feed-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.feed-row:first-of-type { border-top: none; padding-top: 0; }
+.feed-help summary { cursor: pointer; }
+.feed-help ul { padding-left: 18px; }
+.feed-help li { margin: 4px 0; line-height: 1.45; }
+
+@media (max-width: 760px) {
+  .rich-editor .nb-cornell { grid-template-columns: 1fr; min-height: 0; }
+  .rich-editor .nb-cornell-cues { border-right: none; border-bottom: 1px solid var(--border); min-height: 140px; }
+  .rich-editor .nb-cornell-notes { min-height: 300px; }
+  .rich-editor .nb-lab-section { padding-left: 34px; }
+  .rich-editor .nb-lab-section::before { font-size: 18px; top: 20px; }
+  .nb-tpl-grid { grid-template-columns: 1fr; }
+  .feed-map-row { flex-wrap: wrap; }
+  .feed-map-row .select { max-width: none; width: 100%; }
+}
+@media print {
+  #print-area .rich-editor .nb-cornell { display: grid; grid-template-columns: 30% 1fr; border-color: #999; }
+  #print-area .rich-editor .nb-cornell-cues { border-right-color: #999; background: #f4f4f4; }
+  #print-area .rich-editor .nb-cornell-summary { border-color: #999; background: #f4f4f4; }
+  #print-area .rich-editor .nb-cornell-cues::before, #print-area .rich-editor .nb-cornell-notes::before, #print-area .rich-editor .nb-cornell-summary::before, #print-area .rich-editor .nb-lab-section::before { color: #777; }
+  #print-area .rich-editor th, #print-area .rich-editor td { border-color: #999; }
+}

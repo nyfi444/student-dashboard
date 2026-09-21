@@ -11,6 +11,10 @@
         js/syllabus.js decides what is allowed to be stored. If those two
         disagree, a real field is dropped on the floor at the single most
         important moment in the product.
+     3. js/lmsfeed.js — a Canvas or Blackboard calendar feed becomes
+        assignments. A date read a day off, a class matched to the wrong
+        course, or a lecture imported as homework is exactly the kind of
+        thing nobody notices until the week it matters.
 
    Run:  node tests/run.mjs
 ──────────────────────────────────────────────────────────────── */
@@ -40,14 +44,14 @@ vm.createContext(sandbox);
 // `const` in the shared global lexical scope, and separate vm scripts do not,
 // so loading them separately would hide every `const` from the next file —
 // which is most of what this is testing.
-const FILES = ['js/utils.js', 'js/state.js', 'js/quickparse.js', 'js/syllabus.js', 'js/ai.js'];
-const EXPORTS = ['parseQuickAdd', 'sanitizeCourseDetails', 'SYLLABUS_SCHEMA', 'ASSIGNMENT_SCHEMA', 'qpTime'];
+const FILES = ['js/utils.js', 'js/state.js', 'js/quickparse.js', 'js/syllabus.js', 'js/lmsfeed.js', 'js/ai.js'];
+const EXPORTS = ['parseQuickAdd', 'sanitizeCourseDetails', 'SYLLABUS_SCHEMA', 'ASSIGNMENT_SCHEMA', 'qpTime', 'parseIcs', 'feedItemsFromEvents', 'feedCourseLabel', 'feedItemType', 'guessFeedCourse', 'unfoldIcs', 'icsCalendarName'];
 vm.runInContext(
   FILES.map(read).join('\n;\n') + `\n;globalThis.__exports = { ${EXPORTS.join(', ')} };`,
   sandbox,
   { filename: 'app-bundle.js' },
 );
-const { parseQuickAdd, sanitizeCourseDetails, SYLLABUS_SCHEMA, ASSIGNMENT_SCHEMA, qpTime } = sandbox.__exports;
+const { parseQuickAdd, sanitizeCourseDetails, SYLLABUS_SCHEMA, ASSIGNMENT_SCHEMA, qpTime, parseIcs, feedItemsFromEvents, feedCourseLabel, feedItemType, guessFeedCourse, unfoldIcs, icsCalendarName } = sandbox.__exports;
 
 let failed = 0, passed = 0;
 function check(name, actual, expected) {
@@ -137,6 +141,62 @@ check('an absence limit is a whole number', sanitizeCourseDetails({ absenceLimit
 check('an invented absence limit of -1 is refused', sanitizeCourseDetails({ absenceLimit: -1 }).absenceLimit, null);
 check('office hours without a start time are dropped', sanitizeCourseDetails({ officeHours: [{ day: 2, where: 'somewhere' }] }).officeHours, []);
 check('a day outside the week is dropped', sanitizeCourseDetails({ officeHours: [{ day: 9, start: '10:00' }] }).officeHours, []);
+
+/* ── 3. LMS calendar feeds ─────────────────────────────────────── */
+// A slice of a real Canvas feed: folded lines, escaped commas, a UTC due
+// time, an all-day event, a plain calendar entry, and a repeating meeting.
+const canvasIcs = [
+  'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Instructure Inc//Canvas Calendar//EN', "X-WR-CALNAME:Nyla's Canvas",
+  'BEGIN:VEVENT', 'DTSTART:20261002T035959Z', 'DTEND:20261002T035959Z', 'SUMMARY:Problem Set 3 [BIO-210-001]',
+  'DESCRIPTION:Chapters 7\\, 8\\, and 9\\nBring questions', 'UID:event-assignment-4471', 'URL:https://school.instructure.com/courses/1/assignments/4471', 'END:VEVENT',
+  'BEGIN:VEVENT', 'DTSTART;VALUE=DATE:20261010', 'DTEND;VALUE=DATE:20261011', 'SUMMARY:Midterm exam [CHEM-101]', 'UID:event-assignment-9', 'END:VEVENT',
+  'BEGIN:VEVENT', 'DTSTART:20261003T150000Z', 'SUMMARY:Guest lecture: careers panel [BIO-210-001]', 'UID:event-calendar-event-77', 'END:VEVENT',
+  'BEGIN:VEVENT', 'DTSTART:20260901T140000Z', 'RRULE:FREQ=WEEKLY;BYDAY=MO', 'SUMMARY:Lecture [BIO-210-001]', 'UID:event-calendar-event-78', 'END:VEVENT',
+  'BEGIN:VEVENT', 'DTSTART:20261005T035959Z', 'SUMMARY:A very long assignment title that the calendar wraps onto', '  a second folded line [PSY-100]', 'UID:event-assignment-12', 'END:VEVENT',
+  'BEGIN:VEVENT', 'DTSTART:20240115T035959Z', 'SUMMARY:Old homework [BIO-210-001]', 'UID:event-assignment-1', 'END:VEVENT',
+  'END:VCALENDAR',
+].join('\r\n');
+const feedToday = '2026-09-20';
+const evs = parseIcs(canvasIcs);
+check('ics: every entry is read', evs.length, 6);
+check('ics: folded lines are joined', evs[4].title, 'A very long assignment title that the calendar wraps onto a second folded line [PSY-100]');
+check('ics: escaped commas and newlines are unescaped', evs[0].description, 'Chapters 7, 8, and 9\nBring questions');
+check('ics: the calendar name is read', icsCalendarName(canvasIcs), "Nyla's Canvas");
+check('ics: an all-day entry has no time', evs[1].when, { date: '2026-10-10', time: null, allDay: true });
+{
+  // 03:59:59Z is 11:59pm the evening before in US time zones and 04:59 the
+  // same day in London: whatever this machine's zone is, the conversion has
+  // to agree with the platform's own Date, or every due date is off by hours.
+  const local = new Date(Date.UTC(2026, 9, 2, 3, 59, 59));
+  const expectDate = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
+  const expectTime = `${String(local.getHours()).padStart(2, '0')}:${String(local.getMinutes()).padStart(2, '0')}`;
+  check('ics: a UTC due time lands on the local date', evs[0].when.date, expectDate);
+  check('ics: and keeps the local clock time', evs[0].when.time, expectTime);
+}
+check('ics: a repeating entry is marked', evs[3].recurring, true);
+check('label: Canvas puts the course in brackets', feedCourseLabel({ title: 'Problem Set 3 [BIO-210-001]', description: '' }), { label: 'BIO-210-001', title: 'Problem Set 3' });
+check('label: Blackboard names it in the description', feedCourseLabel({ title: 'Essay 1', description: 'Course: ENGL 101\nDue by midnight' }), { label: 'ENGL 101', title: 'Essay 1' });
+check('label: Brightspace leads with the code', feedCourseLabel({ title: 'MATH 152 - Quiz 2', description: '' }), { label: 'MATH 152', title: 'Quiz 2' });
+check('label: nothing to go on', feedCourseLabel({ title: 'Reflection', description: '' }), { label: '', title: 'Reflection' });
+check('type: exams are exams', feedItemType('Midterm exam'), 'exam');
+check('type: quizzes are quizzes', feedItemType('Quiz 2: chapters 3-4'), 'quiz');
+check('type: the default is an assignment', feedItemType('Problem Set 3'), 'assignment');
+const feedCourses = [{ id: 'bio', code: 'BIO 210', name: 'Cell Biology' }, { id: 'chem', code: 'CHEM 101', name: 'General Chemistry' }, { id: 'psy', code: 'PSY 100', name: 'Intro to Psychology' }];
+check('course: a Canvas section label matches its course', guessFeedCourse('BIO-210-001', { title: '', description: '' }, feedCourses), 'bio');
+check('course: a course name in the description matches', guessFeedCourse('', { title: 'Reading', description: 'For General Chemistry, chapter 2' }, feedCourses), 'chem');
+check('course: no match is null, never a guess', guessFeedCourse('HIST-200', { title: 'Essay', description: '' }, feedCourses), null);
+{
+  const { items, skipped } = feedItemsFromEvents(evs, 'canvas', feedToday);
+  check('items: assignments, the exam, and the folded one come through', items.map(i => i.uid), ['event-assignment-4471', 'event-assignment-9', 'event-assignment-12']);
+  check('items: a plain calendar entry is left out', skipped.notDeadline, 1);
+  check('items: the weekly lecture is left out', skipped.repeating, 1);
+  check('items: last year’s homework is left out', skipped.outside, 1);
+  check('items: an all-day due date is due at night', items[1].dueTime, '23:59');
+  check('items: the bracket is stripped from the title', items[0].title, 'Problem Set 3');
+  check('items: the link is kept', items[0].url, 'https://school.instructure.com/courses/1/assignments/4471');
+  check('items: a lecture in another system is a deadline (nothing else to go on)', feedItemsFromEvents([{ uid: 'x', title: 'Lecture 4', description: '', when: { date: '2026-10-01', time: '10:00', allDay: false }, recurring: false, url: '' }], 'brightspace', feedToday).items.length, 1);
+}
+check('ics: CRLF, LF and a BOM all unfold the same', unfoldIcs('\uFEFFA:b\r\n c\nD:e'), 'A:bc\nD:e');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

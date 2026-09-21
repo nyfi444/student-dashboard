@@ -4,7 +4,7 @@ A student planner covering dashboard, calendar, assignment tracking, notebook, s
 
 No build step: plain HTML/CSS/JS, runs by opening `index.html` or serving the folder with any static file server.
 
-**Tests:** `node tests/run.mjs` and `node tests/worker-delete-account.mjs`. There are deliberately only two things covered — quick add's plain-English parsing and the syllabus contract between `SYLLABUS_SCHEMA` (js/ai.js) and `sanitizeCourseDetails` (js/syllabus.js). Those, plus what happens to a study group or club when a member deletes their account: all places where a regression is silent and costs trust (an owner who no longer exists leaves a club nobody can edit). Everything else fails loudly enough to find on its own.
+**Tests:** `node tests/run.mjs`, `node tests/worker-delete-account.mjs`, and `node tests/worker-security.mjs`. There are deliberately only a few things covered — quick add's plain-English parsing, the syllabus contract between `SYLLABUS_SCHEMA` (js/ai.js) and `sanitizeCourseDetails` (js/syllabus.js), and the LMS calendar feed parser (js/lmsfeed.js, a date read a day off or a lecture imported as homework). Those, plus what happens to a study group or club when a member deletes their account, and the Worker's security fences: all places where a regression is silent and costs trust (an owner who no longer exists leaves a club nobody can edit). Everything else fails loudly enough to find on its own.
 
 **What's free vs. paid:** without an account the app is a live demo: the full interface, nothing saved. Semester HQ Plus ($7.99/month) is what saves a semester, syncs it across devices, and turns on AI upload and study groups. See `worker/README.md` for how that's enforced (short version: a Cloudflare Worker is the only thing allowed to mark someone as paid, so it can't be bypassed from the browser).
 
@@ -28,6 +28,10 @@ All setup below is one-time, done-by-the-app-owner configuration; regular studen
      appId: '...',
    };
    ```
+
+## LMS calendar feeds (Canvas, Blackboard, Brightspace, Moodle)
+
+Assignments → **Import from Canvas** takes the private calendar feed link every LMS gives a student and turns each dated entry into an assignment (`js/lmsfeed.js`). The Worker's `/calendar-feed` route fetches the link, since the LMS sends no CORS headers; it is paid-accounts-only, https-only, refuses private and literal-IP hosts (on every redirect), caps the body at 2 MB, and only returns something that starts with `BEGIN:VCALENDAR`. The app refreshes each feed when a paid planner loads and every six hours while open, matching on the feed's own ids so moved dates move and nothing doubles. Without an account, the same parser runs on an uploaded `.ics` file.
 
 ## Setup: AI upload + payments (one Worker, both features)
 

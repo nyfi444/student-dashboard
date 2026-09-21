@@ -289,7 +289,7 @@ function onboardingSteps() {
   const firstCourse = activeCourses()[0];
   return [
     { done: activeCourses().length > 0, label: 'Add your classes', sub: 'Upload a syllabus, or add them by hand', action: 'openSemesterSetup()' },
-    { done: state.assignments.some(a => !a.sample), label: 'Get every deadline in', sub: 'Upload a syllabus or assignment sheet', action: 'openAssignmentUploadModal()' },
+    { done: state.assignments.some(a => !a.sample), label: 'Get every deadline in', sub: 'Connect Canvas, or upload a syllabus', action: 'openFeedImportModal()' },
     { done: state.decks.some(d => !d.sample), label: 'Make a flashcard deck', sub: 'Review it right before you’d forget', action: `setState({route:'studytools',subRoute:null});openDeckModal(null${firstCourse ? `,'${firstCourse.id}'` : ''})` },
     { done: (state.studyGroups || []).some(e => !e.sample), label: 'Start or join a study group', sub: 'Find a time that works for everyone', action: "setState({route:'studygroups',subRoute:null})" },
     { done: state.timerSessions.length > 0, label: 'Log a focus session', sub: 'Build a study streak', action: "setState({route:'timer',subRoute:null})" },
