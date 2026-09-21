@@ -39,7 +39,8 @@
    8. Business summary (/admin/business-summary): read-only, token-gated
       (same ADMIN_TOKEN as job 6) feed for Nyla's private business
       dashboard (semester-hq-dashboard/semester-hq-biz.html). Computes Stripe
-      subscriber breakdown (paying vs. comped, past due, canceling), list and
+      subscriber breakdown (paying vs. comped, past due, canceling), the
+      customers who have no subscription at all, list and
       net MRR, 30-day movement and collected revenue server-side (the
       dashboard can't call Stripe directly, Stripe blocks browser CORS on
       purpose); CTA-event funnel counts, recent contact-form messages, and
@@ -1423,13 +1424,62 @@ async function fetchStripeSummary(env) {
   try { books = await fetchStripeBooks(env); }
   catch (e) { books = { error: e.message }; }
 
+  // Everyone Stripe knows who has no subscription of any kind. Without this
+  // the Business OS can only ever show people who reached a subscription, so
+  // an unfinished checkout, a one-off payment or a customer made by hand in
+  // the Stripe dashboard is invisible there while sitting in Stripe's own
+  // Customers list. Built from the subscriptions already fetched above
+  // (status=all), so a customer whose only subscription is canceled counts as
+  // subscribed, not as a stranger.
+  const subscribedIds = new Set(subs
+    .map(sub => typeof sub.customer === 'string' ? sub.customer : sub.customer?.id)
+    .filter(Boolean));
+  let customersNoSub = [];
+  let customersNoSubError = '';
+  try { customersNoSub = await fetchCustomersWithoutSubscription(env, subscribedIds); }
+  catch (e) { customersNoSubError = e.message; }
+
   return {
     activeCount, mrrCents, netMrrCents, payingCount, compedCount, pastDueCount, cancelingCount,
     groupPlanCount, groupSeatCount,
     new7d, new30d, canceled30d, totalSubscriptions: subs.length, truncated,
     revenue30d, recent: recent.slice(0, 30), fetchedAt: now,
     subscribers: subscribers.slice(0, 500), books,
+    customersNoSub, customersNoSubError,
   };
+}
+
+// Stripe customers with nothing subscribed against them. `subscribedIds` is
+// every customer id seen on a subscription of any status, so this returns the
+// people a subscription-shaped list can never show. Deleted customers are
+// skipped; the rest are newest first.
+const STRIPE_CUSTOMER_PAGE_CAP = 10; // 1,000 customers, same headroom as subscriptions
+async function fetchCustomersWithoutSubscription(env, subscribedIds) {
+  const rows = [];
+  let startingAfter = '';
+  for (let page = 0; page < STRIPE_CUSTOMER_PAGE_CAP; page++) {
+    const qs = `limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+    const res = await fetch(`https://api.stripe.com/v1/customers?${qs}`, {
+      headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || `Stripe returned ${res.status}`);
+    for (const c of data.data || []) {
+      if (c.deleted || subscribedIds.has(c.id)) continue;
+      rows.push({
+        id: c.id,
+        email: c.email || '',
+        name: c.name || '',
+        created: c.created ? c.created * 1000 : null,
+        delinquent: !!c.delinquent,
+        uid: String(c.metadata?.uid || '').slice(0, 64),
+      });
+    }
+    if (!data.has_more || !data.data?.length) break;
+    startingAfter = data.data[data.data.length - 1].id;
+  }
+  rows.sort((a, b) => (b.created || 0) - (a.created || 0));
+  return rows.slice(0, 200);
 }
 
 // One row of the Business OS's subscriber list. Only what Nyla needs to
