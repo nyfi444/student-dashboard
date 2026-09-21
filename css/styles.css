@@ -1845,3 +1845,71 @@ textarea.input.ex-topic-input { resize: none; min-height: 36px; height: 36px; li
 
 /* ── Slash menu keyboard highlight ────────────────────────────────── */
 .nb-slash-item.is-active { background: var(--accent-light); }
+
+/* ══════════════════════════════════════════════════════════════════
+   Study groups + clubs, round two (appended block): the session popup,
+   weekly series, join buttons, schedule-drafted availability, club
+   quick links, member search, and the officers' attendance grid.
+   ══════════════════════════════════════════════════════════════════ */
+/* A group wearing its class's color: the next-session date block and the
+   sidebar tint follow --sg, set on the detail wrapper when there is one. */
+.sg-tinted .sg-next:not(.sg-next-empty) .sg-next-date { background: var(--sg); color: #fff; }
+.sg-series-tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 1px 6px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-dim); vertical-align: 1px; margin-left: 2px; }
+.sg-title-btn { background: none; border: none; padding: 0; text-align: left; color: inherit; cursor: pointer; display: block; width: 100%; }
+.sg-title-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.sg-join-btn { flex-shrink: 0; }
+.sg-session { cursor: pointer; }
+.sg-session .sg-rsvp, .sg-session .sg-session-actions, .sg-session .sg-join-btn, .sg-session a { cursor: default; }
+.sg-session .sg-rsvp button, .sg-session .sg-session-actions button, .sg-session .sg-join-btn { cursor: pointer; }
+.sg-going { color: var(--text-dim); }
+.sg-going .sg-stack { margin-right: 2px; }
+.sg-claim { flex-shrink: 0; white-space: nowrap; }
+.sg-task.compact .sg-claim { margin-left: auto; }
+.sg-auto-avail { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--r-card); }
+.sg-auto-avail.is-empty { border-style: solid; background: var(--surface-2); }
+.sg-color-auto { position: relative; background: var(--surface-2); color: var(--text-faint); display: inline-flex; align-items: center; justify-content: center; }
+
+/* club quick links, under the name on every tab */
+.org-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.org-link-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px 4px 9px; border-radius: var(--r-pill); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; text-decoration: none; transition: background .12s, border-color .12s; cursor: pointer; font-family: inherit; }
+.org-link-pill:hover { background: var(--surface-2); border-color: color-mix(in srgb, var(--org, var(--accent)) 50%, var(--border)); }
+.org-link-pill.is-edit { color: var(--text-dim); border-style: dashed; }
+.org-link-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+.org-cat { display: inline-flex; align-items: center; gap: 3px; }
+.org-need-answer { border-left: 4px solid var(--org, var(--accent)); }
+.org-need-answer .list-row { margin-bottom: 8px; }
+.org-need-answer .list-row:last-child { margin-bottom: 0; }
+
+/* members: search + sections */
+.org-member-search { max-width: 420px; }
+.org-member-head { display: flex; align-items: center; gap: 8px; margin: 14px 0 4px; }
+.org-member-head .assign-count { text-transform: none; letter-spacing: 0; }
+
+/* attendance grid: sticky member column, one narrow column per event */
+.org-att { overflow-x: auto; margin: 0 -20px; padding: 0 20px; }
+.org-att table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-width: 100%; }
+.org-att th, .org-att td { padding: 7px 8px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
+.org-att thead th { vertical-align: bottom; font-weight: 600; color: var(--text-dim); }
+.org-att tfoot td { border-bottom: none; font-size: 11.5px; padding-top: 8px; }
+.org-att .org-att-name { text-align: left; position: sticky; left: 0; background: var(--surface); z-index: 1; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.org-att .org-att-total { font-weight: 600; text-align: right; }
+.org-att-ev { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 64px; max-width: 96px; }
+.org-att-ev:hover .org-att-title { text-decoration: underline; }
+.org-att-date { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); }
+.org-att-title { font-size: 11px; font-weight: 600; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.org-att-ev .org-required { font-size: 9px; padding: 0 5px; }
+.org-att-cell.is-upcoming { background: color-mix(in srgb, var(--org, var(--accent)) 5%, transparent); }
+.org-att-yes { color: var(--success); display: inline-flex; }
+.org-att-no { color: var(--text-faint); display: inline-flex; }
+.org-att-none { color: var(--text-faint); }
+
+@media (max-width: 760px) {
+  .org-link-row { grid-template-columns: 1fr auto; }
+  .org-link-row .input[type=url] { grid-column: 1 / -1; }
+  .sg-task .sg-claim { order: 3; }
+  /* The club header used to squeeze the name into whatever was left beside
+     the buttons; on a phone the buttons take their own row instead. */
+  .org-head > div:nth-child(2) { flex: 1 1 calc(100% - 72px); }
+  .org-head .sg-head-actions { flex-basis: 100%; }
+  .org-att { margin: 0 -14px; padding: 0 14px; }
+}

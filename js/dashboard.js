@@ -35,7 +35,7 @@ function todayTimeline() {
   const timed = [
     ...meetingsOnDate(t).map(m => ({ kind: 'class', start: m.start, end: m.end, title: m.course.name, sub: [m.course.code, m.course.location].filter(Boolean).join(' · '), color: m.course.color, action: `openCourse('${m.course.id}')` })),
     ...customEventsOnDate(t).filter(e => e.start).map(e => ({ kind: 'block', start: e.start, end: e.end, title: e.title, sub: e.courseId ? (getCourse(e.courseId)?.code || '') : 'Time block', color: e.color || '#5a6b7b', action: `openEventModal('${e.id}')` })),
-    ...groupSessionsOnDate(t).filter(s => s.start).map(s => ({ kind: 'group', start: s.start, end: s.end, title: s.title, sub: s.groupName, color: '#6b6b6b', action: `openGroup('${s.code}','schedule')` })),
+    ...groupSessionsOnDate(t).filter(s => s.start).map(s => ({ kind: 'group', start: s.start, end: s.end, title: s.title, sub: s.groupName, color: s.color, action: s.action })),
     ...orgEventsOnDate(t).filter(e => e.start).map(e => ({ kind: 'org', start: e.start, end: e.end, title: e.title, sub: e.orgName, color: e.color, action: e.action })),
     ...state.assignments.filter(a => a.dueDate === t && !isAssignmentDone(a) && dashCourseScope(a) && a.dueTime && a.dueTime !== '23:59')
       .map(a => ({ kind: 'due', start: a.dueTime, end: null, title: a.title, sub: `Due · ${getCourse(a.courseId)?.code || ''}`, color: getCourseColor(a.courseId), action: `openAssignmentModal('${a.id}')` })),

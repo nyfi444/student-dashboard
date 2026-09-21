@@ -24,7 +24,7 @@ function attentionItems() {
     .forEach(a => out.push(item('Today', a.title, `${getCourse(a.courseId)?.code || ''} · ${a.dueTime && a.dueTime !== '23:59' ? `due ${fmtTime(a.dueTime)}` : 'due tonight'}`, `openAssignmentModal('${a.id}')`, getCourseColor(a.courseId))));
   state.todos.filter(td => !td.done && td.dueDate === t)
     .forEach(td => out.push(item('Today', td.title, 'To-do', `openTodoModal('${td.id}')`, getCourseColor(td.courseId))));
-  if (typeof groupSessionsOnDate === 'function') groupSessionsOnDate(t).forEach(s => out.push(item('Today', s.title, `${s.groupName}${s.start ? ` · ${fmtTime(s.start)}` : ''}`, `openGroup('${s.code}','schedule')`, '#6b6b6b')));
+  if (typeof groupSessionsOnDate === 'function') groupSessionsOnDate(t).forEach(s => out.push(item('Today', s.title, `${s.groupName}${s.start ? ` · ${fmtTime(s.start)}` : ''}`, s.action, s.color)));
   if (typeof orgEventsOnDate === 'function') {
     orgEventsOnDate(t).forEach(e => out.push(item('Today', e.title, `${e.orgName}${e.start ? ` · ${fmtTime(e.start)}` : ''}${e.required ? ' · required' : ''}`, e.action, e.color)));
     allOrgs().forEach(o => { const n = orgUnreadCount(o); if (n) out.push(item('Today', `${n} new announcement${n === 1 ? '' : 's'}`, o.name, `openOrg('${o.code}','announcements')`, orgColor(o))); });

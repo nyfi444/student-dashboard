@@ -21,8 +21,13 @@
    person should get officer access.
 ──────────────────────────────────────────────────────────────── */
 const ORG_KINDS = [['club', 'Club', 'flag'], ['team', 'Team', 'trophy'], ['chapter', 'Sorority or fraternity', 'shield'], ['org', 'Organization', 'users'], ['other', 'Other', 'star']];
-const ORG_EVENT_CATEGORIES = [['meeting', 'Meeting'], ['practice', 'Practice'], ['game', 'Game or match'], ['social', 'Social'], ['service', 'Service or philanthropy'], ['deadline', 'Deadline or dues'], ['other', 'Other']];
-const ORG_COLORS = ['#1B2A4A', '#8C3B1F', '#2F4A3A', '#6E2E3A', '#3b6ea5', '#7A4A68', '#1F5F6B', '#5a4a1f'];
+// [key, label, icon]: the icon is what makes a list of twelve events scannable.
+const ORG_EVENT_CATEGORIES = [['meeting', 'Meeting', 'users'], ['practice', 'Practice', 'timer'], ['game', 'Game or match', 'trophy'], ['social', 'Social', 'star'], ['service', 'Service or philanthropy', 'sparkles'], ['deadline', 'Deadline or dues', 'flag'], ['other', 'Other', 'calendar']];
+function orgCat(e) { return ORG_EVENT_CATEGORIES.find(c => c[0] === e?.category) || ORG_EVENT_CATEGORIES[ORG_EVENT_CATEGORIES.length - 1]; }
+function orgCatHtml(e) { const c = orgCat(e); return `<span class="org-cat">${icon(c[2], 11, 1.9)} ${c[1]}</span>`; }
+const ORG_COLORS = GROUP_COLORS; // shared with study groups, see studygroups.js
+const ORG_LINKS_MAX = 6;
+const ORG_LINK_SUGGESTIONS = ['GroupMe', 'Instagram', 'Website', 'Venmo', 'Google Drive', 'Discord'];
 const ORG_TABS = [['overview', 'Overview'], ['events', 'Calendar'], ['announcements', 'Announcements'], ['chat', 'Chat'], ['files', 'Files'], ['members', 'Members']];
 // Officers get one more: everything that comes with running the club, which
 // was otherwise spread across a settings gear, an invite popup, the members
@@ -102,6 +107,52 @@ function orgRsvpCounts(o, eventId) {
   let yes = 0, no = 0;
   o.memberUids.forEach(u => { const v = o.rsvp?.[u]?.[eventId]; if (v === 'yes') yes++; else if (v === 'no') no++; });
   return { yes, no, none: Math.max(0, o.memberUids.length - yes - no) };
+}
+// Officer-set links every member keeps needing: the GroupMe, the Instagram,
+// the Venmo dues go to. Shown under the club's name on every tab.
+function orgLinkList(o) {
+  return (Array.isArray(o?.links) ? o.links : []).filter(l => l && safeId(l.id) && isHttpUrl(l.url))
+    .map(l => ({ id: l.id, label: cleanStr(l.label, 30) || hostOf(l.url) || 'Link', url: String(l.url).trim() })).slice(0, ORG_LINKS_MAX);
+}
+function orgLinksHtml(o, { editable = false } = {}) {
+  const links = orgLinkList(o);
+  if (!links.length && !editable) return '';
+  return `<div class="org-links">${links.map(l => `<a class="org-link-pill" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${icon('link', 11, 2)} ${esc(l.label)}</a>`).join('')}${editable ? `<button class="org-link-pill is-edit" onclick="openOrgLinksModal('${o.code}')">${icon('pencil', 11, 2)} ${links.length ? 'Edit links' : 'Add links'}</button>` : ''}</div>`;
+}
+function openOrgLinksModal(code) {
+  const o = findOrg(code);
+  if (!o || !isOrgOfficer(o)) return;
+  const links = orgLinkList(o);
+  const row = (l = { label: '', url: '' }) => `<div class="org-link-row"><input class="input" maxlength="30" placeholder="GroupMe" value="${esc(l.label)}" aria-label="Link name"><input class="input" type="url" placeholder="https://…" value="${esc(l.url)}" aria-label="Link address"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove link" onclick="this.parentNode.remove()">${icon('x', 12, 2.2)}</button></div>`;
+  openModal(`
+    <div class="modal-head"><h3>Links for ${esc(o.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <p class="small muted mb-8">Up to ${ORG_LINKS_MAX}. They sit under the club’s name where every member can find them.</p>
+      <div id="ol-rows">${(links.length ? links : [{ label: '', url: '' }]).map(row).join('')}</div>
+      <div class="chip-row mt-8">${ORG_LINK_SUGGESTIONS.map(t => `<button type="button" class="chip" onclick="addOrgLinkRow('${t}')">+ ${t}</button>`).join('')}<button type="button" class="chip" onclick="addOrgLinkRow('')">+ Other</button></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ol-save" onclick="saveOrgLinks('${code}')">Save</button></div>
+  `);
+}
+function addOrgLinkRow(label) {
+  const rows = $('#ol-rows');
+  if (!rows || rows.children.length >= ORG_LINKS_MAX) { toast(`Up to ${ORG_LINKS_MAX} links`, 'info'); return; }
+  rows.insertAdjacentHTML('beforeend', `<div class="org-link-row"><input class="input" maxlength="30" placeholder="GroupMe" value="${esc(label)}" aria-label="Link name"><input class="input" type="url" placeholder="https://…" aria-label="Link address"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove link" onclick="this.parentNode.remove()">${icon('x', 12, 2.2)}</button></div>`);
+  rows.lastElementChild.querySelector(label ? 'input[type=url]' : 'input').focus();
+}
+async function saveOrgLinks(code) {
+  const rows = $$('#ol-rows .org-link-row');
+  const links = [];
+  for (const r of rows) {
+    const [labelEl, urlEl] = r.querySelectorAll('input');
+    const url = urlEl.value.trim(), label = cleanStr(labelEl.value, 30);
+    if (!url && !label) continue;
+    if (!isHttpUrl(url)) { toast(`“${label || url}” needs a full link starting with https://`, 'error'); urlEl.focus(); return; }
+    links.push({ id: uid(), label: label || hostOf(url), url });
+  }
+  setBtnLoading($('#ol-save'), true);
+  if (await orgWrite(code, { links: links.slice(0, ORG_LINKS_MAX) })) { closeModal(); toast(links.length ? 'Links saved' : 'Links cleared'); }
+  else setBtnLoading($('#ol-save'), false, 'Save');
 }
 function orgAnnouncementList(o) {
   return Object.values(o.announcements || {}).filter(a => a && safeId(a.id) && typeof a.text === 'string' && a.text.trim())
@@ -318,8 +369,8 @@ function orgEventRow(o, e, { showOrg = false } = {}) {
     <div class="list-row sg-session-row org-event-row ${past ? 'is-past' : ''}" style="--course:${esc(orgColor(o))}" onclick="showOrgEventModal('${o.code}','${e.id}')">
       ${dateTile(e.date)}
       <div class="row-title">
-        <div class="sg-strong">${esc(e.title)}${e.required ? ' <span class="org-required">Required</span>' : ''}</div>
-        <div class="row-meta">${[showOrg ? esc(o.name) : '', esc(ORG_EVENT_CATEGORIES.find(c => c[0] === e.category)?.[1] || ''), e.start ? `${fmtTime(e.start)}${e.end ? `–${fmtTime(e.end)}` : ''}` : '', e.location ? esc(e.location) : ''].filter(Boolean).join(' · ')}</div>
+        <div class="sg-strong">${esc(e.title)}${e.required ? ' <span class="org-required">Required</span>' : ''}${e.seriesId ? ' <span class="sg-series-tag">Weekly</span>' : ''}</div>
+        <div class="row-meta">${[showOrg ? esc(o.name) : '', orgCatHtml(e), e.start ? `${fmtTime(e.start)}${e.end ? `–${fmtTime(e.end)}` : ''}` : '', e.location ? esc(e.location) : ''].filter(Boolean).join(' · ')}</div>
       </div>
       ${!past ? orgRsvpControl(o, e, mine) : ''}
       <span class="small muted org-counts" title="${counts.yes} going, ${counts.no} can’t, ${counts.none} haven’t answered">${counts.yes} going</span>
@@ -381,6 +432,7 @@ function pageOrgDetail(o) {
         <div class="sg-eyebrow">${[kind[1], o.school ? esc(o.school) : '', `${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'}`, o.sample ? 'Sample' : ''].filter(Boolean).join(' · ')}</div>
         <h2 class="sg-title">${esc(o.name)}</h2>
         ${o.description ? `<p class="small muted sg-desc">${esc(o.description)}</p>` : ''}
+        ${orgLinksHtml(o, { editable: isOrgOfficer(o) && !o.local })}
       </div>
       <div class="sg-head-actions">
         ${signInHeaderButton()}
@@ -418,9 +470,17 @@ function orgOverviewTab(o) {
   const anns = orgAnnouncementList(o).slice(0, 3);
   const officers = orgPeople(o).filter(p => p.officer);
   const unanswered = isOrgOfficer(o) ? upcoming.filter(e => e.required).slice(0, 3).map(e => ({ e, c: orgRsvpCounts(o, e.id) })).filter(x => x.c.none) : [];
+  // Required events you haven't answered, before anything else: officers
+  // are counting on it (see orgAttendanceHtml), and it's one tap.
+  const needMine = upcoming.filter(e => e.required && !myOrgRsvp(o, e.id)).slice(0, 4);
   return `
     <div class="sg-overview">
       <div class="sg-col">
+        ${needMine.length ? `
+          <div class="card card-pad org-need-answer">
+            <div class="flex-between mb-8"><h3 class="sg-h3">${icon('bell', 14, 1.9)} ${needMine.length === 1 ? 'One required event needs your answer' : `${needMine.length} required events need your answer`}</h3></div>
+            ${needMine.map(e => `<div class="list-row sg-session-row org-event-row" onclick="showOrgEventModal('${o.code}','${e.id}')">${dateTile(e.date)}<div class="row-title"><div class="sg-strong">${esc(e.title)}</div><div class="row-meta">${fmtSessionDay(e.date)}${e.start ? ` · ${fmtTime(e.start)}` : ''}${e.location ? ` · ${esc(e.location)}` : ''}</div></div>${orgRsvpControl(o, e)}</div>`).join('')}
+          </div>` : ''}
         ${next ? `
           <div class="card sg-next org-next">
             ${(() => { const d = new Date(next.date + 'T00:00:00'); return `<div class="sg-next-date"><span>${d.toLocaleDateString('en-US', { weekday: 'short' })}</span><strong>${d.getDate()}</strong><span>${d.toLocaleDateString('en-US', { month: 'short' })}</span></div>`; })()}
@@ -429,7 +489,7 @@ function orgOverviewTab(o) {
               <div class="sg-next-title">${esc(next.title)}</div>
               <div class="small muted sg-meta-line">${next.start ? `<span>${icon('clock', 12, 1.8)} ${fmtTime(next.start)}${next.end ? `–${fmtTime(next.end)}` : ''}</span>` : ''}${next.location ? `<span>${icon('map-pin', 12, 1.8)} ${linkifyWhere(next.location)}</span>` : ''}</div>
               ${next.notes ? `<div class="small sg-notes">${linkifyText(next.notes)}</div>` : ''}
-              <div class="sg-next-foot">${orgRsvpControl(o, next)}${(() => { const goingUids = orgPeople(o).filter(p => o.rsvp?.[p.uid]?.[next.id] === 'yes'); return `<button class="sg-link org-going-link" onclick="showOrgEventModal('${o.code}','${next.id}')" aria-label="See who’s going to ${esc(next.title)}">${goingUids.length ? `<span class="sg-stack">${goingUids.slice(0, 4).map(p => personAvatar(p.uid, p.name, 22, p.officer ? orgColor(o) : '#6b6b6b')).join('')}</span>` : ''}${goingUids.length} going · See who</button>`; })()}</div>
+              <div class="sg-next-foot">${orgRsvpControl(o, next)}${joinLinkButton(next.location)}${(() => { const goingUids = orgPeople(o).filter(p => o.rsvp?.[p.uid]?.[next.id] === 'yes'); return `<button class="sg-link org-going-link" onclick="showOrgEventModal('${o.code}','${next.id}')" aria-label="See who’s going to ${esc(next.title)}">${goingUids.length ? `<span class="sg-stack">${goingUids.slice(0, 4).map(p => personAvatar(p.uid, p.name, 22, p.officer ? orgColor(o) : '#6b6b6b')).join('')}</span>` : ''}${goingUids.length} going · See who</button>`; })()}</div>
             </div>
           </div>` : `
           <div class="card card-pad sg-next-empty">
@@ -506,20 +566,34 @@ function orgMembersTab(o) {
   // Someone who joined with a position ("Treasurer") but isn't an officer
   // yet: only the founder can give officer access, so the founder is asked.
   const requests = isOrgOwner(o) ? people.filter(p => p.title && !p.officer && !p.reviewed) : [];
+  const officer = isOrgOfficer(o);
+  const memberRow = (p) => `
+        <div class="sg-person org-member" data-search="${esc((p.name + ' ' + orgRoleLabel(o, p)).toLowerCase())}">
+          ${personAvatar(p.uid, p.name, 30, p.officer ? orgColor(o) : '#6b6b6b')}
+          <div class="row-title"><div class="small sg-strong">${esc(p.name)}${p.uid === me ? ' <span class="muted">(you)</span>' : ''}</div><div class="small muted">${esc(orgRoleLabel(o, p))}${p.officer && p.title ? ` · <span class="org-officer-tag">${icon('shield', 11, 1.9)} ${p.owner ? 'Founder' : 'Officer'}</span>` : ''}</div></div>
+          ${officer && !o.local ? `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>` : p.uid === me ? `<button class="btn btn-ghost btn-sm" onclick="openMyOrgTitleModal('${o.code}')">Edit title</button>` : ''}
+        </div>`;
+  const officers = people.filter(p => p.officer), general = people.filter(p => !p.officer);
   return `
-    <div class="sg-toolbar"><div class="small muted">${people.length} member${people.length === 1 ? '' : 's'} · ${officerCount} officer${officerCount === 1 ? '' : 's'}</div><button class="btn btn-primary btn-sm" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 13, 1.8)} Invite</button></div>
+    <div class="sg-toolbar">
+      <div class="small muted">${people.length} member${people.length === 1 ? '' : 's'} · ${officerCount} officer${officerCount === 1 ? '' : 's'}</div>
+      <div class="flex-gap wrap">
+        ${officer ? `<button class="btn btn-sm" onclick="setState({orgTab:'admin'});setTimeout(()=>document.getElementById('org-attendance')?.scrollIntoView({block:'start'}),80)">${icon('check-square', 13, 1.8)} Attendance</button><button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 13, 1.8)} Export roster</button>` : ''}
+        <button class="btn btn-primary btn-sm" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 13, 1.8)} Invite</button>
+      </div>
+    </div>
+    ${people.length >= 8 ? `<input class="input org-member-search mb-8" id="org-member-search" placeholder="Search ${people.length} members by name or title" aria-label="Search members" autocomplete="off" oninput="filterOrgMembers(this.value)">` : ''}
     ${requests.map(p => `
       <div class="sg-callout org-request mb-8"><span>${icon('shield', 14, 1.8)}</span>
         <div class="small" style="flex:1"><span class="sg-strong">${esc(p.name)}</span> joined as <span class="sg-strong">${esc(p.title)}</span>. Make them an officer so they can add events, post announcements, and share files?</div>
         <div class="flex-gap"><button class="btn btn-sm" onclick="reviewOrgRole('${o.code}','${esc(p.uid)}',false)">Not now</button><button class="btn btn-primary btn-sm" onclick="reviewOrgRole('${o.code}','${esc(p.uid)}',true)">Make officer</button></div>
       </div>`).join('')}
-    <div class="card card-pad">
-      ${people.map(p => `
-        <div class="sg-person org-member">
-          ${personAvatar(p.uid, p.name, 30, p.officer ? orgColor(o) : '#6b6b6b')}
-          <div class="row-title"><div class="small sg-strong">${esc(p.name)}${p.uid === me ? ' <span class="muted">(you)</span>' : ''}</div><div class="small muted">${esc(orgRoleLabel(o, p))}${p.officer && p.title ? ` · <span class="org-officer-tag">${icon('shield', 11, 1.9)} ${p.owner ? 'Founder' : 'Officer'}</span>` : ''}</div></div>
-          ${isOrgOfficer(o) && !o.local ? `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>` : p.uid === me ? `<button class="btn btn-ghost btn-sm" onclick="openMyOrgTitleModal('${o.code}')">Edit title</button>` : ''}
-        </div>`).join('')}
+    <div class="card card-pad" id="org-member-list">
+      <div class="sg-section-label org-member-head" style="margin-top:0">Officers <span class="assign-count">${officers.length}</span></div>
+      ${officers.map(memberRow).join('')}
+      <div class="sg-section-label org-member-head">${esc(orgGeneralLabel(o))} <span class="assign-count">${general.length}</span></div>
+      ${general.length ? general.map(memberRow).join('') : `<p class="small muted">No one yet. <button class="sg-link" onclick="openOrgInviteModal('${o.code}')">Invite members</button></p>`}
+      <p class="small muted org-member-none" hidden>No one matches that.</p>
     </div>
     <details class="card card-pad org-roles-help mt-16">
       <summary class="sg-strong small">How roles work</summary>
@@ -531,6 +605,61 @@ function orgMembersTab(o) {
       </div>
     </details>`;
 }
+function filterOrgMembers(q) {
+  const needle = String(q || '').trim().toLowerCase();
+  let shown = 0;
+  $$('#org-member-list .org-member').forEach(el => { const on = !needle || el.dataset.search.includes(needle); el.hidden = !on; if (on) shown++; });
+  $$('#org-member-list .org-member-head').forEach(el => { el.hidden = !!needle; });
+  const none = $('#org-member-list .org-member-none');
+  if (none) none.hidden = shown > 0;
+}
+
+/* ── Attendance: who said they'd come, across events ─────────────
+   The per-event popup answers "who's coming Tuesday". This answers the
+   question officers of a team or chapter actually ask at the end of the
+   month: who keeps skipping the required ones. Rows are members, columns
+   are the last few events plus what's next, and it exports as a CSV. */
+function orgAttendanceEvents(o, { past = 6, upcoming = 2 } = {}) {
+  const all = orgEventList(o);
+  return [...all.filter(orgEventPast).slice(-past), ...all.filter(e => !orgEventPast(e)).slice(0, upcoming)];
+}
+function orgAttendanceHtml_officer(o) {
+  const events = orgAttendanceEvents(o);
+  const people = orgPeople(o);
+  if (!events.length) return `<p class="small muted">Once there are events, this shows who said they’d come to each one.</p>`;
+  const answer = (p, e) => o.rsvp?.[p.uid]?.[e.id] || '';
+  const cell = (v) => v === 'yes' ? `<span class="org-att-yes" title="Going">${icon('check', 12, 2.6)}</span>` : v === 'no' ? `<span class="org-att-no" title="Can’t">${icon('x', 11, 2.4)}</span>` : `<span class="org-att-none" title="No answer">·</span>`;
+  const score = (p) => events.filter(e => answer(p, e) === 'yes').length;
+  const rows = [...people].sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
+  return `
+    <div class="org-att"><table>
+      <thead><tr><th class="org-att-name">Member</th>${events.map(e => `<th title="${esc(e.title)} · ${esc(fmtDate(e.date))}"><button class="org-att-ev" onclick="showOrgEventModal('${o.code}','${e.id}')"><span class="org-att-date">${esc(fmtDate(e.date, { month: 'short', day: 'numeric' }))}</span><span class="org-att-title">${esc(e.title)}</span>${e.required ? `<span class="org-required">Req</span>` : ''}</button></th>`).join('')}<th class="org-att-total">Going</th></tr></thead>
+      <tbody>${rows.map(p => `<tr><td class="org-att-name"><span class="sg-strong">${esc(p.name)}</span>${p.title ? ` <span class="muted">· ${esc(p.title)}</span>` : ''}</td>${events.map(e => `<td class="org-att-cell ${orgEventPast(e) ? '' : 'is-upcoming'}">${cell(answer(p, e))}</td>`).join('')}<td class="org-att-total">${score(p)}<span class="muted">/${events.length}</span></td></tr>`).join('')}</tbody>
+      <tfoot><tr><td class="org-att-name muted">Going</td>${events.map(e => { const c = orgRsvpCounts(o, e.id); return `<td class="org-att-cell muted" title="${c.yes} going, ${c.no} can’t, ${c.none} no answer">${c.yes}</td>`; }).join('')}<td></td></tr></tfoot>
+    </table></div>`;
+}
+function csvCell(v) { const t = String(v ?? ''); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; }
+function downloadCsv(name, rows) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + rows.map(r => r.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv' }));
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+// Roster + every event's RSVPs, one member per row. What a treasurer pastes
+// into the sheet they already keep.
+function downloadOrgRosterCsv(code) {
+  const o = findOrg(code);
+  if (!o || !isOrgOfficer(o)) return;
+  const events = orgEventList(o);
+  const people = orgPeople(o);
+  const head = ['Name', 'Title', 'Role', 'Joined', ...events.map(e => `${e.date} ${e.title}${e.required ? ' (required)' : ''}`)];
+  const rows = people.map(p => [p.name, p.title, p.owner ? 'Founder' : p.officer ? 'Officer' : orgGeneralLabel(o), p.joinedAt ? iso(new Date(p.joinedAt)) : '', ...events.map(e => ({ yes: 'Going', no: "Can't" }[o.rsvp?.[p.uid]?.[e.id]] || ''))]);
+  downloadCsv(`${o.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'club'}-roster.csv`, [head, ...rows]);
+  toast(`Exported ${people.length} member${people.length === 1 ? '' : 's'}`);
+}
+
 /* ── Admin: one page for running a club or team ───────────────────
    Officers had to hunt: the join link lived in a popup, roles in the
    members list, club details behind a gear, and paying for everyone's
@@ -586,6 +715,12 @@ function orgAdminTab(o) {
         ${noEvents ? `<p class="small muted mt-8">Nothing on the calendar yet. The first meeting or practice you add shows up for every member.</p>` : ''}
       </div>
 
+      <div class="card card-pad" id="org-attendance">
+        <div class="flex-between mb-8 wrap" style="gap:8px"><h3 class="sg-h3">${icon('check-square', 14, 1.8)} Attendance</h3>${orgEventList(o).length ? `<button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 13, 1.8)} Export CSV</button>` : ''}</div>
+        <p class="small muted mb-8">Who said they’d come, across the last few events and what’s next. Tap an event to see the full list or remind people to answer.</p>
+        ${orgAttendanceHtml_officer(o)}
+      </div>
+
       ${orgPlanAdminCard(o, plan)}
 
       <div class="card card-pad">
@@ -596,6 +731,7 @@ function orgAdminTab(o) {
           <div class="field"><label for="oa-school">School</label><input class="input" id="oa-school" maxlength="80" value="${esc(o.school || '')}"></div>
         </div>
         <div class="field"><label for="oa-desc">Description</label><input class="input" id="oa-desc" maxlength="200" value="${esc(o.description || '')}"></div>
+        <div class="field"><label>Links <span class="muted">(GroupMe, Instagram, where dues go)</span></label>${orgLinksHtml(o, { editable: true })}</div>
         <div class="field"><label>Color</label><div class="org-colors" role="group" aria-label="Color">${ORG_COLORS.map((c, i) => `<button type="button" class="page-color ${orgColor(o) === c ? 'active' : ''}" style="background:${c}" aria-label="Color ${i + 1}" aria-pressed="${orgColor(o) === c}" onclick="orgWrite('${o.code}',{color:'${c}'})"></button>`).join('')}</div></div>
         <button class="btn btn-primary btn-sm" onclick="saveOrgAdminDetails('${o.code}')">Save details</button>
       </div>
@@ -693,14 +829,14 @@ function showOrgEventModal(code, eventId) {
   openModal(`
     <div class="modal-head"><h3>${esc(e.title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
-      <div class="sg-eyebrow">${esc(o.name)} · ${esc(ORG_EVENT_CATEGORIES.find(c => c[0] === e.category)?.[1] || 'Event')}${e.required ? ' · <span class="org-required">Required</span>' : ''}</div>
+      <div class="sg-eyebrow">${esc(o.name)} · ${orgCatHtml(e)}${e.seriesId ? ' · Weekly' : ''}${e.required ? ' · <span class="org-required">Required</span>' : ''}</div>
       <div class="small sg-meta-line mt-8">
         <span>${icon('calendar', 12, 1.8)} ${esc(fmtDateLong(e.date))}</span>
         ${e.start ? `<span>${icon('clock', 12, 1.8)} ${fmtTime(e.start)}${e.end ? `–${fmtTime(e.end)}` : ''}</span>` : ''}
         ${e.location ? `<span>${icon('map-pin', 12, 1.8)} ${linkifyWhere(e.location)}</span>` : ''}
       </div>
       ${e.notes ? `<div class="small sg-notes mt-8">${linkifyText(e.notes)}</div>` : ''}
-      ${!past ? `<div class="flex-gap wrap mt-16" style="align-items:center">${orgRsvpControl(o, e)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 13, 1.8)} Add to calendar app</button></div>` : ''}
+      ${!past ? `<div class="flex-gap wrap mt-16" style="align-items:center">${orgRsvpControl(o, e)}${joinLinkButton(e.location)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 13, 1.8)} Add to calendar app</button></div>` : ''}
       <div class="divider"></div>
       ${orgAttendanceHtml(o, e)}
     </div>
@@ -712,6 +848,7 @@ function openOrgEventModal(code, eventId) {
   const o = findOrg(code);
   if (!o || !isOrgOfficer(o)) return;
   const e = eventId ? orgEventList(o).find(x => x.id === eventId) : null;
+  const later = e?.seriesId ? orgEventList(o).filter(x => x.seriesId === e.seriesId && x.date > e.date).length : 0;
   const v = e || { title: '', category: 'meeting', date: todayIso(), start: '19:00', end: '20:00', location: '', required: false, notes: '' };
   openModal(`
     <div class="modal-head"><h3>${e ? 'Edit event' : `New event for ${esc(o.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
@@ -728,7 +865,8 @@ function openOrgEventModal(code, eventId) {
       <div class="field"><label for="oe-where">Where</label><input class="input" id="oe-where" maxlength="120" value="${esc(v.location)}" placeholder="Student Union 210, or a Zoom link"></div>
       <div class="field"><label for="oe-notes">Details <span class="muted">(optional)</span></label><textarea class="input" id="oe-notes" maxlength="1000" placeholder="Wear your jersey. Dues are due at the door.">${esc(v.notes)}</textarea></div>
       <label class="checkbox-row small"><input type="checkbox" id="oe-required" ${v.required ? 'checked' : ''}><span>Required for members</span></label>
-      ${!e ? `<div class="field-row mt-8" style="align-items:center"><label class="checkbox-row small" style="margin:0"><input type="checkbox" id="oe-repeat" onchange="$('#oe-weeks').disabled=!this.checked"><span>Repeat weekly for</span></label><select class="select" id="oe-weeks" style="max-width:110px" disabled>${[2, 4, 6, 8, 10, 12, 15].map(n => `<option value="${n}" ${n === 8 ? 'selected' : ''}>${n} weeks</option>`).join('')}</select></div>` : ''}
+      ${!e ? `<div class="field-row mt-8" style="align-items:center"><label class="checkbox-row small" style="margin:0"><input type="checkbox" id="oe-repeat" onchange="$('#oe-weeks').disabled=!this.checked"><span>Repeat weekly for</span></label><select class="select" id="oe-weeks" style="max-width:110px" disabled aria-label="How many weeks">${[2, 4, 6, 8, 10, 12, 15].map(n => `<option value="${n}" ${n === 8 ? 'selected' : ''}>${n} weeks</option>`).join('')}</select></div>` : ''}
+      ${e && later > 0 ? `<label class="checkbox-row small mt-8"><input type="checkbox" id="oe-series"><span>Also update the ${later} later event${later === 1 ? '' : 's'} in this weekly series (they keep their dates)</span></label>` : ''}
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="oe-save" onclick="saveOrgEvent('${o.code}',${e ? `'${e.id}'` : 'null'})">${e ? 'Save' : 'Add to calendar'}</button></div>
   `);
@@ -741,8 +879,17 @@ async function saveOrgEvent(code, eventId) {
   if (!title || !date) { toast('Add a name and a date', 'error'); return; }
   const base = { title: title.slice(0, 120), category: $('#oe-cat').value, start: $('#oe-start').value || '', end: $('#oe-end').value || '', location: $('#oe-where').value.trim().slice(0, 120), notes: $('#oe-notes').value.trim().slice(0, 1000), required: $('#oe-required').checked };
   const ops = {};
+  let laterCount = 0;
   if (eventId) {
     Object.entries({ ...base, date }).forEach(([k, val]) => { ops[`events.${eventId}.${k}`] = val; });
+    // Practice moved from 6 to 7 for the rest of the season: the later
+    // events in the series take the new details but keep their own dates.
+    const cur = orgEventList(o).find(x => x.id === eventId);
+    if ($('#oe-series')?.checked && cur?.seriesId) {
+      const later = orgEventList(o).filter(x => x.seriesId === cur.seriesId && x.date > cur.date);
+      laterCount = later.length;
+      later.forEach(x => Object.entries(base).forEach(([k, val]) => { ops[`events.${x.id}.${k}`] = val; }));
+    }
   } else {
     const weeks = $('#oe-repeat')?.checked ? Number($('#oe-weeks').value) || 1 : 1;
     const seriesId = weeks > 1 ? uid() : null;
@@ -752,7 +899,7 @@ async function saveOrgEvent(code, eventId) {
     }
   }
   setBtnLoading($('#oe-save'), true);
-  if (await orgWrite(code, ops)) { closeModal(); const n = Object.keys(ops).length; toast(eventId ? 'Event updated' : n > 1 ? `Added ${n} weekly events` : 'Event added. Members will see it on their calendar.'); }
+  if (await orgWrite(code, ops)) { closeModal(); const n = Object.keys(ops).length; toast(eventId ? (laterCount ? `Updated this and ${laterCount} later event${laterCount === 1 ? '' : 's'}` : 'Event updated') : n > 1 ? `Added ${n} weekly events` : 'Event added. Members will see it on their calendar.'); }
   else setBtnLoading($('#oe-save'), false, eventId ? 'Save' : 'Add to calendar');
 }
 function deleteOrgEvent(code, eventId) {
@@ -1249,6 +1396,7 @@ function showOrgPreview(code, data) {
         <div class="small muted">${[kind[1], o.school ? esc(o.school) : '', `${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}</div>
         ${o.description ? `<div class="small mt-8">${esc(o.description)}</div>` : ''}
         ${next ? `<div class="small muted mt-8">Next: ${esc(next.title)}, ${fmtSessionDay(next.date)}${next.start ? ` at ${fmtTime(next.start)}` : ''}</div>` : ''}
+        ${orgLinksHtml(o)}
       </div>
       <div class="mt-16">${orgRoleFieldsHtml(o, '', 'oj')}</div>
     </div>
@@ -1420,11 +1568,13 @@ function createSampleOrg() {
   const nextDow = (dow) => addDays(t, ((dow - new Date().getDay() + 7) % 7) || 7);
   const ev = (title, category, date, start, end, location, extra = {}) => { const id = uid(); return [id, { id, title, category, date, start, end, location, notes: '', required: false, createdBy: ava, createdAt: now - 5 * D, ...extra }]; };
   const events = Object.fromEntries([
-    ev('General meeting', 'meeting', nextDow(2), '19:00', '20:00', 'Student Union 210', { required: true, notes: 'Voting on the spring trip. Bring ideas for the networking night.' }),
+    ev('General meeting', 'meeting', nextDow(2), '19:00', '20:00', 'Student Union 210', { required: true, notes: 'Voting on the spring trip. Bring ideas for the networking night.', seriesId: 'sample-gm' }),
     ev('Networking night with alumni', 'social', addDays(t, 9), '18:30', '20:30', 'Business School atrium', { notes: 'Business casual. Bring a few copies of your resume.' }),
     ev('Dues deadline', 'deadline', addDays(t, 5), '', '', '', { required: true, notes: '$40 for the semester. Venmo the treasurer.' }),
     ev('Food bank volunteering', 'service', addDays(t, 12), '10:00', '13:00', 'Downtown food bank'),
-    ev('General meeting', 'meeting', addDays(nextDow(2), 7), '19:00', '20:00', 'Student Union 210', { required: true }),
+    ev('General meeting', 'meeting', addDays(nextDow(2), 7), '19:00', '20:00', 'Student Union 210', { required: true, seriesId: 'sample-gm' }),
+    ev('General meeting', 'meeting', addDays(nextDow(2), -7), '19:00', '20:00', 'Student Union 210', { required: true, seriesId: 'sample-gm', createdAt: now - 20 * D }),
+    ev('Resume workshop', 'social', addDays(t, -4), '18:00', '19:30', 'Business School 114', { createdAt: now - 12 * D }),
   ]);
   const ids = Object.keys(events);
   const H = 3600000;
@@ -1448,7 +1598,8 @@ function createSampleOrg() {
     messages,
     lastMessage: { uid: noah, name: 'Noah', text: messages[3].text, at: messages[3].at },
     events,
-    rsvp: { [ava]: { [ids[0]]: 'yes', [ids[1]]: 'yes' }, [noah]: { [ids[0]]: 'yes', [ids[3]]: 'yes' }, [lena]: { [ids[0]]: 'no', [ids[1]]: 'yes' }, [sam]: { [ids[1]]: 'yes' } },
+    rsvp: { [ava]: { [ids[0]]: 'yes', [ids[1]]: 'yes', [ids[5]]: 'yes', [ids[6]]: 'yes' }, [noah]: { [ids[0]]: 'yes', [ids[3]]: 'yes', [ids[5]]: 'yes', [ids[6]]: 'yes' }, [lena]: { [ids[0]]: 'no', [ids[1]]: 'yes', [ids[5]]: 'yes', [ids[6]]: 'no' }, [sam]: { [ids[1]]: 'yes', [ids[6]]: 'yes' }, [jade]: { [ids[5]]: 'yes' } },
+    links: [{ id: 'sample-groupme', label: 'GroupMe', url: 'https://groupme.com/' }, { id: 'sample-ig', label: 'Instagram', url: 'https://instagram.com/' }, { id: 'sample-venmo', label: 'Venmo for dues', url: 'https://venmo.com/' }],
     announcements: Object.fromEntries([
       { text: 'Dues are due this Friday. $40 for the semester, Venmo @noah-treasurer with your name in the note.', uid: noah, name: 'Noah', at: now - 20 * 3600000, pinned: true },
       { text: 'Huge thank you to everyone who came to the resume workshop! Slides are in the drive: https://example.com/slides', uid: ava, name: 'Ava', at: now - 3 * D },
