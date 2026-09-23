@@ -21,6 +21,13 @@ const TRACKED_EVENTS = [
   // student has reviewed it, and says how much of it they actually kept.
   // That second number is the real accuracy metric — see detail fields below.
   'syllabus_read', 'syllabus_kept',
+  // The site's "Start a group plan" button, the top of the group funnel.
+  'group_start_click',
+  // First-week setup, from the app: an account's first class, its first
+  // deadlines (from a syllabus or an LMS feed), its first group. Each fires
+  // at most once per account, only for accounts new since the counts were
+  // switched on (js/setupcounts.js), and carries nothing but a source label.
+  'setup_class_added', 'setup_deadlines_in', 'setup_group_joined',
 ];
 // The only extra fields an event may carry. Counts and short labels about the
 // document, never anything from inside it: no course names, no file names, no

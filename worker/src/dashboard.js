@@ -4,7 +4,8 @@
    computed server-side. Job 8 in index.js.
 ──────────────────────────────────────────────────────────────── */
 
-import { queryRecentDocs, runFirestoreQuery } from './firebase.js';
+import { listFirestoreCollection, queryRecentDocs, runFirestoreQuery } from './firebase.js';
+import { groupAdmins } from './groups.js';
 import { adminTokenOk } from './http.js';
 import { stripeGetJson } from './stripe.js';
 import { finishSubscriberRows, subscriberRow } from './subscribers.js';
@@ -344,7 +345,33 @@ async function fetchEventFunnel(env) {
     d30[r.event] = (d30[r.event] || 0) + 1;
     if (t && now - t <= 7 * 24 * 60 * 60 * 1000) d7[r.event] = (d7[r.event] || 0) + 1;
   }
-  return { d7, d30, syllabus: syllabusHealth(rows), capped: rows.length >= 5000 };
+  return { d7, d30, syllabus: syllabusHealth(rows), capped: rows.length >= 5000, ...eventFunnelExtras(rows) };
+}
+
+// The same 30 days, cut three more ways: per UTC day, where "Get started"
+// was clicked from, and when each event last fired (within what was read,
+// so an event quiet for 30 days has no entry). Paths come from the public
+// /track-event route, so only the busiest are listed by name.
+const GET_STARTED_PATH_CAP = 40;
+export function eventFunnelExtras(rows) {
+  const byDay = {}, lastFired = {}, paths = {};
+  for (const r of rows) {
+    const t = Date.parse(r.createdAt || '');
+    if (!t || !r.event) continue;
+    const day = new Date(t).toISOString().slice(0, 10);
+    const d = byDay[day] || (byDay[day] = {});
+    d[r.event] = (d[r.event] || 0) + 1;
+    if (!lastFired[r.event] || t > lastFired[r.event]) lastFired[r.event] = t;
+    if (r.event === 'get_started_click') {
+      const path = String(r.path || '').slice(0, 120) || '(none)';
+      paths[path] = (paths[path] || 0) + 1;
+    }
+  }
+  const ranked = Object.entries(paths).sort((a, b) => b[1] - a[1]);
+  const getStartedByPath = Object.fromEntries(ranked.slice(0, GET_STARTED_PATH_CAP));
+  const rest = ranked.slice(GET_STARTED_PATH_CAP).reduce((n, [, c]) => n + c, 0);
+  if (rest) getStartedByPath['(other)'] = (getStartedByPath['(other)'] || 0) + rest;
+  return { byDay, getStartedByPath, lastFired };
 }
 
 /* ── Is the wedge actually working? ───────────────────────────────
@@ -354,7 +381,7 @@ async function fetchEventFunnel(env) {
    — the honest one — how much of what it found the student kept after
    looking at it. A high parse rate with a low keep rate means the
    parser is confidently wrong, which is worse than failing. */
-function syllabusHealth(rows) {
+export function syllabusHealth(rows) {
   const reads = rows.filter(r => r.event === 'syllabus_read');
   const kepts = rows.filter(r => r.event === 'syllabus_kept');
   const parsed = reads.filter(r => r.detail?.outcome === 'parsed');
@@ -406,5 +433,45 @@ export async function fetchErrorSummary(env) {
     warn24h: warnings.filter(inLastDay).length,
     warn7d: warnings.length,
     latest: errors.slice(0, 8).map(r => ({ source: r.source, feature: r.feature || '', message: r.message, url: r.url, createdAt: r.createdAt })),
+    // Warnings too: a syllabus that wouldn't read is logged as a warning,
+    // so it never reaches `latest`, and this is the only place it shows.
+    byFeature24h: errorsByFeature(rows.filter(inLastDay)),
+  };
+}
+export function errorsByFeature(rows) {
+  const out = {};
+  for (const r of rows) {
+    const f = String(r.feature || 'unknown').slice(0, 40);
+    const row = out[f] || (out[f] = { errors: 0, warnings: 0 });
+    if (r.level === 'warn') row.warnings++; else row.errors++;
+  }
+  return out;
+}
+
+/* ── Group plans, one line each ───────────────────────────────────
+   Straight from the groupPlans docs groups.js writes: how many seats
+   were bought, how many people took one, and who to write to (the first
+   admin only). Never a member's name or email. Plans that never finished
+   checkout are listed too, with their status, since a started-and-dropped
+   group plan is worth a follow-up. */
+export async function fetchGroupPlanList(env) {
+  const plans = await listFirestoreCollection(env, 'groupPlans');
+  return plans.map(groupPlanListRow)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .slice(0, 200);
+}
+export function groupPlanListRow(plan) {
+  const created = Date.parse(plan.createdAt || '');
+  return {
+    planId: plan.id,
+    name: String(plan.name || '').slice(0, 80),
+    kind: plan.kind || 'club',
+    status: plan.status || 'pending',
+    seatsBought: Number(plan.seats) || 0,
+    seatsRequested: Number(plan.requestedSeats) || 0,
+    membersJoined: Number(plan.memberCount) || 0,
+    createdAt: Number.isFinite(created) ? created : null,
+    cancelAtPeriodEnd: !!plan.cancelAtPeriodEnd,
+    adminEmail: String(groupAdmins(plan)[0]?.email || '').slice(0, 320),
   };
 }
