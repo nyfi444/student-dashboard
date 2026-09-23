@@ -1,6 +1,16 @@
-# Every push and pull request: syntax-check every script and run the tests.
-# There is no build step, so this is the whole check. It has no secrets and
-# no write access to anything.
+# Every push and pull request, in three stages:
+#
+#   checks   syntax-check every script and run the node tests. Seconds, no
+#            network, no browser — this is what fails fastest when something
+#            is plainly wrong.
+#   browser  open the real app in Chromium and iOS Safari and use it. There
+#            is no build step, so an uncaught error in one file IS the type
+#            checker; only a browser sees it.
+#   smoke    after a push to main, once GitHub Pages has published: check
+#            that what is live is this build and that the Worker still
+#            refuses what it should.
+#
+# None of it has secrets or write access to anything.
 name: Tests
 
 on:
@@ -11,18 +21,66 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
       - name: Syntax-check every script
         run: |
-          for f in js/*.js sw.js worker/src/index.js; do node --check "$f"; done
+          for f in js/*.js sw.js worker/src/*.js; do node --check "$f"; done
       - name: Run the tests
         run: |
           node tests/run.mjs
           node tests/worker-delete-account.mjs
           node tests/worker-security.mjs
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+      - name: Install the test runner
+        working-directory: tests/e2e
+        run: npm ci
+      # Downloading two browsers takes longer than the tests do, so keep them
+      # between runs and key the cache on the Playwright version that asked
+      # for them.
+      - name: Cache browsers
+        id: browser-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('tests/e2e/package-lock.json') }}
+      - name: Install browsers
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium webkit
+      - name: Use the app
+        working-directory: tests/e2e
+        run: npx playwright test
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          retention-days: 7
+
+  smoke:
+    # Only for what actually reaches students: a push to main, after the
+    # other two stages agreed the code is sound.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [checks, browser]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+      # Pages publishes a minute or two after the push; --wait polls for this
+      # build's version rather than sleeping and hoping.
+      - name: Check what is live
+        run: node tests/smoke.mjs --wait 240

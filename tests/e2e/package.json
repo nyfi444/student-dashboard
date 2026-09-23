@@ -1,0 +1,14 @@
+{
+  "name": "semester-hq-e2e",
+  "private": true,
+  "description": "Browser tests for the app. Kept in its own folder with its own package.json so the app itself stays a no-build-step static site: nothing in here ships to a student.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

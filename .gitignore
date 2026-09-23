@@ -2,3 +2,9 @@
 .claude/
 node_modules/
 worker/.wrangler/
+
+# Browser test output (tests/e2e)
+test-results/
+playwright-report/
+blob-report/
+.last-run.json
