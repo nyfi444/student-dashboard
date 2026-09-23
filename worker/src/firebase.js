@@ -146,6 +146,10 @@ export async function batchGetFirestoreDocs(env, paths) {
 // fields change) or { path, remove: true }, optionally with exists (true or
 // false) or updateTime as a condition. Resolves false when a condition
 // didn't hold, so the caller can re-read and try again.
+// `increments` ({ fieldPath: n }) adds to counters server-side, so two
+// writers counting at once can't overwrite each other (see usage.js). A
+// field path segment that isn't a plain identifier has to be quoted in
+// backticks, as Firestore's own field path syntax requires.
 export async function commitFirestore(env, writes) {
   const token = await getFirebaseAccessToken(env);
   const root = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
@@ -162,7 +166,8 @@ export async function commitFirestore(env, writes) {
       // say — would silently vanish from their data.
       const fields = w.fields || {};
       const paths = [...Object.keys(fields), ...(w.clear || [])];
-      return { update: { name, fields: toFirestoreFields(fields) }, updateMask: { fieldPaths: paths }, ...condition };
+      const transforms = w.increments ? { updateTransforms: Object.entries(w.increments).map(([fieldPath, n]) => ({ fieldPath, increment: { integerValue: String(Math.trunc(n)) } })) } : {};
+      return { update: { name, fields: toFirestoreFields(fields) }, updateMask: { fieldPaths: paths }, ...transforms, ...condition };
     }),
   };
   const res = await fetch(`https://firestore.googleapis.com/v1/${root}:commit`, {
@@ -250,6 +255,9 @@ export async function queryRecentErrors(env, limit) {
   return queryRecentDocs(env, 'errors', limit);
 }
 function toFirestoreValue(v) {
+  // A deliberate "not known" (the ledger's traffic on a day Cloudflare
+  // can't answer for). Before this it was stored as the string "null".
+  if (v === null) return { nullValue: null };
   if (typeof v === 'boolean') return { booleanValue: v };
   if (typeof v === 'number') return { integerValue: String(Math.trunc(v)) };
   if (v instanceof Date) return { timestampValue: v.toISOString() };
