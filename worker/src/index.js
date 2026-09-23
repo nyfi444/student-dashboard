@@ -96,7 +96,7 @@ export default {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     try {
-      const res = await routeRequest(request, env);
+      const res = await routeRequest(request, env, ctx);
       if (res.status >= 500 && pathname !== '/log-error') {
         ctx.waitUntil(res.clone().text().then(detail => logServerIssue(env, featureForPath(pathname), `${request.method} ${pathname} returned ${res.status}`, null, { detail: detail.slice(0, 300) })));
       }
@@ -116,7 +116,7 @@ export default {
   },
 };
 
-async function routeRequest(request, env) {
+async function routeRequest(request, env, ctx) {
   const url = new URL(request.url);
   const origin = request.headers.get('Origin') || '';
 
@@ -146,7 +146,7 @@ async function routeRequest(request, env) {
 
   if (url.pathname === '/v1/messages') {
     if (!(await checkRateLimit(env, ip, 'ai', 20))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
-    return handleAiProxy(request, env, origin);
+    return handleAiProxy(request, env, origin, ctx);
   }
   if (url.pathname === '/create-checkout-session') {
     if (!(await checkRateLimit(env, ip, 'checkout', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);

@@ -6,6 +6,7 @@
 import { logServerIssue } from './diagnostics.js';
 import { readFirestoreDoc, verifyFirebaseIdToken } from './firebase.js';
 import { corsHeaders, jsonError } from './http.js';
+import { noteAiUsage } from './usage.js';
 
 // claude-sonnet-5 is the default (see js/ai.js): newer than sonnet-4.6 and a
 // third cheaper on both sides ($2/$10 per MTok vs $3/$15). claude-opus-5 is
@@ -35,7 +36,9 @@ const ANTHROPIC_VERSION = '2023-06-01';
 // ID token) that they're signed in AND that licenses/{uid}.paid is true. This
 // check has to live here, not just in the client (js/ai.js): anyone can call
 // this endpoint directly with curl, bypassing whatever the UI does.
-export async function handleAiProxy(request, env, origin) {
+// `ctx` is the request's ExecutionContext, used only to record what the call
+// cost after the reply has gone (see usage.js).
+export async function handleAiProxy(request, env, origin, ctx) {
   if (!env.ANTHROPIC_API_KEY) return jsonError('Server misconfigured: ANTHROPIC_API_KEY secret not set.', 500, env, origin);
   if (!env.FIREBASE_PROJECT_ID) return jsonError('Server misconfigured: FIREBASE_PROJECT_ID not set.', 500, env, origin);
 
@@ -116,6 +119,11 @@ export async function handleAiProxy(request, env, origin) {
     await logServerIssue(env, 'ai', 'Anthropic rate limited this account', null, { model: body.model });
     return jsonError('Semester HQ is busy right now — a lot of people are setting up at once. Give it a minute and try again.', 429, env, origin, { upstream: true });
   }
+  // What it cost, per feature. `feature` is a label the app sends with each
+  // call (callClaude in js/ai.js) and is never forwarded to Anthropic; an
+  // unknown or missing one counts as 'untagged'. After the reply, never in
+  // its way.
+  if (upstream.ok) noteAiUsage(env, ctx, { feature: body.feature, model: body.model, text });
   if (!upstream.ok && upstream.status < 500) {
     let upstreamError = {};
     try { upstreamError = JSON.parse(text).error || {}; } catch {}
