@@ -37,7 +37,8 @@ async function redirectToCheckout() {
       headers: { 'content-type': 'application/json' },
       // The Worker takes the buyer's identity from the token, never from a
       // uid in the body, so nobody can start a checkout in someone else's name.
-      body: JSON.stringify(_fbUser ? { idToken: await _fbUser.getIdToken() } : {}),
+      // A link code kept from the way in goes too (see linkCode in js/config.js).
+      body: JSON.stringify({ ...(_fbUser ? { idToken: await _fbUser.getIdToken() } : {}), ...(linkCode() ? { via: linkCode() } : {}) }),
     });
     const data = await res.json();
     if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout');

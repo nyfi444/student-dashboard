@@ -265,6 +265,11 @@ if (new URLSearchParams(location.search).has('signup')) {
   document.getElementById('login-foot').textContent = 'Already have an account? Use the same email and we\u2019ll send you a sign-in link instead.';
 }
 
+// A link code from one of Nyla's own links (?via=...), kept for this tab
+// from the moment the page opens. Does nothing while FEATURES.linkCodes is
+// off (js/config.js).
+linkCode();
+
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function showError(msg) {
   const el = document.getElementById('login-error');
@@ -350,8 +355,9 @@ async function checkEmailHasPlan(email) {
 }
 async function redirectToCheckoutForEmail(email) {
   try {
+    const via = linkCode();
     const res = await fetch(`${WORKER_URL}/create-checkout-session`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, ...(via ? { via } : {}) }),
     });
     const data = await res.json();
     if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout');
@@ -436,8 +442,11 @@ async function runSignIn() {
 async function runEmailSignIn(email) {
   document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Sending link&hellip;</button>';
   try {
+    // The link is often opened in a new tab (from the mail app), which has
+    // none of this tab's storage, so a link code rides along in the link.
+    const via = linkCode();
     await _auth.sendSignInLinkToEmail(email, {
-      url: window.location.origin + window.location.pathname,
+      url: window.location.origin + window.location.pathname + (via ? `?via=${via}` : ''),
       handleCodeInApp: true,
     });
     localStorage.setItem(EMAIL_LINK_STORAGE_KEY, email);

@@ -85,7 +85,7 @@ function startPlan(btn) {
   if (seats > MAX_SEATS) { toast(`Over ${MAX_SEATS} seats we'll put a quote together for you. Opening the form…`, 'info', 5000); setTimeout(() => { location.href = GROUP_QUOTE_URL; }, 1200); return; }
   if (!(seats >= MIN_SEATS && seats <= MAX_SEATS)) { toast(`Choose between ${MIN_SEATS} and ${MAX_SEATS} seats`, 'error'); return; }
   act(btn, async () => {
-    const data = await api('create-checkout', { name, kind, seats, orgCode: params.get('org') || '', planId: view.planId && view.details?.plan?.status === 'pending' ? view.planId : '' });
+    const data = await api('create-checkout', { name, kind, seats, orgCode: params.get('org') || '', planId: view.planId && view.details?.plan?.status === 'pending' ? view.planId : '', ...(linkCode() ? { via: linkCode() } : {}) });
     window.location.href = data.url;
     await new Promise(r => setTimeout(r, 4000)); // keep the button busy while the browser leaves
   });
@@ -93,7 +93,7 @@ function startPlan(btn) {
 function finishCheckout(btn, planId) {
   const plan = view.plans.find(p => p.id === planId);
   act(btn, async () => {
-    const data = await api('create-checkout', { planId, name: plan.name, kind: plan.kind, seats: plan.requestedSeats || MIN_SEATS });
+    const data = await api('create-checkout', { planId, name: plan.name, kind: plan.kind, seats: plan.requestedSeats || MIN_SEATS, ...(linkCode() ? { via: linkCode() } : {}) });
     window.location.href = data.url;
     await new Promise(r => setTimeout(r, 4000));
   });
