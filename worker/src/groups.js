@@ -3,6 +3,7 @@
    Stripe subscription. Job 9 in index.js.
 ──────────────────────────────────────────────────────────────── */
 
+import { checkoutSourceFor, cleanVia } from './checkouts.js';
 import { logServerIssue } from './diagnostics.js';
 import { batchGetFirestoreDocs, commitFirestore, deleteFirestoreDoc, listFirestoreCollection, parseJsonField, patchFirestoreDoc, readFirestoreDoc, readFirestoreDocWithTime, runFirestoreQuery, verifyFirebaseIdToken } from './firebase.js';
 import { jsonError, jsonOk, verifiedEmailOf } from './http.js';
@@ -212,6 +213,15 @@ async function groupCreateCheckout(env, ctx) {
   params.set('subscription_data[metadata][kind]', 'group');
   params.set('subscription_data[metadata][planId]', planId);
   params.set('subscription_data[metadata][adminUid]', ctx.uid);
+  // Same labels as an individual checkout (see checkouts.js).
+  const source = checkoutSourceFor({ group: true });
+  params.set('metadata[source]', source);
+  params.set('subscription_data[metadata][source]', source);
+  const via = cleanVia(body.via);
+  if (via) {
+    params.set('metadata[via]', via);
+    params.set('subscription_data[metadata][via]', via);
+  }
   const res = await stripeRequest(env, 'POST', '/v1/checkout/sessions', params);
   if (!res.ok) throw new HttpError(502, 'Could not start checkout: ' + (res.data.error?.message || 'unknown error'));
   return { url: res.data.url, planId };

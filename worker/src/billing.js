@@ -3,6 +3,7 @@
    billing portal (/create-portal-session). Job 2 in index.js.
 ──────────────────────────────────────────────────────────────── */
 
+import { checkoutSourceFor, cleanVia } from './checkouts.js';
 import { logServerIssue } from './diagnostics.js';
 import { encodeEmailDocId, patchFirestoreDoc, readFirestoreDoc, verifyFirebaseIdToken } from './firebase.js';
 import { corsHeaders, jsonError, jsonOk, verifiedEmailOf } from './http.js';
@@ -64,6 +65,17 @@ export async function handleCreateCheckoutSession(request, env, origin) {
   // without a separate customer-id lookup table.
   if (uid) params.set('subscription_data[metadata][uid]', uid);
   if (email) params.set('subscription_data[metadata][email]', email);
+  // Which way in this was (see checkouts.js), and the link code the visitor
+  // arrived on, if any. On the session for the checkout numbers, and on the
+  // subscription so the subscriber list can show it for good.
+  const source = checkoutSourceFor({ uid, email });
+  params.set('metadata[source]', source);
+  params.set('subscription_data[metadata][source]', source);
+  const via = cleanVia(body.via);
+  if (via) {
+    params.set('metadata[via]', via);
+    params.set('subscription_data[metadata][via]', via);
+  }
 
   const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
