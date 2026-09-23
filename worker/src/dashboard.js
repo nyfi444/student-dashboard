@@ -4,11 +4,13 @@
    computed server-side. Job 8 in index.js.
 ──────────────────────────────────────────────────────────────── */
 
+import { fetchCheckoutSummary } from './checkouts.js';
 import { listFirestoreCollection, queryRecentDocs, runFirestoreQuery } from './firebase.js';
 import { groupAdmins } from './groups.js';
 import { adminTokenOk } from './http.js';
 import { stripeGetJson } from './stripe.js';
 import { finishSubscriberRows, subscriberRow } from './subscribers.js';
+import { fetchAiUsageSummary } from './usage.js';
 
 /* ── 8. Business summary (dashboard read-only feed) ─────────────
    Backs Nyla's private business command-center dashboard
@@ -57,6 +59,25 @@ export async function handleAdminBusinessSummary(request, env) {
     out.firebase.funnel = funnel.status === 'fulfilled' ? funnel.value : { error: funnel.reason?.message || 'failed' };
     out.firebase.feedback = feedback.status === 'fulfilled' ? feedback.value : { error: feedback.reason?.message || 'failed' };
     out.firebase.errors = errors.status === 'fulfilled' ? errors.value : { error: errors.reason?.message || 'failed' };
+  }
+
+  // Added Sept 2026, each under its own top-level key so an older Business
+  // OS build simply doesn't read them. Same rule as above: each fails on
+  // its own, and a section is left out when its service isn't configured.
+  //   checkouts   Stripe Checkout Sessions, last 30 days, by path (checkouts.js)
+  //   groupPlans  one line per group plan, no member names or emails
+  //   aiUsage     AI calls, tokens and estimated cost by feature (usage.js)
+  const hasFirebase = !!(env.FIREBASE_PROJECT_ID && env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY);
+  const [checkouts, groupPlans, aiUsage] = await Promise.allSettled([
+    env.STRIPE_SECRET_KEY ? fetchCheckoutSummary(env) : Promise.resolve(undefined),
+    hasFirebase ? fetchGroupPlanList(env) : Promise.resolve(undefined),
+    hasFirebase ? fetchAiUsageSummary(env) : Promise.resolve(undefined),
+  ]);
+  if (env.STRIPE_SECRET_KEY) out.checkouts = checkouts.status === 'fulfilled' ? checkouts.value : { error: 'Could not load checkouts: ' + (checkouts.reason?.message || 'failed') };
+  if (hasFirebase) {
+    out.groupPlans = groupPlans.status === 'fulfilled' ? groupPlans.value : [];
+    out.groupPlansError = groupPlans.status === 'fulfilled' ? '' : (groupPlans.reason?.message || 'failed');
+    out.aiUsage = aiUsage.status === 'fulfilled' ? aiUsage.value : { error: aiUsage.reason?.message || 'failed' };
   }
 
   return new Response(JSON.stringify(out), { headers: adminCors });
