@@ -1,16 +1,21 @@
-# Every push and pull request, in three stages:
+# Every push and pull request:
 #
 #   checks   syntax-check every script and run the node tests. Seconds, no
 #            network, no browser — this is what fails fastest when something
 #            is plainly wrong.
-#   browser  open the real app in Chromium and iOS Safari and use it. There
-#            is no build step, so an uncaught error in one file IS the type
+#   rules    firestore.rules and storage.rules, tested as the people they
+#            protect, against a local copy of Firebase.
+#   browser  open the real app in Chromium and iOS Safari and use it, signed
+#            out and signed in (against the same local Firebase). There is
+#            no build step, so an uncaught error in one file IS the type
 #            checker; only a browser sees it.
 #   smoke    after a push to main, once GitHub Pages has published: check
 #            that what is live is this build and that the Worker still
 #            refuses what it should.
 #
-# None of it has secrets or write access to anything.
+# None of it has secrets or write access to anything. The local Firebase
+# runs as demo-semester-hq, which cannot reach the real project. See
+# tests/README.md.
 name: Tests
 
 on:
@@ -37,6 +42,26 @@ jobs:
           node tests/worker-delete-account.mjs
           node tests/worker-security.mjs
 
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+      # The Firestore emulator is Java; pinned rather than trusting whatever
+      # the runner image ships this month.
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install the test tools
+        working-directory: tests
+        run: npm ci
+      - name: Check who may read and write what
+        working-directory: tests
+        run: npm run test:rules
+
   browser:
     runs-on: ubuntu-latest
     steps:
@@ -44,36 +69,40 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
-      - name: Install the test runner
-        working-directory: tests/e2e
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install the test tools
+        working-directory: tests
         run: npm ci
       # Downloading two browsers takes longer than the tests do, so keep them
-      # between runs and key the cache on the Playwright version that asked
-      # for them.
+      # between runs and key the cache on the lockfile that asked for them.
       - name: Cache browsers
-        id: browser-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('tests/e2e/package-lock.json') }}
+          key: playwright-${{ hashFiles('tests/package-lock.json') }}
       - name: Install browsers
-        working-directory: tests/e2e
+        working-directory: tests
         run: npx playwright install --with-deps chromium webkit
-      - name: Use the app
-        working-directory: tests/e2e
-        run: npx playwright test
+      - name: Use the app, signed out and signed in
+        working-directory: tests
+        run: npm run test:e2e
       - if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report
-          path: tests/e2e/playwright-report/
+          path: |
+            tests/e2e/playwright-report/
+            tests/e2e/test-results/
           retention-days: 7
 
   smoke:
     # Only for what actually reaches students: a push to main, after the
-    # other two stages agreed the code is sound.
+    # other stages agreed the code is sound.
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [checks, browser]
+    needs: [checks, rules, browser]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

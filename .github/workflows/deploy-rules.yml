@@ -24,6 +24,7 @@ on:
       - firestore.rules
       - storage.rules
       - firebase.json
+      - tests/rules/**
       - .github/workflows/deploy-rules.yml
   # Also runnable by hand, for the first run and for re-publishing after a
   # console edit has drifted from the repo.
@@ -36,8 +37,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
       - name: Run the tests
@@ -45,14 +46,27 @@ jobs:
           node tests/run.mjs
           node tests/worker-delete-account.mjs
           node tests/worker-security.mjs
+      # The rules themselves, tested as the people they protect against a
+      # local copy of Firebase, before anything is published. A rule that
+      # lets one student read another's planner fails here, not in the console.
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install the rules test tools
+        working-directory: tests
+        run: npm ci
+      - name: Test the rules that are about to be published
+        working-directory: tests
+        run: npm run test:rules
 
   deploy:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
 

@@ -1,0 +1,19 @@
+{
+  "name": "semester-hq-tests",
+  "private": true,
+  "description": "Dev tooling for the tests in this folder: the browser suite (e2e/) and the security rules suite (rules/). Kept out of the repo root so the app itself stays a no-build-step static site; nothing installed here ships to a student. The node tests next to this file (run.mjs, worker-*.mjs, smoke.mjs) need none of it.",
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:rules && npm run test:e2e",
+    "test:rules": "node with-emulators.mjs firestore,storage -- node --test --test-concurrency=1 rules/firestore.test.mjs rules/storage.test.mjs",
+    "test:e2e": "node with-emulators.mjs auth,firestore,storage -- npx playwright test --config e2e/playwright.config.mjs",
+    "test:e2e:signed-out": "playwright test --config e2e/playwright.config.mjs",
+    "test:headed": "node with-emulators.mjs auth,firestore,storage -- npx playwright test --config e2e/playwright.config.mjs --headed"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@playwright/test": "^1.63.0",
+    "firebase": "^12.19.0",
+    "firebase-tools": "^15.30.2"
+  }
+}

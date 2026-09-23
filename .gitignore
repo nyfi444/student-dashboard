@@ -8,3 +8,6 @@ test-results/
 playwright-report/
 blob-report/
 .last-run.json
+
+# Firebase emulator logs (tests/with-emulators.mjs)
+*-debug.log
