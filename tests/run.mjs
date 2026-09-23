@@ -18,7 +18,7 @@
 
    Run:  node tests/run.mjs
 ──────────────────────────────────────────────────────────────── */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
@@ -197,6 +197,29 @@ check('course: no match is null, never a guess', guessFeedCourse('HIST-200', { t
   check('items: a lecture in another system is a deadline (nothing else to go on)', feedItemsFromEvents([{ uid: 'x', title: 'Lecture 4', description: '', when: { date: '2026-10-01', time: '10:00', allDay: false }, recurring: false, url: '' }], 'brightspace', feedToday).items.length, 1);
 }
 check('ics: CRLF, LF and a BOM all unfold the same', unfoldIcs('\uFEFFA:b\r\n c\nD:e'), 'A:bc\nD:e');
+
+/* ── 4. The files that have to agree with each other ───────────────
+   index.html's script list is the app's dependency graph, and sw.js keeps
+   a second copy of that list in APP_SHELL so the app works offline. Two
+   hand-maintained copies of the same list is exactly the kind of thing
+   that drifts: add a file to index.html, forget sw.js, and the app is
+   fine until somebody loses signal — at which point one script 404s from
+   the cache and the whole thing is a white screen, on the day it mattered.
+
+   The same check runs in the browser (tests/e2e/offline.spec.mjs) against
+   what the page really requested. This one is here because it costs
+   nothing and fails before the push rather than after it. */
+const indexHtml = read('index.html');
+const swSrc = read('sw.js');
+const indexScripts = [...indexHtml.matchAll(/<script[^>]+src="((?!https?:)[^"]+)"/g)].map(m => m[1]);
+const appShell = [...((swSrc.match(/const APP_SHELL = \[([\s\S]*?)\];/) || [])[1] || '').matchAll(/'([^']+)'/g)].map(m => m[1]);
+ok('index.html lists its scripts', indexScripts.length > 10);
+ok('sw.js has an app shell', appShell.length > 10);
+check('every script index.html loads is cached for offline', indexScripts.filter(f => !appShell.includes(f)), []);
+// The other direction is only a warning's worth of wrong — a stale entry
+// wastes a little cache — except for a file that no longer exists at all,
+// which makes the install step fetch a 404 on every deploy.
+check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('.js') && !existsSync(join(root, f))), []);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
