@@ -7,6 +7,7 @@
 import { queryRecentDocs, runFirestoreQuery } from './firebase.js';
 import { adminTokenOk } from './http.js';
 import { stripeGetJson } from './stripe.js';
+import { finishSubscriberRows, subscriberRow } from './subscribers.js';
 
 /* ── 8. Business summary (dashboard read-only feed) ─────────────
    Backs Nyla's private business command-center dashboard
@@ -68,16 +69,28 @@ export async function handleAdminBusinessSummary(request, env) {
 // `activeCount`/`mrrCents` keep their original meaning (active+trialing,
 // list price) so older dashboard builds reading them don't change.
 const STRIPE_SUB_PAGE_CAP = 10; // 1,000 subscriptions, well past current scale
+// Discounts expanded so a subscriber row can say which promotion code they
+// used (see subscribers.js). If this account's API version refuses one of
+// these expansions, the list is fetched again the way it always was rather
+// than losing the whole summary over a nice-to-have.
+const STRIPE_SUB_DISCOUNT_EXPANDS = '&expand[]=data.discounts&expand[]=data.discounts.promotion_code';
 export async function fetchStripeSummary(env) {
   const subs = [];
   let startingAfter = '';
   let truncated = false;
+  let discountExpands = STRIPE_SUB_DISCOUNT_EXPANDS;
   for (let page = 0; page < STRIPE_SUB_PAGE_CAP; page++) {
-    const qs = `limit=100&status=all&expand[]=data.items.data.price&expand[]=data.latest_invoice&expand[]=data.customer${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
-    const res = await fetch(`https://api.stripe.com/v1/subscriptions?${qs}`, {
+    const qs = () => `limit=100&status=all&expand[]=data.items.data.price&expand[]=data.latest_invoice&expand[]=data.customer${discountExpands}${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+    const get = () => fetch(`https://api.stripe.com/v1/subscriptions?${qs()}`, {
       headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
     });
-    const data = await res.json();
+    let res = await get();
+    let data = await res.json();
+    if (res.status === 400 && discountExpands && /expand/i.test(data?.error?.message || '')) {
+      discountExpands = '';
+      res = await get();
+      data = await res.json();
+    }
     if (!res.ok) throw new Error(data?.error?.message || `Stripe returned ${res.status}`);
     subs.push(...(data.data || []));
     if (!data.has_more || !data.data?.length) break;
@@ -128,6 +141,7 @@ export async function fetchStripeSummary(env) {
     });
     subscribers.push(subscriberRow(sub, { created, listCents, chargedCents }));
   }
+  await finishSubscriberRows(env, subscribers, now);
   recent.sort((a, b) => (b.created || 0) - (a.created || 0));
   subscribers.sort((a, b) => (b.created || 0) - (a.created || 0));
 
@@ -195,36 +209,6 @@ async function fetchCustomersWithoutSubscription(env, subscribedIds) {
   }
   rows.sort((a, b) => (b.created || 0) - (a.created || 0));
   return rows.slice(0, 200);
-}
-
-// One row of the Business OS's subscriber list. Only what Nyla needs to
-// recognize someone and see where they stand: who, which plan, since when,
-// what they pay. This route is ADMIN_TOKEN-only.
-function subscriberRow(sub, { created, listCents, chargedCents }) {
-  const customer = sub.customer && typeof sub.customer === 'object' && !sub.customer.deleted ? sub.customer : null;
-  const item = sub.items?.data?.[0] || {};
-  const periodEnd = sub.current_period_end || item.current_period_end || null;
-  const coupon = sub.discount?.coupon || (Array.isArray(sub.discounts) && typeof sub.discounts[0] === 'object' ? sub.discounts[0]?.coupon : null);
-  const isGroup = sub.metadata?.kind === 'group';
-  return {
-    id: sub.id,
-    customerId: typeof sub.customer === 'string' ? sub.customer : sub.customer?.id || null,
-    email: customer?.email || sub.metadata?.email || '',
-    name: customer?.name || '',
-    status: sub.status,
-    plan: isGroup ? 'group' : 'plus',
-    seats: isGroup ? (item.quantity || 0) : 1,
-    groupName: isGroup ? String(sub.metadata?.groupName || sub.metadata?.name || '').slice(0, 80) : '',
-    coupon: coupon ? String(coupon.name || coupon.id || '').slice(0, 60) : '',
-    comped: (sub.status === 'active' || sub.status === 'trialing') && chargedCents <= 0,
-    created,
-    canceledAt: sub.canceled_at ? sub.canceled_at * 1000 : null,
-    endedAt: sub.ended_at ? sub.ended_at * 1000 : null,
-    cancelAtPeriodEnd: !!sub.cancel_at_period_end,
-    periodEnd: periodEnd ? periodEnd * 1000 : null,
-    listCents: listCents || 0,
-    chargedCents: Math.max(0, chargedCents || 0),
-  };
 }
 
 // Bookkeeping from Stripe's balance history: per calendar month (UTC),
