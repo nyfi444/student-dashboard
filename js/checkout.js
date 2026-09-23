@@ -191,7 +191,7 @@ function pagePaywall() {
     return `
       <div class="paywall-wrap">
         <div class="paywall-card">
-          <h2>Payment received 🎉</h2>
+          <h2>Payment received</h2>
           <p class="small muted mb-16">Sign in to activate your account. It'll be linked to this purchase automatically. Use whichever you paid with; any email works, not just Google.</p>
           <button class="btn btn-primary" style="width:100%" onclick="signIn()">${icon('sparkles', 13, 1.6)} Continue with Google</button>
           <button class="btn btn-sm mt-8" style="width:100%" onclick="openEmailSignInModal()">Continue with email instead</button>
