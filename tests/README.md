@@ -6,7 +6,7 @@ publish (`.github/workflows/deploy-rules.yml`).
 
 | what | where | needs | catches |
 | --- | --- | --- | --- |
-| node tests | `run.mjs`, `worker-*.mjs` | nothing | the quick-add parser, the syllabus contract, LMS feeds, `sw.js` agreeing with `index.html`, and the Worker's auth, billing and deletion logic |
+| node tests | `run.mjs`, `worker-*.mjs` | nothing | the quick-add parser, the syllabus contract, LMS feeds, `sw.js` agreeing with `index.html`, the switches that ship off, the Worker's auth, billing and deletion logic, and what it measures for the Business OS (`worker-measure.mjs`: subscriber rows, checkout paths, the daily ledger, AI usage) |
 | rules | `rules/` | the emulators | who may read and write what in Firestore and Storage, tested against the rules files that ship |
 | browser | `e2e/` | the emulators for the signed-in half | the app opening at all, every page rendering, real flows through the real screens, signed out and signed in |
 | smoke | `smoke.mjs` | the internet | that what's live after a deploy is this build, and the Worker still refuses what it should |

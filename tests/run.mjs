@@ -221,5 +221,62 @@ check('every script index.html loads is cached for offline', indexScripts.filter
 // which makes the install step fetch a 404 on every deploy.
 check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('.js') && !existsSync(join(root, f))), []);
 
+/* ── 5. Switches that ship off ─────────────────────────────────────
+   Link codes and the first-week setup counts are built but switched off
+   in js/config.js until Nyla turns them on. These check that they ship
+   off, that off really means nothing happens, and what on would do. Each
+   runs in its own small context with just the globals the file uses. */
+{
+  const configSrc = read('js/config.js');
+  check('link codes ship switched off', /const FEATURES = \{[^}]*linkCodes: false/.test(configSrc), true);
+  check('setup counts ship switched off', /const FEATURES = \{[^}]*setupCounts: false/.test(configSrc), true);
+  const session = new Map();
+  const linkBox = (search, on) => {
+    const box = { location: { search }, sessionStorage: { getItem: k => (session.has(k) ? session.get(k) : null), setItem: (k, v) => session.set(k, String(v)) }, URLSearchParams };
+    vm.createContext(box);
+    vm.runInContext((on ? configSrc.replace('linkCodes: false', 'linkCodes: true') : configSrc) + '\n;globalThis.__linkCode = linkCode;', box);
+    return box.__linkCode;
+  };
+  check('link code off: nothing read, nothing kept', [linkBox('?via=campus-tour', false)(), session.size], ['', 0]);
+  check('link code on: a good code is kept, lowercased', linkBox('?via=Campus-Tour', true)(), 'campus-tour');
+  check('link code on: it outlives the page it came in on', linkBox('', true)(), 'campus-tour');
+  check('link code on: a malformed one is ignored, the kept one stays', linkBox('?via=%3Cscript%3E', true)(), 'campus-tour');
+  session.clear();
+  check('link code on: too long is ignored', linkBox(`?via=${'x'.repeat(25)}`, true)(), '');
+
+  const setupSrc = read('js/setupcounts.js');
+  const setupBox = ({ on, courses = [], createdDaysAgo = 1, licensed = true }) => {
+    const sent = [];
+    const box = {
+      FEATURES: { setupCounts: on }, window: { _licensed: licensed, _licenseDoc: null }, _fbUser: { uid: 'u1' },
+      state: { settings: {}, courses }, save() {}, todayIso: () => '2026-09-23', isEmbedded: () => false,
+      diag: { event: (name, detail) => sent.push([name, detail]), warn() {} }, Date, Number, Array,
+    };
+    vm.createContext(box);
+    vm.runInContext(setupSrc + '\n;globalThis.__s = { setupCountsBaseline, countSetupStep };', box);
+    const user = { metadata: { creationTime: new Date(Date.now() - createdDaysAgo * 86400000).toUTCString() } };
+    return { ...box.__s, sent, box, user };
+  };
+  let t = setupBox({ on: false });
+  t.setupCountsBaseline(t.user); t.countSetupStep('setup_class_added', 'manual');
+  check('setup counts off: no baseline, nothing sent', [t.box.state.settings.setupCounts, t.sent.length], [undefined, 0]);
+  t = setupBox({ on: true });
+  t.setupCountsBaseline(t.user);
+  t.countSetupStep('setup_class_added', 'manual'); t.countSetupStep('setup_class_added', 'syllabus'); t.countSetupStep('setup_deadlines_in', 'lms');
+  check('setup counts on, new account: each sent once, with only its source', t.sent, [['setup_class_added', { source: 'manual' }], ['setup_deadlines_in', { source: 'lms' }]]);
+  t.countSetupStep('not_a_setup_event');
+  check('setup counts on: only the three names', t.sent.length, 2);
+  t = setupBox({ on: true, courses: [{ id: 'c1' }] });
+  t.setupCountsBaseline(t.user); t.countSetupStep('setup_class_added', 'manual');
+  check('setup counts on, an account that already has classes: never counted', [t.box.state.settings.setupCounts.counted, t.sent.length], [false, 0]);
+  t = setupBox({ on: true, createdDaysAgo: 90 });
+  t.setupCountsBaseline(t.user); t.countSetupStep('setup_group_joined', 'club');
+  check('setup counts on, an old account with nothing in it: not counted', t.sent.length, 0);
+  t = setupBox({ on: true });
+  t.box.state.settings.setupCounts = { counted: true, since: '2026-09-20', sent: ['setup_class_added'] };
+  t.setupCountsBaseline(t.user); t.countSetupStep('setup_class_added', 'manual');
+  check('setup counts on: a baseline already synced from another device is kept, and not sent twice', [t.box.state.settings.setupCounts.since, t.sent.length], ['2026-09-20', 0]);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
