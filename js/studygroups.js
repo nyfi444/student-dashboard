@@ -2065,7 +2065,7 @@ function createSampleGroup() {
       [priya]: { name: 'Priya', updatedAt: now - D, ...ranges([[[3, 4], '16:00', '20:00'], [[1], '18:00', '22:00'], [[0], '14:00', '16:00']]) },
     },
     messages: [
-      { id: uid(), uid: maya, name: 'Maya', text: 'Booked room 204 for tomorrow 🙌', at: now - 26 * H },
+      { id: uid(), uid: maya, name: 'Maya', text: 'Booked room 204 for tomorrow.', at: now - 26 * H },
       { id: uid(), uid: jordan, name: 'Jordan', text: 'Can we start at 6 instead? I have lab until 5:45', at: now - 25.5 * H },
       { id: uid(), uid: priya, name: 'Priya', text: '6 works for me, I might be a few minutes late though', at: now - 25 * H },
       { id: uid(), uid: maya, name: 'Maya', text: 'Moved it to 6! Can everyone add availability for next week so we can lock in the practice exam swap?', at: now - 3 * H },

@@ -1585,7 +1585,7 @@ function createSampleOrg() {
   const messages = [
     { uid: lena, name: 'Lena', text: 'Is the networking night business casual or business formal?', at: now - 27 * H },
     { uid: ava, name: 'Ava', text: 'Business casual! Bring a few copies of your resume.', at: now - 26.5 * H },
-    { uid: jade, name: 'Jade', text: 'I can drive 3 people to the food bank on Saturday 🚗', at: now - 5 * H },
+    { uid: jade, name: 'Jade', text: 'I can drive 3 people to the food bank on Saturday.', at: now - 5 * H },
     { uid: noah, name: 'Noah', text: 'Reminder that dues are due Friday. The details are in Files.', at: now - 2 * H },
   ].map(m => ({ id: uid(), ...m }));
   const entry = {
