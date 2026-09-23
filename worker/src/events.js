@@ -90,7 +90,9 @@ const BIZ_EVENTS = 'bizEvents';
 function ymd(ts) { return new Date(ts).toISOString().slice(0, 10); }
 function plural(n, one, many) { return `${n} ${n === 1 ? one : many || one + 's'}`; }
 
-export async function buildBusinessEvents(env) {
+// `stripeReady`, when the cron passes it, is the Stripe summary it already
+// asked for (shared with the daily ledger), so Stripe is read once a day.
+export async function buildBusinessEvents(env, stripeReady = null) {
   if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) return;
   const now = Date.now();
   const day = ymd(now);
@@ -99,7 +101,9 @@ export async function buildBusinessEvents(env) {
   const add = (key, e) => events.push({ key, ...e });
 
   let stripe = null;
-  if (env.STRIPE_SECRET_KEY) {
+  if (stripeReady) {
+    try { stripe = await stripeReady; } catch (e) { stripe = null; }
+  } else if (env.STRIPE_SECRET_KEY) {
     try { stripe = await fetchStripeSummary(env); } catch (e) { stripe = null; }
   }
 

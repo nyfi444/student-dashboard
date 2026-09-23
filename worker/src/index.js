@@ -48,6 +48,10 @@
       semester-hq.com. Sections are omitted (not faked) when not configured.
    9. Group plans (/group/*): a club, team, or department buys seats for
       its members and runs them from group-admin.html. See section 9.
+  10. Daily ledger (/admin/ledger): read-only, token-gated (same
+      ADMIN_TOKEN). One row per UTC day, written add-only by the daily cron
+      into bizLedger/{date}, so trends outlive the 30- and 90-day windows
+      everything else keeps. See ledger.js.
 ──────────────────────────────────────────────────────────────── */
 
 /* ── Where each job lives ─────────────────────────────────────────
@@ -62,6 +66,10 @@
      diagnostics.js  jobs 5, 6  error reports and the admin viewer
      events.js       jobs 7, 10 event tracking, the daily business events
      dashboard.js    job 8   the business dashboard feed
+     subscribers.js  job 8   one row per subscription for that feed
+     checkouts.js    job 8   checkout sessions by path, and the labels on them
+     usage.js        job 8   what each AI feature costs (written by ai.js)
+     ledger.js       job 10  the daily ledger and /admin/ledger
      groups.js       job 9   group plans
      feeds.js        job 10  LMS calendar feeds
      account.js      deleting an account, terms acceptance
@@ -81,12 +89,13 @@ import { handleAccountAttest, handleDeleteAccount } from './account.js';
 import { handleAiProxy } from './ai.js';
 import { handleCreateCheckoutSession, handleCreatePortalSession } from './billing.js';
 import { handleContactMessage } from './contact.js';
-import { handleAdminBusinessSummary } from './dashboard.js';
+import { fetchStripeSummary, handleAdminBusinessSummary } from './dashboard.js';
 import { featureForPath, handleAdminErrors, handleLogError, logServerIssue, pruneOldIssues } from './diagnostics.js';
 import { buildBusinessEvents, handleAdminBizEvents, handleTrackEvent } from './events.js';
 import { handleCalendarFeed } from './feeds.js';
 import { handleGroupRoute } from './groups.js';
 import { checkRateLimit, corsHeaders, isAllowedOrigin, jsonError } from './http.js';
+import { handleAdminLedger, writeDailyLedger } from './ledger.js';
 import { handleCheckEmail, handleClaimLicense, handleStripeWebhook } from './licensing.js';
 
 export default {
@@ -108,10 +117,14 @@ export default {
   },
 
   // Cron trigger (wrangler.toml [triggers]): once a day, write the Business
-  // OS's events and clear out old reports. There is no reminder sweep — the
-  // app doesn't send notifications, so nothing needs waking up every 5 minutes.
+  // OS's events and the daily ledger, and clear out old reports. There is no
+  // reminder sweep — the app doesn't send notifications, so nothing needs
+  // waking up every 5 minutes. Stripe is asked once and both writers share
+  // the answer (null when Stripe isn't set up or didn't answer).
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(buildBusinessEvents(env).catch(e => logServerIssue(env, 'business-events', 'Daily business events failed', e)));
+    const stripeReady = env.STRIPE_SECRET_KEY ? fetchStripeSummary(env).catch(() => null) : Promise.resolve(null);
+    ctx.waitUntil(buildBusinessEvents(env, stripeReady).catch(e => logServerIssue(env, 'business-events', 'Daily business events failed', e)));
+    ctx.waitUntil(writeDailyLedger(env, { stripeReady }).catch(e => logServerIssue(env, 'ledger', 'Daily ledger failed', e)));
     ctx.waitUntil(pruneOldIssues(env).catch(e => logServerIssue(env, 'diagnostics', 'Pruning old reports failed', e)));
   },
 };
@@ -123,7 +136,7 @@ async function routeRequest(request, env, ctx) {
   // /admin/errors needs GET + an Authorization header, unlike every other
   // route here (POST + content-type only), handle its preflight separately
   // so the browser doesn't reject the real request for a disallowed method/header.
-  if (request.method === 'OPTIONS' && (url.pathname === '/admin/errors' || url.pathname === '/admin/business-summary' || url.pathname === '/admin/biz-events')) {
+  if (request.method === 'OPTIONS' && (url.pathname === '/admin/errors' || url.pathname === '/admin/business-summary' || url.pathname === '/admin/biz-events' || url.pathname === '/admin/ledger')) {
     return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
   }
   if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env, origin) });
@@ -135,6 +148,7 @@ async function routeRequest(request, env, ctx) {
   if (url.pathname === '/admin/errors' && request.method === 'GET') return handleAdminErrors(request, env);
   if (url.pathname === '/admin/business-summary' && request.method === 'GET') return handleAdminBusinessSummary(request, env);
   if (url.pathname === '/admin/biz-events' && (request.method === 'GET' || request.method === 'POST')) return handleAdminBizEvents(request, env);
+  if (url.pathname === '/admin/ledger' && request.method === 'GET') return handleAdminLedger(request, env);
 
   if (request.method !== 'POST') return jsonError('Method not allowed', 405, env, origin);
 

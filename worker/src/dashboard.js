@@ -311,7 +311,8 @@ async function fetchStripeRevenue30d(env) {
 // Cloudflare's GraphQL Analytics API (zone-scoped, read-only token): the last
 // 7 days of requests/uniques for semester-hq.com, one row per day, plus the
 // most recent day as top-level fields (what older dashboard builds read).
-async function fetchCloudflareSummary(env) {
+// The daily ledger (ledger.js) reads its days from here too.
+export async function fetchCloudflareSummary(env) {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const until = new Date().toISOString();
   const query = `query {
