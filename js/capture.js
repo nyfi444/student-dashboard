@@ -72,7 +72,7 @@ async function runQuickCapture() {
     const intro = `Today is ${todayIso()} (${fmtDate(todayIso(), { weekday: 'long' })}). The student's courses: ${courses}.`;
     const body = `${intro}${text ? `\n\nText:\n${text}` : ''}${extraText ? `\n\nDocument text:\n${extraText.slice(0, 14000)}` : ''}`;
     const userContent = images.length ? [...imageBlocks(images.slice(0, 8)), { type: 'text', text: body }] : body;
-    const raw = await callClaude({ system: CAPTURE_SYSTEM, userContent, maxTokens: 2500 });
+    const raw = await callClaude({ system: CAPTURE_SYSTEM, userContent, maxTokens: 2500, feature: 'capture' });
     const parsed = extractJson(raw);
     const items = (Array.isArray(parsed.items) ? parsed.items : []).filter(x => x && x.title).slice(0, 40).map(x => {
       const course = activeCourses().find(k => [k.code, k.name].filter(Boolean).some(v => v.toLowerCase() === String(x.courseCode || '').toLowerCase()));

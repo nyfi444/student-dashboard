@@ -74,7 +74,11 @@ function aiModel() {
 // cached system prompt is actually being read (see SYLLABUS_SYSTEM below).
 let _lastAiUsage = null;
 
-async function callClaude({ system, userContent, maxTokens = 2000, schema = null, model = aiModel() }) {
+// `feature` names which feature is asking ('syllabus', 'flashcards', …) so
+// the Worker can say what each one costs (worker/src/usage.js). It is only a
+// label: the Worker never forwards it to Anthropic, and counts anything it
+// doesn't know as 'untagged'.
+async function callClaude({ system, userContent, maxTokens = 2000, schema = null, model = aiModel(), feature = '' }) {
   if (!aiEnabled()) throw new AiError('AI features aren’t set up on this deployment yet.');
   if (isEmbedded()) throw new AiError('This is part of Semester HQ Plus, so it doesn’t run in the demo.');
   if (!navigator.onLine) throw new AiError('You’re offline. This needs an internet connection.');
@@ -104,6 +108,7 @@ async function callClaude({ system, userContent, maxTokens = 2000, schema = null
       // for in prose afterwards. Without it (an older stored model), the
       // caller falls back to extractJson.
       ...(useSchema ? { output_config: { format: { type: 'json_schema', schema } } } : {}),
+      ...(feature ? { feature } : {}),
       idToken,
     }),
   });
@@ -324,7 +329,7 @@ async function aiParseSyllabus({ text = '', images = [], fileType = '' } = {}) {
   const started = Date.now();
   const measure = { source: images.length ? 'upload' : 'text', fileType: fileType || (images.length ? 'image' : 'text'), model, images: images.length, chars: text.length };
   try {
-    const data = await callClaude({ system: SYLLABUS_SYSTEM, userContent, maxTokens: 3000, schema: SYLLABUS_SCHEMA, model });
+    const data = await callClaude({ system: SYLLABUS_SYSTEM, userContent, maxTokens: 3000, schema: SYLLABUS_SCHEMA, model, feature: 'syllabus' });
     reportSyllabusRead({ ...measure, outcome: 'parsed', ms: Date.now() - started, assignments: (data?.assignments || []).length, meetings: (data?.meetings || []).length, details: courseDetailsCount(sanitizeCourseDetails(data?.details)) });
     return data;
   } catch (e) {
@@ -375,7 +380,7 @@ async function aiParseAssignments({ text = '', images = [] }) {
   const userContent = images.length
     ? [...imageBlocks(images), { type: 'text', text: `Extract the list of assignments/deadlines from these images (they may be multiple pages of one document) as specified.${text ? `\n\nText from the same upload:\n${text.slice(0, 15000)}` : ''}` }]
     : `Here is the document text:\n\n${text.slice(0, 15000)}`;
-  const data = await callClaude({ system: ASSIGNMENTS_SYSTEM, userContent, maxTokens: 3000, schema: ASSIGNMENTS_SCHEMA });
+  const data = await callClaude({ system: ASSIGNMENTS_SYSTEM, userContent, maxTokens: 3000, schema: ASSIGNMENTS_SCHEMA, feature: 'assignments' });
   // Constrained replies come back as {assignments:[...]} because a JSON Schema
   // root has to be an object; the old prose path returned the bare array.
   return Array.isArray(data) ? data : (data?.assignments || []);

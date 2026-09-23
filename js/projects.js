@@ -431,7 +431,7 @@ async function planProjectWithAI(pid) {
   setBtnLoading(btn, true);
   try {
     const c = getCourse(p.courseId);
-    const raw = await callClaude({ system: PROJECT_PLAN_SYSTEM, maxTokens: 1500, userContent: `Today is ${todayIso()}.\nProject: ${p.title}\nClass: ${c ? `${c.code || ''} ${c.name}` : 'none'}\nDue: ${p.dueDate || 'not set'}\nDetails: ${p.description || 'none'}\nTeam size: ${(p.team || []).length + 1}` });
+    const raw = await callClaude({ system: PROJECT_PLAN_SYSTEM, maxTokens: 1500, feature: 'project-plan', userContent: `Today is ${todayIso()}.\nProject: ${p.title}\nClass: ${c ? `${c.code || ''} ${c.name}` : 'none'}\nDue: ${p.dueDate || 'not set'}\nDetails: ${p.description || 'none'}\nTeam size: ${(p.team || []).length + 1}` });
     const plan = extractJson(raw);
     const list = (Array.isArray(plan?.milestones) ? plan.milestones : []).filter(m => m && m.title).slice(0, 8).map(m => ({
       id: uid(), title: cleanStr(m.title, 120), done: false,

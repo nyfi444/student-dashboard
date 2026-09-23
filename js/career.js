@@ -257,7 +257,7 @@ async function runPastePosting() {
   const btn = $('#pp-go');
   setBtnLoading(btn, true);
   try {
-    const raw = await callClaude({ system: POSTING_SYSTEM, userContent: `Today is ${todayIso()}.\n\nPosting:\n${text.slice(0, 12000)}`, maxTokens: 1200 });
+    const raw = await callClaude({ system: POSTING_SYSTEM, userContent: `Today is ${todayIso()}.\n\nPosting:\n${text.slice(0, 12000)}`, maxTokens: 1200, feature: 'career' });
     const p = extractJson(raw);
     openApplicationModal(null, 'saved', {
       org: String(p.org || '').slice(0, 120), role: String(p.role || '').slice(0, 120), type: p.type, location: String(p.location || '').slice(0, 80),
