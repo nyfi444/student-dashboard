@@ -27,12 +27,32 @@ function clearUnsyncedMarker(upTo) {
   if (m && m.at <= upTo) try { localStorage.removeItem(UNSYNCED_KEY); } catch {}
 }
 
+// Local test runs only: the signed-in browser tests (tests/e2e) run against
+// the Firebase emulators that tests/with-emulators.mjs starts, loaded with
+// this repo's own rules. Both conditions have to hold — a page served from
+// this machine AND a flag only the tests set — so no deployed copy of the
+// app can ever take this path, whatever is in anyone's localStorage.
+const FIREBASE_EMULATOR_FLAG = 'shq_firebase_emulators';
+function firebaseEmulatorHost() {
+  try {
+    if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return '';
+    return localStorage.getItem(FIREBASE_EMULATOR_FLAG) === '1' ? '127.0.0.1' : '';
+  } catch { return ''; }
+}
+
 function bootFirebase() {
   if (!fbConfigured() || typeof firebase === 'undefined') return;
   try {
-    firebase.initializeApp(FB_CONFIG);
+    const emulator = firebaseEmulatorHost();
+    // The emulators run as demo-semester-hq, a project id the Firebase tools
+    // treat as offline-only: nothing addressed to it can reach the real one.
+    firebase.initializeApp(emulator ? { ...FB_CONFIG, projectId: 'demo-semester-hq', storageBucket: 'demo-semester-hq.appspot.com' } : FB_CONFIG);
     _fbAuth = firebase.auth();
     _fbDb = firebase.firestore();
+    if (emulator) {
+      _fbAuth.useEmulator(`http://${emulator}:9099`, { disableWarnings: true });
+      _fbDb.useEmulator(emulator, 8080);
+    }
     // Safety net: normally an emailed sign-in link points at login.html (the
     // canonical sign-in page), but if one is ever opened while pointed at
     // the app itself, complete it here instead of leaving it inert.
@@ -268,6 +288,8 @@ async function fbStorage() {
   if (!_fbStorage) {
     if (!firebase.storage) await loadScriptOnce(FIREBASE_STORAGE_SRC);
     _fbStorage = firebase.storage();
+    const emulator = firebaseEmulatorHost();
+    if (emulator) _fbStorage.useEmulator(emulator, 9199);
   }
   return _fbStorage;
 }

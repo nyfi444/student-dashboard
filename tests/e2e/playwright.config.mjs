@@ -1,4 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 /* The app is a static site with no build step, so the "server" is just a
    file server over the repo root — the same files GitHub Pages serves.
@@ -14,7 +18,10 @@ export default defineConfig({
   // a cold runner genuinely is slower.
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
-  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : [['list']],
+  // Pinned to this folder so the output lands in one place whichever
+  // directory the run was started from (npm scripts start it from tests/).
+  outputDir: join(here, 'test-results'),
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never', outputFolder: join(here, 'playwright-report') }]] : [['list']],
   timeout: 30_000,
   expect: { timeout: 7_000 },
   use: {
@@ -30,7 +37,7 @@ export default defineConfig({
     { name: 'phone', use: { ...devices['iPhone 13'] }, testMatch: 'boot.spec.mjs' },
   ],
   webServer: process.env.E2E_BASE_URL ? undefined : {
-    command: `python3 -m http.server ${PORT} --directory ../..`,
+    command: `python3 -m http.server ${PORT} --directory "${join(here, '..', '..')}"`,
     url: `http://localhost:${PORT}/index.html`,
     reuseExistingServer: !process.env.CI,
     stdout: 'ignore',

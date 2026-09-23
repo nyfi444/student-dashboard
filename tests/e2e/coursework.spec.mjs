@@ -5,9 +5,8 @@
    state and render path whether the person is paying or not.
 
    Signed out the app keeps everything in memory (see isDemoMode in
-   js/state.js), so these write nothing to Firestore, touch no real
-   student's data, and need no credentials. What they cannot cover is
-   the sync itself — see README.md in this folder.
+   js/state.js), so these write nothing and need no accounts. The same
+   work reaching a paying student's account is account.spec.mjs.
 ──────────────────────────────────────────────────────────────── */
 import { test, expect } from '@playwright/test';
 import { openApp, navTo } from './helpers.mjs';
