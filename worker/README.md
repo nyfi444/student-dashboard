@@ -1,6 +1,6 @@
 # Backend Worker (AI proxy, billing, licensing, group plans, contact form, diagnostics)
 
-One Cloudflare Worker, eleven jobs, all server-side so secrets never reach the browser. `src/index.js` carries the same list at the top of the file, next to the code:
+One Cloudflare Worker, eleven jobs, all server-side so secrets never reach the browser. `src/index.js` carries the same list at the top of the file, and routes each request to the module that owns it (see "Where the code lives" below):
 
 1. **AI proxy** (`/v1/messages`): holds your Anthropic key, forwards syllabus/assignment parsing requests.
 2. **Checkout** (`/create-checkout-session`): starts a personal $7.99/month Stripe subscription. Group seats are bought through job 7 instead, not here.
@@ -15,6 +15,31 @@ One Cloudflare Worker, eleven jobs, all server-side so secrets never reach the b
 11. **Business feed** (`/track-event`, `/admin/business-summary`, `/admin/biz-events`): `/track-event` is the only writer of Firestore's `events` collection and records CTA clicks on the marketing site. The two `/admin` routes are the same token-gated, GET-only shape as `/admin/errors` and feed the private business dashboard: Stripe subscriber breakdown and MRR computed server-side (Stripe blocks browser CORS on purpose), funnel counts, recent contact messages, crash counts, and, only if `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID` are set, 7 days of Cloudflare traffic. Sections are left out rather than faked when something isn't configured.
 
 A daily cron (`13:00` UTC, set in `wrangler.toml`) writes the overnight business events into the Business OS inbox and prunes error reports older than 30 days. Nothing else is scheduled, because Semester HQ sends no notifications of any kind.
+
+## Where the code lives
+
+`src/` is split by job, so a change to one never means scrolling past the others. Wrangler bundles it into one script on deploy; `main` in `wrangler.toml` is still `src/index.js`.
+
+| file | what it holds |
+| --- | --- |
+| `index.js` | the front door: routing, the error wrapper every request passes through, and the daily cron |
+| `ai.js` | the AI proxy, model allowlist, size caps and daily quota |
+| `billing.js` | checkout and the billing portal |
+| `licensing.js` | the Stripe webhook, `/claim-license`, `/check-email` |
+| `account.js` | account deletion (including leaving every study group and club) and terms attestation |
+| `groups.js` | group plans |
+| `feeds.js` | the LMS calendar feed fetcher |
+| `contact.js` | the contact form and its email |
+| `diagnostics.js` | `/log-error`, the Worker's own error log, pruning, `/admin/errors` |
+| `events.js` | `/track-event`, the daily business events, `/admin/biz-events` |
+| `dashboard.js` | `/admin/business-summary` |
+| `http.js` | CORS, JSON replies, rate limits, caps, Turnstile, the admin token |
+| `firebase.js` | ID-token checks and the Firestore, Storage and Auth REST calls |
+| `stripe.js` | the Stripe client and webhook signature checks |
+
+`http.js` and `firebase.js` import nothing, and everything else builds on them. Keep new routes in a feature module and shared plumbing in those two, rather than growing `index.js` back into a single file.
+
+The Worker tests (`../tests/worker-security.mjs`, `../tests/worker-delete-account.mjs`) load every module as one script through `../tests/worker-source.mjs`, so they can swap out single functions like `readFirestoreDoc`. That loader needs imports on a single line (`import { a, b } from './x.js';`) and plain `export function` / `export class` / `export const`, and it fails loudly if a module ever breaks that.
 
 Using the app without signing in is a live demo: nothing is saved and it resets on reload. There is no free tier. A paid license is what gates saving data at all, cross-device sync, syllabus upload, study groups, and clubs, whether it comes from a personal $7.99/month subscription or a seat on a group plan.
 
@@ -78,7 +103,7 @@ The `RATE_LIMIT` KV namespace is still bound as the fallback for when a binding 
 ## Cost control
 
 - `ALLOWED_ORIGIN` restricts who can call the Worker at all.
-- `src/index.js` caps AI `max_tokens` at 4000 and only allows a small model allowlist.
+- `src/ai.js` caps AI `max_tokens` at 4000, only allows a small model allowlist, and refuses oversized requests before they are sent.
 - Rate limiting (above) caps requests per IP per minute: 20 AI, 10 checkout, 10 billing portal, 15 license claim, 40 group, 10 calendar feed, 30 error reports, 60 tracked events, and 5 each for email lookup, account deletion and the contact form.
 - Anthropic and Stripe usage are billed separately on your own accounts, per actual usage.
 

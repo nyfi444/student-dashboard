@@ -7,20 +7,18 @@
 
    Run:  node tests/worker-delete-account.mjs
 ──────────────────────────────────────────────────────────────── */
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { loadWorkerSource } from './worker-source.mjs';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-// The Worker is an ES module; strip the one export so it evaluates as a script
-// and its top-level functions land on the sandbox global where tests reach them.
-const src = readFileSync(join(root, 'worker/src/index.js'), 'utf8').replace(/^export default \{/m, 'globalThis.__worker = {');
+// Every worker/src module flattened into one script, so each top-level
+// function lands on the sandbox global where tests can reach and replace
+// it. See tests/worker-source.mjs for why this isn't a plain import.
+const { source: src } = loadWorkerSource();
 
 const sandbox = { console, crypto, fetch: () => { throw new Error('no network in tests'); }, setTimeout, clearTimeout, TextEncoder, TextDecoder, atob, btoa, URL, Response, Request, Headers };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(src, sandbox, { filename: 'worker/src/index.js' });
+vm.runInContext(src, sandbox, { filename: 'worker/src (flattened)' });
 
 let failed = 0, passed = 0;
 const check = (name, actual, expected) => {

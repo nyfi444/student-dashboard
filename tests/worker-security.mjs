@@ -12,13 +12,13 @@
 
    Run:  node tests/worker-security.mjs
 ──────────────────────────────────────────────────────────────── */
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { loadWorkerSource } from './worker-source.mjs';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const src = readFileSync(join(root, 'worker/src/index.js'), 'utf8').replace(/^export default \{/m, 'globalThis.__worker = {');
+// Every worker/src module flattened into one script, so each top-level
+// function lands on the sandbox global where tests can reach and replace
+// it. See tests/worker-source.mjs for why this isn't a plain import.
+const { source: src } = loadWorkerSource();
 
 let fetchImpl = () => { throw new Error('no network in tests'); };
 const sandbox = {
@@ -31,7 +31,7 @@ const sandbox = {
 };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(src, sandbox, { filename: 'worker/src/index.js' });
+vm.runInContext(src, sandbox, { filename: 'worker/src (flattened)' });
 
 let failed = 0, passed = 0;
 const check = (name, actual, expected) => {
