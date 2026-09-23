@@ -380,6 +380,7 @@ function commitSyllabusMerge() {
   // Same accuracy measurement as the new-class path, see reportSyllabusReview
   // in js/courses.js: what the parser offered against what the student kept.
   reportSyllabusKept({ offered: m.assignments.length, kept: adding.length, edited: 0, removed: m.assignments.length - adding.length });
+  if (adding.length && typeof countSetupStep === 'function') countSetupStep('setup_deadlines_in', 'syllabus');
   adding.forEach(a => state.assignments.push({
     id: uid(), courseId: c.id, title: cleanStr(a.title, 200), type: ASSIGNMENT_TYPES.includes(a.type) ? a.type : 'assignment',
     dueDate: cleanDueDate(a.dueDate), dueTime: cleanDueTime(a.dueTime), startByDate: null,

@@ -394,6 +394,7 @@ function commitFeedImport() {
   feed.courseMap = { ...feed.courseMap, ...d.courseMap };
   const summary = mergeFeedItems(feed, d.items, feed.courseMap);
   feed.lastSyncAt = Date.now(); feed.lastError = ''; feed.itemCount = d.items.length;
+  if (summary.added + summary.linked > 0 && typeof countSetupStep === 'function') countSetupStep('setup_deadlines_in', 'lms');
   closeModal();
   touch();
   if (typeof playUiSound === 'function') playUiSound('success');

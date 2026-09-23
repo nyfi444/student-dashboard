@@ -324,6 +324,10 @@ function setupFinish() {
   state.currentSemesterId = semId;
   state.route = 'dashboard'; state.subRoute = null;
   w.result = { courses: courses.length, assignments };
+  if (typeof countSetupStep === 'function') {
+    if (courses.length) countSetupStep('setup_class_added', 'setup');
+    if (assignments) countSetupStep('setup_deadlines_in', 'syllabus');
+  }
   touch();
 }
 

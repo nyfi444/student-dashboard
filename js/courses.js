@@ -273,6 +273,7 @@ function saveCourseModal(existingId) {
     state.courses[idx] = d;
   } else {
     state.courses.push(d);
+    if (typeof countSetupStep === 'function') countSetupStep('setup_class_added', 'manual');
   }
   touch();
   closeModal();
@@ -476,6 +477,10 @@ function commitSyllabusCourse() {
     });
   });
   reportSyllabusReview(d);
+  if (typeof countSetupStep === 'function') {
+    countSetupStep('setup_class_added', 'syllabus');
+    if ((window._sylAssignments || []).some(a => a._include && a.title)) countSetupStep('setup_deadlines_in', 'syllabus');
+  }
   if (window._sylPendingFiles?.length) { keepSyllabusFile(d.id, window._sylPendingFiles); window._sylPendingFiles = null; }
   touch();
   closeModal();

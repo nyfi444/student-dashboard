@@ -1318,6 +1318,7 @@ async function submitCreateOrg() {
     state.orgs = [...orgEntries().filter(e => e.code !== code), { code, cloud: true, name: doc.name, joinedAt: Date.now() }];
     save();
     reconcileOrgSubscriptions();
+    if (typeof countSetupStep === 'function') countSetupStep('setup_group_joined', 'club');
     closeModal();
     openOrg(code);
     setTimeout(() => openOrgInviteModal(code, { justCreated: true }), 150);
@@ -1422,6 +1423,7 @@ async function confirmJoinOrg(code) {
     state.orgs = [...orgEntries().filter(e => e.code !== code), { code, cloud: true, name, joinedAt: Date.now() }];
     save();
     reconcileOrgSubscriptions();
+    if (typeof countSetupStep === 'function') countSetupStep('setup_group_joined', 'club');
     closeModal();
     openOrg(code);
     playUiSound('success');

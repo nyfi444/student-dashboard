@@ -313,6 +313,7 @@ async function joinSharedClass(code) {
     }));
     classesRef().doc(code).collection('members').doc(_fbUser.uid).set({ joinedAt: Date.now() }).catch(() => {});
     clearPendingClass();
+    if (typeof countSetupStep === 'function') countSetupStep('setup_class_added', 'shared');
     closeModal();
     touch();
     openCourse(courseId);

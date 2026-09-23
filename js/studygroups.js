@@ -1676,6 +1676,7 @@ async function submitCreateGroup() {
     _liveGroups[code] = doc;
     replaceWithCloudEntry(code, name);
     reconcileGroupSubscriptions();
+    if (typeof countSetupStep === 'function') countSetupStep('setup_group_joined', 'study-group');
     closeModal();
     openGroup(code);
     setTimeout(() => openInviteModal(code, { justCreated: true }), 150);
@@ -1753,6 +1754,7 @@ async function confirmJoinGroup(code) {
     clearPendingJoin();
     replaceWithCloudEntry(code, name);
     reconcileGroupSubscriptions();
+    if (typeof countSetupStep === 'function') countSetupStep('setup_group_joined', 'study-group');
     closeModal();
     openGroup(code);
     toast(`You joined ${name}`);
