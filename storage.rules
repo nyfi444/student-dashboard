@@ -40,9 +40,16 @@ service firebase.storage {
     // Study group files, current format: uploaded when a member shares a file
     // (see addCloudGroupItem). Members only, capped at 10MB to match the app.
     // A file is replaced or removed only by whoever shared it, or the owner.
+    //
+    // Uploading over a file that already exists is judged by `create`, not
+    // `update` — `update` only covers changing a file's metadata. So the
+    // create rule itself has to refuse a replacement by anyone else, or any
+    // member could swap out another member's shared file. The app never
+    // needs to: every share gets a fresh id in its path.
     match /studyGroups/{code}/files/{fileId} {
       allow read: if groupMember(code);
-      allow create: if groupMember(code) && under(10);
+      allow create: if groupMember(code) && under(10)
+        && (resource == null || groupOwner(code) || uploadedByMe());
       allow update: if under(10) && (groupOwner(code) || (groupMember(code) && uploadedByMe()));
       allow delete: if groupOwner(code) || (groupMember(code) && uploadedByMe());
     }
