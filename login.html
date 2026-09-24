@@ -12,7 +12,39 @@
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<meta name="theme-color" content="#171512">
+<meta name="theme-color" content="#F8F6F2">
+
+<!-- Presentation only, run before first paint so nothing flashes: marks
+     that JS is on, notes which door this is (?signup=1 is the marketing
+     site's "Get started"), and plays the short arrival once per tab. It
+     reads nothing and changes nothing the sign-in scripts below rely on.
+     With JS off none of these classes exist, so there is no arrival, no
+     rise-in, and the page is simply there. -->
+<script>
+(function (d) {
+  d.classList.add('lp-js');
+  try { if (new URLSearchParams(location.search).has('signup')) d.classList.add('lp-signup'); } catch (e) {}
+  var arrive = false;
+  try {
+    if (!sessionStorage.getItem('shq-login-arrived')) { sessionStorage.setItem('shq-login-arrived', '1'); arrive = true; }
+  } catch (e) {}
+  if (!arrive) return;
+  d.classList.add('lp-arrive');
+  // Any key, click, tap or wheel ends it at once. The veil never takes the
+  // event itself (pointer-events: none), so the click still lands.
+  var evs = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+  function off() { evs.forEach(function (e) { removeEventListener(e, skip, true); }); }
+  function skip() { d.classList.add('lp-skip'); off(); }
+  evs.forEach(function (e) { addEventListener(e, skip, { capture: true, passive: true }); });
+  // CSS hides the veil when its own fade ends; this only tidies up after.
+  function done() { d.classList.add('lp-arrived'); off(); }
+  addEventListener('animationend', function (e) {
+    if (e.target && e.target.classList && e.target.classList.contains('lp-veil')) done();
+  }, true);
+  setTimeout(done, 5000);
+})(document.documentElement);
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://api.fontshare.com">
@@ -28,220 +60,508 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" integrity="sha384-I1LYojsZ5RM1cOda44Z2h42Qa6YfsQ1XkXxREnhp4ueYBR/4d1pG1K+NZM537Vsj" crossorigin="anonymous"></script>
 
 <style>
-  html, body { height: 100%; }
-  body { margin: 0; }
-
-  /* Self-contained editorial palette for this page only, deliberately
-     fixed regardless of the app's light/dark preference, since this is a
-     brand moment, not app chrome. */
-  .login-page {
-    --lp-ink: #17140f;
-    --lp-ink-2: #201c16;
-    --lp-cloud: #f7f2ea;
-    --lp-cloud-dim: rgba(247, 242, 234, .64);
-    --lp-cloud-faint: rgba(247, 242, 234, .62);
-    --lp-cloud-line: rgba(247, 242, 234, .07);
-    --lp-paper: #f7f2ea;
-    --lp-paper-2: #efe8db;
-    --lp-text: #17140f;
-    --lp-text-dim: rgba(23, 20, 15, .66);
-    --lp-text-faint: rgba(23, 20, 15, .6);
-    --lp-border: rgba(23, 20, 15, .13);
+  /* ═══ The front door, in the Luminous world of semester-hq.com ═══════
+     A bright bone room with a slow light field, frosted glass panes, the
+     four-point star, Instrument Serif display. Every rule lives here, not
+     in css/styles.css, and every token is prefixed --lp- so nothing leaks
+     into, or collides with, the app's own stylesheet. The palette is fixed
+     whatever the app's light/dark preference, because this is a brand
+     moment, not app chrome. Radii use only the app's own tokens. */
+  :root {
+    --lp-bone: #F8F6F2;
+    --lp-bone-dim: #F1EDE5;
+    --lp-surface: #FFFDF9;
+    --lp-ink: #121212;
+    --lp-sand: #D9CEC3;
+    --lp-sand-dim: #E6DFD8;
+    --lp-slate: #6B615A;        /* body text: 5.6:1 on bone */
     --lp-rose: #B49F90;
-    --lp-radius: 3px;
-    --lp-font-serif: 'Instrument Serif', Georgia, serif;
-    --lp-font-sans: 'General Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --lp-rose-deep: #9C8576;    /* large display italic and the star only */
+    --lp-rose-ink: #6F5E52;     /* small rose-toned text: 5.7:1 */
+    --lp-hair: rgba(126,115,108,.26);
+    --lp-serif: 'Instrument Serif', Georgia, serif;
+    --lp-sans: 'General Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --lp-glass: linear-gradient(155deg, rgba(255,253,249,.86) 0%, rgba(255,253,249,.58) 100%);
+    --lp-glass-line: rgba(126,115,108,.18);
+    --lp-glass-edge: inset 0 1px 0 rgba(255,255,255,.95), inset 0 0 0 1px rgba(255,255,255,.45);
+    --lp-lift: 0 1px 2px rgba(74,58,46,.05), 0 12px 26px -14px rgba(74,58,46,.20), 0 40px 80px -40px rgba(74,58,46,.30);
+    --lp-lift-hi: 0 1px 2px rgba(74,58,46,.06), 0 20px 36px -16px rgba(74,58,46,.24), 0 70px 120px -50px rgba(74,58,46,.40);
+    --lp-ease: cubic-bezier(.16,.84,.26,1);
+    --lp-gutter: clamp(18px, 4.4vw, 64px);
+    --lp-wrap: 1280px;
   }
 
-  /* A real two-panel page filling the viewport, not a card floating on
-     empty space, which reads as a popup/modal rather than a page. */
-  .login-page { min-height: 100vh; display: flex; background: var(--lp-paper); font-family: var(--lp-font-sans); }
-  .login-page input, .login-page button, .login-page .btn { font-family: var(--lp-font-sans); }
+  html, body { height: 100%; }
+  html { background: var(--lp-bone); }
+  body { margin: 0; background: var(--lp-bone); color: var(--lp-ink); font-family: var(--lp-sans); -webkit-font-smoothing: antialiased; }
+  .login-page :focus-visible { outline: 2px solid var(--lp-ink); outline-offset: 3px; }
 
-  /* ---------- Left / brand panel ---------- */
-  .login-brand {
-    flex: 1 1 58%; position: relative; overflow: hidden;
-    background: var(--lp-ink); color: var(--lp-cloud);
-    display: flex; flex-direction: column;
-    padding: 48px 5.5vw 56px;
+  /* ---------- The field: the light the page sits in ---------- */
+  .lp-field { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: var(--lp-bone); }
+  .lp-field i { position: absolute; display: block; }
+  .lp-f-sand  { width: 80vmax; height: 80vmax; left: -30vmax; top: -36vmax; background: radial-gradient(closest-side, rgba(217,206,195,.66), rgba(217,206,195,0)); }
+  .lp-f-rose  { width: 62vmax; height: 62vmax; right: -26vmax; top: 22vh; background: radial-gradient(closest-side, rgba(180,159,144,.22), rgba(180,159,144,0)); }
+  .lp-f-light { width: 76vmax; height: 56vmax; left: 50%; margin-left: -38vmax; top: -22vmax; background: radial-gradient(closest-side, rgba(255,255,255,.95), rgba(255,255,255,0)); }
+  .lp-f-floor { width: 90vmax; height: 70vmax; left: -10vmax; bottom: -46vmax; background: radial-gradient(closest-side, rgba(230,223,216,.9), rgba(230,223,216,0)); }
+  .lp-grain {
+    position: absolute; inset: 0; opacity: .045; mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .1 0 0 0 0 .08 0 0 0 0 .07 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
-  .login-brand-grid {
-    position: absolute; inset: 0; pointer-events: none;
-    background-image:
-      repeating-linear-gradient(0deg, transparent, transparent 62px, var(--lp-cloud-line) 62px, var(--lp-cloud-line) 63px),
-      repeating-linear-gradient(90deg, transparent, transparent 62px, var(--lp-cloud-line) 62px, var(--lp-cloud-line) 63px);
-    -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.9), rgba(0,0,0,.15));
-            mask-image: linear-gradient(180deg, rgba(0,0,0,.9), rgba(0,0,0,.15));
+  @media (prefers-reduced-motion: no-preference) {
+    .lp-f-sand  { animation: lp-drift-a 42s ease-in-out infinite alternate; }
+    .lp-f-rose  { animation: lp-drift-b 36s ease-in-out infinite alternate; }
+    .lp-f-light { animation: lp-drift-c 28s ease-in-out infinite alternate; }
   }
-  .login-brand-mono {
-    position: absolute; left: -0.09em; bottom: -0.34em; z-index: 0; pointer-events: none;
-    font-family: var(--lp-font-serif); font-style: italic; font-weight: 400;
-    font-size: min(46vw, 640px); line-height: 1; color: var(--lp-cloud); opacity: .045;
+  @keyframes lp-drift-a { to { transform: translate3d(7vmax, 5vmax, 0); } }
+  @keyframes lp-drift-b { to { transform: translate3d(-8vmax, 6vmax, 0); } }
+  @keyframes lp-drift-c { to { transform: translate3d(0, 3vmax, 0) scale(1.08); } }
+
+  /* ---------- Arrival: the star lights, the veil lifts (under 1s) ----------
+     Only drawn when the head script set .lp-arrive for this tab. Never
+     takes a click; any input skips it; a CSS end state hides it even if a
+     script never runs again. Reduced motion: nothing moves, it only fades. */
+  .lp-veil { display: none; }
+  html.lp-arrive:not(.lp-arrived) .lp-veil {
+    display: flex; position: fixed; inset: 0; z-index: 100; pointer-events: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+    background: radial-gradient(120vmax 120vmax at 50% 46%, #FFFDF9 0%, #F5F1EB 40%, #E9E1D9 78%, #DDD0C6 100%);
+    animation: lp-veil-out .4s ease .5s forwards;
   }
-  .login-grain { position: absolute; inset: 0; pointer-events: none; opacity: .05; mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  html.lp-arrive.lp-skip .lp-veil { animation: lp-veil-skip .16s ease forwards; }
+  .lp-veil-star { width: 64px; height: 64px; overflow: visible; filter: drop-shadow(0 0 22px rgba(255,255,255,.95)) drop-shadow(0 10px 26px rgba(156,133,118,.32)); }
+  .lp-veil-word { font: 400 30px/1 var(--lp-serif); letter-spacing: -.01em; color: var(--lp-ink); }
+  @media (prefers-reduced-motion: no-preference) {
+    .lp-veil-star { animation: lp-star .9s var(--lp-ease) both; }
+    .lp-veil-word { animation: lp-word .9s ease both; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html.lp-arrive:not(.lp-arrived) .lp-veil { animation: lp-veil-out .5s ease .3s forwards; }
+  }
+  @keyframes lp-star {
+    0%   { opacity: 0; transform: scale(.55) rotate(-24deg); }
+    45%  { opacity: 1; transform: scale(1) rotate(0deg); }
+    62%  { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.7); }
+  }
+  @keyframes lp-word { 0% { opacity: 0; transform: translateY(6px); } 40%, 62% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes lp-veil-out { to { opacity: 0; visibility: hidden; } }
+  @keyframes lp-veil-skip { from { opacity: .9; } to { opacity: 0; visibility: hidden; } }
+
+  /* Arrival of the page itself: parts rise into place (a fade only under
+     reduced motion), after the veil when there is one. */
+  html { --lp-rise-base: 60ms; }
+  html.lp-arrive { --lp-rise-base: 460ms; }
+  html.lp-arrive.lp-skip { --lp-rise-base: 0ms; }
+  html.lp-js .lp-rise { animation: lp-rise 1s var(--lp-ease) both; animation-delay: calc(var(--lp-rise-base) + var(--i, 0) * 90ms); }
+  @keyframes lp-rise { from { opacity: 0; transform: translate3d(0, 22px, 0); } to { opacity: 1; transform: none; } }
+  @keyframes lp-fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    html.lp-arrive { --lp-rise-base: 320ms; }
+    html.lp-arrive.lp-skip { --lp-rise-base: 0ms; }
+    html.lp-js .lp-rise { animation-name: lp-fade; animation-duration: .7s; }
   }
 
-  .login-brand-logo {
+  /* ---------- Page frame ---------- */
+  .login-page {
     position: relative; z-index: 1;
-    /* Upright, not italic: Playfair Display's italic Q has such an exaggerated
-       swash tail it reads as a "2" rather than a Q at this size. */
-    font-family: var(--lp-font-serif); font-style: normal; font-size: 16px; font-weight: 400;
-    display: flex; align-items: baseline; gap: 6px; letter-spacing: .02em;
+    min-height: 100vh; min-height: 100dvh;
+    display: flex; flex-direction: column;
+    padding: 0 var(--lp-gutter);
+    font-family: var(--lp-sans); color: var(--lp-ink);
   }
-  .login-brand-logo .spark { opacity: .55; font-size: 10px; position: relative; top: -7px; }
+  .login-page input, .login-page button, .login-page .btn { font-family: var(--lp-sans); }
+  .lp-top, .lp-stage, .login-sitefoot { width: 100%; max-width: var(--lp-wrap); margin-inline: auto; }
 
-  .login-brand-mid { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: clamp(24px, 7vh, 84px); }
-  .login-eyebrow {
-    display: flex; align-items: center; gap: 10px;
-    font-size: 11px; font-weight: 600; letter-spacing: .17em; text-transform: uppercase;
-    color: var(--lp-cloud-dim); margin-bottom: 24px;
+  .lp-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 88px; }
+  .lp-wordmark { display: inline-flex; align-items: baseline; font: 400 24px/1 var(--lp-serif); letter-spacing: -.01em; color: var(--lp-ink); white-space: nowrap; }
+  .lp-wordmark svg { width: 11px; height: 11px; margin-left: 5px; position: relative; top: -9px; color: var(--lp-rose-deep); fill: currentColor; }
+  .login-back {
+    display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px;
+    border-radius: var(--r-pill); border: 1px solid var(--lp-hair); background: rgba(255,253,249,.45);
+    font-size: 13px; font-weight: 500; color: var(--lp-slate); text-decoration: none; white-space: nowrap;
+    transition: color .25s, border-color .25s, background-color .25s;
   }
-  .login-eyebrow .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--lp-rose); flex-shrink: 0; }
+  .login-back:hover { color: var(--lp-ink); border-color: var(--lp-ink); background: rgba(255,253,249,.8); }
+
+  /* Two columns on a wide screen: the welcome and the path in on the left,
+     the glass pane with the form on the right. In the markup the form
+     comes before the path, which is the order a phone and a screen reader
+     get it in. */
+  .lp-stage {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.06fr) minmax(0, .94fr);
+    grid-template-rows: auto auto;
+    grid-template-areas: "intro main" "journey main";
+    align-content: center;
+    column-gap: clamp(40px, 6vw, 104px);
+    padding: clamp(4px, 1vh, 16px) 0 clamp(24px, 4vh, 48px);
+  }
+  .lp-intro { grid-area: intro; align-self: end; min-width: 0; }
+  .login-main { grid-area: main; align-self: center; min-width: 0; position: relative; display: flex; justify-content: flex-end; }
+  .lp-journey { grid-area: journey; align-self: start; min-width: 0; }
+
+  /* ---------- Welcome (left) ---------- */
+  .lp-eyebrow {
+    display: inline-flex; align-items: center; gap: 10px; height: 34px; padding: 0 16px; margin: 0 0 26px;
+    border-radius: var(--r-pill); border: 1px solid var(--lp-glass-line);
+    background: rgba(255,253,249,.55); box-shadow: var(--lp-glass-edge);
+    font: 600 11px/1 var(--lp-sans); letter-spacing: .2em; text-transform: uppercase; color: var(--lp-slate);
+  }
+  .lp-eyebrow svg { width: 11px; height: 11px; flex: none; color: var(--lp-rose-deep); fill: currentColor; }
   .login-brand h1 {
-    font-family: var(--lp-font-serif); font-weight: 400; font-size: clamp(42px, 4.9vw, 72px);
-    line-height: 1.03; letter-spacing: -.015em; max-width: 9.5em; margin: 0;
+    margin: 0; font-family: var(--lp-serif); font-weight: 400;
+    font-size: clamp(46px, 5.1vw, 78px); line-height: .98; letter-spacing: -.02em;
+    text-wrap: balance;
   }
-  .login-brand h1 em { font-style: italic; color: var(--lp-rose); }
+  .login-brand h1 em { font-style: italic; color: var(--lp-rose-deep); padding-right: .03em; }
+  .lp-lede { margin: 22px 0 0; max-width: 30em; font-size: 16px; line-height: 1.6; color: var(--lp-slate); }
+  html.lp-signup .lp-lede { display: none; }  /* on the sign-up door the path below tells it */
 
-  .login-brand-foot { position: relative; z-index: 1; margin-top: 32px; font-size: 13px; line-height: 1.65; letter-spacing: .002em; color: var(--lp-cloud-faint); max-width: 340px; }
+  .lp-readout { margin: 0; display: flex; align-items: center; gap: 9px; font: 600 11px/1.35 var(--lp-sans); letter-spacing: .18em; text-transform: uppercase; font-variant-numeric: tabular-nums; color: var(--lp-slate); }
+  .lp-readout svg { width: 11px; height: 11px; flex: none; color: var(--lp-rose-deep); fill: currentColor; }
+  .lp-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--lp-rose)); flex: none; }
 
-  /* Cropped product-preview card peeking off the panel's edge */
-  .login-preview {
-    position: absolute; right: -78px; bottom: -58px; z-index: 1; pointer-events: none;
-    width: 300px; transform: rotate(-3deg);
-    filter: grayscale(1) contrast(.94) brightness(1.02);
-    opacity: .9;
+  /* ---------- The path in: sign-up only ---------- */
+  .lp-rail { display: none; margin-top: 44px; max-width: 480px; }
+  html.lp-signup .lp-rail { display: block; }
+  .lp-rail ol { list-style: none; margin: 18px 0 0; padding: 0; }
+  .lp-rail li { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 18px; padding-bottom: 24px; }
+  .lp-rail li:last-child { padding-bottom: 0; }
+  .lp-rail li::before {
+    content: ""; position: absolute; left: 17.5px; top: 44px; bottom: 6px; width: 1px;
+    background: linear-gradient(180deg, rgba(126,115,108,.5), rgba(126,115,108,.1));
   }
+  .lp-rail li:last-child::before { display: none; }
+  .lp-rail-num {
+    width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+    font: 600 13px/1 var(--lp-sans); font-variant-numeric: tabular-nums; color: var(--lp-slate);
+    background: var(--lp-glass); border: 1px solid var(--lp-glass-line);
+    box-shadow: var(--lp-glass-edge), 0 8px 18px -12px rgba(74,58,46,.4);
+  }
+  .lp-rail li.is-current .lp-rail-num {
+    background: var(--lp-ink); color: var(--lp-bone); border-color: var(--lp-ink);
+    box-shadow: 0 0 0 5px rgba(255,253,249,.85), 0 0 0 6px rgba(126,115,108,.22), 0 14px 26px -10px rgba(18,18,18,.5);
+  }
+  .lp-rail-title { margin: 3px 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font: 400 28px/1.05 var(--lp-serif); letter-spacing: -.01em; color: var(--lp-ink); }
+  .lp-rail-now {
+    display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: var(--r-pill);
+    font: 600 10px/1 var(--lp-sans); letter-spacing: .16em; text-transform: uppercase; color: var(--lp-rose-ink);
+    background: rgba(180,159,144,.16); border: 1px solid rgba(156,133,118,.24);
+  }
+  .lp-rail-line { margin: 7px 0 0; max-width: 40ch; font-size: 14.5px; line-height: 1.55; color: var(--lp-slate); }
+
+  /* ---------- A glimpse of the product: sign-in only ----------
+     Right where you left it: a window of the week, with two example items
+     floating off it. Decoration, hidden from assistive tech. */
+  .login-preview { display: none; position: relative; margin-top: 46px; width: min(100%, 470px); height: 236px; }
+  html:not(.lp-signup) .login-preview { display: block; }
   .lp-card {
-    background: var(--lp-cloud); border-radius: 10px; padding: 16px 16px 18px;
-    box-shadow: 0 30px 60px rgba(0,0,0,.35);
+    position: absolute; left: 0; top: 26px; width: min(78%, 340px); padding: 16px 18px 18px;
+    border-radius: var(--r-card); background: var(--lp-glass);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15); backdrop-filter: blur(18px) saturate(1.15);
+    border: 1px solid var(--lp-glass-line); box-shadow: var(--lp-glass-edge), var(--lp-lift);
   }
-  .lp-card-head { display: flex; gap: 5px; margin-bottom: 14px; }
-  .lp-card-head span { width: 6px; height: 6px; border-radius: 50%; background: rgba(23,20,15,.18); }
-  .lp-row { display: flex; align-items: center; gap: 9px; padding: 7px 0; border-top: 1px solid rgba(23,20,15,.08); }
+  .lp-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+  .lp-card-head span { width: 7px; height: 7px; border-radius: 50%; background: var(--lp-sand); }
+  .lp-card-head .lp-readout { margin-left: 8px; font-size: 9.5px; letter-spacing: .16em; }
+  .lp-card-title { margin: 0 0 6px; font: 400 24px/1.05 var(--lp-serif); letter-spacing: -.01em; }
+  .lp-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(18,18,18,.07); }
   .lp-row:first-of-type { border-top: none; }
-  .lp-row i { width: 13px; height: 13px; border-radius: 3px; border: 1.5px solid rgba(23,20,15,.3); flex-shrink: 0; display: block; }
-  .lp-row b { height: 8px; border-radius: 2px; background: rgba(23,20,15,.16); flex: 1; }
-  .lp-row.done i { background: rgba(23,20,15,.3); }
+  .lp-row i { width: 13px; height: 13px; border-radius: var(--r-mark); border: 1.5px solid rgba(18,18,18,.28); flex-shrink: 0; display: block; }
+  .lp-row b { height: 8px; border-radius: var(--r-mark); background: rgba(18,18,18,.13); flex: 1; }
+  .lp-row.done i { background: rgba(18,18,18,.28); }
   .lp-row.done b { opacity: .45; }
-  .lp-cal { display: flex; gap: 4px; margin-top: 14px; }
-  .lp-cal span { flex: 1; aspect-ratio: 1; border-radius: 2px; background: rgba(23,20,15,.08); }
+  .lp-cal { display: flex; gap: 5px; margin-top: 12px; }
+  .lp-cal span { flex: 1; aspect-ratio: 1; border-radius: var(--r-mark); background: rgba(18,18,18,.06); }
   .lp-cal span.on { background: var(--lp-rose); }
 
-  /* ---------- Right / login panel ---------- */
-  .login-main { flex: 1 1 42%; position: relative; display: flex; flex-direction: column; padding: 32px 5.5vw 28px; }
-  .login-back { position: relative; z-index: 1; font-size: 13px; color: var(--lp-text-faint); display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; text-decoration: none; }
-  .login-back:hover { color: var(--lp-text); }
+  .lp-chip {
+    position: absolute; padding: 13px 16px 14px; border-radius: var(--r-card);
+    background: var(--lp-glass); -webkit-backdrop-filter: blur(20px) saturate(1.2); backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid var(--lp-glass-line); box-shadow: var(--lp-glass-edge), var(--lp-lift-hi);
+  }
+  .lp-chip .lp-readout { font-size: 9.5px; letter-spacing: .16em; }
+  .lp-chip-title { margin: 6px 0 0; font: 400 24px/1.05 var(--lp-serif); letter-spacing: -.01em; white-space: nowrap; }
+  .lp-chip-sub { margin: 3px 0 0; display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--lp-slate); white-space: nowrap; }
+  .lp-chip-num { display: block; font: 400 44px/.9 var(--lp-serif); font-variant-numeric: tabular-nums; }
+  .lp-chip-num + .lp-readout { margin-top: 4px; }
+  .lp-chip--next { right: 0; top: 0; width: 196px; }
+  .lp-chip--exam { right: 34px; bottom: 0; display: flex; align-items: center; gap: 14px; padding-right: 20px; }
+  .lp-chip--exam .lp-chip-title { margin-top: 0; font-size: 21px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .lp-chip--next { animation: lp-bob 8.5s ease-in-out -2s infinite alternate; }
+    .lp-chip--exam { animation: lp-bob 6.5s ease-in-out -4s infinite alternate; }
+  }
+  @keyframes lp-bob { from { translate: 0 -4px; } to { translate: 0 5px; } }
 
-  .login-form-wrap { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: clamp(0px, 6vw, 64px); }
-  .login-form { width: 100%; max-width: 400px; }
-  .login-form h2 { font-family: var(--lp-font-serif); font-weight: 400; font-size: 52px; line-height: 1.02; letter-spacing: -.015em; margin: 0 0 8px; color: var(--lp-text); }
-  .login-sub { font-size: 14.5px; color: var(--lp-text-dim); line-height: 1.55; margin: 0 0 40px; }
+  /* The same two items drift at the pane's corners on the sign-up side,
+     behind the glass, so the product is in the room on both doors. */
+  .lp-orbit { display: none; }
 
-  .login-error { display: none; background: #f6e9e4; color: #8a3a24; border-radius: var(--lp-radius); padding: 11px 13px; font-size: 12.5px; margin-bottom: 14px; text-align: left; }
+  /* ---------- The pane (right) ---------- */
+  .lp-pane {
+    position: relative; z-index: 1; isolation: isolate;
+    width: 100%; max-width: 484px; padding: 40px 44px 34px;
+    border-radius: var(--r-card);
+    background: var(--lp-glass);
+    -webkit-backdrop-filter: blur(26px) saturate(1.2); backdrop-filter: blur(26px) saturate(1.2);
+    border: 1px solid var(--lp-glass-line);
+    box-shadow: var(--lp-glass-edge), var(--lp-lift-hi);
+  }
+  .lp-pane::before {  /* the light catching the top edge of the glass */
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(460px circle at 16% 0%, rgba(255,255,255,.85), rgba(255,255,255,0) 62%);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .lp-pane, .lp-card, .lp-chip { background: rgba(255,253,249,.96); }
+  }
+  .lp-pane-top { margin: 0 0 22px; min-height: 16px; }
+  .lp-pane-top .lp-mode-up { display: none; }
+  html.lp-signup .lp-pane-top .lp-mode-up { display: flex; }
+  html.lp-signup .lp-pane-top .lp-mode-in { display: none; }
+  .lp-steps { display: inline-flex; gap: 5px; margin-right: 3px; }
+  .lp-steps i { width: 22px; height: 3px; border-radius: var(--r-pill); background: rgba(126,115,108,.24); }
+  .lp-steps i.on { background: var(--lp-ink); }
+
+  /* ---------- The form (markup and ids unchanged; the scripts fill it) ---------- */
+  .login-form { width: 100%; }
+  .login-form h2 { margin: 0 0 10px; font-family: var(--lp-serif); font-weight: 400; font-size: clamp(40px, 3.5vw, 52px); line-height: 1; letter-spacing: -.015em; color: var(--lp-ink); }
+  .login-sub { margin: 0 0 30px; font-size: 15px; line-height: 1.55; color: var(--lp-slate); }
+
+  .login-error { display: none; margin-bottom: 14px; padding: 12px 16px; border-radius: var(--r-tight); background: #F6E9E4; border: 1px solid rgba(138,58,36,.16); color: #8A3A24; font-size: 13px; line-height: 1.5; text-align: left; }
   .login-error.show { display: block; }
-  .login-check { text-align: left; margin: 2px 0 18px; color: var(--lp-text-dim); }
+  .login-check { text-align: left; margin: 2px 0 18px; color: var(--lp-slate); line-height: 1.5; }
+  .login-check .small { font-size: 13px; }
+  .login-check a { color: var(--lp-ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .login-check input[type="checkbox"] { accent-color: var(--lp-ink); }
 
   .login-form .input {
-    font-size: 15px; padding: 15px 16px; border-radius: var(--lp-radius);
-    background: var(--lp-paper-2); border: 1px solid var(--lp-border); color: var(--lp-text);
+    height: 54px; padding: 0 22px; font-size: 15px; color: var(--lp-ink);
+    border-radius: var(--r-pill); background: rgba(255,255,255,.74);
+    border: 1px solid var(--lp-hair); box-shadow: inset 0 1px 2px rgba(74,58,46,.06);
+    transition: border-color .2s, box-shadow .2s, background-color .2s;
   }
-  .login-form .input:focus { border-color: var(--lp-ink); }
-  .login-form .input::placeholder { color: var(--lp-text-faint); }
+  .login-form .input::placeholder { color: #8A7F77; }
+  .login-form .input:focus { outline: none; border-color: var(--lp-ink); background: #fff; box-shadow: 0 0 0 4px rgba(180,159,144,.26); }
 
   .login-form .btn {
-    font-size: 14.5px; font-weight: 600; padding: 15px 20px; border-radius: var(--lp-radius);
-    letter-spacing: .01em; transition: box-shadow .15s ease, background .15s ease, transform .05s ease;
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    min-height: 54px; padding: 0 24px; border-radius: var(--r-pill);
+    font-size: 14.5px; font-weight: 600; line-height: 1.2; letter-spacing: .01em;
+    transition: background-color .25s, color .25s, border-color .25s, box-shadow .35s var(--lp-ease), transform .12s;
   }
   .login-form .btn.btn-primary {
-    background: var(--lp-ink); color: var(--lp-cloud); border: 1px solid var(--lp-ink); box-shadow: none;
+    background: var(--lp-ink); color: var(--lp-bone); border: 1px solid var(--lp-ink);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 14px 30px -14px rgba(18,18,18,.55);
   }
-  .login-form .btn.btn-primary:hover { background: var(--lp-ink-2); box-shadow: 0 6px 20px rgba(23,20,15,.22); }
-  .login-form .btn.btn-primary:active { transform: translateY(1px); }
+  .login-form .btn.btn-primary:hover:not(:disabled) { background: #000; box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 22px 40px -16px rgba(18,18,18,.6); }
   .login-form .btn.btn-google {
-    background: var(--lp-cloud); color: var(--lp-text); border: 1px solid var(--lp-border); box-shadow: 0 1px 2px rgba(23,20,15,.04);
+    color: var(--lp-ink); border: 1px solid var(--lp-hair);
+    background: linear-gradient(160deg, rgba(255,255,255,.92), rgba(255,253,249,.62));
+    box-shadow: var(--lp-glass-edge), 0 10px 26px -16px rgba(74,58,46,.35);
   }
-  .login-form .btn.btn-google:hover { border-color: var(--lp-ink); box-shadow: 0 4px 14px rgba(23,20,15,.1); }
-  .login-form .btn.btn-google:active { transform: translateY(1px); box-shadow: none; }
-  .login-form .btn:disabled { opacity: .55; }
+  .login-form .btn.btn-google:hover { border-color: var(--lp-ink); background: #fff; }
+  .login-form .btn.btn-sm { min-height: 46px; font-size: 13.5px; color: var(--lp-ink); background: rgba(255,253,249,.5); border: 1px solid var(--lp-hair); box-shadow: none; }
+  .login-form .btn.btn-sm:hover { border-color: var(--lp-ink); }
+  .login-form .btn:disabled { opacity: .62; cursor: default; }
 
-  .login-divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--lp-text-faint); }
-  .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--lp-border); }
+  .login-divider { display: flex; align-items: center; gap: 14px; margin: 22px 0; font-size: 11px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--lp-slate); }
+  .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(126,115,108,0), rgba(126,115,108,.3), rgba(126,115,108,0)); }
 
-  .login-note { font-size: 12px; line-height: 1.65; color: var(--lp-text-faint); margin: 16px 0 0; text-align: left; }
+  .login-note { margin: 16px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--lp-slate); text-align: left; }
 
-  .login-sent { text-align: left; font-size: 14.5px; line-height: 1.6; color: var(--lp-text); background: var(--lp-paper-2); border: 1px solid var(--lp-border); border-radius: var(--lp-radius); padding: 16px; }
-  .login-sent strong { display: block; margin-bottom: 4px; font-size: 15.5px; }
+  .login-sent { text-align: left; font-size: 14.5px; line-height: 1.6; color: var(--lp-ink); background: rgba(255,255,255,.62); border: 1px solid var(--lp-glass-line); border-radius: var(--r-card); padding: 18px 20px; box-shadow: var(--lp-glass-edge); }
+  .login-sent strong { display: block; margin-bottom: 4px; font-family: var(--lp-serif); font-weight: 400; font-size: 26px; line-height: 1.1; }
 
-  .login-foot { margin-top: 24px; font-size: 13px; line-height: 1.55; color: var(--lp-text-faint); }
-  .login-foot a { color: var(--lp-text); font-weight: 600; }
+  .login-foot { margin: 22px 0 0; padding-top: 18px; border-top: 1px solid rgba(126,115,108,.18); font-size: 13px; line-height: 1.6; color: var(--lp-slate); }
+  .login-foot a { color: var(--lp-ink); font-weight: 600; }
 
+  /* ---------- Footer ---------- */
   .login-sitefoot {
-    position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center;
-    font-size: 11.5px; letter-spacing: .01em; color: var(--lp-text-faint); padding-top: 24px; margin-top: 16px; border-top: 1px solid var(--lp-border);
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 18px 0 22px; border-top: 1px solid rgba(126,115,108,.2);
+    font-size: 12px; letter-spacing: .01em; color: var(--lp-slate);
   }
-  .login-sitefoot-links { display: flex; gap: 16px; }
-  .login-sitefoot-links a { color: var(--lp-text-faint); text-decoration: none; }
-  .login-sitefoot-links a:hover { color: var(--lp-text); }
+  .login-sitefoot-links { display: flex; gap: 18px; }
+  .login-sitefoot-links a { color: var(--lp-slate); text-decoration: none; }
+  .login-sitefoot-links a:hover { color: var(--lp-ink); text-decoration: underline; text-underline-offset: 3px; }
 
-  @media (max-width: 860px) {
-    .login-page { flex-direction: column; }
-    .login-brand { flex: none; padding: 40px 26px 88px; text-align: center; align-items: center; }
-    .login-brand-logo { justify-content: center; }
-    .login-brand-mid { justify-content: center; padding-bottom: 0; }
-    .login-eyebrow { justify-content: center; }
-    .login-brand h1 { max-width: none; }
-    .login-brand-foot, .login-preview, .login-brand-mono { display: none; }
-    .login-main { padding: 24px 26px 22px; }
-    .login-form-wrap { align-items: center; padding-left: 0; }
-    .login-form { text-align: center; }
-    .login-check { text-align: left; }
-    .login-form h2 { font-size: 36px; }
-    .login-sitefoot { flex-direction: column; gap: 8px; }
+  /* ---------- Wide: the two items float at the pane's corners on sign-up ---------- */
+  @media (min-width: 1400px) {
+    html.lp-signup .lp-orbit { display: block; position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+    /* They float in the open light between the path and the pane. */
+    .lp-orbit .lp-chip--next { top: 34%; right: calc(484px + 30px); }
+    .lp-orbit .lp-chip--exam { top: auto; bottom: 14%; right: calc(484px + 64px); }
+  }
+
+  /* ---------- One column: tablet and phone ---------- */
+  @media (max-width: 900px) {
+    :root { --lp-wrap: 600px; }
+    .lp-top { height: 76px; }
+    .lp-wordmark { font-size: 22px; }
+    .lp-stage {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: none;
+      grid-template-areas: "intro" "main" "journey";
+      align-content: start; row-gap: 26px;
+      padding: 10px 0 44px;
+    }
+    .lp-intro { align-self: start; }
+    .login-main { justify-content: stretch; }
+    .lp-pane { max-width: none; }
+    .lp-lede { display: none; }
+    .lp-eyebrow { margin-bottom: 20px; }
+    .login-brand h1 { font-size: clamp(40px, 10.6vw, 64px); }
+    .lp-rail, .login-preview { margin-top: 10px; }
+  }
+  @media (max-width: 560px) {
+    .lp-top { height: 68px; }
+    .login-back { height: 36px; padding: 0 14px; font-size: 12.5px; }
+    .lp-eyebrow { height: auto; padding: 8px 14px; font-size: 10px; letter-spacing: .15em; line-height: 1.35; }
+    .lp-pane { padding: 28px 22px 24px; }
+    .login-form h2 { font-size: 38px; }
+    .login-sub { margin-bottom: 24px; }
+    .login-form .input { font-size: 16px; }  /* 16px keeps iOS Safari from zooming into the field */
+    .lp-rail-title { font-size: 25px; }
+    .login-preview { height: 224px; }
+    .lp-card { width: 80%; }
+    .lp-chip--next { width: 176px; }
+    .lp-chip--exam { right: 8px; }
+    .login-sitefoot { flex-direction: column; align-items: flex-start; gap: 8px; }
   }
 </style>
 </head>
 <body>
+<!-- One sprite: the brand star, the ✦, reused everywhere on the page. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="lp-star" viewBox="-10 -10 20 20"><path d="M0 -10C0.6 -3.2 3.2 -0.6 10 0C3.2 0.6 0.6 3.2 0 10C-0.6 3.2 -3.2 0.6 -10 0C-3.2 -0.6 -0.6 -3.2 0 -10Z"/></symbol>
+</svg>
+
+<!-- The arrival. Decoration only: aria-hidden, never takes a click. -->
+<div class="lp-veil" aria-hidden="true">
+  <svg class="lp-veil-star" viewBox="-10 -10 20 20" focusable="false">
+    <defs>
+      <radialGradient id="lp-star-core" cx=".5" cy=".5" r=".5">
+        <stop offset="0" stop-color="#FFFFFF"/>
+        <stop offset=".55" stop-color="#FFFDF9"/>
+        <stop offset="1" stop-color="#E6DAD0"/>
+      </radialGradient>
+    </defs>
+    <path fill="url(#lp-star-core)" stroke="#9C8576" stroke-opacity=".8" stroke-width=".22" stroke-linejoin="round" d="M0 -10C0.6 -3.2 3.2 -0.6 10 0C3.2 0.6 0.6 3.2 0 10C-0.6 3.2 -3.2 0.6 -10 0C-3.2 -0.6 -0.6 -3.2 0 -10Z"/>
+  </svg>
+  <span class="lp-veil-word">Semester HQ</span>
+</div>
+
+<!-- The field: the light the whole page sits in. -->
+<div class="lp-field" aria-hidden="true">
+  <i class="lp-f-sand"></i><i class="lp-f-rose"></i><i class="lp-f-light"></i><i class="lp-f-floor"></i>
+  <div class="lp-grain"></div>
+</div>
+
 <div class="login-page">
-  <div class="login-brand">
-    <div class="login-brand-grid"></div>
-    <div class="login-brand-mono">S</div>
-    <div class="login-grain"></div>
-    <div class="login-brand-logo">Semester HQ <span class="spark">&#10022;</span></div>
-    <div class="login-brand-mid">
-      <div class="login-eyebrow"><span class="dot"></span>Everything your semester needs</div>
-      <h1>Your entire semester,<br><em>finally</em> in one place.</h1>
-    </div>
-    <p class="login-brand-foot">Calendar, assignments, notes, and study groups, synced across every device.</p>
-    <div class="login-preview" aria-hidden="true">
-      <div class="lp-card">
-        <div class="lp-card-head"><span></span><span></span><span></span></div>
-        <div class="lp-row done"><i></i><b style="max-width:70%"></b></div>
-        <div class="lp-row"><i></i><b></b></div>
-        <div class="lp-row"><i></i><b style="max-width:55%"></b></div>
-        <div class="lp-cal"><span></span><span></span><span class="on"></span><span></span><span></span><span></span><span></span></div>
-      </div>
-    </div>
-  </div>
-  <div class="login-main">
+  <header class="lp-top lp-rise" style="--i:0">
+    <div class="lp-wordmark">Semester HQ<svg aria-hidden="true" focusable="false"><use href="#lp-star"/></svg></div>
     <a href="https://semester-hq.com/" class="login-back">&larr; semester-hq.com</a>
-    <div class="login-form-wrap">
-      <div class="login-form">
-        <h2 id="login-title">Welcome back.</h2>
-        <p class="login-sub" id="login-sub">Your semester is right where you left it.</p>
-        <div class="login-error" id="login-error"></div>
-        <div id="login-body">
-          <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
+  </header>
+
+  <main class="lp-stage">
+    <div class="lp-intro login-brand lp-rise" style="--i:1">
+      <p class="lp-eyebrow"><svg aria-hidden="true" focusable="false"><use href="#lp-star"/></svg>Everything your semester needs. One HQ.</p>
+      <h1>Your entire semester,<br><em>finally</em> in one place.</h1>
+      <p class="lp-lede">Calendar, assignments, notes, and study groups, synced across every device.</p>
+    </div>
+
+    <section class="login-main lp-rise" style="--i:2" aria-labelledby="login-title">
+      <div class="lp-orbit" aria-hidden="true">
+        <div class="lp-chip lp-chip--next">
+          <p class="lp-readout"><span class="lp-dot" style="--c:#4f8a5b"></span>Up next · 10:00 PM</p>
+          <p class="lp-chip-title">Webwork 6</p>
+          <p class="lp-chip-sub">Due · MATH 152</p>
         </div>
-        <p class="login-foot" id="login-foot">New to Semester HQ? Enter your email above. If it's new, we'll take you straight to checkout instead of an inbox.</p>
+        <div class="lp-chip lp-chip--exam">
+          <div><span class="lp-chip-num">9</span><span class="lp-readout">days</span></div>
+          <div>
+            <p class="lp-chip-title">Midterm 1</p>
+            <p class="lp-chip-sub"><span class="lp-dot" style="--c:#3b6ea5"></span>CHEM 210</p>
+          </div>
+        </div>
+      </div>
+      <div class="lp-pane">
+        <div class="lp-pane-top">
+          <p class="lp-readout lp-mode-in"><svg aria-hidden="true" focusable="false"><use href="#lp-star"/></svg>Log in</p>
+          <p class="lp-readout lp-mode-up"><span class="lp-steps" aria-hidden="true"><i class="on"></i><i></i><i></i></span>Step 1 of 3 · Your email</p>
+        </div>
+        <div class="login-form">
+          <h2 id="login-title">Welcome back.</h2>
+          <p class="login-sub" id="login-sub">Your semester is right where you left it.</p>
+          <div class="login-error" id="login-error" role="alert"></div>
+          <div id="login-body">
+            <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
+          </div>
+          <p class="login-foot" id="login-foot">New to Semester HQ? Enter your email above. If it's new, we'll take you straight to checkout instead of an inbox.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="lp-journey lp-rise" style="--i:3">
+      <!-- Sign-up: where you are, and what happens next. -->
+      <div class="lp-rail">
+        <p class="lp-readout" id="lp-rail-label"><svg aria-hidden="true" focusable="false"><use href="#lp-star"/></svg>Getting started</p>
+        <ol aria-labelledby="lp-rail-label">
+          <li class="is-current" aria-current="step">
+            <span class="lp-rail-num" aria-hidden="true">1</span>
+            <div>
+              <p class="lp-rail-title">Your email <span class="lp-rail-now">You are here</span></p>
+              <p class="lp-rail-line">Any email works. A new one goes straight to checkout, not an inbox.</p>
+            </div>
+          </li>
+          <li>
+            <span class="lp-rail-num" aria-hidden="true">2</span>
+            <div>
+              <p class="lp-rail-title">Checkout</p>
+              <p class="lp-rail-line">$7.99 a month, cancel anytime, with a 14-day refund on your first charge.</p>
+            </div>
+          </li>
+          <li>
+            <span class="lp-rail-num" aria-hidden="true">3</span>
+            <div>
+              <p class="lp-rail-title">Semester setup</p>
+              <p class="lp-rail-line">Upload a syllabus, and your class times, every deadline, exam dates, and office hours land in one place.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+
+      <!-- Sign-in: a glimpse of the semester, right where it was left. -->
+      <div class="login-preview" aria-hidden="true">
+        <div class="lp-card">
+          <div class="lp-card-head"><span></span><span></span><span></span><p class="lp-readout">This week</p></div>
+          <div class="lp-row done"><i></i><b style="max-width:70%"></b></div>
+          <div class="lp-row"><i></i><b></b></div>
+          <div class="lp-row"><i></i><b style="max-width:55%"></b></div>
+          <div class="lp-cal"><span></span><span></span><span class="on"></span><span></span><span></span><span></span><span></span></div>
+        </div>
+        <div class="lp-chip lp-chip--next">
+          <p class="lp-readout"><span class="lp-dot" style="--c:#4f8a5b"></span>Up next · 10:00 PM</p>
+          <p class="lp-chip-title">Webwork 6</p>
+          <p class="lp-chip-sub">Due · MATH 152</p>
+        </div>
+        <div class="lp-chip lp-chip--exam">
+          <div><span class="lp-chip-num">9</span><span class="lp-readout">days</span></div>
+          <div>
+            <p class="lp-chip-title">Midterm 1</p>
+            <p class="lp-chip-sub"><span class="lp-dot" style="--c:#3b6ea5"></span>CHEM 210</p>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="login-sitefoot">
-      <span>Semester HQ &copy; 2026</span>
-      <span class="login-sitefoot-links"><a href="https://semester-hq.com/privacy.html">Privacy</a><a href="https://semester-hq.com/terms.html">Terms</a></span>
-    </div>
-  </div>
+  </main>
+
+  <footer class="login-sitefoot">
+    <span>Semester HQ &copy; 2026</span>
+    <span class="login-sitefoot-links"><a href="https://semester-hq.com/privacy.html">Privacy</a><a href="https://semester-hq.com/terms.html">Terms</a></span>
+  </footer>
 </div>
 
 <!-- login.html is intentionally dependency-light: shared settings only, not the rest of the app's JS. -->
