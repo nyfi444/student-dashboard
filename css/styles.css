@@ -699,6 +699,15 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
   .cal-dow { font-size: 9.5px; padding-bottom: 3px; }
   .cal-evt { font-size: 8.5px; padding: 1px 3px; }
   .cal-evt-ic { display: none; }
+  /* Month view on a phone: a label cut to "Calc…" says nothing, so each item
+     is a dot in its course colour (a ring for an exam) and tapping the day
+     opens it in full. The title stays in the markup for screen readers. */
+  .cal-cell .cal-evt { display: inline-block; vertical-align: top; width: 7px; height: 7px; padding: 0; margin: 0 3px 3px 0; font-size: 0; border: none; border-radius: 50%; background: var(--c); }
+  .cal-cell .cal-evt.kind-exam { background: transparent; border: 2px solid var(--c); }
+  .cal-cell { flex-direction: row; flex-wrap: wrap; align-content: flex-start; gap: 0; }
+  .cal-cell > :not(.cal-evt):not(.cal-more) { flex-basis: 100%; margin-bottom: 4px; }
+  .cal-cell .cal-more { font-size: 9.5px; line-height: 7px; }
+  .cal-more-word { display: none; }
   .cal-week-grid { grid-template-columns: 40px repeat(7, 1fr); }
   .cal-hour-label { font-size: 8.5px; padding-right: 3px; }
   .modal, .modal.wide { width: calc(100vw - 24px); }

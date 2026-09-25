@@ -25,10 +25,14 @@ function registerServiceWorker() {
       if (!worker) return;
       worker.addEventListener('statechange', () => {
         // A newer version finished installing while this tab runs the old one.
-        if (worker.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(reg);
+        // Safari can report a first install as 'installed' after that same
+        // worker has already taken over the page; treating it as an update
+        // reloaded the app half a second into someone's first visit.
+        const running = navigator.serviceWorker.controller;
+        if (worker.state === 'installed' && running && running !== worker) offerUpdate(reg);
       });
     };
-    if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg);
+    if (reg.waiting && navigator.serviceWorker.controller && navigator.serviceWorker.controller !== reg.waiting) offerUpdate(reg);
     reg.addEventListener('updatefound', () => watch(reg.installing));
     const check = () => reg.update().catch(() => {});
     check(); // don't wait for a tab switch to find out a deploy happened

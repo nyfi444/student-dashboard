@@ -119,6 +119,19 @@ test('the sidebar offers every section', async ({ page }) => {
   }
 });
 
+// Safari could report a first install as an update, so a first visit reloaded
+// itself about half a second in, cutting off Google sign-in mid-load. It only
+// happened some of the time, so this watches a few seconds past the takeover.
+test('a first visit does not reload itself when the offline worker takes over', async ({ page }) => {
+  let loads = 0;
+  page.on('framenavigated', (f) => { if (f === page.mainFrame()) loads++; });
+  const console_ = await openApp(page);
+  await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller), { timeout: 15_000 }).toBe(true);
+  await page.waitForTimeout(1500);
+  expect(loads, 'the page reloaded itself on a first visit').toBe(1);
+  console_.expectClean();
+});
+
 test('the service worker registers and names its cache after this build', async ({ page }) => {
   const version = (read('js/version.js').match(/APP_VERSION\s*=\s*'([^']+)'/) || [])[1];
   expect(version, 'js/version.js has no APP_VERSION').toBeTruthy();

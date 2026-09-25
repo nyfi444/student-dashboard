@@ -208,7 +208,11 @@ function qaState(id) { return window._qa[id] || (window._qa[id] = { ignore: [], 
 function quickAddBar(id, { mode = 'auto', placeholder, defaultCourseId = null } = {}) {
   const st = qaState(id);
   st.mode = mode; st.defaultCourseId = defaultCourseId;
-  const ph = placeholder || (mode === 'todo' ? 'Add a to-do: “email advisor tomorrow 3pm !”' : mode === 'assignment' ? 'Add an assignment: “chem lab report fri 5pm”' : 'Add anything: “bio lab report fri 5pm” or “call mom sunday”');
+  // A phone's box fits about half the example, so it gets a shorter one.
+  const phone = window.matchMedia?.('(max-width: 760px)').matches;
+  const ph = placeholder || (phone
+    ? (mode === 'todo' ? 'Add a to-do: “email advisor 3pm”' : mode === 'assignment' ? 'Add one: “lab report fri 5pm”' : 'Add anything: “lab fri 5pm”')
+    : (mode === 'todo' ? 'Add a to-do: “email advisor tomorrow 3pm !”' : mode === 'assignment' ? 'Add an assignment: “chem lab report fri 5pm”' : 'Add anything: “bio lab report fri 5pm” or “call mom sunday”'));
   return `
     <div class="quick-add card qa-smart" id="qa-wrap-${id}">
       <div class="qa-row">

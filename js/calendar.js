@@ -213,7 +213,7 @@ function monthView() {
           <div class="d-num">${d.getDate()}</div>
           ${brk ? `<div class="small muted" style="font-style:italic">${esc(brk.name)}</div>` : ''}
           ${items.slice(0, 3).map(it => `<div class="cal-evt kind-${it.kind}" style="--c:${it.color}">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 9, 2.2)}</span>` : ''}${esc(it.title)}</div>`).join('')}
-          ${items.length > 3 ? `<div class="small muted">+${items.length - 3} more</div>` : ''}
+          ${items.length > 3 ? `<div class="small muted cal-more">+${items.length - 3}<span class="cal-more-word"> more</span></div>` : ''}
         </div>`;
       }).join('')}
     </div>
