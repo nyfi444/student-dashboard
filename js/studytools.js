@@ -81,7 +81,9 @@ function pageStudyTools() {
   const t = todayIso();
   const forecast = Array.from({ length: 7 }, (_, i) => {
     const d = addDays(t, i);
-    const n = decks.reduce((s, dk) => s + dk.cards.filter(c => { const st = srsState(c); return st && st.due && (i === 0 ? st.due <= d : st.due === d); }).length, 0);
+    // Today includes the new cards on today's allowance, so it matches the "N cards to review" headline.
+    if (i === 0) return { d, n: totalDue };
+    const n = decks.reduce((s, dk) => s + dk.cards.filter(c => { const st = srsState(c); return st && st.due && st.due === d; }).length, 0);
     return { d, n };
   });
   const maxF = Math.max(1, ...forecast.map(f => f.n));

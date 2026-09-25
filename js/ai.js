@@ -36,7 +36,7 @@ function whenAccountChecked(fn, waited = 0) {
 }
 function openPlusOnlyModal(what) {
   const cta = isEmbedded()
-    ? `<a class="btn btn-primary" href="https://semester-hq.com/#pricing" target="_top">See Semester HQ Plus</a>`
+    ? `<a class="btn btn-primary" href="https://semester-hq.com/pricing.html" target="_top">See Semester HQ Plus</a>`
     : _fbUser ? `<button class="btn btn-primary" onclick="closeModal();redirectToCheckout()">Subscribe</button>`
     : `<a class="btn btn-primary" href="login.html">Log in or sign up</a>`;
   openModal(`

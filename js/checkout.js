@@ -16,7 +16,7 @@ function checkoutEnabled() { return !!CHECKOUT_PROXY_URL; }
 function demoBannerHtml() {
   if (typeof isDemoMode !== 'function' || !isDemoMode()) return '';
   if (typeof _fbUser !== 'undefined' && _fbUser) return '';
-  const plan = typeof isEmbedded === 'function' && isEmbedded() ? '' : ', or <a href="https://semester-hq.com/#pricing" target="_blank" rel="noopener">see the plan</a>';
+  const plan = typeof isEmbedded === 'function' && isEmbedded() ? '' : ', or <a href="https://semester-hq.com/pricing.html" target="_blank" rel="noopener">see the plan</a>';
   return `<div class="demo-bar" role="status"><strong>Demo.</strong>&nbsp;Nothing here is saved. <a href="#" onclick="event.preventDefault();signIn()">Sign in</a> to keep your semester${plan}.</div>`;
 }
 
@@ -210,7 +210,7 @@ function pagePaywall() {
         ${typeof pendingInviteBanner === 'function' ? pendingInviteBanner() : ''}
         ${typeof pendingOrgCode === 'function' && pendingOrgCode() && !(typeof pendingJoinCode === 'function' && pendingJoinCode()) ? `<div class="sg-callout small mb-16" style="text-align:left"><span>${icon('shield', 15, 1.8)}</span><div>You’ve been invited to join a club or team. Subscribe to get its events on your calendar. Signing up the whole group? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Ask about group pricing</a>.</div></div>` : ''}
         ${typeof pendingClassCode === 'function' && pendingClassCode() && !(typeof pendingJoinCode === 'function' && pendingJoinCode()) ? `<div class="sg-callout small mb-16" style="text-align:left"><span>${icon('graduation-cap', 15, 1.8)}</span><div>A classmate shared a class with you. Subscribe to add it with every deadline already filled in.</div></div>` : ''}
-        <p class="small muted mb-16">If you already subscribed, this is probably just the wrong account. Switch below and it'll unlock right away. Otherwise, $7.99/mo unlocks cross-device sync, AI syllabus upload, and study groups for this account. Billed monthly, cancel anytime.</p>
+        <p class="small muted mb-16">If you already subscribed, this is probably just the wrong account. Switch below and it'll unlock right away. Otherwise, $7.99/mo unlocks cross-device sync, syllabus upload, and study groups for this account. Billed monthly, cancel anytime.</p>
         <div class="paywall-price">$7.99<span class="paywall-price-period">/mo</span></div>
         <button class="btn btn-primary" style="width:100%" onclick="redirectToCheckout()">Subscribe</button>
         ${checkoutReturnPending() ? `<p class="small mt-16" style="color:var(--warn)">We received a payment but couldn't confirm it's linked to this account yet. If you just paid, try <a href="#" onclick="event.preventDefault();retryLicenseCheck()">checking again</a>, or contact <a href="mailto:hello@semester-hq.com">hello@semester-hq.com</a>.</p>` : ''}

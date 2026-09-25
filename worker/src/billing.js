@@ -51,7 +51,7 @@ export async function handleCreateCheckoutSession(request, env, origin) {
   params.set('line_items[0][price_data][unit_amount]', String(PLUS_PRICE_CENTS));
   params.set('line_items[0][price_data][recurring][interval]', 'month');
   params.set('line_items[0][price_data][product_data][name]', 'Semester HQ');
-  params.set('line_items[0][price_data][product_data][description]', 'Sign-in & sync across every device: cross-device access, AI syllabus upload, and study groups. Cancel anytime.');
+  params.set('line_items[0][price_data][product_data][description]', 'Your planner on every device, syllabus upload that fills in your semester, and study groups. Cancel anytime.');
   // Same square mark set as the account's Stripe branding (settings/branding),
   // shows up as the line-item thumbnail in the checkout Details dropdown.
   params.set('line_items[0][price_data][product_data][images][0]', 'https://semester-hq.com/assets/icon-512.png');

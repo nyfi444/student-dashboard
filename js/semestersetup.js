@@ -205,7 +205,7 @@ function setupStepSyllabi() {
   if (!aiEnabled()) return `<p class="setup-lede">Syllabus reading isn’t available on this deployment. You can skip this step.</p>`;
   if (!aiLooksUnlocked()) return `
     <p class="setup-lede">With Semester HQ Plus, you can upload each syllabus here and Semester HQ pulls out class times and every deadline and exam.</p>
-    <div class="sg-callout small"><span>${icon('lock', 14, 1.8)}</span><div>Syllabus upload doesn’t run in the demo. Skip this step for now and add assignments by hand, or ${isEmbedded() ? '<a href="https://semester-hq.com/#pricing" target="_top">see Semester HQ Plus</a>' : '<a href="login.html">log in</a> to use it'}.</div></div>`;
+    <div class="sg-callout small"><span>${icon('lock', 14, 1.8)}</span><div>Syllabus upload doesn’t run in the demo. Skip this step for now and add assignments by hand, or ${isEmbedded() ? '<a href="https://semester-hq.com/pricing.html" target="_top">see Semester HQ Plus</a>' : '<a href="login.html">log in</a> to use it'}.</div></div>`;
   return `
     <p class="setup-lede">Upload a syllabus for each class (a PDF, Word doc, slides, or photos), and Semester HQ pulls out meeting times and every deadline and exam. You’ll be able to review everything afterward.</p>
     ${courses.map(c => {

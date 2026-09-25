@@ -42,10 +42,10 @@ function pageExams() {
   const next = upcoming.find(e => e.dueDate);
   const soon = upcoming.filter(e => e.dueDate && daysBetween(e.dueDate) <= 14).length;
   return `
-    ${pageHead('Exams', upcoming.length ? `${upcoming.length} coming up${soon ? ` · ${soon} in the next 2 weeks` : ''}` : 'Countdowns and a prep plan for each one', `<button class="btn btn-primary" onclick="openAssignmentModal(null);setTimeout(()=>{const s=$('#af-type');if(s){s.value='exam';_assignDraft.type='exam'}},0)">+ Add exam</button>`)}
+    ${pageHead('Exams', upcoming.length ? `${upcoming.length} coming up${soon ? ` · ${soon} in the next 2 weeks` : ''}` : 'Countdowns and a prep plan for each one', `<button class="btn btn-primary" onclick="openAssignmentModal(null, null, 'exam')">+ Add exam</button>`)}
     ${next ? examHero(next) : ''}
     ${upcoming.filter(e => e !== next).length ? `<div class="sg-section-label">Also coming up</div>${expandable('exams-upcoming', 'Also coming up', `<div class="grid grid-3 mb-16 exam-grid">${upcoming.filter(e => e !== next).map(examCard).join('')}</div>`, { max: 460, count: upcoming.filter(e => e !== next).length })}` : ''}
-    ${!upcoming.length ? `<div class="card">${emptyState(icon('flag', 26, 1.4), 'No exams on the horizon', `<button class="btn btn-primary" onclick="openAssignmentModal(null);setTimeout(()=>{const s=$('#af-type');if(s){s.value='exam';_assignDraft.type='exam'}},0)">+ Add exam</button>`, 'Upload a syllabus and every exam date lands here with a countdown.')}</div>` : ''}
+    ${!upcoming.length ? `<div class="card">${emptyState(icon('flag', 26, 1.4), 'No exams on the horizon', `<button class="btn btn-primary" onclick="openAssignmentModal(null, null, 'exam')">+ Add exam</button>`, 'Upload a syllabus and every exam date lands here with a countdown.')}</div>` : ''}
     ${past.length ? `<details class="todo-done mt-16"><summary><span>Past exams</span><span class="assign-count">${past.length}</span></summary>${expandable('exams-past', 'Past exams', `<div class="card assign-list">${past.map(e => {
       const c = getCourse(e.courseId);
       return `<div class="assign-row" style="--course:${esc(c?.color || '#8a8a8a')}" onclick="openExamPrep('${e.id}')"><span class="row-check checked" aria-hidden="true">${checkGlyph(true)}</span><div class="assign-main"><div class="assign-title">${esc(e.title)}</div><div class="assign-meta"><span class="assign-course"><span class="course-dot"></span>${esc(c ? (c.code || c.name) : '')}</span></div></div><div class="assign-due">${esc(fmtDate(e.dueDate))}</div></div>`;

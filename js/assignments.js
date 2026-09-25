@@ -143,8 +143,8 @@ function bulkDeleteAssignments() {
   }, `Delete ${ids.length}`);
 }
 
-function openAssignmentModal(id, presetCourseId) {
-  const a = id ? state.assignments.find(x => x.id === id) : { id: uid(), courseId: presetCourseId || activeCourses()[0]?.id || null, title: '', type: 'assignment', dueDate: todayIso(), dueTime: '23:59', startByDate: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
+function openAssignmentModal(id, presetCourseId, presetType) {
+  const a = id ? state.assignments.find(x => x.id === id) : { id: uid(), courseId: presetCourseId || activeCourses()[0]?.id || null, title: '', type: ASSIGNMENT_TYPES.includes(presetType) ? presetType : 'assignment', dueDate: todayIso(), dueTime: '23:59', startByDate: null, maxPoints: null, earnedPoints: null, status: 'not-started', rubric: [], notes: '', attachments: [], recurringTemplateId: null };
   window._assignDraft = JSON.parse(JSON.stringify(a));
   if (!_assignDraft.attachments) _assignDraft.attachments = [];
   const sem = currentSemester();
@@ -309,15 +309,17 @@ function askSeriesScope({ title, message, oneLabel, allLabel, danger = false }, 
   $('#scope-one').onclick = () => { closeModal(); run(false); };
   $('#scope-all').onclick = () => { closeModal(); run(true); };
 }
+// The title and the saved message name the type, so "+ Add exam" reads as an exam.
+function assignModalHeading(id, type) { return `${id ? 'Edit' : 'New'} ${ASSIGNMENT_TYPES.includes(type) ? type : 'assignment'}`; }
 function renderAssignmentModal(id) {
   const a = _assignDraft;
   openModal(`
-    <div class="modal-head"><h3>${id ? 'Edit assignment' : 'New assignment'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3 id="af-heading">${assignModalHeading(id, a.type)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Title</label><input class="input" id="af-title" value="${esc(a.title)}"></div>
       <div class="field-row">
         <div class="field"><label>Course</label><select class="select" id="af-course" onchange="_assignDraft.courseId=this.value">${activeCourses().map(c => `<option value="${c.id}" ${c.id === a.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-        <div class="field"><label>Type</label><select class="select" id="af-type" onchange="_assignDraft.type=this.value">${ASSIGNMENT_TYPES.map(t => `<option value="${t}" ${t === a.type ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div class="field"><label>Type</label><select class="select" id="af-type" onchange="_assignDraft.type=this.value;$('#af-heading').textContent=assignModalHeading(assignDraftExistingId(),this.value)">${ASSIGNMENT_TYPES.map(t => `<option value="${t}" ${t === a.type ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       </div>
 
       <div class="field-row">
@@ -469,7 +471,7 @@ function saveAssignmentModal(id) {
   const commit = (all) => {
     if (id) { const i = state.assignments.findIndex(x => x.id === id); state.assignments[i] = d; } else state.assignments.push(d);
     const n = all ? applyToUpcomingInSeries(d) : 0;
-    touch(); closeModal(); toast(n ? `Updated this and ${n} upcoming` : id ? 'Updated' : 'Assignment added');
+    touch(); closeModal(); toast(n ? `Updated this and ${n} upcoming` : id ? 'Updated' : `${(d.type || 'assignment').replace(/^./, c => c.toUpperCase())} added`);
   };
   if (upcoming && seriesFieldsChanged(before, d)) {
     askSeriesScope({ title: 'Update the upcoming ones too?', message: `“${d.title}” repeats. Apply these changes to just this one, or to the ${upcoming} upcoming one${upcoming === 1 ? '' : 's'} as well? Due dates and progress stay as they are.`, oneLabel: 'Just this one', allLabel: `This and ${upcoming} upcoming` }, commit);

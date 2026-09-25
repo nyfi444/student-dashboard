@@ -1,7 +1,7 @@
 /* ── Settings: theme, account/sync, AI, data, semesters ──────────── */
 const FAQ_ITEMS = [
   { q: 'Can I import my due dates from Canvas, Blackboard, or Brightspace?', a: 'Yes. Assignments → Import from Canvas. Paste your LMS calendar feed link (in Canvas: Calendar → Calendar Feed) and every due date lands in Assignments, matched to your classes. The link stays connected, so when a professor moves a date it moves here too. Without an account you can upload the .ics file instead for a one-time import.' },
-  { q: 'How does AI syllabus upload work?', a: 'Go to Courses → Upload syllabus, then paste the text or upload the file itself: a PDF, Word doc, PowerPoint, Excel sheet, or photos, including iPhone photos. Claude reads it and fills in the course name, meeting times, and assignments. You review and edit everything before it’s added. No API key needed: AI requests are proxied through a server that holds the key, so you never see or manage one.' },
+  { q: 'How does syllabus upload work?', a: 'Go to Courses → Upload syllabus, then paste the text or upload the file itself: a PDF, Word doc, PowerPoint, Excel sheet, or photos, including iPhone photos. Semester HQ reads it and fills in the course name, meeting times, and assignments. You review and edit everything before it’s added. There’s nothing to set up.' },
   { q: 'Where is my data stored, and is it private?', a: 'Signed in, your planner is saved to your account and kept on each device you use for offline access. Only you can read it. Without an account the app is a demo and nothing is saved. AI features send only the text or image you are asking about, through our own server, never straight from your browser to Anthropic.' },
   { q: 'How do I sync across devices?', a: 'Sign in with Google or any email under Settings → Account & Sync. Semester HQ Plus ($7.99/month) saves your semester, syncs it to every device, and turns on AI upload and Study Groups. The demo without an account does not save anything.' },
   { q: 'What happens when I start a new semester?', a: 'Settings → Semester reset archives your current semester (nothing is deleted, you can still view it from the semester dropdown) and sets up a fresh one, optionally carrying over your course names and instructors as a starting point.' },
@@ -132,7 +132,7 @@ function pageSettings() {
       </div>
 
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">AI <span class="ai-badge">Claude</span></h3>
+        <h3 style="font-size:15px" class="mb-8">Syllabus &amp; file reading</h3>
         <p class="small muted mb-8">Powers syllabus upload, quick capture, and making flashcards from notes and files.</p>
         ${aiEnabled() && !aiLooksUnlocked()
           ? `<div class="flex-gap"><span class="pill" style="background:var(--surface-2);color:var(--text-dim)">${icon('lock', 12, 2)} Included with Semester HQ Plus</span></div><p class="small muted mt-8">These don’t run in the demo. ${isEmbedded() ? '' : _fbUser ? '' : '<a href="login.html">Log in</a> to use them.'}</p>`

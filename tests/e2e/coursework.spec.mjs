@@ -83,6 +83,28 @@ test('work can be added to a course and ticked off', async ({ page }) => {
   console_.expectClean();
 });
 
+test('adding an exam says exam, not assignment', async ({ page }) => {
+  const console_ = await openApp(page);
+  await addCourse(page);
+
+  await navTo(page, 'exams');
+  await page.getByRole('button', { name: '+ Add exam' }).first().click();
+  const modal = page.locator('#modal');
+  await expect(modal.locator('h3')).toHaveText('New exam');
+  await expect(modal.locator('#af-type')).toHaveValue('exam');
+  // The heading follows the Type field if it changes.
+  await modal.locator('#af-type').selectOption('quiz');
+  await expect(modal.locator('h3')).toHaveText('New quiz');
+  await modal.locator('#af-type').selectOption('exam');
+  await modal.locator('#af-title').fill('Midterm 1');
+  await modal.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(modal).toBeHidden();
+  await expect(page.locator('.toast').last()).toContainText('Exam added');
+  await expect(page.locator('#content')).toContainText('Midterm 1');
+
+  console_.expectClean();
+});
+
 test('an empty semester says what to do next rather than showing nothing', async ({ page }) => {
   await openApp(page);
   await navTo(page, 'courses');
