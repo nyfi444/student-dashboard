@@ -349,16 +349,33 @@ function startGoogleSignIn() {
     toast(e.code === 'auth/popup-blocked' ? 'Your browser blocked the Google sign-in window. Try again, and allow pop-ups if it asks.' : e.code === 'auth/network-request-failed' ? 'No connection right now. Try again when you’re back online.' : 'Google sign-in didn’t finish. Try again.', 'error', 6000);
   });
 }
+// The link goes out through the Worker, after a Turnstile check on one
+// confirm step (see js/authemail.js for why not Firebase's own email).
 function startEmailSignIn() {
   const email = $('#ga-email')?.value.trim();
   if (!email) { toast('Enter your email to continue', 'error'); return; }
   if (localStorage.getItem(AGE_TOS_KEY) !== '1') { showAgeGate(() => startEmailSignIn()); return; }
-  _auth.sendSignInLinkToEmail(email, { url: window.location.href, handleCodeInApp: true })
-    .then(() => {
-      localStorage.setItem(EMAIL_LINK_STORAGE_KEY, email);
-      $('#ga-signin').innerHTML = `<div class="login-sent"><strong>Check your inbox.</strong>We sent a sign-in link to ${esc(email)}. Open it on this device to finish.</div>`;
-    })
-    .catch(e => toast('Could not send the sign-in link: ' + e.message, 'error', 6000));
+  if (!TURNSTILE_SITEKEY) { sendEmailSignIn(email); return; }
+  $('#ga-signin').innerHTML = `
+    <p class="small mb-8">We’ll email a sign-in link to <strong>${esc(email)}</strong>.</p>
+    <div data-turnstile style="margin-bottom:10px"></div>
+    <button class="btn btn-primary" style="width:100%" id="ga-email-send">Send</button>
+    <button class="btn btn-sm mt-8" style="width:100%" id="ga-email-back">Back</button>`;
+  $('#ga-email-send').onclick = () => sendEmailSignIn(email);
+  $('#ga-email-back').onclick = () => { render(); const i = $('#ga-email'); if (i) i.value = email; };
+  mountTurnstile();
+}
+async function sendEmailSignIn(email) {
+  if (TURNSTILE_SITEKEY && !turnstileToken()) { toast('Finish the verification box first, then tap Send.', 'error'); return; }
+  const send = $('#ga-email-send');
+  if (send) { send.disabled = true; send.textContent = 'Sending…'; }
+  const result = await requestAuthEmail(_auth, 'signin', email, window.location.href);
+  if (result.ok) {
+    $('#ga-signin').innerHTML = `<div class="login-sent"><strong>Check your inbox.</strong>We sent a sign-in link to ${esc(email)}. Open it on this device to finish. Not there in a minute? Check Spam.</div>`;
+    return;
+  }
+  if (send) { send.disabled = false; send.textContent = 'Send'; }
+  toast(result.error, 'error', 6000);
 }
 function showAgeGate(resume) {
   openModal(`

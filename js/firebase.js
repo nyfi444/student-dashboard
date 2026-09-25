@@ -122,9 +122,6 @@ function bootFirebase() {
 // isn't just policy text: it's a real gate a person has to check before
 // the Google popup (or an email link) goes out, and only once per browser
 // (localStorage), not re-shown every sign-in.
-// Holds an email address waiting on the age gate, so confirmAgeGateAndSignIn
-// knows to resume the email flow instead of defaulting to Google.
-let _pendingEmailSignIn = null;
 async function signIn() {
   if (!fbConfigured()) { toast('Sync isn’t set up yet. Add a Firebase config in js/config.js to enable it.', 'info', 4200); return; }
   // Returning 'age-gate' lets callers (e.g. signInFromOnboarding) know the
@@ -181,26 +178,13 @@ async function switchGoogleAccount() {
   await runGoogleSignIn();
 }
 
-// ── Email link (passwordless) sign-in: works with any address, not just
-// Google accounts. Requires "Email Link" to be turned on in the Firebase
-// console under Authentication → Sign-in method (a one-time setup step,
-// not something this code can do on its own).
+// ── Email sign-in: a password or an emailed link, both on login.html,
+// which sends the link through the Worker (js/authemail.js). The app
+// itself never sends one.
 function emailSignInUrl() {
   // Always round-trips through login.html (the one canonical sign-in page),
   // regardless of which in-app screen (paywall, settings) kicked this off.
   return new URL('login.html', window.location.href).toString();
-}
-async function sendEmailSignInLink(email) {
-  if (!fbConfigured()) { toast('Sync isn’t set up yet. Add a Firebase config in js/config.js to enable it.', 'info', 4200); return false; }
-  try {
-    await _fbAuth.sendSignInLinkToEmail(email, { url: emailSignInUrl(), handleCodeInApp: true });
-    localStorage.setItem(EMAIL_LINK_STORAGE_KEY, email);
-    return true;
-  } catch (e) {
-    toast('Could not send sign-in link: ' + e.message, 'error');
-    diag.error('auth', 'Could not send sign-in link', e);
-    return false;
-  }
 }
 // Safety net for opening the link somewhere other than login.html, see the
 // call in bootFirebase(). login.html has its own copy of this same logic
@@ -228,23 +212,6 @@ function openEmailSignInModal() {
   if (typeof isEmbedded === 'function' && isEmbedded()) window.open(url, '_blank', 'noopener');
   else window.location.href = url;
 }
-async function submitEmailSignIn() {
-  const input = document.getElementById('email-signin-input');
-  const email = input?.value.trim();
-  if (!email) { toast('Enter your email first.', 'error'); return; }
-  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { _pendingEmailSignIn = email; openAgeGateModal(); return; }
-  await sendEmailSignInLinkAndConfirm(email);
-}
-async function sendEmailSignInLinkAndConfirm(email) {
-  const ok = await sendEmailSignInLink(email);
-  if (!ok) return;
-  openModal(`
-    <div class="modal-head"><h3>Check your inbox</h3></div>
-    <div class="modal-body"><p class="small muted">We sent a sign-in link to <strong>${esc(email)}</strong>. Open it on this device to finish logging in.</p></div>
-    <div class="modal-foot"><button class="btn" style="width:100%" onclick="closeModal()">Done</button></div>
-  `);
-}
-
 function openAgeGateModal() {
   openModal(`
     <div class="modal-head"><h3>Before you sign in</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
@@ -265,13 +232,7 @@ async function confirmAgeGateAndSignIn() {
   if (!checkbox || !checkbox.checked) { toast('Check the box to continue.', 'error'); return; }
   localStorage.setItem(AGE_TOS_KEY, '1');
   closeModal();
-  if (_pendingEmailSignIn) {
-    const email = _pendingEmailSignIn;
-    _pendingEmailSignIn = null;
-    await sendEmailSignInLinkAndConfirm(email);
-  } else {
-    await runGoogleSignIn();
-  }
+  await runGoogleSignIn();
 }
 // Records on the account that the age and terms box was ticked (see
 // openAgeGateModal): a browser can be cleared, the account record can't.

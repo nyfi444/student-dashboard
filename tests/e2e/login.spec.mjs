@@ -127,3 +127,27 @@ test('a password link the Worker refuses says why and goes back to the form', as
   await expect(page.locator('#login-error')).toContainText('verification');
   await expect(page.locator('#login-email-input')).toHaveValue('student@example.com');
 });
+
+// group-admin.html has its own sign-in card; its emailed link takes the
+// same Worker route and the same verification step.
+test('the group plan page emails its sign-in link through the Worker too', async ({ page }) => {
+  await stubExternals(page);
+  const console_ = watchConsole(page);
+  const asked = [];
+  await page.route(/\/auth-email$/, async (route) => {
+    asked.push(JSON.parse(route.request().postData()));
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+  });
+  await page.addInitScript(() => localStorage.setItem('shq_age_tos_confirmed', '1'));
+  await page.goto('/group-admin.html');
+  await page.fill('#ga-email', 'officer@example.com');
+  await page.getByRole('button', { name: /Continue with email/i }).click();
+  await expect(page.locator('#ga-signin')).toContainText('officer@example.com');
+  await expect(page.locator('[data-turnstile-stub]')).toBeVisible();
+  await page.getByRole('button', { name: /^Send$/ }).click();
+  await expect(page.locator('#ga-signin')).toContainText('Check your inbox');
+  expect(asked).toHaveLength(1);
+  expect(asked[0]).toMatchObject({ kind: 'signin', email: 'officer@example.com', turnstileToken: 'stub-token' });
+  expect(asked[0].continueUrl).toMatch(/\/group-admin\.html$/);
+  console_.expectClean();
+});

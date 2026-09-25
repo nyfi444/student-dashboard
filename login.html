@@ -570,6 +570,7 @@
 <script src="js/version.js"></script>
 <script src="js/config.js"></script>
 <script src="js/diagnostics.js"></script>
+<script src="js/authemail.js"></script>
 <script>
 let _auth = null;
 
@@ -676,38 +677,6 @@ function startSignIn() {
   gateThen(runSignIn);
 }
 
-// Cloudflare Turnstile, mirroring the marketing site's js/contact.js. It
-// switches on only when the meta tag above is present, and the Worker only
-// checks the token once TURNSTILE_SECRET is set, so both sides switch on
-// together. The form is re-rendered on every return to the sign-in screen,
-// which is why mountTurnstile() is called from renderSignInButton rather
-// than once at load.
-const TURNSTILE_SITEKEY = document.querySelector('meta[name="turnstile-sitekey"]')?.content || '';
-let _tsWidget = null, _tsScriptStarted = false;
-function turnstileToken() {
-  try { return TURNSTILE_SITEKEY && window.turnstile && _tsWidget !== null ? window.turnstile.getResponse(_tsWidget) : ''; }
-  catch { return ''; }
-}
-// A token is good for one use. Reset after every lookup so a second attempt
-// on the same screen is not rejected for reusing the first one.
-function resetTurnstile() { try { if (window.turnstile && _tsWidget !== null) window.turnstile.reset(_tsWidget); } catch {} }
-function renderTurnstile() {
-  const slot = document.querySelector('[data-turnstile]');
-  if (!TURNSTILE_SITEKEY || !slot || !window.turnstile) return;
-  try { _tsWidget = window.turnstile.render(slot, { sitekey: TURNSTILE_SITEKEY, theme: 'light' }); }
-  catch { _tsWidget = null; }
-}
-function mountTurnstile() {
-  if (!TURNSTILE_SITEKEY) return;
-  if (window.turnstile) { renderTurnstile(); return; }
-  if (_tsScriptStarted) return; // already loading; its onload renders into whatever slot exists then
-  _tsScriptStarted = true;
-  const el = document.createElement('script');
-  el.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-  el.async = true; el.defer = true;
-  el.onload = renderTurnstile;
-  document.head.appendChild(el);
-}
 // An email that already paid through the old email-first checkout (before
 // accounts came first) must not be sent to pay a second time. Returns null,
 // not false, on any failure, so a flaky network never blocks sign-up.
@@ -867,12 +836,10 @@ async function runSignIn() {
   }
 }
 // Both emails (a sign-in link, a link to set a password) go out through the
-// Worker, from send.semester-hq.com. Firebase's own sender is a shared
-// firebaseapp.com address that Gmail files under Spam with the link
-// switched off, which left students with an email and nothing to tap
-// (Sept 25 2026). The Worker needs a Turnstile solve, so there is one
-// confirm step with the widget on it.
-const AUTH_EMAIL_WHAT = { signin: 'a sign-in link', reset: 'a link to set your password' };
+// Worker, from our own sending domain; see js/authemail.js. It wants a
+// Turnstile solve, so there is one confirm step with the widget on it.
+// Email-link sign-in also needs "Email Link" turned on in the Firebase
+// console (Authentication → Sign-in method), a one-time setup step.
 function confirmAuthEmail(kind, email) {
   if (!TURNSTILE_SITEKEY) { sendAuthEmail(kind, email); return; }
   document.getElementById('login-body').innerHTML = `
@@ -887,52 +854,16 @@ function confirmAuthEmail(kind, email) {
 }
 async function sendAuthEmail(kind, email) {
   clearError();
-  const token = turnstileToken();
-  if (TURNSTILE_SITEKEY && !token) { showError('Finish the verification box first, then tap Send.'); return; }
   // The link is often opened in a new tab (from the mail app), which has
   // none of this tab's storage, so a link code rides along in the link.
   const via = linkCode();
   const continueUrl = window.location.origin + window.location.pathname + (kind === 'signin' && via ? `?via=${via}` : '');
+  if (TURNSTILE_SITEKEY && !turnstileToken()) { showError('Finish the verification box first, then tap Send.'); return; }
   busy('Sending&hellip;');
-  let res = null, data = {};
-  try {
-    res = await fetch(`${WORKER_URL}/auth-email`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, email, continueUrl, turnstileToken: token }),
-    });
-    data = await res.json().catch(() => ({}));
-  } catch {}
-  resetTurnstile();
-  if (res?.ok) { emailSent(kind, email); return; }
-  if (res?.status === 400) { // a bad address or a failed verification: the person can fix either
-    renderSignInButton(); keepEmail(email);
-    showError(data.error || 'Could not send that email. Try again.');
-    return;
-  }
-  // Anything else (a daily cap, Resend down, no connection to the Worker)
-  // still gets an email, from Firebase's own sender.
-  diag.crumb('login', `auth email via Firebase (${res ? res.status : 'no response'})`);
-  await sendAuthEmailViaFirebase(kind, email, continueUrl);
-}
-function emailSent(kind, email) {
-  if (kind === 'signin') localStorage.setItem(EMAIL_LINK_STORAGE_KEY, email);
-  renderEmailSent(email, AUTH_EMAIL_WHAT[kind]);
-}
-// Passwordless email link: works with any address (iCloud, Outlook,
-// a plain .com inbox, whatever), not just Google accounts. Requires
-// "Email Link" turned on in the Firebase console under Authentication →
-// Sign-in method; this is a one-time setup step, not something code can do.
-async function sendAuthEmailViaFirebase(kind, email, continueUrl) {
-  try {
-    if (kind === 'signin') await _auth.sendSignInLinkToEmail(email, { url: continueUrl, handleCodeInApp: true });
-    else await _auth.sendPasswordResetEmail(email);
-    emailSent(kind, email);
-  } catch (e) {
-    if (kind === 'reset' && e.code === 'auth/user-not-found') { emailSent(kind, email); return; } // never say which emails have accounts
-    renderSignInButton(); keepEmail(email);
-    if (e.code === 'auth/invalid-email') { showError('That email doesn’t look right.'); return; }
-    showError((kind === 'signin' ? 'Could not send sign-in link: ' : 'Could not send the reset email: ') + e.message);
-    diag.error('login', kind === 'signin' ? 'Could not send sign-in link' : 'Could not send password reset', e);
-  }
+  const result = await requestAuthEmail(_auth, kind, email, continueUrl);
+  if (result.ok) { renderEmailSent(email, AUTH_EMAIL_WHAT[kind]); return; }
+  renderSignInButton(); keepEmail(email);
+  showError(result.error);
 }
 // If this page was opened from the link that sendAuthEmail() emailed out,
 // finish signing in. Same device: the email is already in localStorage from
