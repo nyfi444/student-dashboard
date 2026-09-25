@@ -31,10 +31,12 @@ export function cleanVia(value) {
 
 // The path a session the Worker is about to create belongs to. Decided from
 // who is buying, which the route already knows: a verified token is the
-// in-app paywall, an email with no token is the email-first sign-up, and an
+// in-app paywall (or sign-up, when login.html just made the account), an
+// email with no token is the old email-first sign-up, and an
 // empty body is the pricing page (the site sends {} on purpose).
-export function checkoutSourceFor({ group = false, uid = '', email = '' } = {}) {
+export function checkoutSourceFor({ group = false, uid = '', email = '', signup = false } = {}) {
   if (group) return 'group';
+  if (signup) return 'signup'; // login.html's new account, token in hand, on its way to checkout
   if (uid) return 'paywall';
   if (email) return 'signup';
   return 'pricing';

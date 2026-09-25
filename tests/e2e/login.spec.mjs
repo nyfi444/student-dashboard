@@ -4,10 +4,10 @@
    agreement to the Terms and Privacy Policy have to be in front of a
    student before an account exists, not after.
 
-   Sign-in itself cannot be driven here — the app offers Google's popup
-   and an emailed link, and neither is automatable without a real inbox
-   or a real Google account. What these check is that the page renders,
-   offers both routes, and puts the age gate where it belongs.
+   Sign-in itself cannot be driven here: it needs a real Firebase
+   account, a Google popup, or Stripe. What these check is that the page
+   renders, offers every route on both doors (log in, and ?signup=1),
+   and puts the age gate where it belongs on each.
 ──────────────────────────────────────────────────────────────── */
 import { test, expect } from '@playwright/test';
 import { stubExternals, watchConsole } from './helpers.mjs';
@@ -33,8 +33,44 @@ test('the login page renders with a clean console', async ({ page }) => {
 test('both ways in are offered', async ({ page }) => {
   await openLogin(page);
   await expect(page.getByRole('button', { name: /Continue with Google/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Continue with email/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Log in$/ })).toBeVisible();
   await expect(page.locator('input[type="email"]')).toBeVisible();
+  await expect(page.locator('input[type="password"]')).toHaveAttribute('autocomplete', 'current-password');
+  // Accounts made before passwords existed still get in.
+  await expect(page.getByRole('link', { name: /Forgot password/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Email me a sign-in link/i })).toBeVisible();
+});
+
+// Sign-up creates the account on the page and goes on to checkout. The
+// agreement is a box on the form itself, so it is in front of the student
+// before any account exists, by email or by Google.
+test('sign-up asks for a password and the agreement, with no inbox step', async ({ page }) => {
+  await stubExternals(page);
+  const console_ = watchConsole(page);
+  await page.goto('/login.html?signup=1');
+  await expect(page.getByRole('button', { name: /Create account/i })).toBeVisible();
+  await expect(page.locator('input[type="password"]')).toHaveAttribute('autocomplete', 'new-password');
+  await expect(page.locator('#age-tos-check')).toBeVisible();
+  await expect(page.locator('body')).toContainText('at least 13 years old');
+  await expect(page.locator('body')).not.toContainText('Check your inbox');
+
+  await page.fill('#login-email-input', 'new-student@example.com');
+  await page.fill('#login-password-input', 'a-long-password');
+  await page.getByRole('button', { name: /Create account/i }).click();
+  await expect(page.locator('#login-error')).toContainText('13 or older');
+
+  await page.getByRole('button', { name: /Continue with Google/i }).click();
+  await expect(page.locator('#login-error')).toContainText('13 or older');
+  console_.expectClean();
+});
+
+test('the two doors switch without a reload', async ({ page }) => {
+  await openLogin(page);
+  await page.getByRole('link', { name: /Create an account/i }).click();
+  await expect(page).toHaveURL(/signup=1/);
+  await expect(page.getByRole('button', { name: /Create account/i })).toBeVisible();
+  await page.getByRole('link', { name: /^Log in$/ }).click();
+  await expect(page.getByRole('button', { name: /^Log in$/ })).toBeVisible();
 });
 
 test('the legal links are there and point at the site', async ({ page }) => {

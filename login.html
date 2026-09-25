@@ -369,6 +369,8 @@
   .login-divider { display: flex; align-items: center; gap: 14px; margin: 22px 0; font-size: 11px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--lp-slate); }
   .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(126,115,108,0), rgba(126,115,108,.3), rgba(126,115,108,0)); }
 
+  .login-links { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; }
+  .login-links a { color: var(--lp-ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
   .login-note { margin: 16px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--lp-slate); text-align: left; }
 
   .login-sent { text-align: left; font-size: 14.5px; line-height: 1.6; color: var(--lp-ink); background: rgba(255,255,255,.62); border: 1px solid var(--lp-glass-line); border-radius: var(--r-card); padding: 18px 20px; box-shadow: var(--lp-glass-edge); }
@@ -490,7 +492,7 @@
       <div class="lp-pane">
         <div class="lp-pane-top">
           <p class="lp-readout lp-mode-in"><svg aria-hidden="true" focusable="false"><use href="#lp-star"/></svg>Log in</p>
-          <p class="lp-readout lp-mode-up"><span class="lp-steps" aria-hidden="true"><i class="on"></i><i></i><i></i></span>Step 1 of 3 · Your email</p>
+          <p class="lp-readout lp-mode-up"><span class="lp-steps" aria-hidden="true"><i class="on"></i><i></i><i></i></span>Step 1 of 3 · Your account</p>
         </div>
         <div class="login-form">
           <h2 id="login-title">Welcome back.</h2>
@@ -499,7 +501,7 @@
           <div id="login-body">
             <button class="btn btn-primary" style="width:100%" disabled>Checking your session&hellip;</button>
           </div>
-          <p class="login-foot" id="login-foot">New to Semester HQ? Enter your email above. If it's new, we'll take you straight to checkout instead of an inbox.</p>
+          <p class="login-foot" id="login-foot">New to Semester HQ? <a href="login.html?signup=1">Create an account</a>.</p>
         </div>
       </div>
     </section>
@@ -512,8 +514,8 @@
           <li class="is-current" aria-current="step">
             <span class="lp-rail-num" aria-hidden="true">1</span>
             <div>
-              <p class="lp-rail-title">Your email <span class="lp-rail-now">You are here</span></p>
-              <p class="lp-rail-line">Any email works. A new one goes straight to checkout, not an inbox.</p>
+              <p class="lp-rail-title">Your account <span class="lp-rail-now">You are here</span></p>
+              <p class="lp-rail-line">Email and a password, or Google. No inbox step.</p>
             </div>
           </li>
           <li>
@@ -570,20 +572,33 @@
 <script src="js/diagnostics.js"></script>
 <script>
 let _auth = null;
-// Holds an email waiting on the age gate, so confirmAgeGate() knows to
-// resume the email flow instead of defaulting to Google.
-let _pendingEmail = null;
 
 // The marketing site's primary CTA is "Get started", which lands here with
-// ?signup=1. The page is the same one either way (a new email goes to
-// checkout, an existing one gets a sign-in link), but greeting a first-time
-// visitor with "Welcome back" reads like they're in the wrong place.
-if (new URLSearchParams(location.search).has('signup')) {
-  document.title = 'Get Started \u2013 Semester HQ';
-  document.getElementById('login-title').textContent = 'Start your semester.';
-  document.getElementById('login-sub').textContent = 'Enter your email and we\u2019ll set your account up.';
-  document.getElementById('login-foot').textContent = 'Already have an account? Use the same email and we\u2019ll send you a sign-in link instead.';
+// ?signup=1. Sign-up creates the account right here (email and password, or
+// Google) and goes straight to Stripe, so nobody has to open an inbox to
+// start. Without the param the page is the log-in door. setMode() flips
+// between the two without a reload.
+let _signup = new URLSearchParams(location.search).has('signup');
+// True while an account is being created and sent to checkout, so the
+// auth listener at the bottom does not bounce the new user to the app first.
+let _signupInFlight = false;
+function setMode(signup) {
+  _signup = !!signup;
+  document.documentElement.classList.toggle('lp-signup', _signup);
+  document.title = _signup ? 'Get Started \u2013 Semester HQ' : 'Log in \u2013 Semester HQ';
+  document.getElementById('login-title').textContent = _signup ? 'Start your semester.' : 'Welcome back.';
+  document.getElementById('login-sub').textContent = _signup ? 'Create your account. Checkout comes next.' : 'Your semester is right where you left it.';
+  document.getElementById('login-foot').innerHTML = _signup
+    ? 'Already have an account? <a href="login.html" onclick="event.preventDefault();switchMode(false)">Log in</a>.'
+    : 'New to Semester HQ? <a href="login.html?signup=1" onclick="event.preventDefault();switchMode(true)">Create an account</a>.';
 }
+function switchMode(signup) {
+  clearError();
+  setMode(signup);
+  history.replaceState({}, '', window.location.pathname + (signup ? '?signup=1' : ''));
+  renderSignInButton();
+}
+setMode(_signup);
 
 // A link code from one of Nyla's own links (?via=...), kept for this tab
 // from the moment the page opens. Does nothing while FEATURES.linkCodes is
@@ -599,37 +614,68 @@ function showError(msg) {
 function clearError() { document.getElementById('login-error').classList.remove('show'); }
 
 function renderSignInButton() {
-  document.getElementById('login-body').innerHTML = `
-    <form onsubmit="event.preventDefault();startEmailSignIn()">
-      <input class="input" type="email" id="login-email-input" placeholder="you@example.com" required autocomplete="email" style="width:100%;margin-bottom:12px;box-sizing:border-box">
+  const agreed = localStorage.getItem(AGE_TOS_KEY) === '1';
+  document.getElementById('login-body').innerHTML = _signup ? `
+    <form onsubmit="event.preventDefault();startEmailSignUp()">
+      <input class="input" type="email" id="login-email-input" placeholder="you@example.com" required autocomplete="email" aria-label="Email" style="width:100%;margin-bottom:12px;box-sizing:border-box">
+      <input class="input" type="password" id="login-password-input" placeholder="Create a password (8+ characters)" required minlength="8" autocomplete="new-password" aria-label="Password" style="width:100%;margin-bottom:12px;box-sizing:border-box">
+      ${agreed ? '' : `<label class="checkbox-row login-check" style="align-items:flex-start;gap:10px">
+        <input type="checkbox" id="age-tos-check" style="margin-top:2px;width:18px;height:18px;flex-shrink:0">
+        <span class="small">I'm at least 13 years old, and I agree to Semester HQ's <a href="https://semester-hq.com/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="https://semester-hq.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+      </label>`}
       <div data-turnstile style="margin-bottom:12px"></div>
-      <button class="btn btn-primary" type="submit" style="width:100%">Continue with email</button>
+      <button class="btn btn-primary" type="submit" style="width:100%">Create account</button>
     </form>
     <div class="login-divider"><span>or</span></div>
     <button class="btn btn-google" style="width:100%" onclick="startSignIn()">Continue with Google</button>
-    <p class="login-note">Students use Google to securely access their Semester HQ account. Any email works too: existing subscribers get a sign-in link, new ones go straight to checkout.</p>
+    <p class="login-note">Next is checkout: $7.99 a month, cancel anytime. No inbox step.</p>
+  ` : `
+    <form onsubmit="event.preventDefault();startPasswordSignIn()">
+      <input class="input" type="email" id="login-email-input" placeholder="you@example.com" required autocomplete="email" aria-label="Email" style="width:100%;margin-bottom:12px;box-sizing:border-box">
+      <input class="input" type="password" id="login-password-input" placeholder="Password" required autocomplete="current-password" aria-label="Password" style="width:100%;margin-bottom:12px;box-sizing:border-box">
+      <button class="btn btn-primary" type="submit" style="width:100%">Log in</button>
+    </form>
+    <p class="login-note login-links"><a href="#" onclick="event.preventDefault();forgotPassword()">Forgot password?</a><a href="#" onclick="event.preventDefault();startEmailSignIn()">Email me a sign-in link</a></p>
+    <div class="login-divider"><span>or</span></div>
+    <button class="btn btn-google" style="width:100%" onclick="startSignIn()">Continue with Google</button>
   `;
-  mountTurnstile(); // the form above was just replaced, so the widget goes in again
+  if (_signup) mountTurnstile(); // the form above was just replaced, so the widget goes in again
 }
-function renderEmailSent(email) {
+function renderEmailSent(email, what = 'a sign-in link') {
   document.getElementById('login-body').innerHTML = `
-    <div class="login-sent"><strong>Check your inbox.</strong>We sent a sign-in link to ${escapeHtml(email)}. Open it on this device to finish logging in.</div>
-    <button class="btn btn-sm mt-8" style="width:100%" onclick="renderSignInButton()">Use a different email</button>
+    <div class="login-sent"><strong>Check your inbox.</strong>We sent ${what} to ${escapeHtml(email)}. Open it on this device to finish.</div>
+    <button class="btn btn-sm mt-8" style="width:100%" onclick="renderSignInButton()">Back</button>
   `;
 }
 
+function busy(label) { document.getElementById('login-body').innerHTML = `<button class="btn btn-primary" style="width:100%" disabled>${label}</button>`; }
+function keepEmail(email) { const i = document.getElementById('login-email-input'); if (i && email) i.value = email; }
+function fieldValue(id) { return document.getElementById(id)?.value || ''; }
+
+// Sign-up asks for the 13+ and Terms agreement with a box on the form itself.
+// Log-in on a new device still gets the one-screen gate (showAgeGate), and
+// _pendingAction is what it resumes once the box is ticked.
+let _pendingAction = null;
+function signupAgreed() {
+  if (localStorage.getItem(AGE_TOS_KEY) === '1') return true;
+  const box = document.getElementById('age-tos-check');
+  if (!box || !box.checked) { showError('Check the box to confirm you’re 13 or older and agree to the Terms.'); return false; }
+  localStorage.setItem(AGE_TOS_KEY, '1');
+  return true;
+}
+function gateThen(action) {
+  if (localStorage.getItem(AGE_TOS_KEY) === '1') { action(); return; }
+  _pendingAction = action;
+  showAgeGate();
+}
+
+// Google, on either door.
 function startSignIn() {
   clearError();
-  _pendingEmail = null;
-  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { showAgeGate(); return; }
-  runSignIn();
+  if (_signup) { if (signupAgreed()) runSignIn(); return; }
+  gateThen(runSignIn);
 }
-// Checks whether this email already has a paid plan before doing anything
-// else: a brand-new email skips the magic-link round trip entirely and
-// goes straight to Stripe, instead of making someone dig a sign-in email out
-// of their inbox just to land on a "no plan yet, subscribe" screen. Returns
-// null (not false) on any failure, so a flaky network never blocks sign-in.
-// It just falls back to the original verified-link path.
+
 // Cloudflare Turnstile, mirroring the marketing site's js/contact.js. It
 // switches on only when the meta tag above is present, and the Worker only
 // checks the token once TURNSTILE_SECRET is set, so both sides switch on
@@ -662,6 +708,9 @@ function mountTurnstile() {
   el.onload = renderTurnstile;
   document.head.appendChild(el);
 }
+// An email that already paid through the old email-first checkout (before
+// accounts came first) must not be sent to pay a second time. Returns null,
+// not false, on any failure, so a flaky network never blocks sign-up.
 async function checkEmailHasPlan(email) {
   try {
     const res = await fetch(`${WORKER_URL}/check-email`, {
@@ -673,47 +722,97 @@ async function checkEmailHasPlan(email) {
     return !!data.paid;
   } catch { resetTurnstile(); return null; }
 }
-async function redirectToCheckoutForEmail(email) {
+// Sign-up: create the account here, then straight to Stripe. The account
+// is signed in from this moment, so a failed checkout still lands in the
+// app, whose own paywall offers checkout again.
+async function startEmailSignUp() {
+  clearError();
+  const email = fieldValue('login-email-input').trim(), password = fieldValue('login-password-input');
+  if (!email) { showError('Enter your email to continue.'); return; }
+  if (password.length < 8) { showError('Use at least 8 characters for your password.'); return; }
+  if (!signupAgreed()) return;
+  busy('Creating your account&hellip;');
+  if (await checkEmailHasPlan(email) === true) {
+    switchMode(false); keepEmail(email);
+    showError('This email already has a plan. Tap “Email me a sign-in link” to open it.');
+    return;
+  }
+  _signupInFlight = true;
+  let cred;
+  try { cred = await _auth.createUserWithEmailAndPassword(email, password); }
+  catch (e) {
+    _signupInFlight = false;
+    if (e.code === 'auth/email-already-in-use') { switchMode(false); keepEmail(email); showError('That email already has an account. Log in instead.'); return; }
+    renderSignInButton(); keepEmail(email);
+    if (e.code === 'auth/weak-password') showError('Pick a stronger password, at least 8 characters.');
+    else if (e.code === 'auth/invalid-email') showError('That email doesn’t look right.');
+    else { showError('Could not create your account: ' + e.message); diag.error('login', 'Could not create account', e); }
+    return;
+  }
+  await checkoutForUser(cred.user);
+}
+// A new account's checkout carries its ID token, so the Worker ties the
+// subscription to this uid and the license is there when Stripe sends the
+// user back. Someone who already holds a plan (a verified email that paid
+// before) goes to the app instead of paying twice.
+async function checkoutForUser(user) {
+  busy('Opening checkout&hellip;');
   try {
+    const idToken = await user.getIdToken();
+    const claim = await fetch(`${WORKER_URL}/claim-license`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idToken }) }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    if (claim.paid) { window.location.href = 'index.html'; return; }
     const via = linkCode();
     const res = await fetch(`${WORKER_URL}/create-checkout-session`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, ...(via ? { via } : {}) }),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idToken, signup: true, ...(via ? { via } : {}) }),
     });
     const data = await res.json();
     if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout');
     window.location.href = data.url;
-    return true;
   } catch (e) {
-    showError('Could not start checkout: ' + e.message);
-    diag.error('checkout', 'Could not start checkout from login', e);
-    return false;
+    diag.error('checkout', 'Could not start checkout after sign-up', e);
+    window.location.href = 'index.html';
   }
 }
-async function startEmailSignIn() {
-  clearError();
-  const email = document.getElementById('login-email-input')?.value.trim();
-  if (!email) { showError('Enter your email to continue.'); return; }
-  // Must happen before checkEmailHasPlan below, not after. A brand-new email
-  // (the common case for a first-time signup) skips straight to Stripe from
-  // the branch below and never reaches a later gate check, which was letting
-  // new sign-ups through without ever confirming they're 13+ / agreed to the
-  // ToS. showAgeGate() replaces #login-body (removing the email input), so the
-  // pending email is stashed here for confirmAgeGate() to resume with.
-  if (localStorage.getItem(AGE_TOS_KEY) !== '1') { _pendingEmail = email; showAgeGate(); return; }
-  await continueEmailSignIn(email);
-}
-async function continueEmailSignIn(email) {
-  document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Checking&hellip;</button>';
-  const hasPlan = await checkEmailHasPlan(email);
 
-  if (hasPlan === false) {
-    const started = await redirectToCheckoutForEmail(email);
-    if (!started) renderSignInButton();
-    return;
+// Log in with a password.
+function startPasswordSignIn() {
+  clearError();
+  const email = fieldValue('login-email-input').trim(), password = fieldValue('login-password-input');
+  if (!email || !password) { showError('Enter your email and password.'); return; }
+  gateThen(() => runPasswordSignIn(email, password));
+}
+async function runPasswordSignIn(email, password) {
+  busy('Logging in&hellip;');
+  try { await _auth.signInWithEmailAndPassword(email, password); } // the listener below takes it from here
+  catch (e) {
+    renderSignInButton(); keepEmail(email);
+    if (['auth/invalid-login-credentials', 'auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].includes(e.code)) {
+      showError('That email and password don’t match. Signed in with emailed links before? You have no password yet. Tap “Forgot password?” to set one, or email yourself a link.');
+    } else if (e.code === 'auth/too-many-requests') showError('Too many tries. Wait a minute, or reset your password.');
+    else { showError('Log in failed: ' + e.message); diag.error('login', 'Password sign-in failed', e); }
   }
-  // Existing subscriber, or the check itself failed. Either way, fall back
-  // to the real sign-in flow rather than guessing.
-  runEmailSignIn(email);
+}
+// Also how an account that only ever used emailed links gets a password.
+async function forgotPassword() {
+  clearError();
+  const email = fieldValue('login-email-input').trim();
+  if (!email) { showError('Enter your email above, then tap “Forgot password?”.'); return; }
+  try {
+    await _auth.sendPasswordResetEmail(email);
+    renderEmailSent(email, 'a link to set your password');
+  } catch (e) {
+    if (e.code === 'auth/user-not-found') { renderEmailSent(email, 'a link to set your password'); return; } // never say which emails have accounts
+    showError(e.code === 'auth/invalid-email' ? 'That email doesn’t look right.' : 'Could not send the reset email: ' + e.message);
+    if (e.code !== 'auth/invalid-email') diag.error('login', 'Could not send password reset', e);
+  }
+}
+// Log in with an emailed link instead of a password. Optional: nobody needs
+// an inbox to sign up, but accounts made before passwords still use it.
+function startEmailSignIn() {
+  clearError();
+  const email = fieldValue('login-email-input').trim();
+  if (!email) { showError('Enter your email above, then tap “Email me a sign-in link”.'); return; }
+  gateThen(() => runEmailSignIn(email));
 }
 function showAgeGate() {
   document.getElementById('login-body').innerHTML = `
@@ -729,28 +828,27 @@ function confirmAgeGate() {
   if (!checkbox || !checkbox.checked) { showError('Check the box to continue.'); return; }
   clearError();
   localStorage.setItem(AGE_TOS_KEY, '1');
-  if (_pendingEmail) {
-    const email = _pendingEmail;
-    _pendingEmail = null;
-    // Resume the full email flow (which re-checks whether this email already
-    // has a plan) rather than jumping straight to a magic-link email. A new
-    // signup still needs to land on Stripe, not an inbox.
-    continueEmailSignIn(email);
-  } else {
-    runSignIn();
-  }
+  const next = _pendingAction || runSignIn;
+  _pendingAction = null;
+  next();
 }
 async function runSignIn() {
-  document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Signing in&hellip;</button>';
+  busy('Signing in&hellip;');
+  if (_signup) _signupInFlight = true;
   try {
     // Always show the account chooser, even if this browser already has a
     // Google session, so picking the wrong account once never traps someone
     // into reusing it silently on every later sign-in attempt.
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    await _auth.signInWithPopup(provider);
-    // Success redirects from the onAuthStateChanged listener below.
+    const result = await _auth.signInWithPopup(provider);
+    // A brand-new Google account on the sign-up door goes on to checkout,
+    // like an email sign-up. Anyone else goes to the app.
+    if (_signup && result.additionalUserInfo?.isNewUser) { await checkoutForUser(result.user); return; }
+    _signupInFlight = false;
+    window.location.href = 'index.html';
   } catch (e) {
+    _signupInFlight = false;
     renderSignInButton();
     if (e.code !== 'auth/popup-closed-by-user') { showError('Sign-in failed: ' + e.message); diag.error('login', 'Google sign-in failed', e); }
   }
@@ -810,7 +908,7 @@ async function tryCompleteEmailLink() {
   await tryCompleteEmailLink();
   let settled = false;
   _auth.onAuthStateChanged((user) => {
-    if (user) { window.location.href = 'index.html'; return; }
+    if (user) { if (!_signupInFlight) window.location.href = 'index.html'; return; }
     if (!settled) { settled = true; renderSignInButton(); }
   });
 })();

@@ -2,6 +2,11 @@
 const SLASH_COMMANDS = [
   { key: 'cornell', glyph: '▥', label: 'Cornell layout', desc: 'Cues, notes, and a summary', run: () => insertTemplateBlock('cornell') },
   { key: 'lab', glyph: '⚗', label: 'Lab report', desc: 'Purpose through conclusion, with a data table', run: () => insertTemplateBlock('lab') },
+  { key: 'lecture', glyph: '✎', label: 'Lecture notes', desc: 'Big idea, notes, examples, questions, summary', run: () => insertTemplateBlock('lecture') },
+  { key: 'reading', glyph: '❝', label: 'Reading notes', desc: 'Source, argument, key points, quotes, your take', run: () => insertTemplateBlock('reading') },
+  { key: 'exam', glyph: '◎', label: 'Exam review', desc: 'Topics to check off, formulas, practice, a plan', run: () => insertTemplateBlock('exam') },
+  { key: 'weekly', glyph: '▦', label: 'Weekly planner', desc: 'Top three, a day-by-day table, a look back', run: () => insertTemplateBlock('weekly') },
+  { key: 'meeting', glyph: '☰', label: 'Meeting notes', desc: 'Agenda, decisions, and who does what by when', run: () => insertTemplateBlock('meeting') },
   { key: 'text', label: 'Text', desc: 'Plain paragraph', glyph: '¶', run: () => document.execCommand('formatBlock', false, 'P') },
   { key: 'h1', label: 'Heading 1', desc: 'Big section heading', glyph: 'H1', run: () => document.execCommand('formatBlock', false, 'H1') },
   { key: 'h2', label: 'Heading 2', desc: 'Medium heading', glyph: 'H2', run: () => document.execCommand('formatBlock', false, 'H2') },
@@ -664,10 +669,111 @@ const NOTE_TEMPLATES = {
     name: (n) => `${getCourse(n.courseId)?.code ? getCourse(n.courseId).code + ' ' : ''}Lab report · ${fmtDate(todayIso(), { month: 'short', day: 'numeric' })}`,
   },
 };
+// The sheet layouts: numbered sections with a heading each, like the lab
+// report without its tracker. One definition feeds the note HTML, the
+// picker, and the grey hint inside each empty section (injected as CSS
+// once, below, so the hints are drawn and never saved into the note).
+// A section is [heading, 'p' | 'ul' | 'ol' | 'todo', hint] (a checklist
+// shows no hint: its line is never empty, the checkbox is in it) or
+// [heading, 'table', columns, first-column rows].
+const SHEET_TEMPLATES = {
+  lecture: {
+    label: 'Lecture notes', icon: 'book-open', titlePh: 'Lecture topic',
+    desc: 'The big idea first, then notes, examples, and questions, with a summary you write from memory after class.',
+    hint: 'Start with the big idea. Write the summary after class without looking.',
+    sections: [
+      ['Big idea', 'p', 'The one thing this lecture was about, in a sentence'],
+      ['Notes', 'ul', 'Main points, in the order they came up'],
+      ['Examples', 'ul', 'Worked examples, cases, or diagrams worth redrawing'],
+      ['Questions', 'ul', 'Anything to ask in office hours or look up'],
+      ['Summary', 'p', 'Three sentences, from memory, after class'],
+    ],
+  },
+  reading: {
+    label: 'Reading notes', icon: 'bookmark', titlePh: 'Reading title',
+    desc: 'Source, main argument, key points, and quotes with page numbers, then your own take and questions for class.',
+    hint: 'Note page numbers next to quotes so citing them later takes seconds.',
+    sections: [
+      ['Source', 'p', 'Author, title, chapter, and pages'],
+      ['Main argument', 'p', 'What the author wants to convince you of'],
+      ['Key points', 'ul', 'The evidence and steps that hold the argument up'],
+      ['Quotes', 'ul', 'Worth citing later. Add the page number.'],
+      ['Your take', 'p', 'Where you agree, where you push back, and why'],
+      ['For discussion', 'ul', 'Questions to bring to class'],
+    ],
+  },
+  exam: {
+    label: 'Exam review', icon: 'target', titlePh: 'Which exam',
+    desc: 'What’s covered, a topic checklist, formulas and definitions, practice problems, and a day-by-day plan.',
+    hint: 'Check a topic off once you can explain it without your notes.',
+    sections: [
+      ['What’s covered', 'p', 'Date, time, room, and the chapters or units on it'],
+      ['Topics', 'todo', 'One topic per line. Check it off once you can explain it.'],
+      ['Formulas and definitions', 'ul', 'Everything you need to know cold'],
+      ['Practice problems', 'ol', 'Problems to redo, with where to find them'],
+      ['Mistakes to avoid', 'ul', 'What cost you points last time'],
+      ['Study plan', 'table', ['Day', 'What to review'], ['', '', '']],
+    ],
+  },
+  weekly: {
+    label: 'Weekly planner', icon: 'calendar', titlePh: 'Week of',
+    desc: 'Your top three for the week, a day-by-day table for classes and plans, and a short look back on Sunday.',
+    hint: 'Fill in the top three on Sunday night. Look back the next Sunday.',
+    sections: [
+      ['Top three', 'ol', 'What would make this week a win'],
+      ['Day by day', 'table', ['Day', 'Classes and deadlines', 'Plan'], ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']],
+      ['Everything else', 'ul', 'Work shifts, appointments, errands'],
+      ['Looking back', 'p', 'What went well, and what moves to next week'],
+    ],
+  },
+  meeting: {
+    label: 'Meeting notes', icon: 'users', titlePh: 'Meeting name',
+    desc: 'For a club, a team, or a group project: agenda, notes, decisions, and a table of who does what by when.',
+    hint: 'Fill in Action items before everyone leaves.',
+    sections: [
+      ['Details', 'p', 'Who was there, when, and where'],
+      ['Agenda', 'ol', 'What you meant to cover'],
+      ['Notes', 'ul', 'What was said'],
+      ['Decisions', 'ul', 'What was agreed'],
+      ['Action items', 'table', ['Task', 'Who', 'Due'], ['', '', '']],
+      ['Next meeting', 'p', 'Date, time, and what to bring'],
+    ],
+  },
+};
+function sheetHtml(key) {
+  const t = SHEET_TEMPLATES[key];
+  const body = ([, kind, a, rows]) => kind === 'ul' ? '<ul><li><br></li></ul>' : kind === 'ol' ? '<ol><li><br></li></ol>'
+    : kind === 'todo' ? '<div class="nb-todo-line"><input type="checkbox">&nbsp;<br></div>'
+    : kind === 'table' ? `<table><thead><tr>${a.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td>${r || '<br>'}</td>${a.slice(1).map(() => '<td><br></td>').join('')}</tr>`).join('')}</tbody></table><p><br></p>`
+    : '<p><br></p>';
+  return `<div class="nb-sheet nb-sheet-${key}">${t.sections.map(sec => `<div class="nb-sheet-section"><h2>${sec[0].replace(/&/g, '&amp;')}</h2>${body(sec)}</div>`).join('')}</div>`;
+}
+Object.entries(SHEET_TEMPLATES).forEach(([key, t]) => {
+  NOTE_TEMPLATES[key] = {
+    label: t.label, icon: t.icon, desc: t.desc, sheet: true, titlePh: t.titlePh, hint: t.hint,
+    html: () => sheetHtml(key),
+    name: (n) => `${getCourse(n.courseId)?.code ? getCourse(n.courseId).code + ' ' : ''}${t.label} · ${fmtDate(todayIso(), { month: 'short', day: 'numeric' })}`,
+  };
+});
+(function sheetHints() {
+  const rules = Object.entries(SHEET_TEMPLATES).flatMap(([key, t]) => t.sections.map((sec, i) => {
+    if (sec[1] === 'table' || sec[1] === 'todo') return '';
+    const at = `.rich-editor .nb-sheet-${key} > .nb-sheet-section:nth-of-type(${i + 1})`;
+    const sel = sec[1] === 'p' ? `${at} > p:last-child:has(> br:only-child)::before`
+      : `${at} > ${sec[1]} > li:only-child:has(> br:only-child)::before`;
+    return `${sel}{content:${JSON.stringify(sec[2])}}`;
+  })).join('');
+  const el = document.createElement('style');
+  el.id = 'nb-sheet-hints';
+  el.textContent = rules;
+  document.head.appendChild(el);
+})();
 // A note knows its template; one shared in from a classmate only carries the layout.
 function noteTemplateOf(note) {
   if (note?.template && NOTE_TEMPLATES[note.template]) return note.template;
   const c = String(note?.content || '');
+  const sheet = c.match(/class="nb-sheet nb-sheet-(\w+)"/);
+  if (sheet && SHEET_TEMPLATES[sheet[1]]) return sheet[1];
   return /class="nb-cornell"/.test(c) ? 'cornell' : /class="nb-lab"/.test(c) ? 'lab' : '';
 }
 function noteIsBlank(note) { return !noteTemplateOf(note) && !plainTextOfNote(note).trim() && !/<(img|table|input)\b/i.test(note.content || ''); }
@@ -678,6 +784,7 @@ function openNoteTemplateModal(parentId = 'root', noteId = null) {
     cornell: '<i style="top:12px;left:8px;width:16%"></i><i style="top:30px;left:8px;width:14%"></i><i style="top:12px;left:36%;width:50%"></i><i style="top:22px;left:36%;width:44%"></i><i style="top:32px;left:36%;width:56%"></i><i style="top:42px;left:36%;width:38%"></i><i style="top:70px;left:8px;width:80%"></i>',
     lab: '<i style="top:10px;left:12px;width:22%;height:5px"></i><i style="top:22px;left:12px;width:60%"></i><i style="top:36px;left:12px;width:22%;height:5px"></i><i style="top:48px;left:12px;width:70%"></i><i style="top:62px;left:12px;width:22%;height:5px"></i><i style="top:72px;left:12px;width:76%;height:8px;opacity:.18"></i>',
   };
+  const sheetPreview = '<i style="top:10px;left:12px;width:26%;height:5px"></i><i style="top:21px;left:12px;width:64%"></i><i style="top:30px;left:12px;width:50%"></i><i style="top:44px;left:12px;width:26%;height:5px"></i><i style="top:55px;left:12px;width:70%"></i><i style="top:69px;left:12px;width:26%;height:5px"></i>';
   const cards = [['blank', 'Blank page', 'Start typing. Type / for headings, lists, and blocks.'], ...Object.entries(NOTE_TEMPLATES).map(([k, t]) => [k, t.label, t.desc])];
   const note = noteId ? state.notes.find(n => n.id === noteId) : null;
   openModal(`
@@ -686,7 +793,7 @@ function openNoteTemplateModal(parentId = 'root', noteId = null) {
       <div class="nb-tpl-grid" role="radiogroup" aria-label="Template">
         ${cards.filter(([k]) => !note || k !== 'blank').map(([k, label, desc]) => `
           <button type="button" class="nb-tpl-card ${k === window._nbTplPick ? 'active' : ''}" role="radio" aria-checked="${k === window._nbTplPick}" onclick="window._nbTplPick='${k}';$$('.nb-tpl-card').forEach(b=>{const on=b===this;b.classList.toggle('active',on);b.setAttribute('aria-checked',on)})">
-            <div class="nb-tpl-preview ${k}" aria-hidden="true">${preview[k]}</div>
+            <div class="nb-tpl-preview ${k}" aria-hidden="true">${preview[k] || sheetPreview}</div>
             <div class="nb-tpl-title">${label}</div>
             <div class="nb-tpl-desc">${desc}</div>
           </button>`).join('')}
@@ -739,7 +846,8 @@ function insertTemplateBlock(key) {
   setTimeout(() => focusTemplateStart(key), 80);
 }
 function focusTemplateStart(key) {
-  const target = $(key === 'cornell' ? '#note-editor .nb-cornell-cues p' : '#note-editor .nb-lab-section p');
+  const target = $(key === 'cornell' ? '#note-editor .nb-cornell-cues p' : key === 'lab' ? '#note-editor .nb-lab-section p'
+    : '#note-editor .nb-sheet-section p, #note-editor .nb-sheet-section li, #note-editor .nb-sheet-section .nb-todo-line, #note-editor .nb-sheet-section td');
   if (!target) return;
   const range = document.createRange();
   range.selectNodeContents(target);
@@ -841,13 +949,13 @@ function renderNoteEditor(note) {
         </div>
       </div>
       <div class="nb-icon-avatar" style="background:${iconColor}18;color:${iconColor}">${icon(tplDef ? tplDef.icon : 'file-text', 20, 1.6)}</div>
-      <input class="nb-title-input" value="${esc(note.name)}" placeholder="${tpl === 'cornell' ? 'Lecture topic' : tpl === 'lab' ? 'Experiment title' : 'Untitled'}" oninput="renameNote('${note.id}',this.value)">
+      <input class="nb-title-input" value="${esc(note.name)}" placeholder="${tpl === 'cornell' ? 'Lecture topic' : tpl === 'lab' ? 'Experiment title' : tplDef?.titlePh || 'Untitled'}" oninput="renameNote('${note.id}',this.value)">
       <div class="nb-meta-row">
         <div class="flex-gap wrap">
           <select class="select nb-course-select" onchange="setNoteCourse('${note.id}',this.value)">
             <option value="">No course</option>${activeCourses().map(c => `<option value="${c.id}" ${c.id === note.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
           </select>
-          ${tpl ? `<input type="date" class="nb-date-input" value="${esc(note.date || '')}" aria-label="${tpl === 'lab' ? 'Lab date' : 'Lecture date'}" title="${tpl === 'lab' ? 'Lab date' : 'Lecture date'}" onchange="setNoteDate('${note.id}',this.value)">` : ''}
+          ${tpl ? `<input type="date" class="nb-date-input" value="${esc(note.date || '')}" aria-label="${tpl === 'lab' ? 'Lab date' : tplDef?.sheet ? 'Date' : 'Lecture date'}" title="${tpl === 'lab' ? 'Lab date' : tplDef?.sheet ? 'Date' : 'Lecture date'}" onchange="setNoteDate('${note.id}',this.value)">` : ''}
           ${tpl ? `<span class="small muted nb-tpl-badge">${icon(tplDef.icon, 11, 2)} ${tplDef.label}</span>` : ''}
           <span class="small muted" id="nb-save-status">Edited ${fmtRelativeTime(note.updatedAt) || 'now'} · ${words} word${words === 1 ? '' : 's'}</span>
         </div>
@@ -885,7 +993,7 @@ function renderNoteEditor(note) {
         <button onmousedown="event.preventDefault()" onclick="promptInsertLink()" title="Link" aria-label="Insert link">${icon('link', 13)}</button>
         <button onmousedown="event.preventDefault()" onclick="runNbCommand('formatBlock','P')" title="Clear formatting" aria-label="Clear formatting">${icon('x', 13, 2.2)}</button>
       </div>
-      <div class="nb-hint">${tpl === 'cornell' ? 'Cues and questions on the left, notes on the right. Afterward, sum it up at the bottom and use Cover notes to test yourself.' : tpl === 'lab' ? 'Work down the sections. The tracker above fills in as you go, and Table row grows the data table.' : 'Type <code>/</code> for blocks, or select text to format'}</div>
+      <div class="nb-hint">${tpl === 'cornell' ? 'Cues and questions on the left, notes on the right. Afterward, sum it up at the bottom and use Cover notes to test yourself.' : tpl === 'lab' ? 'Work down the sections. The tracker above fills in as you go, and Table row grows the data table.' : tplDef?.hint ? esc(tplDef.hint) : 'Type <code>/</code> for blocks, or select text to format'}</div>
       <div class="rich-editor nb-editor-body ${tpl ? `nb-tpl-${tpl}` : ''} ${window._nbCovered ? 'is-covered' : ''}" id="note-editor" contenteditable="true" data-placeholder="Start writing…" oninput="onNoteEdit('${note.id}', this)">${sanitizeHtml(note.content || '')}</div>
     </div>
   `;

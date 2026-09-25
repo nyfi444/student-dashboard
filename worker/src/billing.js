@@ -26,13 +26,17 @@ export async function handleCreateCheckoutSession(request, env, origin) {
   // cancellation webhook would then switch that person off. A buyer who
   // isn't signed in (the marketing site) gets an email-only session and
   // claims it after signing in (see handleClaimLicense).
-  let uid = null, email = '';
+  let uid = null, email = '', prefillEmail = '';
   if (body.idToken) {
     let payload;
     try { payload = await verifyFirebaseIdToken(body.idToken, env.FIREBASE_PROJECT_ID); }
     catch { return jsonError('Your session expired, sign in again.', 401, env, origin); }
     uid = payload.sub;
     email = verifiedEmailOf(payload);
+    // A password account's email is not verified yet, so it never becomes the
+    // license email or the subscription's metadata. It still fills in Stripe's
+    // email box, which is all Stripe would have asked the buyer to type.
+    if (!email && payload.email) prefillEmail = String(payload.email).toLowerCase().trim().slice(0, 320);
   } else if (body.uid) {
     return jsonError('Sign in again before subscribing.', 401, env, origin);
   } else if (body.email) {
@@ -59,7 +63,7 @@ export async function handleCreateCheckoutSession(request, env, origin) {
   // entirely via Stripe Coupons, see SEMESTER_HQ_COUPON_PROCESS.md.
   params.set('allow_promotion_codes', 'true');
   if (uid) params.set('client_reference_id', uid);
-  if (email) params.set('customer_email', email);
+  if (email || prefillEmail) params.set('customer_email', email || prefillEmail);
   // Stamped onto the Subscription object Stripe creates, so later lifecycle
   // events (renewal, cancellation) can be resolved back to a uid/email
   // without a separate customer-id lookup table.
@@ -68,7 +72,7 @@ export async function handleCreateCheckoutSession(request, env, origin) {
   // Which way in this was (see checkouts.js), and the link code the visitor
   // arrived on, if any. On the session for the checkout numbers, and on the
   // subscription so the subscriber list can show it for good.
-  const source = checkoutSourceFor({ uid, email });
+  const source = checkoutSourceFor({ uid, email, signup: !!uid && body.signup === true });
   params.set('metadata[source]', source);
   params.set('subscription_data[metadata][source]', source);
   const via = cleanVia(body.via);

@@ -195,15 +195,14 @@ async function completeEmailLinkSignInIfPresent() {
     diag.error('auth', 'Sign-in link failed', e);
   }
 }
+// Email sign-in lives on login.html now (a password, or an emailed link for
+// older accounts), so every in-app "Continue with email" goes there. Inside
+// the marketing site's demo iframe it opens a new tab instead of loading the
+// page inside the frame.
 function openEmailSignInModal() {
-  openModal(`
-    <div class="modal-head"><h3>Continue with email</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
-    <div class="modal-body">
-      <p class="small muted mb-16">We'll email you a link to sign in, no password, and no Google account needed. Any email address works.</p>
-      <div class="field"><input class="input" type="email" id="email-signin-input" placeholder="you@example.com" autocomplete="email"></div>
-    </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitEmailSignIn()">Send link</button></div>
-  `);
+  const url = emailSignInUrl();
+  if (typeof isEmbedded === 'function' && isEmbedded()) window.open(url, '_blank', 'noopener');
+  else window.location.href = url;
 }
 async function submitEmailSignIn() {
   const input = document.getElementById('email-signin-input');
