@@ -188,6 +188,11 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .page-head h2 { font-family: var(--font-serif); font-size: 32px; font-weight: 400; letter-spacing: -.2px; color: var(--text); }
 .page-head .sub { font-size: 13px; color: var(--text-faint); margin-top: 4px; }
 .head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Tips that name a mouse action get a touch version; which one shows follows the pointer, not the width. */
+.hint-touch { display: none; }
+@media (hover: none) and (pointer: coarse) { .hint-mouse { display: none; } .hint-touch { display: inline; } }
+/* Back, Today and forward wrap as one piece, so a phone never splits the arrows across rows. */
+.cal-stepper { display: inline-flex; gap: 8px; }
 
 /* ── Buttons ───────────────────────────────────────────────── */
 .btn {
@@ -293,6 +298,13 @@ button .i, .btn .i { vertical-align: -2.5px; }
 textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .field-row { display: flex; gap: 10px; }
 .field-row > .field { flex: 1; }
+/* On a phone a row of three fields (due date, time, status) squeezed the last
+   one to a sliver past the modal's edge. Rows of labelled fields wrap instead;
+   rows of inline controls (meeting times, office hours) are left alone. */
+@media (max-width: 760px) {
+  .field-row:has(> .field) { flex-wrap: wrap; }
+  .field-row > .field { flex: 1 1 130px; min-width: 0; }
+}
 .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 
 /* ── Badges/tags/pills ─────────────────────────────────────── */
@@ -1152,6 +1164,8 @@ button.dash-next-title:hover { text-decoration: underline; text-decoration-thick
 }
 @media (max-width: 760px) {
   .mobile-search { display: inline-flex !important; }
+  /* The header's camera icon is Quick capture on a phone; the dashboard's own Capture button would be a second copy. */
+  .desktop-capture { display: none !important; }
   .sidebar-search { display: none; }
   .dash-today { grid-template-columns: 1fr; }
   .dash-next { border-right: none; border-bottom: 1px solid var(--border); padding: 20px; }

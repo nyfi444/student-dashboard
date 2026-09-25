@@ -54,7 +54,7 @@ function pageDashboard() {
   const sub = `${fmtDateLong(todayIso())}${sem && activeCourses().length ? ` · Week ${sem.week} of ${sem.totalWeeks}` : ''}`;
   const head = pageHead(`${greeting}${name}`, sub, `
     ${state.settings.sampleData ? `<button class="btn btn-sm" onclick="removeSampleSemester()">${icon('x', 12, 2.2)} Clear sample data</button>` : ''}
-    <button class="btn btn-sm" onclick="openQuickCapture()">${icon('camera', 13, 1.8)} Capture</button>
+    <button class="btn btn-sm desktop-capture" onclick="openQuickCapture()">${icon('camera', 13, 1.8)} Capture</button>
     <button class="btn btn-sm" onclick="toggleTodayMode()">${icon('sun', 13, 2)} Focus on today</button>
     <button class="btn btn-icon btn-sm" onclick="openDashboardCustomizeModal()" title="Customize dashboard" aria-label="Customize dashboard">${icon('settings', 16, 1.6)}</button>
   `);

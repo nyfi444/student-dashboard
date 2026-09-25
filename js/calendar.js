@@ -15,9 +15,11 @@ function pageCalendar() {
         <button class="${v === 'week' ? 'active' : ''}" onclick="setCalView('week')">Week</button>
         <button class="${v === 'day' ? 'active' : ''}" onclick="setCalView('day')">Day</button>
       </div>
-      <button class="btn btn-sm btn-icon" aria-label="Previous period" onclick="calNav(-1)">${icon('chevron-left', 15, 2)}</button>
-      <button class="btn btn-sm" onclick="calToday()">Today</button>
-      <button class="btn btn-sm btn-icon" aria-label="Next period" onclick="calNav(1)">${icon('chevron-right', 15, 2)}</button>
+      <span class="cal-stepper">
+        <button class="btn btn-sm btn-icon" aria-label="Previous period" onclick="calNav(-1)">${icon('chevron-left', 15, 2)}</button>
+        <button class="btn btn-sm" onclick="calToday()">Today</button>
+        <button class="btn btn-sm btn-icon" aria-label="Next period" onclick="calNav(1)">${icon('chevron-right', 15, 2)}</button>
+      </span>
       <button class="btn btn-sm" onclick="openBreaksModal()">${icon('flag', 13, 2)} Breaks</button>
       <button class="btn btn-primary" onclick="openEventModal(null,'${state.calDate}')">+ Time block</button>
     `)}
@@ -26,7 +28,7 @@ function pageCalendar() {
       title: 'Nothing on the calendar yet',
       body: 'Add your classes and every meeting time, deadline, and exam lands here, next to any time you block out for yourself.',
       actions: [{ label: 'Set up my semester', onclick: 'openSemesterSetup()', icon: 'sparkles' }, { label: '+ Time block', onclick: `openEventModal(null,'${state.calDate}')` }],
-    })}</div>` : v !== 'year' ? `<div class="small muted mb-8">Drag a to-do or assignment from Dashboard/To-Do/Assignments onto a day to reschedule it, or onto a time slot to plan when you'll work on it.</div>` : `<div class="small muted mb-8">Click a month name to jump into it, or a day to jump straight to that day.</div>`}
+    })}</div>` : v !== 'year' ? `<div class="small muted mb-8"><span class="hint-mouse">Drag a to-do or assignment from Dashboard/To-Do/Assignments onto a day to reschedule it, or onto a time slot to plan when you'll work on it.</span><span class="hint-touch">Tap a day to see it hour by hour. Tap a to-do, assignment, or time block to change its date or time.</span></div>` : `<div class="small muted mb-8">Click a month name to jump into it, or a day to jump straight to that day.</div>`}
     <div id="cal-body">${v === 'year' ? yearView() : v === 'month' ? monthView() : v === 'week' ? weekView() : dayView()}</div>
   `;
 }
@@ -50,11 +52,11 @@ function openBreaksModal() {
     <div class="modal-body">
       <div class="small muted mb-8">Class meetings are hidden on these dates: Labor Day, Fall Break, Thanksgiving, Reading Day, etc.</div>
       <div id="brk-list">${state.breaks.map((b, i) => breakRow(b, i)).join('') || '<div class="small muted mb-8">No breaks added yet.</div>'}</div>
-      <div class="field-row mt-8">
-        <input class="input" id="brk-name" placeholder="Thanksgiving Break">
-        <input class="input" type="date" id="brk-start">
-        <input class="input" type="date" id="brk-end">
-        <button class="btn btn-sm" onclick="addBreak()">+ Add</button>
+      <div class="field-row mt-8" style="align-items:flex-end">
+        <div class="field"><label for="brk-name">Name</label><input class="input" id="brk-name" placeholder="Thanksgiving Break"></div>
+        <div class="field"><label for="brk-start">First day</label><input class="input" type="date" id="brk-start"></div>
+        <div class="field"><label for="brk-end">Last day</label><input class="input" type="date" id="brk-end"></div>
+        <button class="btn btn-sm" style="margin-bottom:12px" onclick="addBreak()">+ Add</button>
       </div>
     </div>
     <div class="modal-foot"><button class="btn btn-primary" onclick="closeModal()">Done</button></div>

@@ -420,7 +420,7 @@
   @media (max-width: 560px) {
     .lp-top { height: 68px; }
     .login-back { height: 36px; padding: 0 14px; font-size: 12.5px; }
-    .lp-eyebrow { height: auto; padding: 8px 14px; font-size: 10px; letter-spacing: .15em; line-height: 1.35; }
+    .lp-eyebrow { height: auto; padding: 8px 14px; font-size: 10px; letter-spacing: .15em; line-height: 1.35; text-wrap: balance; }
     .lp-pane { padding: 28px 22px 24px; }
     .login-form h2 { font-size: 38px; }
     .login-sub { margin-bottom: 24px; }
@@ -618,7 +618,7 @@ function renderSignInButton() {
   document.getElementById('login-body').innerHTML = _signup ? `
     <form onsubmit="event.preventDefault();startEmailSignUp()">
       <input class="input" type="email" id="login-email-input" placeholder="you@example.com" required autocomplete="email" aria-label="Email" style="width:100%;margin-bottom:12px;box-sizing:border-box">
-      <input class="input" type="password" id="login-password-input" placeholder="Create a password (8+ characters)" required minlength="8" autocomplete="new-password" aria-label="Password" style="width:100%;margin-bottom:12px;box-sizing:border-box">
+      <input class="input" type="password" id="login-password-input" placeholder="Password (8+ characters)" required minlength="8" autocomplete="new-password" aria-label="Password" style="width:100%;margin-bottom:12px;box-sizing:border-box">
       ${agreed ? '' : `<label class="checkbox-row login-check" style="align-items:flex-start;gap:10px">
         <input type="checkbox" id="age-tos-check" style="margin-top:2px;width:18px;height:18px;flex-shrink:0">
         <span class="small">I'm at least 13 years old, and I agree to Semester HQ's <a href="https://semester-hq.com/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="https://semester-hq.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
