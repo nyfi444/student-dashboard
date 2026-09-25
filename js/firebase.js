@@ -133,7 +133,25 @@ async function signIn() {
   if (localStorage.getItem(AGE_TOS_KEY) !== '1') { openAgeGateModal(); return 'age-gate'; }
   await runGoogleSignIn();
 }
+// Sign-in failures in words a student can act on, not Firebase's. The
+// cancelled ones are the student closing the window or tapping twice.
+const QUIET_AUTH_CODES = new Set(['auth/popup-closed-by-user', 'auth/cancelled-popup-request', 'auth/user-cancelled']);
+function friendlyAuthMessage(e) {
+  switch (e?.code) {
+    case 'auth/popup-blocked': return 'Your browser blocked the Google sign-in window. Tap Continue with Google again, and allow pop-ups if it asks.';
+    case 'auth/network-request-failed': return 'No connection right now. Try again when you’re back online.';
+    case 'auth/too-many-requests': return 'Too many tries in a row. Wait a minute, then try again.';
+    case 'auth/web-storage-unsupported': return 'This browser is blocking what sign-in needs to work. Turn off private browsing, or try Safari or Chrome.';
+    default: return 'Google sign-in didn’t finish. Try again.';
+  }
+}
+// A second tap while Google's window was still opening started a second
+// popup, which cancelled the first and left Firebase in a broken state
+// ("INTERNAL ASSERTION FAILED: Pending promise was never set", Sept 17).
+let _googleSignInOpen = false;
 async function runGoogleSignIn() {
+  if (_googleSignInOpen) return;
+  _googleSignInOpen = true;
   try {
     // Always show Google's account chooser, even if this browser already has
     // a Google session, otherwise a user who picked the wrong account once
@@ -144,7 +162,13 @@ async function runGoogleSignIn() {
     provider.setCustomParameters({ prompt: 'select_account' });
     await _fbAuth.signInWithPopup(provider);
   } catch (e) {
-    if (e.code !== 'auth/popup-closed-by-user') { toast('Sign-in failed: ' + e.message, 'error'); diag.error('auth', 'Google sign-in failed', e); }
+    if (QUIET_AUTH_CODES.has(e.code)) return;
+    toast(friendlyAuthMessage(e), 'error', 6000);
+    // A blocked window is the browser, not a bug; anything else is worth a look.
+    if (e.code === 'auth/popup-blocked') diag.warn('auth', 'Google sign-in window blocked', e);
+    else diag.error('auth', 'Google sign-in failed', e);
+  } finally {
+    _googleSignInOpen = false;
   }
 }
 // One-click fix for "I'm signed in with the wrong Google account": sign out

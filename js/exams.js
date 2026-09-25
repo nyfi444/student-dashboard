@@ -301,7 +301,7 @@ async function runTopicsFromGuide(id) {
   setBtnLoading(btn, true);
   try {
     const userContent = images.length ? [...imageBlocks(images), { type: 'text', text: `List the topics this exam covers: ${a.title}${text ? `\n\n${text.slice(0, 12000)}` : ''}` }] : `Exam: ${a.title}\n\n${text.slice(0, 12000)}`;
-    const list = extractJson(await callClaude({ system: TOPICS_SYSTEM, userContent, maxTokens: 1200, feature: 'exam-topics' }));
+    const list = extractJson(await callClaude({ system: TOPICS_SYSTEM, userContent, maxTokens: 4000, feature: 'exam-topics' }));
     const have = new Set(examTopics(a).map(t => t.title.toLowerCase()));
     const fresh = (Array.isArray(list) ? list : []).filter(x => typeof x === 'string' && x.trim() && !have.has(x.trim().toLowerCase())).slice(0, 30);
     a.topics = [...(a.topics || []), ...fresh.map(title => ({ id: uid(), title: title.trim().slice(0, 120), conf: 0 }))];

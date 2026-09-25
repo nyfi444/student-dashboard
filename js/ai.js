@@ -78,7 +78,10 @@ let _lastAiUsage = null;
 // the Worker can say what each one costs (worker/src/usage.js). It is only a
 // label: the Worker never forwards it to Anthropic, and counts anything it
 // doesn't know as 'untagged'.
-async function callClaude({ system, userContent, maxTokens = 2000, schema = null, model = aiModel(), feature = '' }) {
+// maxTokens is room for thinking and the answer together: Sonnet 5 thinks
+// first, so a small budget can be spent before any answer is written. The
+// Worker caps it at 12000 (worker/src/ai.js).
+async function callClaude({ system, userContent, maxTokens = 4000, schema = null, model = aiModel(), feature = '' }) {
   if (!aiEnabled()) throw new AiError('AI features aren’t set up on this deployment yet.');
   if (isEmbedded()) throw new AiError('This is part of Semester HQ Plus, so it doesn’t run in the demo.');
   if (!navigator.onLine) throw new AiError('You’re offline. This needs an internet connection.');
@@ -124,13 +127,24 @@ async function callClaude({ system, userContent, maxTokens = 2000, schema = null
     throw new AiError(message || `AI request failed (${res.status}). ${body.slice(0, 160)}`);
   }
   const json = await res.json();
+  // The Worker streams from Claude and answers straight away, so a failure
+  // partway through comes back in the body rather than as a status.
+  if (json.type === 'error') {
+    diag.warn('ai', 'AI reply stopped partway', null, { model, type: String(json.error?.type || '') });
+    throw new AiError('Something interrupted the read. Try again in a moment.');
+  }
   _lastAiUsage = json.usage || null;
-  if (json.stop_reason === 'max_tokens') diag.warn('ai', 'AI reply hit the token cap', null, { model });
-  const text = (json.content || []).map(b => b.text || '').join('\n').trim();
+  const cut = json.stop_reason === 'max_tokens';
+  if (cut) diag.warn('ai', 'AI reply hit the token cap', null, { model, feature });
+  const text = (json.content || []).filter(b => b.type === 'text' || b.text).map(b => b.text || '').join('\n').trim();
   if (!useSchema) return text;
   // A constrained reply is already conforming JSON; extractJson is only here
-  // for the refusal/truncation edge, where it fails the same way it always did.
-  try { return JSON.parse(text); } catch { return extractJson(text); }
+  // for the refusal/truncation edge. A reply cut off for room can't be read,
+  // and saying so beats a JSON error the student can do nothing with.
+  try { return JSON.parse(text); } catch (e) {
+    if (cut) throw new AiError('That was too much to read in one go. Try a shorter file, or upload it in parts.');
+    return extractJson(text);
+  }
 }
 
 function extractJson(text) {
@@ -329,7 +343,7 @@ async function aiParseSyllabus({ text = '', images = [], fileType = '' } = {}) {
   const started = Date.now();
   const measure = { source: images.length ? 'upload' : 'text', fileType: fileType || (images.length ? 'image' : 'text'), model, images: images.length, chars: text.length };
   try {
-    const data = await callClaude({ system: SYLLABUS_SYSTEM, userContent, maxTokens: 3000, schema: SYLLABUS_SCHEMA, model, feature: 'syllabus' });
+    const data = await callClaude({ system: SYLLABUS_SYSTEM, userContent, maxTokens: 10000, schema: SYLLABUS_SCHEMA, model, feature: 'syllabus' });
     reportSyllabusRead({ ...measure, outcome: 'parsed', ms: Date.now() - started, assignments: (data?.assignments || []).length, meetings: (data?.meetings || []).length, details: courseDetailsCount(sanitizeCourseDetails(data?.details)) });
     return data;
   } catch (e) {
@@ -380,7 +394,7 @@ async function aiParseAssignments({ text = '', images = [] }) {
   const userContent = images.length
     ? [...imageBlocks(images), { type: 'text', text: `Extract the list of assignments/deadlines from these images (they may be multiple pages of one document) as specified.${text ? `\n\nText from the same upload:\n${text.slice(0, 15000)}` : ''}` }]
     : `Here is the document text:\n\n${text.slice(0, 15000)}`;
-  const data = await callClaude({ system: ASSIGNMENTS_SYSTEM, userContent, maxTokens: 3000, schema: ASSIGNMENTS_SCHEMA, feature: 'assignments' });
+  const data = await callClaude({ system: ASSIGNMENTS_SYSTEM, userContent, maxTokens: 10000, schema: ASSIGNMENTS_SCHEMA, feature: 'assignments' });
   // Constrained replies come back as {assignments:[...]} because a JSON Schema
   // root has to be an object; the old prose path returned the bare array.
   return Array.isArray(data) ? data : (data?.assignments || []);

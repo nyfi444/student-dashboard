@@ -79,6 +79,26 @@ const diag = (() => {
     return c;
   }
 
+  const NETWORK_CODES = new Set(['auth/network-request-failed', 'auth/timeout', 'deadline-exceeded']);
+  function isNetworkFailure(err, text) {
+    if (err?.code && NETWORK_CODES.has(String(err.code))) return true;
+    return /\b(Load failed|Failed to fetch|NetworkError when attempting to fetch|network connection was lost|network request failed|timed out)\b/i.test(String(err?.message || text || ''));
+  }
+  const dropped = new Set();
+  let droppedTimer = null;
+  function noteDropped(feature, text) {
+    crumb('network-drop', `${feature}: ${text}`);
+    dropped.add(feature);
+    if (droppedTimer) return;
+    // A few seconds, so everything that failed in the same moment is one report.
+    droppedTimer = setTimeout(() => {
+      droppedTimer = null;
+      const list = [...dropped].sort();
+      dropped.clear();
+      report('warn', 'network', `Connection dropped (${list.join(', ')})`, null, { affected: list, hidden: document.hidden });
+    }, 4000);
+  }
+
   function crumb(category, message) {
     crumbs.push(`+${((Date.now() - started) / 1000).toFixed(1)}s ${category} ${scrub(message, 120)}`);
     if (crumbs.length > MAX_CRUMBS) crumbs.shift();
@@ -94,6 +114,13 @@ const diag = (() => {
     if (recent.length > 10) recent.shift();
     // Expected while offline (Firestore says "unavailable"), so it's a trail note, not a report.
     if (!navigator.onLine || err?.code === 'unavailable') { crumb('offline-issue', `${feature}: ${text}`); return; }
+    // A phone that loses its connection for a moment (a lift, switching from
+    // wifi, the app coming back from the background) still says it is online,
+    // and every call in flight fails at once: the licence check, the terms
+    // record, a calendar feed, the Worker. Each used to arrive as its own
+    // issue. Now they are one "connection dropped" report per visit, listing
+    // what was affected, so the Error Viewer shows real bugs instead.
+    if (feature !== 'network' && isNetworkFailure(err, text)) { noteDropped(feature, text); return; }
     if (/ResizeObserver loop|^Script error\.?$/.test(text) || /-extension:\/\//.test(err?.stack || '')) return;
     const key = `${level}|${feature}|${text}`;
     if (!ENDPOINT || seen.has(key) || sent >= MAX_REPORTS) return;

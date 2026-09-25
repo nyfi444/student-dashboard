@@ -37,7 +37,8 @@ const ok = (name, v) => check(name, !!v, true);
 function freshWorker() {
   const box = {
     console: { ...console, error() {} }, // the code under test logs its caught failures; keep the output to results
-    crypto, setTimeout, clearTimeout, TextEncoder, TextDecoder, atob, btoa, URL, URLSearchParams, Response, Request, Headers,
+    crypto, setTimeout, clearTimeout, setInterval, clearInterval, TextEncoder, TextDecoder, atob, btoa, URL, URLSearchParams, Response, Request, Headers,
+    ReadableStream, TransformStream,
     Uint8Array, ArrayBuffer, DataView,
     fetch: () => { throw new Error('no network in tests'); },
   };
@@ -404,6 +405,41 @@ const FIREBASE = { FIREBASE_PROJECT_ID: 'semester-hq', FIREBASE_CLIENT_EMAIL: 's
   waits.length = 0;
   res = await w.handleAiProxy(aiPost(aiBody), env, '', { waitUntil: (p) => waits.push(p) });
   check('proxy: a failed call is not counted', [res.status, waits.length], [400, 0]);
+
+  // Streamed: the reply is folded back into one message, whatever the chunking,
+  // and counted from that message. Sent with stream: true and the higher cap.
+  const sse = (events, size = 7) => {
+    const text = events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join('');
+    const enc = new TextEncoder();
+    return new Response(new ReadableStream({ start(c) { for (let i = 0; i < text.length; i += size) c.enqueue(enc.encode(text.slice(i, i + size))); c.close(); } }), { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  };
+  const START = { type: 'message_start', message: { id: 'msg_2', type: 'message', role: 'assistant', model: 'claude-sonnet-5', content: [], usage: { input_tokens: 700, output_tokens: 1 } } };
+  w.commitFirestore = async (e, writes) => { recorded.push(writes[0]); return true; };
+  recorded.length = 0;
+  w.fetch = async (url, init) => { forwarded = JSON.parse(init.body); return sse([START,
+    { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: '{"assignments":[{"title":"Essay ' } },
+    { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: '1"}]}' } },
+    { type: 'content_block_stop', index: 1 },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 5200 } },
+    { type: 'message_stop' }]); };
+  waits.length = 0;
+  res = await w.handleAiProxy(aiPost({ ...aiBody, max_tokens: 50000, feature: 'syllabus' }), env, '', { waitUntil: (p) => waits.push(p) });
+  const streamed = JSON.parse(await res.text());
+  await Promise.all(waits);
+  check('stream: asked for as a stream, capped at 12000', [forwarded.stream, forwarded.max_tokens], [true, 12000]);
+  check('stream: the app gets one message with the text whole', [res.status, streamed.stop_reason, JSON.parse(streamed.content.find(b => b.type === 'text').text)], [200, 'end_turn', { assignments: [{ title: 'Essay 1' }] }]);
+  check('stream: usage counted from the rebuilt message', recorded.some(r => r?.increments?.['byFeatureModel.syllabus.`claude-sonnet-5`.outputTokens'] === 5200), true);
+  w.fetch = async () => sse([START, { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }]);
+  const issues = [];
+  w.logServerIssue = async (e, f, m) => { issues.push(m); };
+  waits.length = 0;
+  res = await w.handleAiProxy(aiPost(aiBody), env, '', { waitUntil: (p) => waits.push(p) });
+  const failed = JSON.parse(await res.text());
+  await Promise.all(waits);
+  check('stream: an error partway arrives as type error on a 200, and is logged', [res.status, failed.type, failed.error.message, issues], [200, 'error', 'Overloaded', ['Anthropic stream failed']]);
 }
 
 /* ── /track-event: the new events, and only allowlisted ones ───────── */

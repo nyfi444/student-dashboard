@@ -7,6 +7,7 @@ import { logServerIssue } from './diagnostics.js';
 import { readFirestoreDoc, verifyFirebaseIdToken } from './firebase.js';
 import { corsHeaders, jsonError } from './http.js';
 import { noteAiUsage } from './usage.js';
+import { finishClaudeMessage, foldClaudeEvent, sseReader } from './stream.js';
 
 // claude-sonnet-5 is the default (see js/ai.js): newer than sonnet-4.6 and a
 // third cheaper on both sides ($2/$10 per MTok vs $3/$15). claude-opus-5 is
@@ -15,7 +16,11 @@ import { noteAiUsage } from './usage.js';
 // 5, so nothing else should route to it. claude-sonnet-4-6 stays allowed for
 // one release so a stored per-user aiModel setting doesn't start 400ing.
 const ALLOWED_MODELS = ['claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
-const MAX_TOKENS_CAP = 4000;
+// Room for the reply, thinking included: Sonnet 5 thinks before it answers,
+// and at 4000 a long syllabus could spend all of it thinking and send back
+// nothing (seen in the Error Viewer on Sept 23). Replies are streamed (see
+// streamAiReply), so a long one no longer risks Cloudflare's 100 seconds.
+const MAX_TOKENS_CAP = 12000;
 // What one account may ask for in a day. A student in their heaviest setup
 // week runs maybe 10 calls; 40 leaves room for a bad day in the first week of
 // term without leaving the bill open-ended if an ID token is ever stolen.
@@ -89,6 +94,7 @@ export async function handleAiProxy(request, env, origin, ctx) {
   const forwarded = {};
   for (const field of AI_FORWARDED_FIELDS) if (body[field] !== undefined) forwarded[field] = body[field];
   forwarded.max_tokens = Math.min(Number(body.max_tokens) || 1024, MAX_TOKENS_CAP);
+  forwarded.stream = true;
 
   const send = () => fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -112,6 +118,11 @@ export async function handleAiProxy(request, env, origin, ctx) {
     upstream = await send();
   }
 
+  // Accepted: the answer streams back through streamAiReply. Anything else
+  // (a refusal of the request, a rate limit) is answered at once below.
+  if (upstream.ok && upstream.body && (upstream.headers.get('content-type') || '').includes('text/event-stream')) {
+    return streamAiReply(upstream, env, ctx, origin, body);
+  }
   const text = await upstream.text();
   // Still rate limited after the retry. That isn't the student's fault and
   // shouldn't read like an error they caused.
@@ -130,6 +141,46 @@ export async function handleAiProxy(request, env, origin, ctx) {
     await logServerIssue(env, 'ai', `Anthropic returned ${upstream.status}`, null, { model: body.model, type: upstreamError.type || '', detail: String(upstreamError.message || '').slice(0, 200) });
   }
   return new Response(text, { status: upstream.status, headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
+}
+
+/* ── Streaming the reply back ──────────────────────────────────────
+   Replies at once, writes a space every 8 seconds while Claude writes
+   (JSON allows leading whitespace, so res.json() in the app is unchanged),
+   then sends the whole message rebuilt from the stream. A failure partway
+   through arrives as { type: 'error', error } on a 200, which callClaude
+   in js/ai.js turns into a sentence for the student. Usage is counted as
+   before, from the rebuilt message. */
+function streamAiReply(upstream, env, ctx, origin, body) {
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const enc = new TextEncoder();
+  const relay = (async () => {
+    const read = sseReader();
+    const dec = new TextDecoder();
+    const reader = upstream.body.getReader();
+    let state = null;
+    let queue = Promise.resolve();
+    const beat = setInterval(() => { queue = queue.then(() => writer.write(enc.encode(' '))).catch(() => {}); }, 8000);
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        for (const ev of read(done ? dec.decode() : dec.decode(value, { stream: true }), done)) state = foldClaudeEvent(state, ev);
+        if (done) break;
+      }
+    } catch (e) {
+      state = { ...(state || {}), error: { type: 'api_error', message: 'The answer was cut off partway. Try again.' } };
+    }
+    clearInterval(beat);
+    await queue;
+    const final = finishClaudeMessage(state);
+    const text = JSON.stringify(final);
+    if (final.type === 'error') {
+      try { await logServerIssue(env, 'ai', 'Anthropic stream failed', null, { model: body.model, type: String(final.error?.type || '') }); } catch {}
+    } else noteAiUsage(env, ctx, { feature: body.feature, model: body.model, text });
+    try { await writer.write(enc.encode(text)); await writer.close(); } catch { /* the app went away */ }
+  })();
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(relay);
+  return new Response(readable, { status: 200, headers: corsHeaders(env, origin, { 'content-type': 'application/json' }) });
 }
 
 /* ── How much one request is about to cost, roughly ───────────────

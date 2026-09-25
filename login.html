@@ -832,7 +832,21 @@ function confirmAgeGate() {
   _pendingAction = null;
   next();
 }
+// Sign-in failures in words a student can act on (the app's copy is in js/firebase.js).
+const QUIET_AUTH_CODES = new Set(['auth/popup-closed-by-user', 'auth/cancelled-popup-request', 'auth/user-cancelled']);
+function friendlyAuthMessage(e) {
+  switch (e?.code) {
+    case 'auth/popup-blocked': return 'Your browser blocked the Google sign-in window. Tap Continue with Google again, and allow pop-ups if it asks.';
+    case 'auth/network-request-failed': return 'No connection right now. Try again when you’re back online.';
+    case 'auth/too-many-requests': return 'Too many tries in a row. Wait a minute, then try again.';
+    case 'auth/web-storage-unsupported': return 'This browser is blocking what sign-in needs to work. Turn off private browsing, or try Safari or Chrome.';
+    default: return 'Google sign-in didn’t finish. Try again.';
+  }
+}
+let _googleSignInOpen = false; // a second tap while Google's window opens breaks Firebase's popup
 async function runSignIn() {
+  if (_googleSignInOpen) return;
+  _googleSignInOpen = true;
   busy('Signing in&hellip;');
   if (_signup) _signupInFlight = true;
   try {
@@ -850,7 +864,13 @@ async function runSignIn() {
   } catch (e) {
     _signupInFlight = false;
     renderSignInButton();
-    if (e.code !== 'auth/popup-closed-by-user') { showError('Sign-in failed: ' + e.message); diag.error('login', 'Google sign-in failed', e); }
+    if (!QUIET_AUTH_CODES.has(e.code)) {
+      showError(friendlyAuthMessage(e));
+      if (e.code === 'auth/popup-blocked') diag.warn('login', 'Google sign-in window blocked', e);
+      else diag.error('login', 'Google sign-in failed', e);
+    }
+  } finally {
+    _googleSignInOpen = false;
   }
 }
 // Passwordless email link: works with any address (iCloud, Outlook,
@@ -891,8 +911,20 @@ async function tryCompleteEmailLink() {
     return true;
     // Success redirects from the onAuthStateChanged listener below.
   } catch (e) {
-    showError('That sign-in link is invalid or expired: ' + e.message);
-    diag.warn('login', 'Sign-in link invalid or expired', e);
+    // Links last an hour and work once. An old or used one is expected, not
+    // a bug, so it's a trail note rather than a report, and the page offers
+    // a fresh link instead of Firebase's wording. Clearing the address stops
+    // a reload from trying the dead link again.
+    const clean = new URL(window.location.href);
+    ['apiKey', 'oobCode', 'mode', 'lang', 'continueUrl', 'tenantId'].forEach(k => clean.searchParams.delete(k));
+    history.replaceState({}, '', clean.pathname + clean.search);
+    if (e.code === 'auth/expired-action-code' || e.code === 'auth/invalid-action-code') {
+      showError('That sign-in link has expired or was already used. Enter your email below and we’ll send a new one.');
+      diag.crumb('login', `sign-in link ${e.code}`);
+    } else {
+      showError(e.code === 'auth/invalid-email' ? 'That email doesn’t match the one the link was sent to. Enter it again below for a new link.' : 'That sign-in link didn’t work. Enter your email below and we’ll send a new one.');
+      diag.warn('login', 'Sign-in link failed', e);
+    }
     return false;
   }
 }

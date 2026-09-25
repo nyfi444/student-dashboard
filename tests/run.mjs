@@ -278,5 +278,68 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
   check('setup counts on: a baseline already synced from another device is kept, and not sent twice', [t.box.state.settings.setupCounts.since, t.sent.length], ['2026-09-20', 0]);
 }
 
+/* ── Error Viewer fixes, Sept 25 ─────────────────────────────────── */
+
+// A full device: the backup copy is dropped to make room, and if that is
+// still not enough the save is skipped (not thrown), and she is told once.
+{
+  const toasts = [];
+  sandbox.toast = (m) => toasts.push(m);
+  const quota = () => Object.assign(new Error('The quota has been exceeded.'), { name: 'QuotaExceededError' });
+  const mem = {};
+  let room = 1; // how many more writes fit before the device is full
+  vm.runInContext('dataStore', sandbox);
+  sandbox.__fullStore = {
+    getItem: (k) => (k in mem ? mem[k] : null),
+    setItem: (k, v) => { if (room <= 0) throw quota(); room--; mem[k] = String(v); },
+    removeItem: (k) => { if (k in mem) { delete mem[k]; room++; } },
+  };
+  vm.runInContext('dataStore = __fullStore; _lastBackupAt = 0;', sandbox);
+  mem[vm.runInContext('storeKey', sandbox) + '.bak'] = 'old backup';
+  room = 0;
+  let threw = false;
+  try { vm.runInContext('save({ localOnly: true })', sandbox); } catch { threw = true; }
+  check('storage full: save never throws', threw, false);
+  check('storage full: the backup made room for the plan', [typeof mem[vm.runInContext('storeKey', sandbox)], vm.runInContext('storeKey', sandbox) + '.bak' in mem], ['string', false]);
+  room = 0;
+  for (const k of Object.keys(mem)) delete mem[k];
+  vm.runInContext('_lastBackupAt = Date.now(); save({ localOnly: true }); save({ localOnly: true });', sandbox);
+  check('storage full with nothing to drop: told once, not on every keystroke', toasts.length, 1);
+  vm.runInContext('dataStore = makeMemoryStore();', sandbox);
+}
+
+// A dropped connection: every call that failed in the same moment is one
+// report, and a real error still goes through on its own.
+{
+  const posted = [];
+  const timers = [];
+  const box = {
+    console: { ...console, warn() {}, error() {} }, navigator: { onLine: true, userAgent: 'node' }, location: { pathname: '/index.html', search: '' },
+    document: { hidden: false, referrer: '' }, WORKER_URL: 'https://worker.test', APP_VERSION: 'test', crypto,
+    sessionStorage: { getItem: () => null, setItem() {} }, localStorage: { getItem: () => null, setItem() {} },
+    fetch: async (url, init) => { if (String(url).endsWith('/log-error')) posted.push(JSON.parse(init.body)); return { status: 200, ok: true }; },
+    addEventListener() {}, setTimeout: (fn) => { timers.push(fn); return timers.length; }, clearTimeout() {},
+    URL, URLSearchParams, matchMedia: () => ({ matches: false }), innerWidth: 390, innerHeight: 800,
+  };
+  box.window = box; box.self = box; box.top = box; box.globalThis = box;
+  vm.createContext(box);
+  vm.runInContext(read('js/diagnostics.js') + '\n;globalThis.__diag = diag;', box, { filename: 'diagnostics.js' });
+  const d = box.__diag;
+  const net = (code, message) => Object.assign(new Error(message), code ? { code } : {});
+  d.warn('license', 'License claim failed', net('auth/network-request-failed', 'Firebase: A network AuthError has occurred. (auth/network-request-failed).'));
+  d.warn('auth', 'Could not record the terms acceptance', net('auth/network-request-failed', 'Firebase: A network AuthError has occurred.'));
+  d.warn('feeds', 'Calendar feed refresh failed', net('', 'Load failed'));
+  d.error('group-plans', 'Worker /group/mine unreachable', net('', 'Load failed'));
+  d.error('syllabus', 'Could not save the class', net('', 'Cannot read properties of undefined'));
+  await new Promise(r => setImmediate(r));
+  const before = posted.length;
+  timers.splice(0).forEach(fn => fn());
+  await new Promise(r => setImmediate(r));
+  check('network: a real error is still reported straight away', posted.slice(0, before).map(p => p.feature), ['syllabus']);
+  const dropped = posted.slice(before);
+  check('network: the dropped calls are one report, as a warning', [dropped.length, dropped[0]?.level, dropped[0]?.feature], [1, 'warn', 'network']);
+  check('network: it names what was affected', dropped[0]?.message, 'Connection dropped (auth, feeds, group-plans, license)');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

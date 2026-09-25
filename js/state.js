@@ -345,6 +345,28 @@ function migrate(parsed) {
 
 let _suspendSave = false;
 let _lastBackupAt = 0;
+let _storageFullSaid = false;
+// A browser gives a site a few megabytes. When they run out, setItem throws
+// QuotaExceededError, and save() used to throw with it: the change never
+// reached the device copy, and the cloud sync after it never ran either
+// (seen in the Error Viewer on Sept 8). The backup copy goes first, since it
+// is the same size as the plan itself; if that still isn't room, the device
+// copy is skipped this time, the account copy still syncs, and she is told once.
+function isQuotaError(e) { return e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014 || /quota/i.test(String(e.message || ''))); }
+function storeWrite(key, value) {
+  try { dataStore.setItem(key, value); return true; } catch (e) {
+    if (!isQuotaError(e)) throw e;
+    try { dataStore.removeItem(storeKey + '.bak'); dataStore.setItem(key, value); return true; } catch (e2) {
+      if (!isQuotaError(e2)) throw e2;
+      if (!_storageFullSaid) {
+        _storageFullSaid = true;
+        if (typeof diag !== 'undefined') diag.warn('state', 'Device storage full', e2, { bytes: value.length });
+        if (typeof toast === 'function') toast(typeof _fbUser !== 'undefined' && _fbUser ? 'This device is out of storage space. Your changes are still saving to your account.' : 'This device is out of storage space, so changes can’t be saved here. Free up some space, or sign in to keep them in your account.', 'error', 8000);
+      }
+      return false;
+    }
+  }
+}
 function save({ localOnly = false } = {}) {
   if (_suspendSave) return;
   const json = JSON.stringify(state);
@@ -353,10 +375,10 @@ function save({ localOnly = false } = {}) {
   // fifteen seconds still keeps a copy that is at most fifteen seconds old.
   if (Date.now() - _lastBackupAt > 15000) {
     const previous = dataStore.getItem(storeKey);
-    if (previous) dataStore.setItem(storeKey + '.bak', previous);
+    if (previous) storeWrite(storeKey + '.bak', previous);
     _lastBackupAt = Date.now();
   }
-  dataStore.setItem(storeKey, json);
+  storeWrite(storeKey, json);
   if (localOnly) return;
   if (typeof markLocalUnsynced === 'function') markLocalUnsynced();
   if (typeof queueCloudSync === 'function') queueCloudSync();

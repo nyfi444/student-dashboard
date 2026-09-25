@@ -60,6 +60,7 @@
    so a change to billing never means scrolling past account deletion.
 
      ai.js           job 1   the AI proxy
+     stream.js       job 1   Claude's streamed reply, folded back into one message
      billing.js      job 2   checkout and the billing portal
      licensing.js    job 3   the webhook, claiming a license, /check-email
      contact.js      job 4   the contact form

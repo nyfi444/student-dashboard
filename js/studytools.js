@@ -675,7 +675,7 @@ async function runGenerateDeck() {
     const userContent = images.length
       ? [...imageBlocks(images), { type: 'text', text: `Make flashcards from these pages of study material.${text ? `\n\nText from the same material:\n${text.slice(0, 8000)}` : ''}` }]
       : `Material:\n\n${text.slice(0, 14000)}`;
-    const raw = await callClaude({ system: FLASHCARDS_SYSTEM, userContent, maxTokens: 3000, feature: 'flashcards' });
+    const raw = await callClaude({ system: FLASHCARDS_SYSTEM, userContent, maxTokens: 8000, feature: 'flashcards' });
     const cards = extractJson(raw).filter(c => c && c.front && c.back).slice(0, 60).map(c => ({ id: uid(), front: String(c.front).trim(), back: String(c.back).trim(), _include: true }));
     if (!cards.length) throw new Error('Couldn’t find enough to make cards from. Try a longer note.');
     window._genDeck = { ...g, name, courseId, cards };

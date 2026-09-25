@@ -344,7 +344,10 @@ function startGoogleSignIn() {
   if (localStorage.getItem(AGE_TOS_KEY) !== '1') { showAgeGate(() => startGoogleSignIn()); return; }
   const provider = new firebase.auth.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  _auth.signInWithPopup(provider).catch(e => { if (e.code !== 'auth/popup-closed-by-user') toast('Sign-in failed: ' + e.message, 'error', 6000); });
+  _auth.signInWithPopup(provider).catch(e => {
+    if (['auth/popup-closed-by-user', 'auth/cancelled-popup-request', 'auth/user-cancelled'].includes(e.code)) return;
+    toast(e.code === 'auth/popup-blocked' ? 'Your browser blocked the Google sign-in window. Try again, and allow pop-ups if it asks.' : e.code === 'auth/network-request-failed' ? 'No connection right now. Try again when you’re back online.' : 'Google sign-in didn’t finish. Try again.', 'error', 6000);
+  });
 }
 function startEmailSignIn() {
   const email = $('#ga-email')?.value.trim();
