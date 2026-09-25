@@ -304,5 +304,59 @@ check('blocks: plain string content is fine', sandbox.findDisallowedBlock([{ con
   check('webhook: an unsigned delivery is refused', res.status, 400);
 }
 
+/* ── Sign-in and password emails (/auth-email) ─────────────────── */
+{
+  const env = { FIREBASE_PROJECT_ID: 'semester-hq', RESEND_API_KEY: 're_test', APP_URL: 'https://app.semester-hq.com/', ALLOWED_ORIGIN: '', RATE_LIMIT: fakeKV() };
+  const origGen = sandbox.generateAuthEmailLink, origLog = sandbox.logServerIssue;
+  const asked = [], sent = [];
+  sandbox.logServerIssue = async () => {};
+  sandbox.generateAuthEmailLink = async (e, requestType, email, continueUrl) => {
+    asked.push({ requestType, email, continueUrl });
+    return email === 'nobody@x.com' ? '' : 'https://semester-hq.firebaseapp.com/__/auth/action?mode=signIn&oobCode=abc&x=1';
+  };
+  let resendStatus = 200;
+  fetchImpl = async (url, init) => {
+    if (String(url).startsWith('https://api.resend.com/')) { sent.push(JSON.parse(init.body)); return new Response('{}', { status: resendStatus }); }
+    throw new Error('unexpected fetch ' + url);
+  };
+  const post = (body) => sandbox.handleAuthEmail(new Request('https://w/auth-email', { method: 'POST', body: JSON.stringify(body) }), env, '');
+
+  let res = await post({ kind: 'signin', email: ' Student@X.com ', continueUrl: 'https://app.semester-hq.com/login.html?via=tour' });
+  check('auth-email: a sign-in link is sent', res.status, 200);
+  check('auth-email: Firebase is asked for an EMAIL_SIGNIN link for the tidied address', [asked.at(-1)?.requestType, asked.at(-1)?.email], ['EMAIL_SIGNIN', 'student@x.com']);
+  check('auth-email: an app page is kept as where the link lands', asked.at(-1)?.continueUrl, 'https://app.semester-hq.com/login.html?via=tour');
+  check('auth-email: it goes to that person', sent.at(-1)?.to, 'student@x.com');
+  ok('auth-email: the link is in the text version', sent.at(-1)?.text.includes('oobCode=abc&x=1'));
+  ok('auth-email: and in the button, escaped for HTML', sent.at(-1)?.html.includes('href="https://semester-hq.firebaseapp.com/__/auth/action?mode=signIn&amp;oobCode=abc&amp;x=1"'));
+
+  await post({ kind: 'signin', email: 'a@x.com', continueUrl: 'https://evil.example/login.html' });
+  check('auth-email: a landing page on another site is replaced by the app\'s login page', asked.at(-1)?.continueUrl, 'https://app.semester-hq.com/login.html');
+
+  await post({ kind: 'reset', email: 'a@x.com' });
+  check('auth-email: reset asks for a PASSWORD_RESET link', asked.at(-1)?.requestType, 'PASSWORD_RESET');
+  const before = sent.length;
+  res = await post({ kind: 'reset', email: 'nobody@x.com' });
+  check('auth-email: a reset for an unknown address answers the same', res.status, 200);
+  check('auth-email: and sends nothing', sent.length, before);
+
+  check('auth-email: an unknown kind is refused', (await post({ kind: 'verify', email: 'a@x.com' })).status, 400);
+  check('auth-email: a bad address is refused', (await post({ kind: 'signin', email: 'nope' })).status, 400);
+
+  resendStatus = 500;
+  check('auth-email: a failed send is a 502, so the page falls back to Firebase', (await post({ kind: 'signin', email: 'b@x.com' })).status, 502);
+  resendStatus = 200;
+
+  for (let i = 0; i < 5; i++) await post({ kind: 'signin', email: 'many@x.com' });
+  check('auth-email: past five a day for one address, it stops', (await post({ kind: 'signin', email: 'many@x.com' })).status, 429);
+
+  const turnstileEnv = { ...env, TURNSTILE_SECRET: 'secret', RATE_LIMIT: fakeKV() };
+  res = await sandbox.handleAuthEmail(new Request('https://w/auth-email', { method: 'POST', body: JSON.stringify({ kind: 'signin', email: 'a@x.com' }) }), turnstileEnv, '');
+  check('auth-email: with Turnstile on, no token is refused', res.status, 400);
+
+  check('auth-email: without Resend set up it says so instead of pretending', (await sandbox.handleAuthEmail(new Request('https://w/auth-email', { method: 'POST', body: '{}' }), { FIREBASE_PROJECT_ID: 'semester-hq' }, '')).status, 503);
+  sandbox.generateAuthEmailLink = origGen; sandbox.logServerIssue = origLog;
+  fetchImpl = () => { throw new Error('no network in tests'); };
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

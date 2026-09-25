@@ -90,3 +90,40 @@ test('the age gate and the agreement come before an account does', async ({ page
   await expect(page.getByRole('button', { name: /^Continue$/ })).toBeVisible();
   console_.expectClean();
 });
+
+// Both emails go through the Worker, from our own sending domain, because
+// Firebase's own sender lands in Gmail's Spam with its link switched off.
+// The Worker needs a Turnstile solve, so there is one confirm step first.
+test('an emailed sign-in link goes through the Worker, after the verification', async ({ page }) => {
+  await stubExternals(page);
+  const asked = [];
+  await page.route(/\/auth-email$/, async (route) => {
+    asked.push(JSON.parse(route.request().postData()));
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+  });
+  await page.addInitScript(() => localStorage.setItem('shq_age_tos_confirmed', '1'));
+  await page.goto('/login.html');
+  await page.fill('#login-email-input', 'student@example.com');
+  await page.getByRole('link', { name: /Email me a sign-in link/i }).click();
+  await expect(page.locator('#login-body')).toContainText('student@example.com');
+  await expect(page.locator('[data-turnstile-stub]')).toBeVisible();
+  await page.getByRole('button', { name: /^Send$/ }).click();
+  await expect(page.locator('#login-body')).toContainText('Check your inbox');
+  expect(asked).toHaveLength(1);
+  expect(asked[0]).toMatchObject({ kind: 'signin', email: 'student@example.com', turnstileToken: 'stub-token' });
+  expect(asked[0].continueUrl).toMatch(/\/login\.html$/);
+  expect(await page.evaluate(() => localStorage.getItem('shq_email_for_signin'))).toBe('student@example.com');
+});
+
+test('a password link the Worker refuses says why and goes back to the form', async ({ page }) => {
+  await stubExternals(page);
+  await page.route(/\/auth-email$/, (route) =>
+    route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"Please complete the verification and try again."}' }));
+  await page.goto('/login.html');
+  await page.fill('#login-email-input', 'student@example.com');
+  await page.getByRole('link', { name: /Forgot password/i }).click();
+  await expect(page.locator('#login-body')).toContainText('a link to set your password');
+  await page.getByRole('button', { name: /^Send$/ }).click();
+  await expect(page.locator('#login-error')).toContainText('verification');
+  await expect(page.locator('#login-email-input')).toHaveValue('student@example.com');
+});

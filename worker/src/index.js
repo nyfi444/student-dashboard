@@ -52,6 +52,10 @@
       ADMIN_TOKEN). One row per UTC day, written add-only by the daily cron
       into bizLedger/{date}, so trends outlive the 30- and 90-day windows
       everything else keeps. See ledger.js.
+  11. Sign-in and password emails (/auth-email): Firebase makes the link,
+      Resend sends it from send.semester-hq.com, because Firebase's own
+      sender lands in Gmail's Spam with its link switched off. Turnstile
+      and daily caps; login.html falls back to Firebase's email on failure.
 ──────────────────────────────────────────────────────────────── */
 
 /* ── Where each job lives ─────────────────────────────────────────
@@ -74,6 +78,7 @@
      groups.js       job 9   group plans
      feeds.js        job 10  LMS calendar feeds
      account.js      deleting an account, terms acceptance
+     authmail.js     job 11  sign-in link and password-reset emails
 
    and the three every job leans on, which lean on nothing:
 
@@ -88,6 +93,7 @@
 
 import { handleAccountAttest, handleDeleteAccount } from './account.js';
 import { handleAiProxy } from './ai.js';
+import { handleAuthEmail } from './authmail.js';
 import { handleCreateCheckoutSession, handleCreatePortalSession } from './billing.js';
 import { handleContactMessage } from './contact.js';
 import { fetchStripeSummary, handleAdminBusinessSummary } from './dashboard.js';
@@ -178,6 +184,10 @@ async function routeRequest(request, env, ctx) {
   if (url.pathname === '/check-email') {
     if (!(await checkRateLimit(env, ip, 'check-email', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
     return handleCheckEmail(request, env, origin);
+  }
+  if (url.pathname === '/auth-email') {
+    if (!(await checkRateLimit(env, ip, 'auth-email', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleAuthEmail(request, env, origin);
   }
   if (url.pathname === '/delete-account') {
     if (!(await checkRateLimit(env, ip, 'delete-account', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);

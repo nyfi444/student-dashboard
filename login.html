@@ -643,7 +643,7 @@ function renderSignInButton() {
 }
 function renderEmailSent(email, what = 'a sign-in link') {
   document.getElementById('login-body').innerHTML = `
-    <div class="login-sent"><strong>Check your inbox.</strong>We sent ${what} to ${escapeHtml(email)}. Open it on this device to finish.</div>
+    <div class="login-sent"><strong>Check your inbox.</strong>We sent ${what} to ${escapeHtml(email)}. Open it on this device to finish. Not there in a minute? Check Spam.</div>
     <button class="btn btn-sm mt-8" style="width:100%" onclick="renderSignInButton()">Back</button>
   `;
 }
@@ -793,18 +793,11 @@ async function runPasswordSignIn(email, password) {
   }
 }
 // Also how an account that only ever used emailed links gets a password.
-async function forgotPassword() {
+function forgotPassword() {
   clearError();
   const email = fieldValue('login-email-input').trim();
   if (!email) { showError('Enter your email above, then tap “Forgot password?”.'); return; }
-  try {
-    await _auth.sendPasswordResetEmail(email);
-    renderEmailSent(email, 'a link to set your password');
-  } catch (e) {
-    if (e.code === 'auth/user-not-found') { renderEmailSent(email, 'a link to set your password'); return; } // never say which emails have accounts
-    showError(e.code === 'auth/invalid-email' ? 'That email doesn’t look right.' : 'Could not send the reset email: ' + e.message);
-    if (e.code !== 'auth/invalid-email') diag.error('login', 'Could not send password reset', e);
-  }
+  confirmAuthEmail('reset', email);
 }
 // Log in with an emailed link instead of a password. Optional: nobody needs
 // an inbox to sign up, but accounts made before passwords still use it.
@@ -812,7 +805,7 @@ function startEmailSignIn() {
   clearError();
   const email = fieldValue('login-email-input').trim();
   if (!email) { showError('Enter your email above, then tap “Email me a sign-in link”.'); return; }
-  gateThen(() => runEmailSignIn(email));
+  gateThen(() => confirmAuthEmail('signin', email));
 }
 function showAgeGate() {
   document.getElementById('login-body').innerHTML = `
@@ -873,29 +866,75 @@ async function runSignIn() {
     _googleSignInOpen = false;
   }
 }
+// Both emails (a sign-in link, a link to set a password) go out through the
+// Worker, from send.semester-hq.com. Firebase's own sender is a shared
+// firebaseapp.com address that Gmail files under Spam with the link
+// switched off, which left students with an email and nothing to tap
+// (Sept 25 2026). The Worker needs a Turnstile solve, so there is one
+// confirm step with the widget on it.
+const AUTH_EMAIL_WHAT = { signin: 'a sign-in link', reset: 'a link to set your password' };
+function confirmAuthEmail(kind, email) {
+  if (!TURNSTILE_SITEKEY) { sendAuthEmail(kind, email); return; }
+  document.getElementById('login-body').innerHTML = `
+    <p class="small" style="margin:0 0 12px">We’ll email ${AUTH_EMAIL_WHAT[kind]} to <strong>${escapeHtml(email)}</strong>.</p>
+    <div data-turnstile style="margin-bottom:12px"></div>
+    <button class="btn btn-primary" style="width:100%" id="auth-email-send">Send</button>
+    <button class="btn btn-sm mt-8" style="width:100%" id="auth-email-back">Back</button>
+  `;
+  document.getElementById('auth-email-send').onclick = () => sendAuthEmail(kind, email);
+  document.getElementById('auth-email-back').onclick = () => { clearError(); renderSignInButton(); keepEmail(email); };
+  mountTurnstile();
+}
+async function sendAuthEmail(kind, email) {
+  clearError();
+  const token = turnstileToken();
+  if (TURNSTILE_SITEKEY && !token) { showError('Finish the verification box first, then tap Send.'); return; }
+  // The link is often opened in a new tab (from the mail app), which has
+  // none of this tab's storage, so a link code rides along in the link.
+  const via = linkCode();
+  const continueUrl = window.location.origin + window.location.pathname + (kind === 'signin' && via ? `?via=${via}` : '');
+  busy('Sending&hellip;');
+  let res = null, data = {};
+  try {
+    res = await fetch(`${WORKER_URL}/auth-email`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, email, continueUrl, turnstileToken: token }),
+    });
+    data = await res.json().catch(() => ({}));
+  } catch {}
+  resetTurnstile();
+  if (res?.ok) { emailSent(kind, email); return; }
+  if (res?.status === 400) { // a bad address or a failed verification: the person can fix either
+    renderSignInButton(); keepEmail(email);
+    showError(data.error || 'Could not send that email. Try again.');
+    return;
+  }
+  // Anything else (a daily cap, Resend down, no connection to the Worker)
+  // still gets an email, from Firebase's own sender.
+  diag.crumb('login', `auth email via Firebase (${res ? res.status : 'no response'})`);
+  await sendAuthEmailViaFirebase(kind, email, continueUrl);
+}
+function emailSent(kind, email) {
+  if (kind === 'signin') localStorage.setItem(EMAIL_LINK_STORAGE_KEY, email);
+  renderEmailSent(email, AUTH_EMAIL_WHAT[kind]);
+}
 // Passwordless email link: works with any address (iCloud, Outlook,
 // a plain .com inbox, whatever), not just Google accounts. Requires
 // "Email Link" turned on in the Firebase console under Authentication →
 // Sign-in method; this is a one-time setup step, not something code can do.
-async function runEmailSignIn(email) {
-  document.getElementById('login-body').innerHTML = '<button class="btn btn-primary" style="width:100%" disabled>Sending link&hellip;</button>';
+async function sendAuthEmailViaFirebase(kind, email, continueUrl) {
   try {
-    // The link is often opened in a new tab (from the mail app), which has
-    // none of this tab's storage, so a link code rides along in the link.
-    const via = linkCode();
-    await _auth.sendSignInLinkToEmail(email, {
-      url: window.location.origin + window.location.pathname + (via ? `?via=${via}` : ''),
-      handleCodeInApp: true,
-    });
-    localStorage.setItem(EMAIL_LINK_STORAGE_KEY, email);
-    renderEmailSent(email);
+    if (kind === 'signin') await _auth.sendSignInLinkToEmail(email, { url: continueUrl, handleCodeInApp: true });
+    else await _auth.sendPasswordResetEmail(email);
+    emailSent(kind, email);
   } catch (e) {
-    renderSignInButton();
-    showError('Could not send sign-in link: ' + e.message);
-    diag.error('login', 'Could not send sign-in link', e);
+    if (kind === 'reset' && e.code === 'auth/user-not-found') { emailSent(kind, email); return; } // never say which emails have accounts
+    renderSignInButton(); keepEmail(email);
+    if (e.code === 'auth/invalid-email') { showError('That email doesn’t look right.'); return; }
+    showError((kind === 'signin' ? 'Could not send sign-in link: ' : 'Could not send the reset email: ') + e.message);
+    diag.error('login', kind === 'signin' ? 'Could not send sign-in link' : 'Could not send password reset', e);
   }
 }
-// If this page was opened from the link that runEmailSignIn() emailed out,
+// If this page was opened from the link that sendAuthEmail() emailed out,
 // finish signing in. Same device: the email is already in localStorage from
 // when the link was requested. Different device: ask once, since Firebase
 // can't verify the email from the link alone.

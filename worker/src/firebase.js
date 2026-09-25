@@ -228,6 +228,26 @@ export async function deleteFirebaseAuthUser(env, uid) {
   });
   if (!res.ok) throw new Error('Identity Toolkit delete failed: ' + await res.text());
 }
+// A sign-in or password-reset link, made by Firebase but handed back to us
+// instead of emailed (returnOobLink, the same call the Admin SDK's
+// generateSignInWithEmailLink makes). Returns '' for a reset asked for an
+// address with no account, so the caller can stay quiet about which exist.
+export async function generateAuthEmailLink(env, requestType, email, continueUrl) {
+  const token = await getFirebaseAccessToken(env);
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:sendOobCode`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ requestType, email, continueUrl, canHandleCodeInApp: requestType === 'EMAIL_SIGNIN', returnOobLink: true }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    if (requestType === 'PASSWORD_RESET' && text.includes('EMAIL_NOT_FOUND')) return '';
+    throw new Error(`Identity Toolkit ${requestType} failed: ${text}`);
+  }
+  const data = await res.json();
+  if (!data.oobLink) throw new Error(`Identity Toolkit ${requestType} returned no link`);
+  return data.oobLink;
+}
 // `parent` scopes the query to a document's subcollections (e.g. the messages
 // under one study group); omitted, it queries the top level.
 export async function runFirestoreQuery(env, structuredQuery, parent = '') {
