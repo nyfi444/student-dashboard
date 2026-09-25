@@ -5,6 +5,9 @@ const NAV = [
   ['Study', [['notebook', 'book-open', 'Notebook'], ['timer', 'timer', 'Study Timer'], ['studytools', 'layers', 'Flashcards'], ['studygroups', 'users', 'Study Groups']]],
   ['Campus', [['orgs', 'shield', 'Clubs & Teams'], ['career', 'briefcase', 'Applications']]],
 ];
+// On a phone the bottom bar holds these four and a More button; More opens
+// everything else (and Settings) in a panel, so nothing hides off the edge.
+const PHONE_NAV = ['dashboard', 'calendar', 'todos', 'courses'];
 const PAGES = {
   dashboard: pageDashboard, calendar: pageCalendar, todos: pageTodos, courses: pageCourses,
   assignments: pageAssignments, exams: pageExams, projects: pageProjects,
@@ -106,22 +109,38 @@ function renderSidebar() {
       <button class="sidebar-search" onclick="openCommandPalette()" aria-label="Search and commands">${searchIcon()}<span>Search</span><kbd>${isMac() ? '⌘' : 'Ctrl '}K</kbd></button>
       ${bellButton('sidebar-bell')}
     </div>
-    <div class="sidebar-nav" style="flex:1;overflow-y:auto">
+    <div class="sidebar-nav">
       ${NAV.map(([label, items]) => `
         <div class="nav-group">
           <div class="nav-group-label">${label}</div>
-          ${items.map(([id, iconName, name]) => `<button class="nav-item ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" data-nav="${id}" ${state.route === id ? 'aria-current="page"' : ''} ${id === 'notebook' && state.route === 'notebook' ? `aria-controls="notebook-tree-panel" aria-expanded="${typeof notebookListHidden === 'function' ? !notebookListHidden() : true}" title="Show or hide your notes list"` : ''} onclick="navTo('${id}')"><span class="ic">${icon(iconName)}</span>${name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}${id === 'orgs' && orgsUnread ? '<span class="nav-dot" aria-label="New club activity"></span>' : ''}</button>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
+          ${items.map(([id, iconName, name]) => `<button class="nav-item ${PHONE_NAV.includes(id) ? 'nav-primary' : ''} ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" data-nav="${id}" ${state.route === id ? 'aria-current="page"' : ''} ${id === 'notebook' && state.route === 'notebook' ? `aria-controls="notebook-tree-panel" aria-expanded="${typeof notebookListHidden === 'function' ? !notebookListHidden() : true}" title="Show or hide your notes list"` : ''} onclick="navTo('${id}')"><span class="ic">${icon(iconName)}</span>${name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}${id === 'orgs' && orgsUnread ? '<span class="nav-dot" aria-label="New club activity"></span>' : ''}</button>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
         </div>
       `).join('')}
     </div>
     <div class="sidebar-foot">
-      <button class="nav-item ${state.route === 'settings' ? 'active' : ''}" ${state.route === 'settings' ? 'aria-current="page"' : ''} onclick="setState({route:'settings',subRoute:null})"><span class="ic">${icon('settings')}</span>Settings</button>
+      <button class="nav-item nav-more ${PHONE_NAV.includes(state.route) ? '' : 'active'}" aria-haspopup="dialog" onclick="openMoreNav()"><span class="ic">${icon('more-horizontal')}</span>More${groupsUnread || orgsUnread ? '<span class="nav-dot" aria-label="New activity"></span>' : ''}</button>
+      <button class="nav-item nav-settings ${state.route === 'settings' ? 'active' : ''}" ${state.route === 'settings' ? 'aria-current="page"' : ''} onclick="setState({route:'settings',subRoute:null})"><span class="ic">${icon('settings')}</span>Settings</button>
       <div class="user-chip" onclick="setState({route:'settings',subRoute:null})">
         <div class="avatar">${(state.settings.displayName || _fbUser?.displayName || 'S')[0].toUpperCase()}</div>
         <div>${_fbUser ? esc(_fbUser.displayName || _fbUser.email) : (fbConfigured() ? 'Not signed in' : 'Local only')}</div>
       </div>
     </div>
   `;
+}
+// The phone bar's More panel: every section not in the bar, grouped as in the sidebar, then Settings.
+function openMoreNav() {
+  const groupsUnread = typeof anyGroupUnread === 'function' && anyGroupUnread();
+  let orgsUnread = false;
+  try { orgsUnread = allOrgs().some(o => orgUnreadCount(o) > 0 || orgChatUnread(o)); } catch {}
+  const tile = (id, iconName, name, unread) => `<button class="more-tile ${state.route === id ? 'active' : ''}" ${state.route === id ? 'aria-current="page"' : ''} onclick="closeModal();navTo('${id}')"><span class="ic">${icon(iconName, 20, 1.6)}</span>${name}${unread ? '<span class="nav-dot" aria-label="New activity"></span>' : ''}</button>`;
+  const groups = NAV.map(([label, items]) => [label, items.filter(([id]) => !PHONE_NAV.includes(id))]).filter(([, items]) => items.length);
+  openModal(`
+    <div class="modal-head"><h3>More</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body more-nav">
+      ${groups.map(([label, items]) => `<div class="more-nav-label">${label}</div>${items.map(([id, iconName, name]) => tile(id, iconName, name, (id === 'studygroups' && groupsUnread) || (id === 'orgs' && orgsUnread))).join('')}`).join('')}
+      <div class="more-nav-label">You</div>${tile('settings', 'settings', 'Settings')}
+    </div>
+  `);
 }
 // Each class links straight to its own page, right under Courses.
 function sidebarClasses() {

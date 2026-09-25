@@ -175,6 +175,7 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .nav-item.active .ic { opacity: 1; }
 .nav-item .ic .i { vertical-align: 0; }
 .empty .ic .i { vertical-align: 0; }
+.sidebar-nav { flex: 1; overflow-y: auto; }
 .sidebar-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); }
 .user-chip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-tight); font-size: 12.5px; cursor: pointer; color: var(--bg-text-dim); }
 .user-chip:hover { background: color-mix(in srgb, var(--bg-text) 10%, var(--bg)); color: var(--bg-text); }
@@ -1809,9 +1810,24 @@ textarea.input.ex-topic-input { resize: none; min-height: 36px; height: 36px; li
   .input, .select, textarea.input { font-size: 16px; }
   /* Toasts sit above the bottom nav, clear of the home indicator. */
   .toast-stack { bottom: calc(84px + env(safe-area-inset-bottom)); }
-  /* A fade on the right edge says the nav strip scrolls. */
-  .sidebar > .sidebar-nav { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+  /* The bottom bar: four sections and More, evenly spaced, no sideways scroll.
+     Everything else, Settings included, is in the More panel (openMoreNav). */
+  .sidebar > .sidebar-nav { flex: 4 1 0; overflow: visible; gap: 6px; }
+  .sidebar > .sidebar-nav .nav-group { display: contents; }
+  .sidebar > .sidebar-nav .nav-item:not(.nav-primary) { display: none; }
+  .sidebar .nav-item.nav-primary, .sidebar .nav-more { flex: 1 1 0; min-width: 0; padding: 7px 4px; }
+  .sidebar-foot { flex: 1 1 0; display: flex; min-width: 0; }
+  .sidebar-foot .nav-settings { display: none; }
+  .sidebar .nav-more { display: flex; }
+  .nav-more .nav-dot { position: absolute; top: 6px; right: calc(50% - 16px); margin: 0; }
 }
+.nav-more { display: none; }
+.more-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.more-nav-label { grid-column: 1 / -1; font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--text-dim); font-weight: 600; padding: 8px 2px 0; }
+.more-nav-label:first-child { padding-top: 0; }
+.more-tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 76px; padding: 12px 6px; border: 1px solid var(--border); border-radius: var(--r-tight); background: var(--surface-2); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; text-align: center; line-height: 1.2; }
+.more-tile.active { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.more-tile .nav-dot { position: absolute; top: 8px; right: 8px; margin: 0; }
 @media (pointer: coarse) {
   .btn-sm { min-height: 40px; padding: 9px 12px; }
   .btn-icon { min-width: 40px; min-height: 40px; }

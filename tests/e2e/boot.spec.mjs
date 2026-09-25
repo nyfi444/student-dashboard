@@ -77,8 +77,38 @@ test('every page renders', async ({ page }) => {
     const text = (await page.locator('#content').innerText()).trim();
     expect(text.length, `the ${route} page rendered no visible text`).toBeGreaterThan(20);
   }
-  await page.locator('#sidebar .sidebar-foot .nav-item').first().click(); // Settings
+  // Settings sits in the sidebar foot on a computer, and in the More panel on a phone.
+  const more = page.locator('#sidebar .nav-more');
+  if (await more.isVisible()) {
+    await more.click();
+    await page.locator('#modal .more-tile', { hasText: 'Settings' }).click();
+  } else {
+    await page.locator('#sidebar .nav-settings').click();
+  }
   await expect(page.locator('#content')).toContainText('Settings');
+  console_.expectClean();
+});
+
+test('on a phone, More opens every section the bottom bar leaves out', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'phone', 'the bottom bar is phone only');
+  const console_ = await openApp(page);
+  const bar = page.locator('#sidebar');
+  // Four sections and More, all on screen, nothing to scroll sideways to.
+  await expect(bar.locator('.nav-item:visible')).toHaveCount(5);
+  const nav = bar.locator('.sidebar-nav');
+  expect(await nav.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+
+  const inBar = ['dashboard', 'calendar', 'todos', 'courses'];
+  for (const [route, label] of ROUTES.filter(([r]) => !inBar.includes(r))) {
+    await bar.locator('.nav-more').click();
+    await page.locator('#modal .more-tile', { hasText: label }).first().click();
+    await expect(page.locator('#modal-wrap')).not.toHaveClass(/show/);
+    expect(await page.evaluate(() => state.route), `More did not open ${route}`).toBe(route);
+    // More lights up while one of its sections is open.
+    await expect(bar.locator('.nav-more')).toHaveClass(/active/);
+  }
+  await bar.locator('[data-nav="calendar"]').click();
+  await expect(bar.locator('.nav-more')).not.toHaveClass(/active/);
   console_.expectClean();
 });
 
