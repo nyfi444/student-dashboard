@@ -16,7 +16,10 @@
 # uses the .html form.
 #
 # Production is reached through a Worker route on the semester-hq.com zone,
-# not a custom domain, so DNS is never touched. See DEPLOYING.md.
+# not a custom domain, so DNS is never touched. The route is NOT set here:
+# it is attached and removed only by tools/hosting-routes.mjs in the app
+# repo (student-dashboard), because removing a route from this file does not
+# remove it from the zone. See DEPLOYING.md.
 
 name = "semester-hq-app"
 compatibility_date = "2026-09-01"

@@ -39,7 +39,7 @@ serve exactly the way production does.
 
 | File | What it does |
 |---|---|
-| `wrangler.toml` | Worker name, `html_handling = "none"`, `not_found_handling = "404-page"`, and the production route |
+| `wrangler.toml` | Worker name, `html_handling = "none"`, `not_found_handling = "404-page"`. No route: see Rolling back |
 | `_headers` | Security headers: HSTS, nosniff, referrer and permissions policy, the enforced `frame-ancestors`, and the Report-Only CSP |
 | `_redirects` | **Generated.** Rewrites (not redirects) for `/`, `/login` and the other short addresses. Run `node tools/build-redirects.mjs` after adding or renaming a page. The build also runs it |
 | `.assetsignore` | Keeps `tests/`, `worker/`, `tools/`, the rules files and repo files off the public site |
@@ -64,11 +64,17 @@ node tests/check-urls.mjs --app https://<preview-url> --app-dir . --site-dir ../
 
 - **A bad deploy:** run `npx wrangler rollback`, which goes back to the
   previous version.
-- **The whole hosting move:** production is reached through a Worker route
-  (`app.semester-hq.com/*`) on the `semester-hq.com` zone. DNS was never
-  changed. Removing the route puts traffic straight back on GitHub Pages, for
-  as long as Pages is still switched on. The steps are in the Obsidian vault
-  under the hosting move.
+- **The whole hosting move:** production is reached through Worker routes
+  (`semester-hq.com/*` and `app.semester-hq.com/*`) on the zone. DNS was
+  never changed. One command removes both routes, confirms they're gone, and
+  checks that GitHub Pages is answering again (while Pages is still on):
+  ```bash
+  node tools/hosting-routes.mjs rollback
+  ```
+  `status` shows what's attached and who's answering. `cutover` attaches
+  both routes again. Don't put the routes in `wrangler.toml`: removing a
+  route from the file doesn't remove it from the zone, so a rollback built
+  on it silently does nothing (tested Sept 26 2026).
 
 ## Headers during the changeover
 
