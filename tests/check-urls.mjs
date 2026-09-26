@@ -138,10 +138,14 @@ function classify(href, baseUrl) {
 
 function linksIn(html, pageUrl) {
   const found = [];
-  const attr = /\b(?:href|src|content|data-src)\s*=\s*["']([^"']+)["']/gi;
+  const attr = /\b(?:href|src|data-src)\s*=\s*["']([^"']+)["']/gi;
+  // <meta content> is mostly prose (titles, descriptions); only og:image and
+  // friends hold addresses, and those are absolute.
+  const metaUrl = /\bcontent\s*=\s*["'](https?:\/\/[^"'\s]+)["']/gi;
   const srcset = /\b(?:srcset|imagesrcset)\s*=\s*["']([^"']+)["']/gi;
   let m;
   while ((m = attr.exec(html))) found.push(m[1]);
+  while ((m = metaUrl.exec(html))) found.push(m[1]);
   while ((m = srcset.exec(html))) m[1].split(',').forEach(part => found.push(part.trim().split(/\s+/)[0]));
   return found.map(h => classify(h, pageUrl)).filter(Boolean);
 }
