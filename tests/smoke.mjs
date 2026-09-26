@@ -22,7 +22,7 @@
         writes nothing, sends no email, and costs nothing to run.
 
    Run after every deploy:  node tests/smoke.mjs
-   Straight after a push:    node tests/smoke.mjs --wait 180
+   Straight after promoting: node tests/smoke.mjs --wait 180
    Against somewhere else:  node tests/smoke.mjs --app https://... --site https://... --worker https://...
 ──────────────────────────────────────────────────────────────── */
 import { readFileSync } from 'node:fs';
@@ -90,10 +90,10 @@ const home = await get(`${APP}/`);
 check('the app answers 200', home.status, 200);
 ok('the app is the app, not a 404 page', home.body.includes('<div id="app">'), 'index.html did not contain the app shell');
 
-/* --wait gives the host time to publish. A deploy to GitHub Pages takes
-   a minute or so, and "the version is still the old one" is the right
-   answer at second five and the wrong one at second ninety — so poll
-   rather than guess a sleep. */
+/* --wait gives the host time to publish. A promoted Worker version takes
+   a few seconds to reach every Cloudflare location, and "the version is
+   still the old one" is the right answer at second one and the wrong one
+   at second thirty — so poll rather than guess a sleep. */
 const waitSeconds = Number(arg('wait', '0')) || 0;
 const servedVersionNow = async () =>
   ((await get(`${APP}/js/version.js`)).body.match(/APP_VERSION\s*=\s*'([^']+)'/) || [])[1];

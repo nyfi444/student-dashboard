@@ -11,3 +11,6 @@ blob-report/
 
 # Firebase emulator logs (tests/with-emulators.mjs)
 *-debug.log
+
+# Wrangler's local state (wrangler dev / deploy)
+.wrangler/

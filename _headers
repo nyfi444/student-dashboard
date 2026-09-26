@@ -1,0 +1,32 @@
+# Security headers for app.semester-hq.com.
+#
+# Until GitHub Pages is switched off, the zone's Transform Rule "Security
+# headers, app" also sets Referrer-Policy, X-Content-Type-Options,
+# Permissions-Policy and the enforced frame-ancestors CSP, and it wins over
+# this file. Keep these values identical to that rule until it is deleted.
+#
+# camera=(self) is deliberate: js/capture.js takes photos with
+# <input capture="environment">, and camera=() would break it.
+#
+# frame-ancestors is ENFORCED and must keep semester-hq.com and
+# www.semester-hq.com: the marketing site's demo frames the app. Use it, not
+# X-Frame-Options, for that reason.
+#
+# The long CSP is Report-Only: it logs to the console and blocks nothing.
+# It covers Firebase (scripts from gstatic, sign-in through
+# semester-hq.firebaseapp.com and apis.google.com, data on *.googleapis.com),
+# Turnstile, Cloudflare analytics, the API Worker, both font services,
+# blob: for the HEIC converter's worker and PDF previews, and https: images
+# because pasted links and notes can carry them.
+
+/*
+  Strict-Transport-Security: max-age=15552000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=()
+  Content-Security-Policy: frame-ancestors 'self' https://semester-hq.com https://www.semester-hq.com
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://static.cloudflareinsights.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.fontshare.com; font-src 'self' data: https://fonts.gstatic.com https://cdn.fontshare.com; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self' https://student-planner-ai-proxy.semesterhq.workers.dev https://*.googleapis.com https://apis.google.com https://www.gstatic.com https://cloudflareinsights.com; frame-src 'self' https://semester-hq.firebaseapp.com https://accounts.google.com https://challenges.cloudflare.com blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'
+
+# Branch previews live on workers.dev. Keep them out of search results.
+https://:preview.:subdomain.workers.dev/*
+  X-Robots-Tag: noindex

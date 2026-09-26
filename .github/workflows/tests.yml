@@ -9,9 +9,12 @@
 #            out and signed in (against the same local Firebase). There is
 #            no build step, so an uncaught error in one file IS the type
 #            checker; only a browser sees it.
-#   smoke    after a push to main, once GitHub Pages has published: check
-#            that what is live is this build and that the Worker still
-#            refuses what it should.
+#   smoke    run by hand (Actions -> Tests -> Run workflow) after a build
+#            is promoted to production: check that what is live is this
+#            build and that the Worker still refuses what it should. Since
+#            the move to Cloudflare Workers (Sept 2026) a push to main only
+#            uploads a version; it goes live when promoted (DEPLOYING.md),
+#            so a smoke run straight after the push would test the old one.
 #
 # None of it has secrets or write access to anything. The local Firebase
 # runs as demo-semester-hq, which cannot reach the real project. See
@@ -21,6 +24,7 @@ name: Tests
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -100,9 +104,9 @@ jobs:
           retention-days: 7
 
   smoke:
-    # Only for what actually reaches students: a push to main, after the
-    # other stages agreed the code is sound.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Only for what actually reaches students, and only once it has: run
+    # by hand on main after promoting a version (see DEPLOYING.md).
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     needs: [checks, rules, browser]
     runs-on: ubuntu-latest
     steps:
@@ -110,7 +114,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
-      # Pages publishes a minute or two after the push; --wait polls for this
-      # build's version rather than sleeping and hoping.
+      # --wait covers the few seconds a promotion takes to reach every
+      # Cloudflare location; it polls for this build's version.
       - name: Check what is live
         run: node tests/smoke.mjs --wait 240

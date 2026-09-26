@@ -1,0 +1,29 @@
+# Serves app.semester-hq.com as a static-assets Worker (it moved off GitHub
+# Pages, whose terms don't allow hosting a commercial SaaS).
+#
+# This is the APP. The API Worker (student-planner-ai-proxy) has its own
+# config in worker/wrangler.toml and is deployed from worker/, never from
+# here. Running wrangler inside worker/ finds that file first.
+#
+# No Worker script: every request is answered from the files in this folder.
+# _headers sets the security headers, _redirects serves the extensionless
+# addresses (/login) from their .html files without a redirect, and
+# .assetsignore keeps tests, the API Worker's source and repo files off the
+# public site.
+#
+# html_handling = "none" on purpose: Cloudflare's default would redirect
+# /login.html to /login, and every link in the app and on the marketing site
+# uses the .html form.
+#
+# Production is reached through a Worker route on the semester-hq.com zone,
+# not a custom domain, so DNS is never touched. See DEPLOYING.md.
+
+name = "semester-hq-app"
+compatibility_date = "2026-09-01"
+workers_dev = false
+preview_urls = true
+
+[assets]
+directory = "./"
+html_handling = "none"
+not_found_handling = "404-page"
