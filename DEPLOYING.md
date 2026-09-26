@@ -35,6 +35,13 @@ Previews are in open beta (Sept 2026) and ignore `not_found_handling`: a
 missing page answers a bare "Not found" instead of `404.html`. Version URLs
 serve exactly the way production does.
 
+**Workers Builds settings** (connected Sept 26, 2026; Settings → Builds):
+production branch `main`, build command `node tools/build-redirects.mjs`,
+deploy command `npx wrangler versions upload` (so `main` never goes live on
+its own), root `/`; preview builds on for every other branch with
+`npx wrangler preview`. If a build ever says `npx wrangler deploy`, change it
+back: that would publish every push to `main` straight to production.
+
 ## Files that control serving
 
 | File | What it does |
