@@ -28,6 +28,13 @@ changes it.
 Bump `APP_VERSION` in `js/version.js` on every deploy, exactly as before. The
 service worker still depends on it.
 
+**Checking a change to how things are served** (headers, `_redirects`, the
+config): test a **version URL** (the `Version Preview URL` that
+`npx wrangler versions upload` prints), not a branch Preview. Branch
+Previews are in open beta (Sept 2026) and ignore `not_found_handling`: a
+missing page answers a bare "Not found" instead of `404.html`. Version URLs
+serve exactly the way production does.
+
 ## Files that control serving
 
 | File | What it does |

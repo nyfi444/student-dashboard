@@ -76,7 +76,15 @@ const sha = (buf) => createHash('sha256').update(buf).digest('hex').slice(0, 16)
      decode script). That happens at Cloudflare's edge, so a workers.dev
      preview doesn't get it and the live domain does. Decode it before
      comparing, so "same bytes" means the same page underneath. */
-const normType = (t) => t.replace('application/javascript', 'text/javascript').replace(/^application\/json;charset=utf-8$/, 'application/json');
+/* Charset: Workers labels text types without charset=utf-8, GitHub Pages
+   labelled them with it. For HTML that is only safe because every page
+   declares <meta charset> in its first 1024 bytes, which this script
+   checks separately. CSS and classic scripts take the page's encoding;
+   module scripts, service workers and JSON are always UTF-8. text/plain
+   and text/markdown have no such fallback, so they must match exactly
+   (_headers sets them). */
+const LABEL_FREE = /^(text\/html|text\/css|text\/javascript|application\/json);charset=utf-8$/;
+const normType = (t) => t.replace('application/javascript', 'text/javascript').replace(LABEL_FREE, '$1');
 const sameType = (a, b) => normType(a) === normType(b);
 function cfDecode(hex) {
   const key = parseInt(hex.slice(0, 2), 16); let out = '';
@@ -226,6 +234,7 @@ await pool(jobs, 8, async ([which, p, why]) => {
   if (!sameType(t.type, ref.type)) fail(`${key}  content-type ${t.type} (was ${ref.type})`);
   if (record[key].hash !== ref.hash) fail(`${key}  different bytes from the reference (${why})`);
   if (t.type.startsWith('text/html')) {
+    if (!/<meta\s+charset=["']?utf-8/i.test(t.body.subarray(0, 1024).toString())) fail(`${key}  no <meta charset="UTF-8"> in the first 1024 bytes, and the header has no charset`);
     for (const h of REQUIRED_HEADERS[which]) if (!t.headers.get(h)) fail(`${key}  missing header ${h}`);
     if (which === 'app' && t.headers.get('content-security-policy') !== APP_FRAME_ANCESTORS) fail(`${key}  frame-ancestors is "${t.headers.get('content-security-policy')}"`);
     const hsts = t.headers.get('strict-transport-security') || '';
