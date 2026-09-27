@@ -324,15 +324,27 @@ export async function handleEmailLink(request, env, pathname) {
 }
 
 /* ── Admin: test sends and (staging only) a run at a chosen date ── */
+// The admin token, or EMAIL_TEST_TOKEN: a second token that can do only
+// this, since the test can only ever reach hello@.
+async function emailTestAllowed(request, env) {
+  const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (env.EMAIL_TEST_TOKEN && token && timingSafeEqual(token, env.EMAIL_TEST_TOKEN)) return true;
+  return !!env.ADMIN_TOKEN && adminTokenOk(request, env);
+}
+
 // POST /admin/email-test: every customer email, once, to hello@ only, with
 // "[Test]" in the subject. Writes no records and no log.
 export async function handleAdminEmailTest(request, env) {
   const headers = { 'content-type': 'application/json', 'Access-Control-Allow-Origin': '*' };
-  if (!env.ADMIN_TOKEN || !(await adminTokenOk(request, env))) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers });
+  if (!(await emailTestAllowed(request, env))) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers });
   const to = 'hello@semester-hq.com';
   const links = (await emailLinks(env, to)) || { prefsUrl: 'https://app.semester-hq.com/email-preferences.html', unsubscribeUrl: 'https://app.semester-hq.com/email-preferences.html', oneClickUrl: '' };
   const keys = ['receipt', 'welcome', ...EMAIL_TIPS.map(t => t.key), 'group-receipt', 'group-welcome', 'member-welcome'];
-  const ctx = { appUrl: env.APP_URL, startedAt: new Date(), priceCents: 799, groupName: 'Chem Club', seats: 12, seatCents: 599, ...links };
+  // ?images= may point the pictures at a site Preview (before they're live),
+  // and nowhere else.
+  const images = new URL(request.url).searchParams.get('images') || '';
+  const imageBase = /^https:\/\/[a-z0-9-]+-semester-hq-site\.semesterhq\.workers\.dev\/assets\/email\/$/.test(images) ? images : undefined;
+  const ctx = { appUrl: env.APP_URL, startedAt: new Date(), priceCents: 799, groupName: 'Chem Club', seats: 12, seatCents: 599, ...links, ...(imageBase ? { imageBase } : {}) };
   const results = [];
   for (const key of keys) {
     const r = renderEmail(key, ctx);
