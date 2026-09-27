@@ -193,8 +193,11 @@ ${band}
 }
 
 /* ── Plain text, for every client that wants it ───────────────── */
-function emText({ title, lead, blocks = [], cta, after, footerText }) {
-  const strip = (h) => String(h).replace(/<br\s*\/?>/g, '\n').replace(/<a [^>]*href="([^"]+)"[^>]*>([^<]*)<\/a>/g, '$2 ($1)').replace(/<[^>]+>/g, '')
+function emText({ title, lead, blocks = [], cta, after, footerText, transactional }) {
+  const strip = (h) => String(h).replace(/<br\s*\/?>/g, '\n').replace(/<a [^>]*href="([^"]+)"[^>]*>([^<]*)<\/a>/g, (m, href, label) => {
+    const bare = href.replace(/^mailto:/, '').replace(/^https?:\/\//, '');
+    return bare === label ? href.replace(/^mailto:/, '') : `${label} (${href})`;
+  }).replace(/<[^>]+>/g, '')
     .replace(/&amp;/g, '&').replace(/&middot;/g, '·').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
   const out = [strip(title), '', strip(lead), ''];
   for (const b of blocks) {
@@ -205,6 +208,7 @@ function emText({ title, lead, blocks = [], cta, after, footerText }) {
   }
   if (cta) out.push(`${cta.label}: ${cta.href}`, '');
   if (after) out.push(strip(after), '');
+  if (!transactional) out.push('Questions? Just reply. A real person reads every email that comes back to us.', '');
   out.push('--', 'Semester HQ', 'Your entire semester, finally in one place.', '', footerText, `${EM_LEGAL_NAME}, ${EM_POSTAL_ADDRESS}`);
   return out.join('\n').replace(/\n{3,}/g, '\n\n');
 }
