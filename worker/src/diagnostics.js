@@ -6,6 +6,7 @@
 
 import { commitFirestore, queryRecentErrors, runFirestoreQuery, writeFirestoreDoc } from './firebase.js';
 import { adminTokenOk, jsonError, jsonOk, underDailyCap, underHourlyCap } from './http.js';
+import { alertIfUrgent, alertOnSpike } from './alerts.js';
 
 /* ── 5. Diagnostics ───────────────────────────────────────────── */
 // Writes to Firestore's `errors` collection, same server-only pattern as
@@ -52,6 +53,8 @@ export async function handleLogError(request, env, origin) {
     // Never fail loudly over a logging endpoint, or a broken reporter spams retries.
     console.error('Error log write failed', e);
   }
+  // Job 12: one email an hour at most when reports spike. Never fails the report.
+  await alertOnSpike(env, ERROR_LEVELS.includes(body.level) ? body.level : 'error').catch(e => console.error('Spike alert failed', e?.message));
   return jsonOk({ ok: true }, env, origin);
 }
 
@@ -74,6 +77,8 @@ export async function logServerIssue(env, feature, message, err, extra = {}) {
       context: scrubPII(JSON.stringify(extra)).slice(0, 1500),
       fingerprint, createdAt: new Date(),
     });
+    // Job 12: money and account failures reach Nyla's inbox right away.
+    await alertIfUrgent(env, { feature, message: text, fingerprint }).catch(e => console.error('Urgent alert failed', e?.message));
   } catch (e) { console.error('Could not record server issue', e?.message); }
 }
 export function featureForPath(path) {

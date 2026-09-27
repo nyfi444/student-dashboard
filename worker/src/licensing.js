@@ -19,7 +19,14 @@ export async function handleStripeWebhook(request, env) {
   const rawBody = await request.text();
   const sig = request.headers.get('Stripe-Signature') || '';
   const valid = await verifyStripeSignature(rawBody, sig, env.STRIPE_WEBHOOK_SECRET);
-  if (!valid) return new Response('Invalid signature', { status: 400 });
+  if (!valid) {
+    // A request that carries Stripe's signature header but fails the check
+    // usually means STRIPE_WEBHOOK_SECRET no longer matches Stripe's, and then
+    // every payment goes unlicensed. That is worth an alert (job 12), so it is
+    // logged; a request with no header at all is a scanner and isn't.
+    if (sig) await logServerIssue(env, 'checkout', 'Stripe webhook signature check failed. If this repeats, the webhook secret may not match Stripe.', null);
+    return new Response('Invalid signature', { status: 400 });
+  }
 
   let event;
   try { event = JSON.parse(rawBody); } catch { return new Response('Invalid JSON', { status: 400 }); }

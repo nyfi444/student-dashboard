@@ -46,6 +46,7 @@ jobs:
           node tests/worker-delete-account.mjs
           node tests/worker-security.mjs
           node tests/worker-measure.mjs
+          node tests/worker-alerts.mjs
 
   rules:
     runs-on: ubuntu-latest

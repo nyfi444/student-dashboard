@@ -56,6 +56,10 @@
       Resend sends it from send.semester-hq.com, because Firebase's own
       sender lands in Gmail's Spam with its link switched off. Turnstile
       and daily caps; login.html falls back to Firebase's email on failure.
+  12. Alerts: emails Nyla when something breaks. Right away for a server
+      failure in checkout, licenses, accounts or group plans; once an hour
+      at most when app and site error reports spike; and a morning digest
+      from the daily cron on days with errors. Capped. See alerts.js.
 ──────────────────────────────────────────────────────────────── */
 
 /* ── Where each job lives ─────────────────────────────────────────
@@ -79,6 +83,7 @@
      feeds.js        job 10  LMS calendar feeds
      account.js      deleting an account, terms acceptance
      authmail.js     job 11  sign-in link and password-reset emails
+     alerts.js       job 12  emails Nyla when something breaks
 
    and the three every job leans on, which lean on nothing:
 
@@ -96,7 +101,8 @@ import { handleAiProxy } from './ai.js';
 import { handleAuthEmail } from './authmail.js';
 import { handleCreateCheckoutSession, handleCreatePortalSession } from './billing.js';
 import { handleContactMessage } from './contact.js';
-import { fetchStripeSummary, handleAdminBusinessSummary } from './dashboard.js';
+import { fetchErrorSummary, fetchStripeSummary, handleAdminBusinessSummary } from './dashboard.js';
+import { sendDailyDigest } from './alerts.js';
 import { featureForPath, handleAdminErrors, handleLogError, logServerIssue, pruneOldIssues } from './diagnostics.js';
 import { buildBusinessEvents, handleAdminBizEvents, handleTrackEvent } from './events.js';
 import { handleCalendarFeed } from './feeds.js';
@@ -133,6 +139,8 @@ export default {
     ctx.waitUntil(buildBusinessEvents(env, stripeReady).catch(e => logServerIssue(env, 'business-events', 'Daily business events failed', e)));
     ctx.waitUntil(writeDailyLedger(env, { stripeReady }).catch(e => logServerIssue(env, 'ledger', 'Daily ledger failed', e)));
     ctx.waitUntil(pruneOldIssues(env).catch(e => logServerIssue(env, 'diagnostics', 'Pruning old reports failed', e)));
+    // Job 12: yesterday's errors to Nyla's inbox, only on days with any.
+    ctx.waitUntil(fetchErrorSummary(env).then(summary => sendDailyDigest(env, summary)).catch(e => logServerIssue(env, 'alerts', 'Daily error digest failed', e)));
   },
 };
 
