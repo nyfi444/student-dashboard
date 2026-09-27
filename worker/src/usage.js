@@ -14,6 +14,7 @@
    no Firestore rule (clients can't read or write it at all).
 ──────────────────────────────────────────────────────────────── */
 
+import { noteAiSpend } from './alerts.js';
 import { batchGetFirestoreDocs, commitFirestore } from './firebase.js';
 
 /* Prices in US dollars per million tokens, one place for all of them.
@@ -76,6 +77,10 @@ export async function recordAiUsage(env, { feature, model, usage, now = Date.now
   try {
     if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) return false;
     const day = new Date(now).toISOString().slice(0, 10);
+    // The day's running cost, for the spend alert (alerts.js). Never blocks
+    // the count below.
+    const cents = aiCostCents(model, { inputTokens: usage?.input_tokens, outputTokens: usage?.output_tokens, cacheReadTokens: usage?.cache_read_input_tokens, cacheWriteTokens: usage?.cache_creation_input_tokens });
+    if (cents) await noteAiSpend(env, cents).catch(e => console.error('AI spend alert failed', e?.message));
     return await commitFirestore(env, [{ path: `aiUsage/${day}`, fields: { date: day }, increments: aiUsageIncrements(aiUsageFeature(feature), model, usage) }]);
   } catch (e) {
     console.error('AI usage not recorded', e?.message);

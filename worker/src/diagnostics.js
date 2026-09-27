@@ -54,7 +54,7 @@ export async function handleLogError(request, env, origin) {
     console.error('Error log write failed', e);
   }
   // Job 12: one email an hour at most when reports spike. Never fails the report.
-  await alertOnSpike(env, ERROR_LEVELS.includes(body.level) ? body.level : 'error').catch(e => console.error('Spike alert failed', e?.message));
+  await alertOnSpike(env, ERROR_LEVELS.includes(body.level) ? body.level : 'error', clip(body.session, 20)).catch(e => console.error('Spike alert failed', e?.message));
   return jsonOk({ ok: true }, env, origin);
 }
 

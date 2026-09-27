@@ -30,6 +30,9 @@ A daily cron (`13:00` UTC, set in `wrangler.toml`) writes the overnight business
 | `groups.js` | group plans |
 | `feeds.js` | the LMS calendar feed fetcher |
 | `contact.js` | the contact form and its email |
+| `authmail.js` | sign-in link and password-reset emails |
+| `alerts.js` | emails Nyla when something breaks, or when AI spend runs hot |
+| `mail.js` | the one door to Resend: every email shares one daily budget, sign-in links first |
 | `diagnostics.js` | `/log-error`, the Worker's own error log, pruning, `/admin/errors` |
 | `events.js` | `/track-event`, the daily business events, `/admin/biz-events` |
 | `dashboard.js` | `/admin/business-summary` |
@@ -87,7 +90,7 @@ Optional. Without it, contact-form and group-pricing submissions still save to F
 
    It is a subdomain deliberately. The apex already publishes an SPF record for Google Workspace, which handles mail for `hello@semester-hq.com`, and a domain may only have one SPF record. Adding a second would have broken delivery to that inbox rather than adding to it. The apex DMARC policy uses relaxed alignment, so a subdomain sender still aligns with it.
 
-   Note what this code actually does: it emails **you** (`NOTIFY_EMAIL`) and nobody else. Whoever filled in the form is set as reply-to, so replying from your inbox reaches them directly. No student ever receives mail from Resend.
+   The contact form emails **you** (`NOTIFY_EMAIL`) and nobody else. Whoever filled in the form is set as reply-to, so replying from your inbox reaches them directly. Students do receive mail through Resend since September 2026: sign-in links and password resets (`authmail.js`), and the subscription receipt and onboarding emails. Every email goes through `mail.js`, which shares Resend's daily limit (`RESEND_DAILY_LIMIT`) with sign-in links first and onboarding last.
 5. Redeploy (`wrangler deploy`) after changing `wrangler.toml`.
 
 Each email's `reply_to` is set to the submitter's address, so replying to the notification goes straight back to them.

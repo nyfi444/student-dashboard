@@ -83,7 +83,8 @@
      feeds.js        job 10  LMS calendar feeds
      account.js      deleting an account, terms acceptance
      authmail.js     job 11  sign-in link and password-reset emails
-     alerts.js       job 12  emails Nyla when something breaks
+     alerts.js       job 12  emails Nyla when something breaks, and AI spend
+     mail.js                 the one door to Resend: one daily budget, sign-in first
 
    and the three every job leans on, which lean on nothing:
 

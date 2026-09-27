@@ -29,9 +29,10 @@ FIREBASE_STORAGE_BUCKET = "semester-hq.firebasestorage.app"
 # Where contact-form/group-pricing submissions get emailed (only sent at all
 # once RESEND_API_KEY below is set, otherwise it's silently skipped and
 # submissions still land in Firestore's `feedback` collection either way).
-# This is the only address the Worker ever emails: the person who filled in
-# the form never hears from Resend, they're set as reply-to so a reply from
-# this inbox goes straight back to them.
+# Alerts (alerts.js) go here too. The person who filled in the form never
+# hears from Resend: they're set as reply-to, so a reply from this inbox goes
+# straight back to them. (Students do get sign-in links, receipts and the
+# onboarding emails; those go to the student, see mail.js.)
 #
 # The sandbox restriction is gone now that send.semester-hq.com is verified,
 # so this can be any address you actually read.
@@ -44,6 +45,12 @@ NOTIFY_EMAIL = "semesterhq@gmail.com"
 # mail to hello@semester-hq.com rather than adding to it. The DMARC policy on
 # the apex uses relaxed alignment, so a subdomain sender still aligns.
 NOTIFY_FROM = "Semester HQ <notifications@send.semester-hq.com>"
+# Resend's daily sending limit for the plan we're on (free = 100). Every
+# email shares it, sign-in links first; see worker/src/mail.js. Raise it the
+# day the plan grows (Pro has no daily limit: use 1600, about 50,000/30).
+RESEND_DAILY_LIMIT = "100"
+# Estimated Anthropic spend in a UTC day, in cents, that emails an alert.
+AI_SPEND_ALERT_CENTS = "500"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
