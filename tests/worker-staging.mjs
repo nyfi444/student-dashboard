@@ -98,7 +98,11 @@ for (const [repo, file] of [['app', '../js/config.js'], ['site', '../../semester
 }
 {
   const text = readFileSync(new URL('../js/config.js', import.meta.url), 'utf8');
-  check('app: staging never borrows the production Firebase project', /FB_CONFIG_STAGING = \{[^}]*projectId: 'semester-hq-staging'/.test(text), true);
+  const staging = (text.match(/FB_CONFIG_STAGING = \{([^}]*)\}/) || [])[1] || '';
+  const prod = (text.match(/FB_CONFIG_PRODUCTION = \{([^}]*)\}/) || [])[1] || '';
+  const prodKey = (prod.match(/apiKey: '([^']+)'/) || [])[1];
+  check('app: staging has a config of its own', /projectId: '[a-z0-9-]*staging'/.test(staging), true);
+  check('app: staging never borrows the production project or key', staging.includes("'semester-hq'") || (prodKey && staging.includes(prodKey)), false);
   check('app: FB_CONFIG is production only on production', /const FB_CONFIG = IS_PRODUCTION \? FB_CONFIG_PRODUCTION : FB_CONFIG_STAGING;/.test(text), true);
 }
 

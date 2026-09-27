@@ -19,16 +19,19 @@ const FB_CONFIG_PRODUCTION = {
   messagingSenderId: '191691583510',
   appId: '1:191691583510:web:1a51e0b266c1257c4c8537',
 };
-// The semester-hq-staging project's web config (public, like the one above).
-// While apiKey is blank, staging has no Firebase at all: sign-in is off and
-// the demo still works. It never falls back to production.
+// The staging project's web config (public, like the one above). Until the
+// semester-hq-staging project exists this is a stand-in: a demo- project id
+// is one Firebase treats as offline-only, so the app starts, shows its
+// signed-out state exactly as production does, and any sign-in attempt
+// simply fails. It never falls back to production. Replace all of it with
+// the real staging config from Firebase console → Project settings.
 const FB_CONFIG_STAGING = {
-  apiKey: '',
-  authDomain: 'semester-hq-staging.firebaseapp.com',
-  projectId: 'semester-hq-staging',
-  storageBucket: 'semester-hq-staging.firebasestorage.app',
-  messagingSenderId: '',
-  appId: '',
+  apiKey: 'staging-not-set-up',
+  authDomain: 'demo-semester-hq-staging.firebaseapp.com',
+  projectId: 'demo-semester-hq-staging',
+  storageBucket: 'demo-semester-hq-staging.appspot.com',
+  messagingSenderId: '0',
+  appId: 'staging',
 };
 const FB_CONFIG = IS_PRODUCTION ? FB_CONFIG_PRODUCTION : FB_CONFIG_STAGING;
 // The one backend for AI, checkout, licensing, groups, and diagnostics.
