@@ -45,14 +45,35 @@ function pickRateLimiter(env, limit) {
 function allowedOrigins(env) {
   return (env.ALLOWED_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
 }
+// An entry with a * in it (staging only) stands for one run of letters,
+// digits and dashes, so `https://*-semester-hq-app.semesterhq.workers.dev`
+// covers every branch Preview and version URL of the app and nothing else.
+function originMatches(entry, origin) {
+  if (!entry.includes('*')) return entry === origin;
+  const re = new RegExp('^' + entry.split('*').map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[a-z0-9-]+') + '$');
+  return re.test(origin);
+}
 export function isAllowedOrigin(env, origin) {
   const list = allowedOrigins(env);
   if (list.length === 0 || list.includes('*')) return true;
-  return list.includes(origin);
+  return list.some(entry => originMatches(entry, origin));
+}
+
+// Staging must never be able to touch anything real. If the staging Worker
+// is ever given a live Stripe key, the production Firebase project, or no
+// email allow-list, it refuses every request and every cron run rather than
+// carry on. Returns what is wrong, or '' when all is well (and always ''
+// in production).
+export function stagingProblem(env) {
+  if (env.STAGING !== '1') return '';
+  if (/^(sk|rk)_live_/.test(String(env.STRIPE_SECRET_KEY || ''))) return 'staging has a live Stripe key';
+  if (!env.FIREBASE_PROJECT_ID || env.FIREBASE_PROJECT_ID === 'semester-hq') return 'staging points at the production Firebase project';
+  if (!String(env.MAIL_ALLOWLIST || '').trim()) return 'staging has no email allow-list';
+  return '';
 }
 export function corsHeaders(env, origin, extra = {}) {
   const list = allowedOrigins(env);
-  const allow = list.includes('*') || list.length === 0 ? '*' : (list.includes(origin) ? origin : list[0]);
+  const allow = list.includes('*') || list.length === 0 ? '*' : (list.some(entry => originMatches(entry, origin)) ? origin : list[0]);
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',

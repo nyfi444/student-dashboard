@@ -8,6 +8,13 @@
 # attack; it's an ordinary Tuesday where the repo says one thing, the console
 # says another, and nobody finds out for a month.
 #
+# Staging first. Every push that changes the rules, on any branch, publishes
+# them to the staging project (semester-hq-staging) after the tests pass, so
+# a branch Preview runs against the rules it will ship with. Production
+# (semester-hq) is published only from main, and only after staging took
+# the same files. Staging's key is the secret FIREBASE_SERVICE_ACCOUNT_STAGING;
+# until it exists the staging step says so and steps aside.
+#
 # One-time setup: create a Google Cloud service account with the
 # "Firebase Rules Admin" role, download its JSON key, and add the whole JSON
 # as the repository secret FIREBASE_SERVICE_ACCOUNT (Settings → Secrets and
@@ -19,7 +26,7 @@ name: Deploy security rules
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
     paths:
       - firestore.rules
       - storage.rules
@@ -60,8 +67,33 @@ jobs:
         working-directory: tests
         run: npm run test:rules
 
-  deploy:
+  staging:
     needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+      - name: Publish to staging
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
+          FIREBASE_SERVICE_ACCOUNT_STAGING: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STAGING }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_STAGING" ]; then
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT_STAGING is not set yet, so staging was skipped. See the comment at the top of this file."
+            exit 0
+          fi
+          npm install --global firebase-tools@13
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_STAGING" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          firebase deploy --only firestore:rules,storage --project semester-hq-staging --non-interactive
+      - name: Remove the key file
+        if: always()
+        run: rm -f "${{ github.workspace }}/service-account.json"
+
+  deploy:
+    needs: [test, staging]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

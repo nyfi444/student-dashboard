@@ -108,7 +108,7 @@ import { featureForPath, handleAdminErrors, handleLogError, logServerIssue, prun
 import { buildBusinessEvents, handleAdminBizEvents, handleTrackEvent } from './events.js';
 import { handleCalendarFeed } from './feeds.js';
 import { handleGroupRoute } from './groups.js';
-import { checkRateLimit, corsHeaders, isAllowedOrigin, jsonError } from './http.js';
+import { checkRateLimit, corsHeaders, isAllowedOrigin, jsonError, stagingProblem } from './http.js';
 import { handleAdminLedger, writeDailyLedger } from './ledger.js';
 import { handleCheckEmail, handleClaimLicense, handleStripeWebhook } from './licensing.js';
 
@@ -118,6 +118,8 @@ export default {
   // lands in the error log with the route and what went wrong.
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
+    const unsafe = stagingProblem(env);
+    if (unsafe) return new Response(JSON.stringify({ error: `Staging is switched off: ${unsafe}.` }), { status: 503, headers: { 'content-type': 'application/json' } });
     try {
       const res = await routeRequest(request, env, ctx);
       if (res.status >= 500 && pathname !== '/log-error') {
@@ -136,6 +138,7 @@ export default {
   // waking up every 5 minutes. Stripe is asked once and both writers share
   // the answer (null when Stripe isn't set up or didn't answer).
   async scheduled(event, env, ctx) {
+    if (stagingProblem(env)) return;
     const stripeReady = env.STRIPE_SECRET_KEY ? fetchStripeSummary(env).catch(() => null) : Promise.resolve(null);
     ctx.waitUntil(buildBusinessEvents(env, stripeReady).catch(e => logServerIssue(env, 'business-events', 'Daily business events failed', e)));
     ctx.waitUntil(writeDailyLedger(env, { stripeReady }).catch(e => logServerIssue(env, 'ledger', 'Daily ledger failed', e)));

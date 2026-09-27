@@ -42,7 +42,7 @@ const APP = arg('app', 'https://app.semester-hq.com');
 const SITE = arg('site', 'https://semester-hq.com');
 // The app's own config is the source of truth for where its backend is, so
 // this can't drift from what the browser actually calls.
-const WORKER = arg('worker', (read('js/config.js').match(/WORKER_URL\s*=\s*'([^']+)'/) || [])[1]);
+const WORKER = arg('worker', (read('js/config.js').match(/WORKER_URL\s*=[^']*'([^']+)'/) || [])[1]);
 
 let failed = 0, passed = 0;
 const pass = (name) => { passed++; console.log(`  ok    ${name}`); };

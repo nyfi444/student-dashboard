@@ -24,7 +24,9 @@ import { stubExternals, watchConsole } from './helpers.mjs';
 const PROJECT = 'demo-semester-hq';
 const AUTH = 'http://127.0.0.1:9099';
 const FIRESTORE = 'http://127.0.0.1:8080';
-const WORKER = 'https://student-planner-ai-proxy.semesterhq.workers.dev';
+// localhost is staging (js/config.js), so the app calls the staging Worker;
+// the production one is stubbed too, in case a page ever reaches for it.
+const WORKER = /^https:\/\/student-planner-ai-proxy(-staging)?\.semesterhq\.workers\.dev\//;
 const PASSWORD = 'correct-horse-battery-staple';
 
 /* Skips the signed-in tests, with a reason, when the emulators aren't up —
@@ -80,7 +82,7 @@ async function isolate(page, problems) {
     problems.push(`reached the real Firebase project: ${route.request().method()} ${route.request().url()}`);
     return route.abort();
   });
-  await page.route(`${WORKER}/**`, async (route) => {
+  await page.route(WORKER, async (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (path === '/account/attest') return json(200, { ok: true });

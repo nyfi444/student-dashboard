@@ -11,7 +11,7 @@ let _lastKnownUpdatedAt = 0;
 let _plannerUnsub = null, _notesUnsub = null;
 const DEVICE_LOCAL_VIEW_KEYS = ['route', 'subRoute', 'groupTab', 'orgTab', 'groupTaskFilter', 'calView', 'calDate', 'todoFilter', 'notebookSelected', 'todayMode'];
 
-function fbConfigured() { return !!FB_CONFIG.apiKey; }
+function fbConfigured() { return !!FB_CONFIG.apiKey || !!firebaseEmulatorHost(); }
 
 // Marks "this device has edits the cloud hasn't confirmed yet," so a reload
 // (or reopening after being offline) can tell local edits apart from a stale
@@ -46,7 +46,7 @@ function bootFirebase() {
     const emulator = firebaseEmulatorHost();
     // The emulators run as demo-semester-hq, a project id the Firebase tools
     // treat as offline-only: nothing addressed to it can reach the real one.
-    firebase.initializeApp(emulator ? { ...FB_CONFIG, projectId: 'demo-semester-hq', storageBucket: 'demo-semester-hq.appspot.com' } : FB_CONFIG);
+    firebase.initializeApp(emulator ? { apiKey: 'demo-key', authDomain: 'demo-semester-hq.firebaseapp.com', projectId: 'demo-semester-hq', storageBucket: 'demo-semester-hq.appspot.com', appId: 'demo' } : FB_CONFIG);
     _fbAuth = firebase.auth();
     _fbDb = firebase.firestore();
     if (emulator) {
