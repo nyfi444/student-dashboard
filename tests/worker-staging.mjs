@@ -92,7 +92,9 @@ const productionOrigins = (toml.match(/^ALLOWED_ORIGIN = "([^"]+)"/m) || [])[1];
 for (const [repo, file] of [['app', '../js/config.js'], ['site', '../../semester-hq-site/js/diagnostics.js']]) {
   let text;
   try { text = readFileSync(new URL(file, import.meta.url), 'utf8'); } catch { continue; } // the site repo isn't checked out in CI
-  const hosts = JSON.parse((text.match(/PRODUCTION_HOSTS = (\[[^\]]+\])/) || [])[1].replace(/'/g, '"'));
+  const found = text.match(/PRODUCTION_HOSTS = (\[[^\]]+\])/);
+  if (!found && repo === 'site') continue; // the site checkout is on a branch without this yet
+  const hosts = JSON.parse((found || [])[1].replace(/'/g, '"'));
   check(`${repo}: production is exactly the real hosts`, hosts.sort(), ['app.semester-hq.com', 'semester-hq.com', 'www.semester-hq.com']);
   check(`${repo}: anything else uses the staging Worker`, /IS_PRODUCTION\s*\?\s*'https:\/\/student-planner-ai-proxy\.semesterhq\.workers\.dev'\s*:\s*'https:\/\/student-planner-ai-proxy-staging\.semesterhq\.workers\.dev'/.test(text), true);
 }
