@@ -40,6 +40,7 @@ function render() {
   applyExpandables($('#content'));
   if (typeof afterGroupPageRender === 'function') afterGroupPageRender();
   if (typeof afterOrgPageRender === 'function') afterOrgPageRender();
+  if (typeof loadEmailTipsSetting === 'function') loadEmailTipsSetting();
   if (typeof updateTimerChrome === 'function') updateTimerChrome();
 }
 function bellButton(cls) {

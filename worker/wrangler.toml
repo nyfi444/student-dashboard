@@ -49,6 +49,8 @@ NOTIFY_FROM = "Semester HQ <notifications@send.semester-hq.com>"
 # email shares it, sign-in links first; see worker/src/mail.js. Raise it the
 # day the plan grows (Pro has no daily limit: use 1600, about 50,000/30).
 RESEND_DAILY_LIMIT = "100"
+# This Worker's own address, for the one-click unsubscribe link in emails.
+SELF_URL = "https://student-planner-ai-proxy.semesterhq.workers.dev"
 # Estimated Anthropic spend in a UTC day, in cents, that emails an alert.
 AI_SPEND_ALERT_CENTS = "500"
 
@@ -154,6 +156,7 @@ MAIL_ALLOWLIST = "semesterhq@gmail.com,hello@semester-hq.com,nnylabrown111@gmail
 # Its own small slice of the one Resend account, so testing can never use
 # up the day that production's sign-in links need.
 RESEND_DAILY_LIMIT = "12"
+SELF_URL = "https://student-planner-ai-proxy-staging.semesterhq.workers.dev"
 AI_SPEND_ALERT_CENTS = "100"
 
 [[env.staging.kv_namespaces]]

@@ -121,6 +121,7 @@ function pageSettings() {
         ${_fbUser ? `
           <div class="flex-gap"><div class="avatar">${(_fbUser.displayName || _fbUser.email || '?')[0].toUpperCase()}</div><div><div style="font-weight:600">${esc(_fbUser.displayName || _fbUser.email)}</div><div class="small muted">Synced across devices. This is the default experience.</div></div></div>
           ${window._licensed && !(window._licenseDoc?.groupPaid && !window._licenseDoc?.individualPaid) ? `<button class="btn mt-16" onclick="redirectToPortal()">Manage subscription</button>` : ''}
+          ${typeof emailSettingsHtml === 'function' ? emailSettingsHtml() : ''}
           <button class="btn mt-16" onclick="signOutUser()">Sign out</button>
           ${checkoutEnabled() ? `<button class="btn btn-danger mt-8" onclick="confirmDeleteAccount()">Delete account</button>` : ''}
         ` : `

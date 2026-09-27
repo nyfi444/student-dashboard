@@ -7,6 +7,7 @@ import { logServerIssue } from './diagnostics.js';
 import { encodeEmailDocId, patchFirestoreDoc, readFirestoreDoc, runFirestoreQuery, verifyFirebaseIdToken, writeFirestoreDoc } from './firebase.js';
 import { activateGroupPlan, syncGroupPlan } from './groups.js';
 import { claimWebhookEvent, jsonError, jsonOk, turnstileOk, underDailyCap, verifiedEmailOf } from './http.js';
+import { startCustomerEmails, stopCustomerEmails } from './onboarding.js';
 import { verifyStripeSignature } from './stripe.js';
 
 /* ── 3. Licensing ─────────────────────────────────────────────── */
@@ -37,11 +38,16 @@ export async function handleStripeWebhook(request, env) {
     // A group plan purchase activates the plan, not a license for whoever paid.
     if (session.metadata?.kind === 'group') {
       if (session.payment_status === 'unpaid') return new Response('ok', { status: 200 });
-      try { await activateGroupPlan(env, session); }
+      let plan;
+      try { plan = await activateGroupPlan(env, session); }
       catch (e) {
         console.error('Group plan activation failed', e);
         return new Response(`Group plan activation failed: ${e.message}`, { status: 500 });
       }
+      // Job 13: the group receipt and the "getting started" note to whoever
+      // paid. Never fails the webhook.
+      const buyer = (session.customer_details?.email || session.customer_email || '').toLowerCase().trim();
+      if (plan && buyer) await startCustomerEmails(env, { email: buyer, uid: session.metadata?.uid || '', plan: 'group-admin', planId: session.metadata?.planId || '', groupName: plan.name, seats: plan.seats });
       return new Response('ok', { status: 200 });
     }
     if (session.payment_status === 'paid') {
@@ -61,6 +67,9 @@ export async function handleStripeWebhook(request, env) {
         console.error('License write failed', e);
         return new Response(`License write failed: ${e.message}`, { status: 500 }); // non-2xx makes Stripe retry
       }
+      // Job 13: the receipt now, the welcome in an hour, then the tips.
+      // After the license is written, and never fails the webhook.
+      if (email) await startCustomerEmails(env, { email, uid: uid || '', plan: 'plus', sessionId: session.id });
     }
   }
 
@@ -99,6 +108,8 @@ export async function handleStripeWebhook(request, env) {
       console.error('License update failed', e);
       return new Response(`License update failed: ${e.message}`, { status: 500 }); // non-2xx makes Stripe retry
     }
+    // Job 13: no more tips once the subscription has ended.
+    if (!active && email) await stopCustomerEmails(env, email, event.type === 'customer.subscription.deleted' ? 'cancelled' : `status-${sub.status}`);
   }
 
   return new Response('ok', { status: 200 });

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Email settings – Semester HQ</title>
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F8F6F2">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+<!--
+  Where every tip email's "Email settings" and "Unsubscribe" links land
+  (worker/src/onboarding.js). The link carries the address's id and a
+  signature, so this works without signing in. ?off=1 unsubscribes on
+  arrival, which is what "Unsubscribe from these tips" promises.
+-->
+<style>
+  :root { --bg:#F8F6F2; --ink:#121212; --muted:#5B5750; --line:#E3DBD1; --rose:#B49F90; --card:#FFFFFF; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#151413; --ink:#F3EFE9; --muted:#BDB5AA; --line:#34302C; --rose:#C9B6A8; --card:#1E1C1A; } }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--ink); font-family:'General Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; display:flex; align-items:center; justify-content:center; padding:32px 16px; }
+  main { width:100%; max-width:460px; }
+  .wordmark { font-family:'Instrument Serif', Georgia, serif; font-size:26px; color:var(--ink); text-decoration:none; }
+  .wordmark span { color:var(--rose); font-size:17px; vertical-align:4px; padding-left:3px; }
+  .card { margin-top:22px; background:var(--card); border:1px solid var(--line); border-radius:18px; padding:28px; }
+  h1 { font-family:'Instrument Serif', Georgia, serif; font-weight:400; font-size:36px; line-height:1.08; margin:0 0 12px; }
+  p { font-size:15px; line-height:1.6; color:var(--muted); margin:0 0 16px; }
+  button { font:inherit; font-weight:600; font-size:15px; border-radius:999px; padding:13px 22px; cursor:pointer; border:1px solid var(--ink); }
+  .primary { background:var(--ink); color:var(--bg); }
+  .quiet { background:transparent; color:var(--ink); }
+  .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
+  .fine { font-size:13px; margin-top:22px; }
+  .fine a { color:inherit; }
+</style>
+</head>
+<body>
+<main>
+  <a class="wordmark" href="https://semester-hq.com/">Semester HQ<span>&#10022;</span></a>
+  <div class="card" id="panel" aria-live="polite">
+    <h1>One moment.</h1>
+    <p>Checking your email settings.</p>
+  </div>
+  <p class="fine">Receipts for your plan always come, whatever this says. You can also change this in the app under Settings, then Account &amp; Sync. Questions? <a href="mailto:hello@semester-hq.com">hello@semester-hq.com</a></p>
+</main>
+<script src="js/config.js"></script>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const e = params.get('e') || '';
+  const t = params.get('t') || '';
+  const panel = document.getElementById('panel');
+  // Keep the signed link out of the address bar once it's been read.
+  history.replaceState({}, '', location.pathname);
+
+  function show(tips, justChanged) {
+    panel.innerHTML = tips
+      ? `<h1>${justChanged ? 'You’re back in.' : 'Tips are on.'}</h1>
+         <p>You’ll get a few short notes in your first weeks on getting the most out of Semester HQ, spaced days apart.</p>
+         <div class="row"><button class="quiet" id="flip">Turn tips off</button></div>`
+      : `<h1>${justChanged ? 'You’re unsubscribed.' : 'Tips are off.'}</h1>
+         <p>We won’t send you any more tips. If that was a mistake, you can turn them back on.</p>
+         <div class="row"><button class="primary" id="flip">Turn tips back on</button></div>`;
+    document.getElementById('flip').onclick = () => save(!tips);
+  }
+  function fail(message) {
+    panel.innerHTML = `<h1>That didn’t work.</h1><p>${message}</p>`;
+  }
+  async function call(body) {
+    const res = await fetch(`${WORKER_URL}/email/prefs`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ e, t, ...body }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Something went wrong. Try again in a moment.');
+    return data;
+  }
+  async function save(tips) {
+    try { const data = await call({ tips }); show(data.tips, true); }
+    catch (err) { fail(err.message); }
+  }
+  if (!e || !t) { fail('This link is missing a piece. Open Settings in the app to change your emails.'); return; }
+  if (params.get('off') === '1') save(false);
+  else call({}).then(d => show(d.tips, false)).catch(err => fail(err.message));
+})();
+</script>
+</body>
+</html>

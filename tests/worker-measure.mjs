@@ -317,7 +317,7 @@ const FIREBASE = { FIREBASE_PROJECT_ID: 'semester-hq', FIREBASE_CLIENT_EMAIL: 's
   res = await w.__worker.fetch(get('/admin/ledger'), env, { waitUntil() {} });
   check('router: /admin/ledger is wired and token-gated', res.status, 401);
   res = await w.__worker.fetch(new Request('https://w/admin/ledger', { method: 'OPTIONS' }), env, { waitUntil() {} });
-  check('router: its preflight allows GET with a token', [res.headers.get('Access-Control-Allow-Methods'), res.headers.get('Access-Control-Allow-Headers')], ['GET, OPTIONS', 'authorization']);
+  check('router: its preflight allows GET with a token', [res.headers.get('Access-Control-Allow-Methods'), res.headers.get('Access-Control-Allow-Headers')], ['GET, POST, OPTIONS', 'authorization']);
 }
 
 /* ── AI usage: counted, and never in the way ─────────────────────── */

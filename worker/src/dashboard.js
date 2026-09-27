@@ -9,6 +9,7 @@ import { listFirestoreCollection, queryRecentDocs, runFirestoreQuery } from './f
 import { groupAdmins } from './groups.js';
 import { adminTokenOk } from './http.js';
 import { mailUsageSummary } from './mail.js';
+import { fetchEmailSummary } from './onboarding.js';
 import { stripeGetJson } from './stripe.js';
 import { finishSubscriberRows, subscriberRow } from './subscribers.js';
 import { fetchAiUsageSummary } from './usage.js';
@@ -84,6 +85,9 @@ export async function handleAdminBusinessSummary(request, env) {
   }
 
   try { out.mail = await mailUsageSummary(env); } catch (e) { out.mail = { error: e.message }; }
+  //   emails      the onboarding sequence: how many people are in it, which
+  //               tips went and were skipped, who stopped and why (counts)
+  if (hasFirebase) { try { out.emails = await fetchEmailSummary(env); } catch (e) { out.emails = { error: e.message }; } }
 
   return new Response(JSON.stringify(out), { headers: adminCors });
 }

@@ -83,7 +83,7 @@ export async function logServerIssue(env, feature, message, err, extra = {}) {
 }
 export function featureForPath(path) {
   const map = [[/^\/v1\/messages/, 'ai'], [/^\/create-(checkout|portal)-session|^\/stripe-webhook/, 'checkout'], [/^\/(claim-license|check-email)/, 'license'],
-    [/^\/group\//, 'group-plans'], [/^\/delete-account/, 'account'], [/^\/contact-message/, 'feedback'], [/^\/admin\//, 'admin']];
+    [/^\/group\//, 'group-plans'], [/^\/delete-account/, 'account'], [/^\/contact-message/, 'feedback'], [/^\/(email\/|account\/email)/, 'email'], [/^\/admin\//, 'admin']];
   return (map.find(([re]) => re.test(path)) || [])[1] || 'worker';
 }
 function scrubPII(text) {

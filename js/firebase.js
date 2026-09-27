@@ -101,6 +101,8 @@ function bootFirebase() {
           // First-week setup counts (js/setupcounts.js): decided once per
           // account, after its data is here. Does nothing while switched off.
           if (typeof setupCountsBaseline === 'function') setupCountsBaseline(user);
+          // What the email tips can skip (js/emailprefs.js), once the data is here.
+          if (typeof noteEmailProgress === 'function') noteEmailProgress();
           toast(justPurchased ? 'Your HQ is ready, welcome in.' : `Synced as ${user.displayName || user.email}`, 'success');
         } else {
           // Signed in but not on a paid plan. The paywall screen already

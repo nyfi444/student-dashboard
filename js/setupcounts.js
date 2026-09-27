@@ -43,6 +43,9 @@ function setupCountsBaseline(user) {
 // A setup step happened. `source` is a short label ('syllabus', 'lms',
 // 'study-group', …), the only thing sent with it.
 function countSetupStep(name, source = '') {
+  // The email tips skip a step the student has already done (js/emailprefs.js).
+  // That runs whether or not these anonymous counts are switched on.
+  if (typeof noteEmailProgress === 'function') noteEmailProgress();
   try {
     if (!setupCountsOn() || !SETUP_COUNT_EVENTS.includes(name)) return;
     if (typeof _fbUser === 'undefined' || !_fbUser || !window._licensed || isEmbedded()) return;

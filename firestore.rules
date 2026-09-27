@@ -244,6 +244,37 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Customer emails (worker/src/onboarding.js): where each paying student
+    // is in the welcome-and-tips sequence (plus three yes/no setup flags),
+    // their tips on/off choice, and a log of every email sent so none goes
+    // twice. The Worker's service account is the only reader and writer;
+    // the app changes the setting and reports progress through the Worker.
+    match /emailOnboarding/{emailId} {
+      allow read, write: if false;
+    }
+    match /emailPrefs/{emailId} {
+      allow read, write: if false;
+    }
+    match /emailLog/{logId} {
+      allow read, write: if false;
+    }
+
+    // The Worker's own bookkeeping for the Business OS: the daily ledger,
+    // the overnight business events and their state, and AI cost per day.
+    // Counts and business facts only, server-only like everything above.
+    match /bizLedger/{day} {
+      allow read, write: if false;
+    }
+    match /bizEvents/{id} {
+      allow read, write: if false;
+    }
+    match /bizState/{id} {
+      allow read, write: if false;
+    }
+    match /aiUsage/{day} {
+      allow read, write: if false;
+    }
+
     // Nyla's private Business OS (semester-hq-dashboard repo) syncs one
     // document per owner account. Not part of the student app: only her own
     // verified Google accounts can read or write, and only their own doc.

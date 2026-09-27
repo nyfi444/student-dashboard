@@ -7,6 +7,7 @@ import { logServerIssue } from './diagnostics.js';
 import { commitFirestore, deleteFirebaseAuthUser, deleteFirestoreDoc, deleteFirestoreSubcollection, deleteStorageFolder, encodeEmailDocId, patchFirestoreDoc, readFirestoreDoc, readFirestoreDocWithTime, runFirestoreQuery, verifyFirebaseIdToken } from './firebase.js';
 import { groupAdmins, groupHasAccess, groupPlansAdminedBy, removeGroupMember, setGroupAdmins } from './groups.js';
 import { jsonError, jsonOk, verifiedEmailOf } from './http.js';
+import { forgetCustomerEmails } from './onboarding.js';
 
 /* ── Leaving every shared space when an account is deleted ────────
    Deleting an account used to remove the person's own data and their
@@ -195,6 +196,12 @@ export async function handleDeleteAccount(request, env, origin) {
 
     await deleteFirestoreDoc(env, 'licenses', uid);
     if (email) await deleteFirestoreDoc(env, 'licensesByEmail', encodeEmailDocId(email));
+    // Job 13: the email record, the email preference and the send log go too,
+    // which also stops any tips still to come.
+    if (email) {
+      try { await forgetCustomerEmails(env, email); }
+      catch (e) { await logServerIssue(env, 'account', 'Account delete could not remove email records', e); }
+    }
     // Notes live in their own subcollection (planners/{uid}/notes/{id}), not
     // inline in the planner doc. Deleting the parent doc below does NOT
     // cascade-delete those, Firestore never does that automatically. Delete

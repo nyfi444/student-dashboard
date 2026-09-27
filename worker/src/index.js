@@ -56,6 +56,10 @@
       Resend sends it from send.semester-hq.com, because Firebase's own
       sender lands in Gmail's Spam with its link switched off. Turnstile
       and daily caps; login.html falls back to Firebase's email on failure.
+  13. Customer emails: the receipt and welcome when a checkout completes
+      (Stripe webhook) or a seat is taken, then five spaced tips from the
+      daily cron, with one-click unsubscribe (/email/*) and a Settings
+      switch (/account/email). See onboarding.js and emails.js.
   12. Alerts: emails Nyla when something breaks. Right away for a server
       failure in checkout, licenses, accounts or group plans; once an hour
       at most when app and site error reports spike; and a morning digest
@@ -85,6 +89,8 @@
      authmail.js     job 11  sign-in link and password-reset emails
      alerts.js       job 12  emails Nyla when something breaks, and AI spend
      mail.js                 the one door to Resend: one daily budget, sign-in first
+     onboarding.js   job 13  receipts, welcomes and the tips: who gets what, when
+     emails.js       job 13  what those emails say and look like
 
    and the three every job leans on, which lean on nothing:
 
@@ -111,6 +117,7 @@ import { handleGroupRoute } from './groups.js';
 import { checkRateLimit, corsHeaders, isAllowedOrigin, jsonError, stagingProblem } from './http.js';
 import { handleAdminLedger, writeDailyLedger } from './ledger.js';
 import { handleCheckEmail, handleClaimLicense, handleStripeWebhook } from './licensing.js';
+import { fetchEmailSummary, handleAccountEmail, handleAdminEmailTest, handleAdminOnboardingRun, handleEmailLink, runOnboardingEmails } from './onboarding.js';
 
 export default {
   // Every request passes through here. A route that throws still answers with
@@ -145,6 +152,8 @@ export default {
     ctx.waitUntil(pruneOldIssues(env).catch(e => logServerIssue(env, 'diagnostics', 'Pruning old reports failed', e)));
     // Job 12: yesterday's errors to Nyla's inbox, only on days with any.
     ctx.waitUntil(fetchErrorSummary(env).then(summary => sendDailyDigest(env, summary)).catch(e => logServerIssue(env, 'alerts', 'Daily error digest failed', e)));
+    // Job 13: the day's onboarding tips, at 9am Eastern (8am in winter).
+    ctx.waitUntil(runOnboardingEmails(env).catch(e => logServerIssue(env, 'email', 'Onboarding emails failed', e)));
   },
 };
 
@@ -155,10 +164,21 @@ async function routeRequest(request, env, ctx) {
   // /admin/errors needs GET + an Authorization header, unlike every other
   // route here (POST + content-type only), handle its preflight separately
   // so the browser doesn't reject the real request for a disallowed method/header.
-  if (request.method === 'OPTIONS' && (url.pathname === '/admin/errors' || url.pathname === '/admin/business-summary' || url.pathname === '/admin/biz-events' || url.pathname === '/admin/ledger')) {
-    return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
+  if (request.method === 'OPTIONS' && ['/admin/errors', '/admin/business-summary', '/admin/biz-events', '/admin/ledger', '/admin/email-test', '/admin/onboarding-run'].includes(url.pathname)) {
+    return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
   }
   if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env, origin) });
+
+  // Unsubscribe and email-settings links: a mail app posts the one-click
+  // unsubscribe with no Origin at all, so these sit before the origin check.
+  // The signed token in the link is what they trust.
+  if (url.pathname === '/email/unsubscribe' || url.pathname === '/email/prefs') {
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (!(await checkRateLimit(env, ip, 'email-link', 20))) return new Response('{"error":"Too many requests"}', { status: 429, headers: { 'content-type': 'application/json' } });
+    return handleEmailLink(request, env, url.pathname);
+  }
+  if (url.pathname === '/admin/email-test' && request.method === 'POST') return handleAdminEmailTest(request, env);
+  if (url.pathname === '/admin/onboarding-run' && request.method === 'POST') return handleAdminOnboardingRun(request, env);
 
   // Stripe calls this server-to-server, no Origin header, verified by signature instead of CORS.
   if (url.pathname === '/stripe-webhook' && request.method === 'POST') return handleStripeWebhook(request, env);
@@ -216,6 +236,10 @@ async function routeRequest(request, env, ctx) {
   if (url.pathname === '/track-event') {
     if (!(await checkRateLimit(env, ip, 'track-event', 60))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
     return handleTrackEvent(request, env, origin);
+  }
+  if (url.pathname === '/account/email') {
+    if (!(await checkRateLimit(env, ip, 'account-email', 20))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleAccountEmail(request, env, origin);
   }
   if (url.pathname === '/account/attest') {
     if (!(await checkRateLimit(env, ip, 'attest', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
