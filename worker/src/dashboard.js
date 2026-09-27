@@ -8,6 +8,7 @@ import { fetchCheckoutSummary } from './checkouts.js';
 import { listFirestoreCollection, queryRecentDocs, runFirestoreQuery } from './firebase.js';
 import { groupAdmins } from './groups.js';
 import { adminTokenOk } from './http.js';
+import { fetchActivitySummary } from './activity.js';
 import { mailUsageSummary } from './mail.js';
 import { fetchEmailSummary } from './onboarding.js';
 import { stripeGetJson } from './stripe.js';
@@ -88,6 +89,9 @@ export async function handleAdminBusinessSummary(request, env) {
   //   emails      the onboarding sequence: how many people are in it, which
   //               tips went and were skipped, who stopped and why (counts)
   if (hasFirebase) { try { out.emails = await fetchEmailSummary(env); } catch (e) { out.emails = { error: e.message }; } }
+  //   activity    weekly active accounts, feature use and day 2/7/30 returns
+  //               by cohort, from the app's anonymous counts (activity.js)
+  if (hasFirebase) { try { out.activity = await fetchActivitySummary(env); } catch (e) { out.activity = { error: e.message }; } }
 
   return new Response(JSON.stringify(out), { headers: adminCors });
 }

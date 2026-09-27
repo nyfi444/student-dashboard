@@ -65,6 +65,7 @@ function bootFirebase() {
       if (typeof render === 'function') render(); // show a "checking" state rather than flash stale content
       if (user) {
         recordTermsAcceptance(user); // nothing waits on this
+        if (typeof usageAccountCreated === 'function') usageAccountCreated(user); // js/usagecounts.js
         // Captured before resolveLicenseStatus()/pollForLicense() below, since
         // a successful license check clears this param. Need to know whether
         // this moment is "just paid" to show "Your HQ is ready" instead of the
@@ -103,6 +104,8 @@ function bootFirebase() {
           if (typeof setupCountsBaseline === 'function') setupCountsBaseline(user);
           // What the email tips can skip (js/emailprefs.js), once the data is here.
           if (typeof noteEmailProgress === 'function') noteEmailProgress();
+          // Anonymous weekly counts (js/usagecounts.js).
+          if (typeof usageOnLoad === 'function') usageOnLoad();
           toast(justPurchased ? 'Your HQ is ready, welcome in.' : `Synced as ${user.displayName || user.email}`, 'success');
         } else {
           // Signed in but not on a paid plan. The paywall screen already

@@ -28,12 +28,18 @@ const TRACKED_EVENTS = [
   // at most once per account, only for accounts new since the counts were
   // switched on (js/setupcounts.js), and carries nothing but a source label.
   'setup_class_added', 'setup_deadlines_in', 'setup_group_joined',
+  // Anonymous weekly counts from the app (js/usagecounts.js): a new account,
+  // an account active this week, a feature used this week, and coming back
+  // on day 0, 2, 7 or 30 of a plan. Each is sent once per account per week
+  // (or once ever), with only the week, the feature's name and the week the
+  // plan began. Nothing that says which account.
+  'account_created', 'app_active_week', 'feature_used_week', 'return_day',
 ];
 // The only extra fields an event may carry. Counts and short labels about the
 // document, never anything from inside it: no course names, no file names, no
 // text the student uploaded.
 const EVENT_DETAIL_NUMBERS = ['pages', 'images', 'chars', 'assignments', 'details', 'meetings', 'ms', 'cacheRead', 'cacheWrite', 'inputTokens', 'outputTokens', 'offered', 'kept', 'edited', 'removed'];
-const EVENT_DETAIL_LABELS = ['source', 'fileType', 'model', 'outcome', 'reason'];
+const EVENT_DETAIL_LABELS = ['source', 'fileType', 'model', 'outcome', 'reason', 'week', 'feature', 'cohort'];
 
 function cleanEventDetail(raw) {
   if (!raw || typeof raw !== 'object') return null;

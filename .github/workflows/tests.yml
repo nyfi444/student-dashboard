@@ -49,6 +49,7 @@ jobs:
           node tests/worker-alerts.mjs
           node tests/worker-staging.mjs
           node tests/worker-onboarding.mjs
+          node tests/worker-activity.mjs
 
   rules:
     runs-on: ubuntu-latest

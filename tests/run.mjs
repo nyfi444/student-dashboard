@@ -229,7 +229,9 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
 {
   const configSrc = read('js/config.js');
   check('link codes ship switched off', /const FEATURES = \{[^}]*linkCodes: false/.test(configSrc), true);
-  check('setup counts ship switched off', /const FEATURES = \{[^}]*setupCounts: false/.test(configSrc), true);
+  // Switched on Sept 27 2026 for the launch-foundations measurement.
+  check('setup counts ship switched on', /const FEATURES = \{[^}]*setupCounts: true/.test(configSrc), true);
+  check('usage counts ship switched on', /const FEATURES = \{[^}]*usageCounts: true/.test(configSrc), true);
   const session = new Map();
   const linkBox = (search, on) => {
     const box = { location: { search }, sessionStorage: { getItem: k => (session.has(k) ? session.get(k) : null), setItem: (k, v) => session.set(k, String(v)) }, URLSearchParams };
@@ -276,6 +278,48 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
   t.box.state.settings.setupCounts = { counted: true, since: '2026-09-20', sent: ['setup_class_added'] };
   t.setupCountsBaseline(t.user); t.countSetupStep('setup_class_added', 'manual');
   check('setup counts on: a baseline already synced from another device is kept, and not sent twice', [t.box.state.settings.setupCounts.since, t.sent.length], ['2026-09-20', 0]);
+
+  // Anonymous weekly counts (js/usagecounts.js).
+  const usageSrc = read('js/usagecounts.js');
+  const usageBox = ({ on = true, licensed = true, embedded = false, purchasedDaysAgo = 2, settings = {} } = {}) => {
+    const sent = [];
+    const store = new Map();
+    const box = {
+      FEATURES: { usageCounts: on }, _fbUser: { uid: 'u1' },
+      window: { _licensed: licensed, _licenseDoc: purchasedDaysAgo === null ? null : { purchasedAt: new Date(Date.now() - purchasedDaysAgo * 86400000).toISOString() } },
+      state: { settings }, save() {}, isEmbedded: () => embedded,
+      localStorage: { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) },
+      diag: { event: (name, detail) => sent.push([name, detail]), warn() {} }, Date, Number, Array, Object, Math, String,
+    };
+    vm.createContext(box);
+    vm.runInContext(usageSrc + '\n;globalThis.__u = { usageOnLoad, usageOnRoute, usageAccountCreated, usageWeek };', box);
+    return { ...box.__u, sent, box };
+  };
+  let u = usageBox();
+  u.usageOnLoad(); u.usageOnLoad();
+  const wk = u.usageWeek();
+  check('usage: active this week, sent once', u.sent.filter(x => x[0] === 'app_active_week'), [['app_active_week', { week: wk }]]);
+  check('usage: two days into a plan is the "day 2" return', u.sent.filter(x => x[0] === 'return_day').map(x => x[1].source), ['d2']);
+  ok('usage: the cohort is a week label, nothing else', /^\d{4}-W\d{2}$/.test(u.sent.find(x => x[0] === 'return_day')[1].cohort));
+  u.usageOnRoute('calendar'); u.usageOnRoute('calendar'); u.usageOnRoute('studytools'); u.usageOnRoute('settings');
+  check('usage: each feature once a week, by its public name, labelled first week', u.sent.filter(x => x[0] === 'feature_used_week').map(x => [x[1].feature, x[1].source]), [['calendar', 'week1'], ['flashcards', 'week1']]);
+  ok('usage: nothing but week, feature, source and cohort ever goes', u.sent.every(([, d]) => !d || Object.keys(d).every(k => ['week', 'feature', 'source', 'cohort'].includes(k))));
+  u = usageBox({ purchasedDaysAgo: 30 });
+  u.usageOnLoad(); u.usageOnRoute('exams');
+  check('usage: day 30 returns count, and later weeks are labelled later', [u.sent.find(x => x[0] === 'return_day')[1].source, u.sent.find(x => x[0] === 'feature_used_week')[1].source], ['d30', 'later']);
+  u = usageBox({ settings: { usage: { week: '2020-W01', active: true, features: ['calendar'], returns: [] } } });
+  u.usageOnLoad(); u.usageOnRoute('calendar');
+  check('usage: a new week counts again', u.sent.map(x => x[0]).filter(n => n !== 'return_day'), ['app_active_week', 'feature_used_week']);
+  for (const [label, opts] of [['off', { on: false }], ['unpaid', { licensed: false }], ['embedded demo', { embedded: true }]]) {
+    u = usageBox(opts);
+    u.usageOnLoad(); u.usageOnRoute('calendar');
+    check(`usage: ${label} sends nothing`, u.sent.length, 0);
+  }
+  u = usageBox();
+  const fresh = { uid: 'n1', metadata: { creationTime: new Date().toUTCString() } };
+  u.usageAccountCreated(fresh); u.usageAccountCreated(fresh);
+  u.usageAccountCreated({ uid: 'old', metadata: { creationTime: new Date(Date.now() - 5 * 86400000).toUTCString() } });
+  check('usage: a brand-new account is counted once, an old one never', u.sent, [['account_created', undefined]]);
 }
 
 /* ── Error Viewer fixes, Sept 25 ─────────────────────────────────── */

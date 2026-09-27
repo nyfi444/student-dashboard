@@ -33,6 +33,7 @@ function render() {
   const isNewView = viewKey !== _lastViewKey;
   _lastViewKey = viewKey;
   if (isNewView) diag.crumb('view', viewKey.replace(/\|+$/, ''));
+  if (isNewView && typeof usageOnRoute === 'function') usageOnRoute(state.route);
   const demoBar = typeof demoBannerHtml === 'function' ? demoBannerHtml() : '';
   $('#content').innerHTML = `${demoBar}<div class="${isNewView ? 'fade-in' : ''}">${fn()}</div>`;
   enhanceAccessibility($('#content'));

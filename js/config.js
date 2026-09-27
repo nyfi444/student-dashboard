@@ -63,8 +63,11 @@ const EMAIL_LINK_STORAGE_KEY = 'shq_email_for_signin';
                   can be counted (worker/src/checkouts.js). Nothing else
                   about the visitor goes with it.
      setupCounts  anonymous counts of a new account's first class, first
-                  deadlines and first group (js/setupcounts.js). */
-const FEATURES = { linkCodes: false, setupCounts: false };
+                  deadlines and first group (js/setupcounts.js).
+     usageCounts  anonymous weekly counts: active accounts, which features
+                  get used, and who comes back on day 2, 7 and 30
+                  (js/usagecounts.js). */
+const FEATURES = { linkCodes: false, setupCounts: true, usageCounts: true };
 // A link code is a short label on Nyla's own links (?via=campus-tour). The
 // Worker checks the same pattern and drops anything that doesn't match.
 const LINK_CODE_KEY = 'shq_via';
