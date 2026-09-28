@@ -95,7 +95,7 @@ function joinLinkButton(where, size = 'btn-sm') {
   if (!isHttpUrl(where)) return '';
   const host = hostOf(where);
   const call = /zoom\.us|meet\.google|teams\.microsoft|webex|discord|whereby|gather/i.test(host);
-  return `<a class="btn ${size} sg-join-btn" href="${esc(where.trim())}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${icon(call ? 'play' : 'link', 13, 1.9)} ${call ? 'Join call' : 'Open link'}</a>`;
+  return `<a class="btn ${size} sg-join-btn" href="${esc(where.trim())}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${icon(call ? 'play' : 'link', 14)} ${call ? 'Join call' : 'Open link'}</a>`;
 }
 // The class a group belongs to, matched on the code or name typed when it was
 // made, and the group's color: one it picked, else that class's color. Sessions
@@ -121,7 +121,8 @@ function slotOf(hhmm) { return clamp(Math.floor((toMin(hhmm) - AVAIL_START_HOUR 
 function slotTime(i) { return fromMin(AVAIL_START_HOUR * 60 + i * AVAIL_SLOT_MIN); }
 function availDay(entry, day) { const s = entry?.['d' + day]; return typeof s === 'string' && s.length === AVAIL_SLOTS ? s : emptyDayStr(); }
 function availHasAny(entry) { return !!entry && [0, 1, 2, 3, 4, 5, 6].some(d => availDay(entry, d).includes('1')); }
-function availDayOrder() { return state.settings.weekStartsMonday ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6]; }
+// Sunday first, the same as the calendar's week (startOfWeek in utils.js).
+function availDayOrder() { return [0, 1, 2, 3, 4, 5, 6]; }
 function scheduleBusyRanges() {
   if (typeof activeCourses !== 'function') return [];
   return activeCourses().flatMap(c => (c.meetings || []).filter(m => m && m.day >= 0 && m.day <= 6 && /^\d{2}:\d{2}$/.test(m.start || '') && /^\d{2}:\d{2}$/.test(m.end || '')).map(m => ({ day: m.day, start: m.start, end: m.end })));
@@ -189,18 +190,40 @@ function groupColorMap(g) {
   return map;
 }
 function personColor(g, id) { return groupColorMap(g)[id] || '#6b6b6b'; }
-// White initials where they're readable on the member's color, dark ones on
-// the lighter colors (amber, green, teal), so every avatar meets 4.5:1.
-function inkOnColor(hex) {
+// Text on a user-picked fill: white where it reads at 4.5:1, ink otherwise.
+// readablePair() also nudges the fill darker when neither reaches 4.5:1
+// (mid greens and pinks), so avatar initials and date tiles always pass.
+const INK_ON_COLOR = '#141414';
+function colorLum(hex) {
   const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
   const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
-  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-  return 1.05 / (L + 0.05) >= 4.5 ? '#fff' : '#141414';
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+function inkOnColor(hex) {
+  return 1.05 / (colorLum(hex) + 0.05) >= 4.5 ? '#fff' : INK_ON_COLOR;
+}
+function readablePair(hex) {
+  if (!HEX_COLOR.test(hex || '')) return { fill: hex, on: '#fff' };
+  const L = colorLum(hex);
+  if (1.05 / (L + 0.05) >= 4.5) return { fill: hex, on: '#fff' };
+  if ((L + 0.05) / (colorLum(INK_ON_COLOR) + 0.05) >= 4.5) return { fill: hex, on: INK_ON_COLOR };
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  for (let k = 0.96; k > 0.5; k -= 0.02) {
+    const d = '#' + [r, g, b].map(v => Math.round(v * k).toString(16).padStart(2, '0')).join('');
+    if (1.05 / (colorLum(d) + 0.05) >= 4.5) return { fill: d, on: '#fff' };
+  }
+  return { fill: hex, on: INK_ON_COLOR };
+}
+// Inline custom properties for a coloured container: --name, --name-fill
+// (the readable fill) and --on-name (its text colour).
+function colorVars(name, hex) {
+  const { fill, on } = readablePair(hex);
+  return `--${name}:${esc(hex)};--${name}-fill:${esc(fill)};--on-${name}:${on}`;
 }
 function personAvatar(id, name, size = 26, color = '#6b6b6b') {
   const initial = esc((String(name || '?').trim()[0] || '?').toUpperCase());
-  const shade = HEX_COLOR.test(color) ? color : '#6b6b6b';
-  return `<span class="avatar sg-avatar" style="width:${size}px;height:${size}px;font-size:${Math.max(11, Math.round(size * 0.42))}px;--shade:${shade};color:${inkOnColor(shade)}" title="${esc(name)}">${initial}</span>`;
+  const { fill, on } = readablePair(HEX_COLOR.test(color) ? color : '#6b6b6b');
+  return `<span class="avatar sg-avatar" style="width:${size}px;height:${size}px;font-size:${Math.max(12, Math.round(size * 0.42))}px;--shade:${fill};color:${on}" title="${esc(name)}">${initial}</span>`;
 }
 function setMyGroupColor(code, color) {
   if (!PERSON_COLORS.includes(color)) return;
@@ -721,8 +744,8 @@ function pageGroupDetail(g) {
   const body = { overview: groupOverviewTab, schedule: groupScheduleTab, availability: groupAvailabilityTab, tasks: groupTasksTab, resources: groupResourcesTab, chat: groupChatTab }[tab];
   const color = groupColor(g);
   return `
-    <div ${color ? `style="--sg:${esc(color)}" class="sg-tinted"` : ''}>
-    <button class="btn btn-ghost btn-sm sg-back" onclick="closeGroup()">${icon('arrow-left', 14, 1.9)} All groups</button>
+    <div ${color ? `style="${colorVars('sg', color)}" class="sg-tinted"` : ''}>
+    <button class="btn btn-ghost btn-sm sg-back" onclick="closeGroup()">${icon('arrow-left', 14)} All groups</button>
     <div class="sg-head">
       <div style="min-width:0">
         <div class="sg-eyebrow">${[g.courseLabel ? esc(g.courseLabel) : '', `${count} member${count === 1 ? '' : 's'}`, g.sample ? 'Sample group' : ''].filter(Boolean).join(' · ')}</div>
@@ -732,8 +755,8 @@ function pageGroupDetail(g) {
       <div class="sg-head-actions">
         ${avatarStack(g, 5, 30)}
         ${signInHeaderButton()}
-        <button class="btn btn-primary" onclick="openInviteModal('${g.code}')">${icon('user-plus', 14, 1.8)} Invite</button>
-        <button class="btn btn-icon" aria-label="Group settings" data-tip="Group settings" onclick="openGroupSettingsModal('${g.code}')">${icon('settings', 16, 1.6)}</button>
+        <button class="btn ${tab === 'overview' && !groupIsBrandNew(g) ? 'btn-primary' : ''}" onclick="openInviteModal('${g.code}')">${icon('user-plus', 14)} Invite</button>
+        <button class="btn btn-ghost btn-icon" aria-label="Group settings" data-tip="Group settings" onclick="openGroupSettingsModal('${g.code}')">${icon('settings', 16)}</button>
       </div>
     </div>
     ${groupLoadNotice(g)}
@@ -781,7 +804,7 @@ function groupOverviewTab(g) {
             <div class="sg-eyebrow">Next session</div>
             <div class="sg-next-title">Nothing scheduled yet</div>
             <p class="small muted mb-16">Pick a time from everyone’s availability, or just put one on the calendar.</p>
-            <div class="flex-gap wrap"><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} Schedule a session</button><button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 13, 1.8)} Find a time</button></div>
+            <div class="flex-gap wrap"><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} Schedule a session</button><button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 14)} Find a time</button></div>
           </div>`}
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Best time to meet</h3><button class="sg-link" onclick="setGroupTab('availability')">Open planner ${icon('chevron-right', 12)}</button></div>
@@ -792,12 +815,12 @@ function groupOverviewTab(g) {
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Your tasks</h3><button class="sg-link" onclick="setGroupTab('tasks')">${openTasks.length} open in group ${icon('chevron-right', 12)}</button></div>
           ${myTasks.length ? myTasks.map(t => groupTaskRow(g, t, { compact: true })).join('') : `<p class="small muted">Nothing assigned to you${openTasks.some(t => !t.assignee) ? ' yet. Up for grabs:' : '.'}</p>`}
-          ${!myTasks.length && openTasks.some(t => !t.assignee) ? openTasks.filter(t => !t.assignee).sort(byDueThenCreated).slice(0, 3).map(t => `<div class="list-row sg-task compact"><div class="row-title"><div>${esc(t.title)}</div>${t.due ? `<div class="row-meta">Due ${fmtSessionDay(t.due)}</div>` : ''}</div><button class="btn btn-sm sg-claim" onclick="setGroupTaskAssignee('${g.code}','${t.id}','${esc(u)}')">${icon('user-plus', 12, 1.9)} I’ll take it</button></div>`).join('') : ''}
+          ${!myTasks.length && openTasks.some(t => !t.assignee) ? openTasks.filter(t => !t.assignee).sort(byDueThenCreated).slice(0, 3).map(t => `<div class="list-row sg-task compact"><div class="row-title"><div>${esc(t.title)}</div>${t.due ? `<div class="row-meta">Due ${fmtSessionDay(t.due)}</div>` : ''}</div><button class="btn btn-sm sg-claim" onclick="setGroupTaskAssignee('${g.code}','${t.id}','${esc(u)}')">${icon('user-plus', 12)} I’ll take it</button></div>`).join('') : ''}
         </div>
       </div>
       <div class="sg-col">
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Members</h3><button class="sg-link" onclick="openInviteModal('${g.code}')">${icon('user-plus', 13, 1.8)} Invite</button></div>
+          <h3 class="sg-h3 mb-8">Members</h3>
           ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, personColor(g, p.uid))}<div class="row-title">${esc(p.name)}${p.uid === u ? ' <span class="small muted">(you)</span>' : ''}</div>${p.role === 'owner' ? '<span class="small muted">Owner</span>' : ''}</div>`).join('')}
           ${legacyNames.length ? `<div class="small muted mt-8">From before the update: ${legacyNames.map(esc).join(', ')}. They’ll appear here once they open the group.</div>` : ''}
         </div>
@@ -807,7 +830,7 @@ function groupOverviewTab(g) {
         </div>
         <div class="card card-pad">
           <h3 class="sg-h3 mb-8">Recent activity</h3>
-          ${activity.length ? activity.map(a => `<div class="sg-activity"><span class="sg-activity-ic">${icon(a.icon, 13, 1.8)}</span><div class="small">${esc(a.text)} <span class="muted">· ${fmtRelativeTime(a.at)}</span></div></div>`).join('') : `<p class="small muted">Nothing yet.</p>`}
+          ${activity.length ? activity.map(a => `<div class="sg-activity"><span class="sg-activity-ic">${icon(a.icon, 14)}</span><div class="small">${esc(a.text)} <span class="muted">· ${fmtRelativeTime(a.at)}</span></div></div>`).join('') : `<p class="small muted">Nothing yet.</p>`}
         </div>
       </div>
     </div>`;
@@ -862,22 +885,22 @@ function showGroupSessionModal(code, sid) {
   const going = people.filter(p => answer(p) === 'yes'), maybe = people.filter(p => answer(p) === 'maybe'), cant = people.filter(p => answer(p) === 'no'), none = people.filter(p => !answer(p));
   const later = s.seriesId ? sessionList(g).filter(x => x.seriesId === s.seriesId && x.date > s.date).length : 0;
   openModal(`
-    <div class="modal-head"><h3>${esc(s.title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>${esc(s.title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="sg-eyebrow">${esc(g.name)}${s.seriesId ? ` · Weekly${later ? `, ${later} more after this` : ''}` : ''}${past ? ' · Past' : ''}</div>
       <div class="small sg-meta-line mt-8">
-        <span>${icon('calendar', 12, 1.8)} ${esc(fmtDateLong(s.date))}</span>
-        ${s.start ? `<span>${icon('clock', 12, 1.8)} ${fmtTime(s.start)}${s.end ? `–${fmtTime(s.end)}` : ''}</span>` : ''}
-        ${s.where ? `<span>${icon('map-pin', 12, 1.8)} ${linkifyWhere(s.where)}</span>` : ''}
+        <span>${icon('calendar', 12)} ${esc(fmtDateLong(s.date))}</span>
+        ${s.start ? `<span>${icon('clock', 12)} ${fmtTime(s.start)}${s.end ? `–${fmtTime(s.end)}` : ''}</span>` : ''}
+        ${s.where ? `<span>${icon('map-pin', 12)} ${linkifyWhere(s.where)}</span>` : ''}
       </div>
       ${s.notes ? `<div class="small sg-notes mt-8">${linkifyText(s.notes)}</div>` : ''}
-      ${!past ? `<div class="flex-gap wrap mt-16" style="align-items:center">${rsvpControl(g, s)}${joinLinkButton(s.where)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 13, 1.8)} Add to calendar app</button></div>` : ''}
+      ${!past ? `<div class="flex-gap wrap mt-16" style="align-items:center">${rsvpControl(g, s)}${joinLinkButton(s.where)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button></div>` : ''}
       <div class="divider"></div>
       ${group(past ? 'Said they’d go' : 'Going', going, true)}
       ${group('Maybe', maybe, maybe.length > 0)}
       ${group('Can’t make it', cant, cant.length > 0 && cant.length <= 8)}
       ${group('Haven’t answered', none, false)}
-      ${none.length && !past && !g.local ? `<button class="btn btn-sm mt-8" onclick="copyRsvpNudge('${g.code}','${s.id}')">${icon('copy', 13, 1.8)} Copy a reminder for them</button>` : ''}
+      ${none.length && !past && !g.local ? `<button class="btn btn-sm mt-8" onclick="copyRsvpNudge('${g.code}','${s.id}')">${icon('copy', 14)} Copy a reminder for them</button>` : ''}
     </div>
     <div class="modal-foot">
       <button class="btn btn-danger" style="margin-right:auto" onclick="deleteSession('${g.code}','${s.id}')">Delete</button>
@@ -904,15 +927,15 @@ function nextSessionHero(g, s) {
         <div class="sg-eyebrow">Next session · ${fmtSessionDay(s.date)}${s.seriesId ? ' · Weekly' : ''}</div>
         <button class="sg-next-title sg-title-btn" onclick="showGroupSessionModal('${g.code}','${s.id}')">${esc(s.title)}</button>
         <div class="small muted sg-meta-line">
-          ${s.start ? `<span>${icon('clock', 12, 1.8)} ${fmtTime(s.start)}${s.end ? '–' + fmtTime(s.end) : ''}</span>` : ''}
-          ${s.where ? `<span>${icon('map-pin', 12, 1.8)} ${linkifyWhere(s.where)}</span>` : ''}
+          ${s.start ? `<span>${icon('clock', 12)} ${fmtTime(s.start)}${s.end ? '–' + fmtTime(s.end) : ''}</span>` : ''}
+          ${s.where ? `<span>${icon('map-pin', 12)} ${linkifyWhere(s.where)}</span>` : ''}
         </div>
         ${s.notes ? `<div class="small sg-notes">${linkifyText(s.notes)}</div>` : ''}
         <div class="sg-next-foot">
           ${rsvpControl(g, s)}
           ${joinLinkButton(s.where)}
           <button class="sg-link sg-going" onclick="showGroupSessionModal('${g.code}','${s.id}')" aria-label="See who’s going to ${esc(s.title)}">${going.length ? `${avatarStack(g, 4, 22, going)} ${c.yes} going` : 'No RSVPs yet'}${c.maybe ? ` · ${c.maybe} maybe` : ''} · See who</button>
-          <button class="btn btn-ghost btn-sm sg-ics" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 13, 1.8)} Add to calendar app</button>
+          <button class="btn btn-ghost btn-sm sg-ics" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>
         </div>
       </div>
     </div>`;
@@ -923,9 +946,9 @@ function groupScheduleTab(g) {
   return `
     <div class="sg-toolbar">
       <div class="small muted">Sessions show up on every member’s Semester HQ calendar.</div>
-      <div class="flex-gap wrap">${upcoming.length > 1 ? `<button class="btn btn-sm" onclick="downloadSessionIcs('${g.code}')">${icon('download', 13, 1.8)} Add all to calendar app</button>` : ''}<button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 13, 1.8)} Find a time</button><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} New session</button></div>
+      <div class="flex-gap wrap">${upcoming.length > 1 ? `<button class="btn btn-sm" onclick="downloadSessionIcs('${g.code}')">${icon('download', 14)} Add all to calendar app</button>` : ''}<button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 14)} Find a time</button><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} New session</button></div>
     </div>
-    ${upcoming.length ? upcoming.map(s => sessionCard(g, s)).join('') : emptyState(icon('calendar', 24, 1.4), 'No upcoming sessions', `<button class="btn btn-primary btn-sm mt-8" onclick="openSessionModal('${g.code}')">Schedule one</button>`, 'Not sure when? Find a time shows when everyone is free.')}
+    ${upcoming.length ? upcoming.map(s => sessionCard(g, s)).join('') : emptyState(icon('calendar', 24), 'No upcoming sessions', `<button class="btn btn-primary btn-sm mt-8" onclick="openSessionModal('${g.code}')">Schedule one</button>`, 'Not sure when? Find a time shows when everyone is free.')}
     ${past.length ? `<details class="sg-past"><summary class="small muted">Past sessions (${past.length})</summary>${past.slice(0, 30).map(s => sessionCard(g, s, { past: true })).join('')}</details>` : ''}
   `;
 }
@@ -940,7 +963,7 @@ function sessionCard(g, s, { past = false } = {}) {
         <div class="sg-session-top">
           <div style="min-width:0">
             <div class="sg-strong">${esc(s.title)}${s.seriesId ? ' <span class="sg-series-tag">Weekly</span>' : ''}</div>
-            <div class="small muted sg-meta-line"><span>${fmtSessionWhen(s)}</span>${s.where ? `<span>${icon('map-pin', 12, 1.8)} ${linkifyWhere(s.where)}</span>` : ''}</div>
+            <div class="small muted sg-meta-line"><span>${fmtSessionWhen(s)}</span>${s.where ? `<span>${icon('map-pin', 12)} ${linkifyWhere(s.where)}</span>` : ''}</div>
           </div>
           <div class="sg-session-actions">
             ${!past ? `<button class="btn btn-ghost btn-icon btn-sm" data-tip="Add to your calendar app (.ics)" aria-label="Download ${esc(s.title)} as a calendar file" onclick="event.stopPropagation();downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)}</button>` : ''}
@@ -967,7 +990,7 @@ function openSessionModal(code, sid, prefill = {}) {
     where: s?.where ?? '', notes: s?.notes ?? '',
   };
   openModal(`
-    <div class="modal-head"><h3>${s ? 'Edit session' : 'New study session'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>${s ? 'Edit session' : 'New study session'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field"><label for="ss-title">What are you working on?</label><input class="input" id="ss-title" value="${esc(v.title)}" maxlength="120" placeholder="Midterm review, problem set 4…"></div>
       <div class="field-row">
@@ -1082,27 +1105,30 @@ function groupAvailabilityTab(g) {
   const view = window._availView === 'heat' || contributors.length > 8 ? 'heat' : 'people';
   const focus = contributors.some(([id]) => id === window._availFocus) ? window._availFocus : null;
   return `
-    <div class="sg-toolbar">
-      <div class="small muted">Click and drag to mark when you’re usually free each week. Everyone has their own color, so the group grid shows exactly who’s free when.</div>
-    </div>
     <div class="sg-avail-wrap">
       <div class="card card-pad" style="--me-color:${personColor(g, u)}">
-        <div class="flex-between mb-8"><h3 class="sg-h3">Your weekly availability</h3>${mineAdded ? `<button class="btn btn-ghost btn-sm" onclick="clearMyAvailability('${g.code}')">Clear</button>` : '<span class="small muted">Drag to paint</span>'}</div>
+        <div class="sg-avail-head mb-8">
+          <h3 class="sg-h3">Your weekly availability</h3>
+          <div class="sg-avail-actions">
+            <span class="small muted">Drag to paint</span>
+            ${scheduleBusyRanges().length ? `<button class="btn btn-ghost btn-sm" data-tip="Free ${fmtTime(AVAIL_AUTO_START)} to ${fmtTime(AVAIL_AUTO_END)}, minus your classes" onclick="fillAvailabilityFromSchedule('${g.code}')">${icon('calendar', 14)} ${mineAdded ? 'Redraft from my schedule' : 'Start from my schedule'}</button>` : ''}
+            ${mineAdded ? `<button class="btn btn-ghost btn-sm" onclick="clearMyAvailability('${g.code}')">Clear</button>` : ''}
+          </div>
+        </div>
         <div class="sg-mycolor"><span class="small muted">Your color</span>${colorSwatches(g, 'setMyGroupColor')}</div>
-        ${scheduleBusyRanges().length ? `<div class="sg-auto-avail ${mineAdded ? '' : 'is-empty'}"><span class="small muted">${mineAdded ? 'Or start over:' : 'Skip the painting:'}</span><button class="btn btn-sm" onclick="fillAvailabilityFromSchedule('${g.code}')">${icon('sparkles', 13, 1.8)} ${mineAdded ? 'Redraft from my class schedule' : 'Start from my class schedule'}</button><span class="small muted">Free ${fmtTime(AVAIL_AUTO_START)}–${fmtTime(AVAIL_AUTO_END)}, minus your classes.</span></div>` : ''}
         ${availGrid(g, days, 'mine')}
       </div>
       <div class="card card-pad">
         <div class="flex-between mb-8">
           <h3 class="sg-h3">Group availability</h3>
-          ${contributors.length <= 8 ? `<div class="segmented sg-view-toggle"><button class="${view === 'people' ? 'active' : ''}" onclick="window._availView='people';render()">People</button><button class="${view === 'heat' ? 'active' : ''}" onclick="window._availView='heat';render()">Heatmap</button></div>` : `<span class="small muted">${contributors.length} of ${people.length} added</span>`}
+          ${contributors.length <= 8 ? `<div class="segmented sg-view-toggle"><button class="${view === 'people' ? 'active' : ''}" aria-pressed="${view === 'people'}" onclick="window._availView='people';render()">People</button><button class="${view === 'heat' ? 'active' : ''}" aria-pressed="${view === 'heat'}" onclick="window._availView='heat';render()">Heatmap</button></div>` : `<span class="small muted">${contributors.length} of ${people.length} added</span>`}
         </div>
         ${view === 'people' ? `
           <div class="sg-legend-people" role="group" aria-label="Highlight one person">
             ${contributors.length ? contributors.map(([id]) => `<button class="sg-legend-person ${focus === id ? 'active' : ''} ${focus && focus !== id ? 'dim' : ''}" style="--p:${personColor(g, id)}" aria-pressed="${focus === id}" onclick="window._availFocus=${focus === id ? 'null' : `'${id}'`};render()"><span class="sg-legend-dot"></span>${esc(id === u ? 'You' : personName(g, id))}</button>`).join('') : '<span class="small muted">No one has added availability yet.</span>'}
           </div>` : ''}
         ${availGrid(g, days, view, focus)}
-        ${view === 'heat' ? `<div class="sg-legend small muted"><span>Fewer free</span><span class="sg-legend-bar"></span><span>Everyone</span></div>` : `<div class="small muted mt-8">${focus ? `Showing only ${esc(focus === u ? 'you' : personName(g, focus))}. Click again to show everyone.` : 'Click a name to highlight just that person.'}</div>`}
+        ${view === 'heat' ? `<div class="sg-legend small muted"><span>Fewer free</span><span class="sg-legend-bar"></span><span>Everyone</span></div>` : focus ? `<div class="small muted mt-8">Showing only ${esc(focus === u ? 'you' : personName(g, focus))}. Click again to show everyone.</div>` : ''}
       </div>
     </div>
     <div class="grid grid-2 mt-16" style="align-items:start">
@@ -1112,8 +1138,8 @@ function groupAvailabilityTab(g) {
       </div>
       <div class="card card-pad">
         <h3 class="sg-h3 mb-8">Who’s added theirs</h3>
-        ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, personColor(g, p.uid))}<div class="row-title small">${esc(p.name)}${p.uid === u ? ' <span class="muted">(you)</span>' : ''}</div>${availHasAny(g.avail?.[p.uid]) ? `<span class="small">${icon('check', 13, 2.2)} Added</span>` : '<span class="small muted">Not yet</span>'}</div>`).join('')}
-        ${missing.length && !g.local ? `<button class="btn btn-sm mt-8" onclick="copyAvailabilityNudge('${g.code}')">${icon('copy', 13, 1.8)} Copy a reminder for the group</button>` : ''}
+        ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, personColor(g, p.uid))}<div class="row-title small">${esc(p.name)}${p.uid === u ? ' <span class="muted">(you)</span>' : ''}</div>${availHasAny(g.avail?.[p.uid]) ? `<span class="small">${icon('check', 12)} Added</span>` : '<span class="small muted">Not yet</span>'}</div>`).join('')}
+        ${missing.length && !g.local ? `<button class="btn btn-sm mt-8" onclick="copyAvailabilityNudge('${g.code}')">${icon('copy', 14)} Copy a reminder for the group</button>` : ''}
       </div>
     </div>
   `;
@@ -1129,19 +1155,26 @@ function availGrid(g, days, mode, focus = null) {
     rows.push(`<div class="sg-grid-time">${hourRow ? shortHour(AVAIL_START_HOUR + i / 2) : ''}</div>`);
     rows.push(days.map(d => {
       if (mode === 'mine') {
-        return `<div class="sg-cell ${hourRow ? 'hr' : ''} ${availDay(mine, d)[i] === '1' ? 'on' : ''}" data-day="${d}" data-col="${days.indexOf(d)}" data-slot="${i}"></div>`;
+        const day = availDay(mine, d), on = day[i] === '1';
+        const run = on ? `${day[i - 1] === '1' ? '' : 'run-start'} ${day[i + 1] === '1' ? '' : 'run-end'}` : '';
+        return `<div class="sg-cell ${hourRow ? 'hr' : ''} ${on ? 'on' : ''} ${run}" data-day="${d}" data-col="${days.indexOf(d)}" data-slot="${i}"></div>`;
       }
       const free = contributors.filter(([, a]) => availDay(a, d)[i] === '1').map(([id]) => id);
-      const everyone = contributors.length >= 2 && free.length === contributors.length;
+      const allAt = (slot) => contributors.length >= 2 && contributors.every(([, a]) => availDay(a, d)[slot] === '1');
+      const everyone = allAt(i);
+      const allRun = everyone ? `${allAt(i - 1) ? '' : 'all-start'} ${allAt(i + 1) ? '' : 'all-end'}` : '';
       const label = `${AVAIL_DAYS_LONG[d]} ${fmtTime(slotTime(i))}: ${free.length ? free.map(id => personName(g, id)).join(', ') : 'nobody'} free`;
       if (mode === 'people') {
         // One thin stripe per person, in the same order in every cell, so each
         // person's free time lines up into a colored column you can follow.
-        const stripes = contributors.map(([id]) => {
+        // A person's contiguous free slots join into one rounded bar.
+        const stripes = contributors.map(([id, a]) => {
           const on = free.includes(id) && (!focus || focus === id);
-          return `<i style="${on ? `background:${personColor(g, id)}` : ''}"></i>`;
+          if (!on) return '<i></i>';
+          const day = availDay(a, d);
+          return `<i class="${day[i - 1] === '1' ? '' : 'rs'} ${day[i + 1] === '1' ? '' : 're'}" style="background:${personColor(g, id)}"></i>`;
         }).join('');
-        return `<div class="sg-cell sg-cell-people ${hourRow ? 'hr' : ''} ${everyone && !focus ? 'all' : ''}" title="${esc(label)}">${stripes}</div>`;
+        return `<div class="sg-cell sg-cell-people ${hourRow ? 'hr' : ''} ${everyone && !focus ? `all ${allRun}` : ''}" title="${esc(label)}">${stripes}</div>`;
       }
       const pct = contributors.length ? Math.round((free.length / contributors.length) * 100) : 0;
       return `<div class="sg-cell ${hourRow ? 'hr' : ''} ${everyone ? 'all' : ''}" style="--heat:${pct}%" title="${esc(label)}"></div>`;
@@ -1151,6 +1184,15 @@ function availGrid(g, days, mode, focus = null) {
   return `<div class="sg-grid-scroll"><div class="sg-grid ${mode === 'mine' ? 'sg-grid-mine' : mode === 'people' ? 'sg-grid-people' : 'sg-grid-heat'}" ${attrs} style="--sg-cols:${days.length}">${rows.join('')}</div></div>`;
 }
 let _availPaint = null;
+// Round only the first and last painted slot of each run in a day column.
+function markAvailRuns(cells) {
+  const on = new Set(cells.filter(c => c.classList.contains('on')).map(c => `${c.dataset.col}:${c.dataset.slot}`));
+  cells.forEach(c => {
+    const col = c.dataset.col, slot = Number(c.dataset.slot), isOn = on.has(`${col}:${slot}`);
+    c.classList.toggle('run-start', isOn && !on.has(`${col}:${slot - 1}`));
+    c.classList.toggle('run-end', isOn && !on.has(`${col}:${slot + 1}`));
+  });
+}
 function bindAvailabilityPainting() {
   const grid = document.getElementById('sg-avail-mine');
   if (!grid || grid.dataset.bound) return;
@@ -1171,6 +1213,7 @@ function bindAvailabilityPainting() {
       const inside = p.col >= c0 && p.col <= c1 && p.slot >= s0 && p.slot <= s1;
       c.classList.toggle('on', inside ? _availPaint.turnOn : _availPaint.before[i]);
     });
+    markAvailRuns(cells);
   };
   const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.classList.contains('sg-cell') && grid.contains(el) ? el : null; };
   grid.addEventListener('pointerdown', (ev) => {
@@ -1287,10 +1330,10 @@ function groupTasksTab(g) {
       </div>
     </div>
     <div class="sg-toolbar">
-      <div class="segmented">${[['all', 'All'], ['mine', 'Mine'], ['unassigned', 'Unassigned']].map(([k, l]) => `<button class="${filter === k ? 'active' : ''}" onclick="setState({groupTaskFilter:'${k}'})">${l}</button>`).join('')}</div>
+      <div class="segmented">${[['all', 'All'], ['mine', 'Mine'], ['unassigned', 'Unassigned']].map(([k, l]) => `<button class="${filter === k ? 'active' : ''}" aria-pressed="${filter === k}" onclick="setState({groupTaskFilter:'${k}'})">${l}</button>`).join('')}</div>
       ${all.length ? `<div class="sg-task-progress"><span class="small muted">${doneCount} of ${all.length} done</span><div class="progress"><div style="width:${pct}%"></div></div></div>` : ''}
     </div>
-    ${open.length ? open.map(t => groupTaskRow(g, t)).join('') : emptyState(icon('check-square', 24, 1.4), filter === 'mine' ? 'Nothing assigned to you' : filter === 'unassigned' ? 'Every task has an owner' : 'No open tasks', '', filter === 'all' ? 'Break the work into pieces and give each one an owner.' : '')}
+    ${open.length ? open.map(t => groupTaskRow(g, t)).join('') : emptyState(icon('check-square', 24), filter === 'mine' ? 'Nothing assigned to you' : filter === 'unassigned' ? 'Every task has an owner' : 'No open tasks', '', filter === 'all' ? 'Break the work into pieces and give each one an owner.' : '')}
     ${done.length ? `<details class="sg-past"><summary class="small muted">Completed (${done.length})</summary>${done.map(t => groupTaskRow(g, t)).join('')}</details>` : ''}
   `;
 }
@@ -1310,7 +1353,7 @@ function groupTaskRow(g, t, { compact = false } = {}) {
         ${meta ? `<div class="row-meta">${meta}</div>` : ''}
       </div>
       ${compact ? '' : `
-        ${!t.done && !t.assignee ? `<button class="btn btn-sm sg-claim" onclick="setGroupTaskAssignee('${g.code}','${t.id}','${esc(u)}')">${icon('user-plus', 12, 1.9)} I’ll take it</button>` : ''}
+        ${!t.done && !t.assignee ? `<button class="btn btn-sm sg-claim" onclick="setGroupTaskAssignee('${g.code}','${t.id}','${esc(u)}')">${icon('user-plus', 12)} I’ll take it</button>` : ''}
         <select class="select sg-assignee" aria-label="Assign ${esc(t.title)}" onchange="setGroupTaskAssignee('${g.code}','${t.id}',this.value)">
           <option value="">Unassigned</option>${groupPeople(g).map(p => `<option value="${esc(p.uid)}" ${p.uid === t.assignee ? 'selected' : ''}>${esc(p.name)}${p.uid === u ? ' (you)' : ''}</option>`).join('')}
         </select>
@@ -1351,7 +1394,7 @@ function groupResourcesTab(g) {
       <div class="small muted">Share notes, flashcards, files, and links. Anyone in the group can add their own copy.</div>
       <button class="btn btn-primary btn-sm" onclick="openShareResourceModal('${g.code}')">${icon('plus', 14)} Share something</button>
     </div>
-    ${items.length ? items.map(s => groupResourceRow(g, s)).join('') : emptyState(icon('layers', 24, 1.4), 'Nothing shared yet', `<button class="btn btn-sm mt-8" onclick="openShareResourceModal('${g.code}')">Share the first resource</button>`, 'You can also share straight from any note, notebook, flashcard deck, or project.')}
+    ${items.length ? items.map(s => groupResourceRow(g, s)).join('') : emptyState(icon('layers', 24), 'Nothing shared yet', `<button class="btn btn-sm mt-8" onclick="openShareResourceModal('${g.code}')">Share the first resource</button>`, 'You can also share straight from any note, notebook, flashcard deck, or project.')}
   `;
 }
 function resourceUrl(g, s) {
@@ -1364,9 +1407,9 @@ function groupResourceRow(g, s) {
   const canRemove = !s.sharedByUid || s.sharedByUid === u || g.createdBy === u;
   const meta = { deck: `${(s.cards || []).length} cards`, 'note-bundle': `${(s.notes || []).length} notes`, project: `${(s.milestones || []).length} milestones`, file: fmtFileSize(s.size), link: hostOf(s.url) }[s.kind] || '';
   const url = resourceUrl(g, s);
-  const action = s.kind === 'file' ? (url ? `<a class="btn btn-sm" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(s.fileName || s.title)}">${icon('download', 13)} Open</a>` : '')
-    : s.kind === 'link' ? (url ? `<a class="btn btn-sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${icon('link', 13)} Open</a>` : '')
-    : `<button class="btn btn-sm" onclick="importGroupResource('${g.code}','${s.id}')">${icon('plus', 13)} Add to mine</button>`;
+  const action = s.kind === 'file' ? (url ? `<a class="btn btn-sm" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(s.fileName || s.title)}">${icon('download', 14)} Open</a>` : '')
+    : s.kind === 'link' ? (url ? `<a class="btn btn-sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${icon('link', 14)} Open</a>` : '')
+    : `<button class="btn btn-sm" onclick="importGroupResource('${g.code}','${s.id}')">${icon('plus', 14)} Add to mine</button>`;
   const kindLabel = s.kind === 'file' ? fileTypeLabel(s.fileName || s.title) : SHARE_KIND_LABEL[s.kind] || 'Item';
   return `
     <div class="list-row sg-resource">
@@ -1381,7 +1424,7 @@ function openShareResourceModal(code) {
   if (!g) return;
   window._shareResource = { code, file: null };
   openModal(`
-    <div class="modal-head"><h3>Share with ${esc(g.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Share with ${esc(g.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field"><label for="sr-kind">What are you sharing?</label>
         <select class="select" id="sr-kind" onchange="renderShareResourceFields()">
@@ -1540,7 +1583,7 @@ function openShareToGroupModal(kind, title, payload) {
   }
   window._shareDraft = { kind, title, payload };
   openModal(`
-    <div class="modal-head"><h3>Share “${esc(title)}”</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Share “${esc(title)}”</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field"><label for="share-group">Share to group</label>
         <select class="select" id="share-group">${groups.map(g => `<option value="${g.code}">${esc(g.name)}</option>`).join('')}</select>
@@ -1579,17 +1622,17 @@ function groupChatTab(g) {
           ${!mine && !grouped ? `<div class="sg-msg-name">${esc(m.name)} <span class="muted">${new Date(m.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></div>` : ''}
           <div class="sg-bubble" title="${esc(new Date(m.at).toLocaleString())}">${linkifyText(m.text)}</div>
         </div>
-        ${mine || isOwner ? `<button class="sg-msg-del" aria-label="Delete message" title="Delete" onclick="deleteGroupMessage('${g.code}','${m.id}')">${icon('x', 11, 2.2)}</button>` : ''}
+        ${mine || isOwner ? `<button class="sg-msg-del" aria-label="Delete message" title="Delete" onclick="deleteGroupMessage('${g.code}','${m.id}')">${icon('x', 11)}</button>` : ''}
       </div>`;
   }).join('');
   return `
     <div class="card sg-chat">
       <div class="sg-chat-log" id="sg-chat-log" data-keep-scroll="bottom">
-        ${msgs.length ? rows : emptyState(icon('message-circle', 24, 1.4), 'No messages yet', '', 'Say hi, or post what you’re stuck on.')}
+        ${msgs.length ? rows : emptyState(icon('message-circle', 24), 'No messages yet', '', 'Say hi, or post what you’re stuck on.')}
       </div>
       <div class="sg-chat-compose">
         <input class="input" id="sg-chat-input" maxlength="${GROUP_MESSAGE_MAX}" autocomplete="off" placeholder="Message ${esc(g.name)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendGroupMessage('${g.code}')}">
-        <button class="btn btn-primary" aria-label="Send message" onclick="sendGroupMessage('${g.code}')">${icon('send', 14, 1.9)}</button>
+        <button class="btn btn-primary" aria-label="Send message" data-tip="Send" onclick="sendGroupMessage('${g.code}')">${icon('send', 14)}</button>
       </div>
     </div>`;
 }
@@ -1640,7 +1683,7 @@ function markChatSeen(code, at) {
 function openCreateGroupModal() {
   const courses = activeCourses();
   openModal(`
-    <div class="modal-head"><h3>New study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>New study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field"><label for="gf-name">Group name</label><input class="input" id="gf-name" maxlength="80" placeholder="Calc II group" onkeydown="if(event.key==='Enter')submitCreateGroup()"></div>
       <div class="field"><label for="gf-course">Class <span class="muted">(optional)</span></label>
@@ -1689,14 +1732,14 @@ async function submitCreateGroup() {
 function openJoinGroupModal(prefill = '') {
   if (!cloudGroupsEnabled()) {
     openModal(`
-      <div class="modal-head"><h3>Join a study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+      <div class="modal-head"><h3>Join a study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
       <div class="modal-body"><p class="small muted">Joining a classmate’s group needs a Semester HQ account, so your sessions, tasks, and chat stay in sync with theirs.</p></div>
       <div class="modal-foot"><button class="btn" onclick="closeModal()">Not now</button>${fbConfigured() ? `<a class="btn btn-primary" href="login.html">Log in or sign up</a>` : ''}</div>
     `);
     return;
   }
   openModal(`
-    <div class="modal-head"><h3>Join a study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Join a study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field"><label for="jf-code">Group code</label>
         <input class="input sg-code-input" id="jf-code" value="${esc(normalizeCode(prefill))}" placeholder="ABC123" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"
@@ -1733,10 +1776,10 @@ function showJoinPreview(code, data) {
   const count = data.v === 2 ? people.length : (data.members || []).length;
   const next = data.v === 2 ? upcomingSessions(g)[0] : null;
   openModal(`
-    <div class="modal-head"><h3>You’re invited</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>You’re invited</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="sg-join-card">
-        ${people.length ? avatarStack(g, 6, 34) : `<span class="sg-feature-ic">${icon('users', 18, 1.7)}</span>`}
+        ${people.length ? avatarStack(g, 6, 34) : `<span class="sg-feature-ic">${icon('users', 18)}</span>`}
         <div class="sg-join-name">${esc(g.name)}</div>
         <div class="small muted">${[g.courseLabel ? esc(g.courseLabel) : '', count ? `${count} member${count === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}</div>
         ${g.description ? `<div class="small mt-8">${esc(g.description)}</div>` : ''}
@@ -1784,17 +1827,17 @@ function openInviteModal(code, { justCreated = false } = {}) {
   if (!g) return;
   const link = groupInviteLink(code);
   openModal(`
-    <div class="modal-head"><h3>${justCreated ? 'Your group is ready' : `Invite to ${esc(g.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>${justCreated ? 'Your group is ready' : `Invite to ${esc(g.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       ${g.local ? `<div class="sg-callout small mb-16"><div>${g.sample ? 'This is a sample group, so this code is just for show.' : 'You’re not logged in, so no one else can join this group yet. <a href="login.html">Log in</a> to invite classmates for real.'}</div></div>` : ''}
       <p class="small muted" style="text-align:center">${justCreated ? 'Invite your classmates. ' : ''}They can join with this code:</p>
       <div class="sg-invite-code" aria-label="Group code ${code.split('').join(' ')}">${code.split('').map(c => `<span>${c}</span>`).join('')}</div>
       <div class="field mt-16"><label for="sg-invite-link">Or send them a link</label>
-        <div class="sg-invite-row"><input class="input" id="sg-invite-link" value="${esc(link)}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyInvite('${code}')">${icon('copy', 13, 1.8)} Copy</button></div>
+        <div class="sg-invite-row"><input class="input" id="sg-invite-link" value="${esc(link)}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyInvite('${code}')">${icon('copy', 14)} Copy</button></div>
       </div>
-      ${navigator.share ? `<button class="btn" style="width:100%;justify-content:center" onclick="shareInviteNative('${code}')">${icon('send', 13, 1.8)} Share via Messages, GroupMe…</button>` : ''}
+      ${navigator.share ? `<button class="btn" style="width:100%;justify-content:center" onclick="shareInviteNative('${code}')">${icon('send', 14)} Share via Messages, GroupMe…</button>` : ''}
       <div class="sg-pricing-inline small mt-16">
-        <span class="sg-feature-ic">${icon('users', 15, 1.7)}</span>
+        <span class="sg-feature-ic">${icon('users', 16)}</span>
         <div><span class="sg-strong">Getting your whole class or club on board?</span><div class="muted">Each member needs their own Semester HQ Plus. <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Group pricing</a> covers everyone at a lower per-student rate.</div></div>
       </div>
     </div>
@@ -1813,7 +1856,7 @@ function openGroupSettingsModal(code) {
   const isOwner = g.createdBy === u;
   const people = groupPeople(g);
   openModal(`
-    <div class="modal-head"><h3>Group settings</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Group settings</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field"><label for="gs-name">Group name</label><input class="input" id="gs-name" value="${esc(g.name)}" maxlength="80"></div>
       <div class="field"><label for="gs-course">Class</label><input class="input" id="gs-course" value="${esc(g.courseLabel || '')}" maxlength="60" list="gs-course-list" placeholder="Optional"><datalist id="gs-course-list">${activeCourses().map(c => `<option value="${esc(c.code || c.name)}">`).join('')}</datalist></div>
@@ -1821,7 +1864,7 @@ function openGroupSettingsModal(code) {
       <div class="field"><label>Your color in this group</label>${colorSwatches(g, 'pickGroupColorFromSettings')}</div>
       <div class="field"><label>Group color <span class="muted">(its sessions on your calendar)</span></label>
         <div class="org-colors" role="group" aria-label="Group color">
-          <button type="button" class="page-color sg-color-auto ${HEX_COLOR.test(g.color || '') ? '' : 'active'}" aria-pressed="${!HEX_COLOR.test(g.color || '')}" title="${groupCourse(g) ? `Match ${esc(groupCourse(g).code || groupCourse(g).name)}` : 'No color'}" aria-label="${groupCourse(g) ? 'Match the class color' : 'No color'}" style="${groupCourse(g) ? `background:${groupCourse(g).color}` : ''}" onclick="setGroupColor('${code}','')">${groupCourse(g) ? '' : icon('x', 11, 2.2)}</button>
+          <button type="button" class="page-color sg-color-auto ${HEX_COLOR.test(g.color || '') ? '' : 'active'}" aria-pressed="${!HEX_COLOR.test(g.color || '')}" title="${groupCourse(g) ? `Match ${esc(groupCourse(g).code || groupCourse(g).name)}` : 'No color'}" aria-label="${groupCourse(g) ? 'Match the class color' : 'No color'}" style="${groupCourse(g) ? `background:${groupCourse(g).color}` : ''}" onclick="setGroupColor('${code}','')">${groupCourse(g) ? '' : icon('x', 11)}</button>
           ${GROUP_COLORS.map((c, i) => `<button type="button" class="page-color ${g.color === c ? 'active' : ''}" style="background:${c}" aria-label="Color ${i + 1}" aria-pressed="${g.color === c}" onclick="setGroupColor('${code}','${c}')"></button>`).join('')}
         </div>
         <div class="small muted mt-4">${groupCourse(g) ? `The first swatch follows ${esc(groupCourse(g).code || groupCourse(g).name)}’s color.` : g.courseLabel ? 'Add a class in Courses with the same code and the group can match its color.' : 'Pick one, or set a class above so the group can match it.'}</div>
@@ -1836,8 +1879,8 @@ function openGroupSettingsModal(code) {
         </div>`).join('')}
       <div class="divider"></div>
       <div class="sg-danger">
-        <button class="btn btn-sm" onclick="confirmLeaveGroup('${code}')">${icon('log-out', 13, 1.8)} ${g.sample ? 'Remove sample group' : 'Leave group'}</button>
-        ${isOwner && !g.local ? `<button class="btn btn-danger btn-sm" onclick="confirmDeleteGroup('${code}')">${icon('trash', 13, 1.8)} Delete for everyone</button>` : ''}
+        <button class="btn btn-sm" onclick="confirmLeaveGroup('${code}')">${icon('log-out', 14)} ${g.sample ? 'Remove sample group' : 'Leave group'}</button>
+        ${isOwner && !g.local ? `<button class="btn btn-danger btn-sm" onclick="confirmDeleteGroup('${code}')">${icon('trash', 14)} Delete for everyone</button>` : ''}
       </div>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveGroupSettings('${code}')">Save</button></div>
@@ -1948,7 +1991,7 @@ async function handlePendingJoin() {
     if (_inviteLoginShown) return;
     _inviteLoginShown = true;
     openModal(`
-      <div class="modal-head"><h3>You’re invited to a study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+      <div class="modal-head"><h3>You’re invited to a study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
       <div class="modal-body">
         <div class="sg-invite-code small-code">${code.split('').map(c => `<span>${c}</span>`).join('')}</div>
         <p class="small muted mt-16">Log in or create your Semester HQ account to join. You’ll come right back to this invite afterward.</p>
@@ -1978,7 +2021,7 @@ function pendingInviteBanner() {
       .catch(() => {});
   }
   const name = window._pendingInviteName;
-  return `<div class="sg-callout small mb-16" style="text-align:left"><span>${icon('users', 15, 1.8)}</span><div>You’ve been invited to join ${name ? `<strong>${esc(name)}</strong>` : 'a study group'}. Subscribe to join your classmates. If your whole group is signing up together, <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">ask about group pricing</a>.</div></div>`;
+  return `<div class="sg-callout small mb-16" style="text-align:left"><span>${icon('users', 16)}</span><div>You’ve been invited to join ${name ? `<strong>${esc(name)}</strong>` : 'a study group'}. Subscribe to join your classmates. If your whole group is signing up together, <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">ask about group pricing</a>.</div></div>`;
 }
 // Called at the end of every auth state change (see firebase.js).
 function onGroupsAuthResolved() {
@@ -1998,7 +2041,7 @@ function dashboardGroupsWidget() {
       <div class="card card-pad mb-16">
         <div class="flex-between wrap" style="gap:12px">
           <div><h3 class="sg-h3">Study groups</h3><div class="small muted">Find a time everyone’s free, plan sessions, and split the work with classmates.</div></div>
-          <button class="btn btn-sm" onclick="setState({route:'studygroups',subRoute:null})">${icon('users', 13, 1.8)} Start a group</button>
+          <button class="btn btn-sm" onclick="setState({route:'studygroups',subRoute:null})">${icon('users', 14)} Start a group</button>
         </div>
       </div>`;
   }

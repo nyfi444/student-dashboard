@@ -123,7 +123,7 @@ function syllabusCard(c) {
       <div class="syl-section">
         <div class="flex-between">
           <div class="syl-label">${icon('calendar', 12, 1.9)} Attendance</div>
-          <button class="sg-link" onclick="openAbsenceModal('${c.id}')">+ Log absence</button>
+          <button class="sg-link" onclick="openAbsenceModal('${c.id}')">${icon('plus', 12)} Log absence</button>
         </div>
         ${limit != null ? `
           <div class="syl-absence ${used > limit ? 'is-over' : used === limit ? 'is-at' : ''}">
@@ -283,7 +283,7 @@ function renderCourseDetailsModal() {
 
       <div class="syl-form-label">Office hours</div>
       <div id="dd-hours">${(d.officeHours || []).map((h, i) => officeHourRow(h, i)).join('')}</div>
-      <button class="btn btn-sm mb-8" onclick="syncDetailsDraft();_detailsDraft.officeHours.push({day:2,start:'14:00',end:'15:00',where:''});renderCourseDetailsModal()">+ Add office hours</button>
+      <button class="btn btn-sm mb-8" onclick="syncDetailsDraft();_detailsDraft.officeHours.push({day:2,start:'14:00',end:'15:00',where:''});renderCourseDetailsModal()">${icon('plus', 14)} Add office hours</button>
       <div class="field"><label for="dd-ohnote">Note</label><input class="input" id="dd-ohnote" maxlength="160" value="${esc(d.officeHoursNote || '')}" placeholder="Or by appointment"></div>
 
       <div class="syl-form-label">Attendance and late work</div>

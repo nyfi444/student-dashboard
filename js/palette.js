@@ -79,7 +79,7 @@ function paletteSearch(q) {
 
 function openCommandPalette() {
   if (_palette.open) return;
-  _palette = { open: true, query: '', index: 0, results: paletteSearch(''), returnFocus: document.activeElement };
+  _palette = { open: true, query: '', index: 0, results: paletteSearch(''), returnFocus: paletteReturnTarget() };
   const el = document.createElement('div');
   el.id = 'cmdk';
   el.className = 'cmdk-wrap';
@@ -158,13 +158,23 @@ function paletteQuickTodo() {
   touch();
   toast(`Added “${td.title}” to your to-dos`, 'success', 4500, { label: 'Undo', run: () => { state.todos = state.todos.filter(x => x.id !== td.id); touch(); } });
 }
+// Where focus goes back to when the palette closes: whatever had focus, or,
+// when a click didn't move focus (Safari never focuses a clicked button, and
+// a menu item is gone by now), the button that was clicked or the menu's ···.
+function paletteReturnTarget() {
+  let el = document.activeElement;
+  if (el && el !== document.body && !el.closest?.('.menu-surface')) return el;
+  if (el?.closest?.('.menu-surface') && typeof _menu !== 'undefined' && _menu?.anchor) return _menu.anchor;
+  const clicked = window.event?.target?.closest?.('button, a[href], [tabindex]');
+  return clicked && !clicked.closest('.menu-surface') ? clicked : el;
+}
 function closeCommandPalette(restoreFocus = true) {
   const el = $('#cmdk');
   if (!el) return;
   const back = _palette.returnFocus;
   _palette.open = false;
   el.remove();
-  if (restoreFocus && back && document.contains(back)) back.focus?.();
+  if (restoreFocus && back && back !== document.body && document.contains(back)) { try { back.focus({ preventScroll: true }); } catch {} }
 }
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {

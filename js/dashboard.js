@@ -97,6 +97,12 @@ function dashKindLabel(r) {
   return t === 'to-do' ? 'To-do' : t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+// One meta line under the Up next title: course dot and code, place, time.
+function dashNextMeta(i) {
+  const range = i.start ? fmtTime(i.start) + (i.end ? ` – ${fmtTime(i.end)}` : '') : '';
+  if (!i.sub && !range) return '';
+  return `<div class="dash-next-meta small">${i.sub ? `<span class="assign-course"><span class="course-dot"></span>${esc(i.sub)}</span>` : ''}${i.sub && range ? '<span aria-hidden="true">·</span>' : ''}${range ? `<span>${range}</span>` : ''}</div>`;
+}
 function dashHero() {
   const t = todayIso();
   const items = todayTimeline();
@@ -107,8 +113,8 @@ function dashHero() {
     .sort((a, b) => (a.dueDate + (a.dueTime || '')).localeCompare(b.dueDate + (b.dueTime || '')))[0];
 
   let focus;
-  if (current) focus = { eyebrow: `Happening now · until ${fmtTime(current.end)}`, item: current };
-  else if (upcoming) focus = { eyebrow: `Up next · ${fmtIn(toMin(upcoming.start) - nowMin)} · ${fmtTime(upcoming.start)}`, item: upcoming };
+  if (current) focus = { eyebrow: 'Happening now', item: current };
+  else if (upcoming) focus = { eyebrow: `Up next · ${fmtIn(toMin(upcoming.start) - nowMin)}`, item: upcoming };
   else if (nextDeadline) {
     const c = getCourse(nextDeadline.courseId);
     focus = { eyebrow: `Next deadline · ${relativeDay(nextDeadline.dueDate)}`, item: { title: nextDeadline.title, sub: [c?.name, nextDeadline.type].filter(Boolean).join(' · '), color: c?.color, action: `openAssignmentModal('${nextDeadline.id}')` } };
@@ -126,9 +132,9 @@ function dashHero() {
       <div class="card dash-today">
         <div class="dash-next" ${focus ? `style="--course:${esc(focus.item.color || '#5a6b7b')}"` : ''}>
           ${focus ? `
-            <div class="sg-eyebrow"><span class="course-dot"></span>${esc(focus.eyebrow)}</div>
+            <div class="sg-eyebrow">${esc(focus.eyebrow)}</div>
             <button class="dash-next-title" onclick="${focus.item.action}">${esc(focus.item.title)}</button>
-            ${focus.item.sub ? `<div class="small muted">${esc(focus.item.sub)}</div>` : ''}
+            ${dashNextMeta(focus.item)}
           ` : `
             <div class="sg-eyebrow">Today</div>
             <div class="dash-next-title is-static">You’re all clear.</div>
@@ -216,7 +222,7 @@ const DASH_WIDGETS = {
           const prep = examPrep(e);
           return `<button class="dash-exam-row" style="--course:${esc(c?.color || '#5a6b7b')}" onclick="openExamPrep('${e.id}')">
             <span class="dash-exam-days ${d <= 3 ? 'soon' : ''}"><strong>${d === 0 ? 'Today' : d}</strong>${d === 0 ? '' : `<span>day${d === 1 ? '' : 's'}</span>`}</span>
-            <span style="min-width:0;text-align:left"><span class="sg-strong dash-ellipsis">${esc(e.title)}</span><span class="small dim dash-ellipsis"><span class="course-dot"></span> ${esc(c ? (c.code || c.name) : '')} · ${fmtDate(e.dueDate, { weekday: 'short', month: 'short', day: 'numeric' })}${prep != null ? ` · ${prep}% prepped` : ''}</span></span>
+            <span style="min-width:0;text-align:left"><span class="sg-strong dash-ellipsis">${esc(e.title)}</span><span class="small dim dash-ellipsis">${c ? `<span class="assign-course"><span class="course-dot"></span>${esc(c.code || c.name)}</span> · ` : ''}${fmtDate(e.dueDate, { weekday: 'short', month: 'short', day: 'numeric' })}${prep != null ? ` · ${prep}% prepped` : ''}</span></span>
           </button>`;
         }).join('') : `<p class="small muted">No exams on your list. Syllabus upload adds them automatically.</p>`}
       </div>`;
@@ -249,14 +255,17 @@ const DASH_WIDGETS = {
     const w = weeklyWorkload(14);
     return `
       <div class="card card-pad">
-        <div class="flex-between mb-8"><h3 class="sg-h3">Workload</h3><span class="small muted">Next two weeks</span></div>
+        <div class="flex-between mb-8"><h3 class="sg-h3">Workload</h3><span class="small muted"><span class="dash-wl-long">Next two weeks</span><span class="dash-wl-short">Next 7 days</span></span></div>
         <div class="dash-workload">
-          ${w.map(d => `
-            <div class="dash-wl-col ${d.isToday ? 'today' : ''}" onclick="setState({route:'calendar',calView:'day',calDate:'${d.date}'})" title="${fmtDate(d.date, { weekday: 'long', month: 'short', day: 'numeric' })}: ${d.count} due${d.exam ? ', including an exam' : ''}">
-              <div class="dash-wl-bar-wrap"><div class="dash-wl-bar ${d.exam ? 'exam' : ''}" style="height:${d.count ? 10 + (d.count / w.maxCount) * 38 : 3}px"></div></div>
-              <div class="dash-wl-count">${d.count || ''}</div>
-              <div class="dash-wl-day">${d.label}</div>
-            </div>`).join('')}
+          ${w.map(d => {
+            const tip = `${d.isToday ? 'Today, ' : ''}${fmtDate(d.date, { weekday: 'long', month: 'short', day: 'numeric' })}: ${d.count} due${d.exam ? ', including an exam' : ''}`;
+            return `
+            <button type="button" class="dash-wl-col ${d.isToday ? 'today' : ''}" onclick="setState({route:'calendar',calView:'day',calDate:'${d.date}'})" data-tip="${tip}" aria-label="${tip}"${d.isToday ? ' aria-current="date"' : ''}>
+              <span class="dash-wl-bar-wrap"><span class="dash-wl-bar ${d.exam ? 'exam' : ''}" style="height:${d.count ? 10 + (d.count / w.maxCount) * 38 : 3}px"></span></span>
+              <span class="dash-wl-count" aria-hidden="true">${d.count || ''}</span>
+              <span class="dash-wl-day" aria-hidden="true">${d.label}</span>
+            </button>`;
+          }).join('')}
         </div>
       </div>`;
   },

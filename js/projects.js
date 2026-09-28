@@ -74,7 +74,7 @@ function pageProjects() {
         </div>
       </div>
       ${view === 'active' && active.some(p => p.dueDate) ? projectTimeline(active) : ''}
-      ${list.length ? expandable(`proj-${view}`, view === 'done' ? 'Finished projects' : 'Projects in progress', `<div class="grid grid-2 proj-grid">${list.map(projectCard).join('')}</div>`, { max: 560, count: list.length }) : emptyState(icon('folder', 26, 1.4), view === 'done' ? 'Nothing finished yet' : 'Nothing in progress', view === 'done' ? '' : `<button class="btn btn-primary" onclick="openProjectModal()">${icon('plus', 14)} New project</button>`, view === 'done' ? 'Projects you mark finished land here.' : '')}
+      ${list.length ? expandable(`proj-${view}`, view === 'done' ? 'Finished projects' : 'Projects in progress', `<div class="grid grid-2 proj-grid">${list.map(projectCard).join('')}</div>`, { max: 560, count: list.length }) : emptyState(icon('folder', 26), view === 'done' ? 'Nothing finished yet' : 'Nothing in progress', view === 'done' ? '' : `<button class="btn btn-primary" onclick="openProjectModal()">${icon('plus', 14)} New project</button>`, view === 'done' ? 'Projects you mark finished land here.' : '')}
       ${view === 'active' ? `<div class="sg-section-label mt-16">Start from a template</div>${projectTemplateRow()}` : ''}
     ` : projectsEmptyHero()}
   `;
@@ -109,14 +109,14 @@ function projectCard(p) {
     <div class="card proj-card ${projectIsDone(p) ? 'is-done' : ''}" style="--course:${esc(projectColor(p))}" onclick="openProject('${p.id}')">
       <div class="proj-card-top">
         <div class="sg-eyebrow">${c ? `<span class="course-dot"></span>${esc(c.code || c.name)}` : 'Personal'}</div>
-        <span class="proj-days ${n != null && n <= 3 && !projectIsDone(p) ? 'soon' : ''}">${projectIsDone(p) ? `${icon('check', 12, 2.4)}Finished` : `${n != null && n <= 3 ? icon('clock', 12) : ''}${esc(daysLeftLabel(p.dueDate))}`}</span>
+        <span class="proj-days ${n != null && n <= 3 && !projectIsDone(p) ? 'soon' : ''}">${projectIsDone(p) ? `${icon('check', 12)}Finished` : `${n != null && n <= 3 ? icon('clock', 12) : ''}${esc(daysLeftLabel(p.dueDate))}`}</span>
       </div>
       <div class="proj-card-title">${esc(p.title)}</div>
       ${!projectIsDone(p) ? `<div class="small proj-next">${next ? `<span class="dim">Next:</span> ${esc(next.title)}${next.dueDate ? ` <span class="${milestoneOverdue(next) ? 'sg-overdue' : 'dim'}">· ${esc(relativeDay(next.dueDate).replace(' (overdue)', ''))}</span>` : ''}` : ms.length ? '<span class="muted">Every milestone is done</span>' : '<span class="muted">No milestones yet</span>'}</div>` : ''}
       ${ms.length ? `<div class="proj-segments" aria-hidden="true">${ms.map(m => `<span class="${m.done ? 'done' : milestoneOverdue(m) ? 'late' : ''}" title="${esc(m.title)}"></span>`).join('')}</div>` : ''}
       <div class="proj-card-foot small dim">
         <span>${pct}% · ${ms.filter(m => m.done).length}/${ms.length} milestones${late ? ` · <span class="sg-overdue">${late} behind</span>` : ''}</span>
-        ${(p.team || []).length ? `<span class="proj-team">${p.team.slice(0, 4).map(name => `<span class="avatar sg-avatar" style="--shade:#6b6b6b;width:22px;height:22px;font-size:11px" title="${esc(name)}">${esc(name.charAt(0).toUpperCase())}</span>`).join('')}</span>` : ''}
+        ${(p.team || []).length ? `<span class="proj-team">${p.team.slice(0, 4).map(name => `${personAvatar('', name, 22)}`).join('')}</span>` : ''}
       </div>
     </div>`;
 }
@@ -164,7 +164,7 @@ function pageProjectDetail(p) {
   const courseMin = p.courseId ? state.timerSessions.filter(s => s.courseId === p.courseId && s.date >= (p.startDate || iso(new Date(p.createdAt || Date.now())))).reduce((s, x) => s + x.minutes, 0) : 0;
   return `
     <div style="--course:${esc(projectColor(p))}">
-    <button class="btn btn-ghost btn-sm sg-back" onclick="setState({subRoute:null})">${icon('arrow-left', 14, 1.9)} All projects</button>
+    <button class="btn btn-ghost btn-sm sg-back" onclick="setState({subRoute:null})">${icon('arrow-left', 14)} All projects</button>
     <div class="sg-head">
       <div style="min-width:0">
         <div class="sg-eyebrow">${[c ? `<span class="course-dot"></span>${esc(c.code || c.name)}` : '', p.dueDate ? `Due ${esc(fmtDateLong(p.dueDate))}` : 'No due date', projectIsDone(p) ? 'Finished' : ''].filter(Boolean).join(' · ')}</div>
@@ -174,7 +174,7 @@ function pageProjectDetail(p) {
       <div class="sg-head-actions">
         ${signInHeaderButton()}
         ${typeof openShareToGroupModal === 'function' ? `<button class="btn btn-sm" onclick="shareProjectToGroup('${p.id}')">${icon('users', 14)} Share</button>` : ''}
-        ${projectIsDone(p) ? `<button class="btn btn-sm" onclick="setProjectDone('${p.id}',false)">Reopen</button>` : pct === 100 && ms.length ? `<button class="btn btn-primary btn-sm" onclick="setProjectDone('${p.id}',true)">${icon('check', 14, 2.4)} Mark finished</button>` : ''}
+        ${projectIsDone(p) ? `<button class="btn btn-sm" onclick="setProjectDone('${p.id}',false)">Reopen</button>` : pct === 100 && ms.length ? `<button class="btn btn-primary btn-sm" onclick="setProjectDone('${p.id}',true)">${icon('check', 14)} Mark finished</button>` : ''}
         <button class="btn btn-icon" aria-label="Edit project" data-tip="Edit project" onclick="openProjectModal('${p.id}')">${icon('pencil', 16)}</button>
       </div>
     </div>
@@ -200,14 +200,14 @@ function pageProjectDetail(p) {
               ${p.courseId ? `<button class="btn btn-sm" onclick="startCourseFocus('${p.courseId}')">${icon('play', 14)} Focus session</button>` : ''}
               <button class="btn btn-sm" onclick="blockProjectTime('${p.id}')">${icon('calendar', 14)} Block time for it</button>
             </div>
-          ` : `<div class="proj-up-title">Every milestone is done.</div><button class="btn btn-primary btn-sm mt-8" onclick="setProjectDone('${p.id}',true)">${icon('check', 13, 2.4)} Mark the project finished</button>`}
+          ` : `<div class="proj-up-title">Every milestone is done.</div><button class="btn btn-primary btn-sm mt-8" onclick="setProjectDone('${p.id}',true)">${icon('check', 14)} Mark the project finished</button>`}
         </div>`}
 
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Milestones</h3>${ms.length && p.dueDate ? `<button class="sg-link" onclick="respaceMilestones('${p.id}')">Space out dates</button>` : ''}</div>
           ${ms.length ? ms.map((m, i) => milestoneBlockHtml(p, m, i, ms.length)).join('') : `
             <div class="proj-templates compact">${PROJECT_TEMPLATES.map(t => `<button class="proj-template" onclick="applyProjectTemplate('${p.id}','${t.id}')"><span class="sg-feature-ic">${icon(t.icon, 16)}</span><span class="proj-template-text"><span class="proj-template-name">${esc(t.name)}</span></span></button>`).join('')}</div>
-            ${aiEnabled() ? `<button class="btn btn-sm mt-8" id="proj-ai-btn" onclick="planProjectWithAI('${p.id}')">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 13, 1.6)} Plan it for me</button>` : ''}`}
+            ${aiEnabled() ? `<button class="btn btn-sm mt-8" id="proj-ai-btn" onclick="planProjectWithAI('${p.id}')">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 14)} Plan it for me</button>` : ''}`}
           <div class="proj-add-ms">
             <input class="input" id="proj-new-ms" maxlength="120" placeholder="Add a milestone" onkeydown="if(event.key==='Enter')addMilestone('${p.id}')">
             <input class="input" type="date" id="proj-new-ms-date" aria-label="Milestone date" ${p.dueDate ? `max="${p.dueDate}"` : ''}>
@@ -229,14 +229,14 @@ function pageProjectDetail(p) {
 
         <div class="card card-pad">
           <h3 class="sg-h3 mb-8">Team</h3>
-          ${(p.team || []).length ? `<div class="proj-people">${p.team.map((name, i) => `<span class="proj-person"><span class="avatar sg-avatar" style="--shade:${PERSON_COLORS[i % PERSON_COLORS.length]};color:${inkOnColor(PERSON_COLORS[i % PERSON_COLORS.length])};width:22px;height:22px;font-size:11px">${esc(name.charAt(0).toUpperCase())}</span>${esc(name)}<button class="qa-chip-x" aria-label="Remove ${esc(name)}" onclick="removeTeamMember('${p.id}',${i})">${icon('x', 10, 2.4)}</button></span>`).join('')}</div>` : '<p class="small muted mb-8">Solo, or add the people you’re working with.</p>'}
+          ${(p.team || []).length ? `<div class="proj-people">${p.team.map((name, i) => `<span class="proj-person">${personAvatar('', name, 22, PERSON_COLORS[i % PERSON_COLORS.length])}${esc(name)}<button class="qa-chip-x" aria-label="Remove ${esc(name)}" onclick="removeTeamMember('${p.id}',${i})">${icon('x', 10)}</button></span>`).join('')}</div>` : '<p class="small muted mb-8">Solo, or add the people you’re working with.</p>'}
           <div class="proj-inline-add"><input class="input" id="proj-team" maxlength="40" placeholder="Add a name" onkeydown="if(event.key==='Enter')addTeamMember('${p.id}')"><button class="btn btn-sm" onclick="addTeamMember('${p.id}')">Add</button></div>
           ${(p.team || []).length ? `<p class="small muted mt-8">Working together in Semester HQ? <button class="sg-link" onclick="shareProjectToGroup('${p.id}')">Share it with your study group</button></p>` : ''}
         </div>
 
         <div class="card card-pad">
           <h3 class="sg-h3 mb-8">Links</h3>
-          ${(p.links || []).map((l, i) => `<div class="sg-person"><span class="sg-activity-ic">${icon('link', 13, 1.8)}</span><a class="row-title small" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label || hostOf(l.url) || l.url)}</a><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove link" data-tip="Remove link" onclick="removeProjectLink('${p.id}',${i})">${icon('x', 12, 2.2)}</button></div>`).join('') || '<p class="small muted mb-8">The Google Doc, the slide deck, the rubric.</p>'}
+          ${(p.links || []).map((l, i) => `<div class="sg-person"><span class="sg-activity-ic">${icon('link', 14)}</span><a class="row-title small" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label || hostOf(l.url) || l.url)}</a><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove link" data-tip="Remove link" onclick="removeProjectLink('${p.id}',${i})">${icon('x', 12)}</button></div>`).join('') || '<p class="small muted mb-8">The Google Doc, the slide deck, the rubric.</p>'}
           <div class="proj-inline-add"><input class="input" id="proj-link" maxlength="300" placeholder="Paste a link" onkeydown="if(event.key==='Enter')addProjectLink('${p.id}')"><button class="btn btn-sm" onclick="addProjectLink('${p.id}')">Add</button></div>
         </div>
 
@@ -245,7 +245,7 @@ function pageProjectDetail(p) {
           <textarea class="input proj-notes" id="proj-notes" maxlength="5000" placeholder="Ideas, feedback from the professor, who’s doing what…" oninput="saveProjectNotesDebounced('${p.id}',this.value)">${esc(p.notes || '')}</textarea>
         </div>
 
-        <button class="btn btn-ghost btn-sm proj-delete" onclick="deleteProject('${p.id}')">${icon('trash', 13, 1.8)} Delete project</button>
+        <button class="btn btn-ghost btn-sm proj-delete" onclick="deleteProject('${p.id}')">${icon('trash', 14)} Delete project</button>
       </div>
     </div>
     </div>`;
@@ -263,7 +263,7 @@ function milestoneBlockHtml(p, m, i, total) {
           <button class="btn btn-ghost btn-icon btn-sm" aria-label="Move ${esc(m.title)} up" data-tip="Move up" ${i === 0 ? 'disabled' : ''} onclick="moveMilestone('${p.id}',${i},-1)">↑</button>
           <button class="btn btn-ghost btn-icon btn-sm" aria-label="Move ${esc(m.title)} down" data-tip="Move down" ${i === total - 1 ? 'disabled' : ''} onclick="moveMilestone('${p.id}',${i},1)">↓</button>
           <button class="btn btn-ghost btn-icon btn-sm" aria-label="Rename ${esc(m.title)}" data-tip="Rename" onclick="renameMilestone('${p.id}','${m.id}')">${icon('pencil', 12)}</button>
-          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(m.title)}" data-tip="Delete" onclick="deleteMilestone('${p.id}','${m.id}')">${icon('trash', 13)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(m.title)}" data-tip="Delete" onclick="deleteMilestone('${p.id}','${m.id}')">${icon('trash', 14)}</button>
         </div>
       </div>
       <div class="proj-ms-tasks">
@@ -271,7 +271,7 @@ function milestoneBlockHtml(p, m, i, total) {
           <div class="proj-task ${t.done ? 'is-done' : ''}" data-item-id="${t.id}">
             <button type="button" class="row-check ${t.done ? 'checked' : ''}" role="checkbox" aria-checked="${!!t.done}" aria-label="Mark ${esc(t.title)} as ${t.done ? 'not done' : 'done'}" onclick="toggleProjectTask('${p.id}','${m.id}','${t.id}')">${t.done ? checkGlyph(true) : ''}</button>
             <span class="proj-task-title">${esc(t.title)}</span>
-            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(t.title)}" data-tip="Remove" onclick="removeProjectTask('${p.id}','${m.id}','${t.id}')">${icon('x', 11, 2.2)}</button>
+            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(t.title)}" data-tip="Remove" onclick="removeProjectTask('${p.id}','${m.id}','${t.id}')">${icon('x', 11)}</button>
           </div>`).join('')}
         <input class="proj-task-add" id="proj-task-${m.id}" maxlength="160" placeholder="Add a task" aria-label="Add a task to ${esc(m.title)}" onkeydown="if(event.key==='Enter')addProjectTask('${p.id}','${m.id}')">
       </div>
@@ -335,7 +335,7 @@ function renameMilestone(pid, mid) {
   const { m } = projectMilestone(pid, mid);
   if (!m) return;
   openModal(`
-    <div class="modal-head"><h3>Rename milestone</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Rename milestone</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body"><div class="field"><label for="ms-name">Milestone</label><input class="input" id="ms-name" maxlength="120" value="${esc(m.title)}" onkeydown="if(event.key==='Enter')saveMilestoneName('${pid}','${mid}')"></div></div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveMilestoneName('${pid}','${mid}')">Save</button></div>
   `);
@@ -458,7 +458,7 @@ function openProjectModal(id, preset = {}) {
   };
   const d = window._projectDraft;
   openModal(`
-    <div class="modal-head"><h3>${id ? 'Edit project' : 'New project'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>${id ? 'Edit project' : 'New project'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field"><label for="pf-title">Project</label><input class="input" id="pf-title" maxlength="120" value="${esc(d.title)}" placeholder="Marketing plan for a local business"></div>
       <div class="field-row">
@@ -469,7 +469,7 @@ function openProjectModal(id, preset = {}) {
       ${!id ? `<div class="field" style="margin-bottom:0"><label>Start from</label>
         <div class="chip-row" id="pf-templates" role="group" aria-label="Template">
           <button type="button" class="chip ${!d.template ? 'active' : ''}" aria-pressed="${!d.template}" onclick="pickProjectTemplate('')">Blank</button>
-          ${PROJECT_TEMPLATES.map(t => `<button type="button" class="chip ${d.template === t.id ? 'active' : ''}" aria-pressed="${d.template === t.id}" onclick="pickProjectTemplate('${t.id}')">${icon(t.icon, 12, 1.8)} ${esc(t.name)}</button>`).join('')}
+          ${PROJECT_TEMPLATES.map(t => `<button type="button" class="chip ${d.template === t.id ? 'active' : ''}" aria-pressed="${d.template === t.id}" onclick="pickProjectTemplate('${t.id}')">${icon(t.icon, 12)} ${esc(t.name)}</button>`).join('')}
         </div>
         <p class="small muted mt-8">Templates space their milestones out between today and the due date.</p>
       </div>` : ''}

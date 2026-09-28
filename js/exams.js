@@ -45,7 +45,7 @@ function pageExams() {
     ${pageHead('Exams', upcoming.length ? `${upcoming.length} coming up${soon ? ` · ${soon} in the next 2 weeks` : ''}` : 'Countdowns and a prep plan for each one', `<button class="btn btn-primary" onclick="openAssignmentModal(null, null, 'exam')">${icon('plus', 14)} Add exam</button>`)}
     ${next ? examHero(next) : ''}
     ${upcoming.filter(e => e !== next).length ? `<div class="sg-section-label">Also coming up</div>${expandable('exams-upcoming', 'Also coming up', `<div class="grid grid-3 mb-16 exam-grid">${upcoming.filter(e => e !== next).map(examCard).join('')}</div>`, { max: 460, count: upcoming.filter(e => e !== next).length })}` : ''}
-    ${!upcoming.length ? `<div class="card">${emptyState(icon('flag', 26, 1.4), 'No exams on the horizon', `<button class="btn btn-primary" onclick="openAssignmentModal(null, null, 'exam')">${icon('plus', 14)} Add exam</button>`, 'Upload a syllabus and every exam date lands here with a countdown.')}</div>` : ''}
+    ${!upcoming.length ? `<div class="card">${emptyState(icon('flag', 26), 'No exams on the horizon', `<button class="btn btn-primary" onclick="openAssignmentModal(null, null, 'exam')">${icon('plus', 14)} Add exam</button>`, 'Upload a syllabus and every exam date lands here with a countdown.')}</div>` : ''}
     ${past.length ? `<details class="todo-done mt-16"><summary><span>Past exams</span><span class="assign-count">${past.length}</span></summary>${expandable('exams-past', 'Past exams', `<div class="card assign-list">${past.map(e => {
       const c = getCourse(e.courseId);
       return `<div class="assign-row" style="--course:${esc(c?.color || '#8a8a8a')}" onclick="openExamPrep('${e.id}')"><span class="row-check checked" aria-hidden="true">${checkGlyph(true)}</span><div class="assign-main"><div class="assign-title">${esc(e.title)}</div><div class="assign-meta"><span class="assign-course"><span class="course-dot"></span>${esc(c ? (c.code || c.name) : '')}</span></div></div><div class="assign-due">${esc(fmtDate(e.dueDate))}</div></div>`;
@@ -60,7 +60,7 @@ function examHero(a) {
   const due = typeof srsDueCount === 'function' ? state.decks.filter(d => d.courseId === a.courseId).reduce((s, d) => s + srsDueCount(d), 0) : 0;
   const blocks = examStudyBlocks(a).filter(e => e.date >= todayIso());
   return `
-    <div class="card exam-hero" style="--course:${esc(c?.color || '#5a6b7b')}">
+    <div class="card exam-hero ${topics.length ? 'has-topics' : ''}" style="--course:${esc(c?.color || '#5a6b7b')}">
       <div class="exam-hero-count"><strong>${esc(String(cd.n))}</strong><span>${esc(cd.unit)}</span></div>
       <div class="exam-hero-body">
         <div class="sg-eyebrow"><span class="course-dot"></span>${esc(c ? (c.code || c.name) : '')} · Next exam</div>
@@ -80,6 +80,11 @@ function examHero(a) {
           ${blocks.length ? `<span class="small dim">${blocks.length} study session${blocks.length === 1 ? '' : 's'} planned</span>` : `<button class="btn btn-sm" onclick="openStudyPlanModal('${a.id}')">${icon('calendar', 14)} Plan study sessions</button>`}
         </div>
       </div>
+      ${topics.length ? `<div class="exam-hero-topics">
+        <h3 class="sg-h3 mb-8">Topics</h3>
+        <ul>${topics.slice(0, 6).map(t => `<li class="${t.conf === 2 ? 'is-done' : ''}"><span class="exam-hero-box" aria-hidden="true">${checkGlyph(t.conf === 2)}</span><span class="exam-hero-topic">${esc(t.title)}</span>${t.conf === 2 ? '<span class="sr-only">, got it</span>' : t.conf === 1 ? '<span class="small dim">Shaky</span>' : ''}</li>`).join('')}</ul>
+        ${topics.length > 6 ? `<button class="sg-link mt-8" onclick="openExamPrep('${a.id}')">All ${topics.length} topics ${icon('chevron-right', 12)}</button>` : ''}
+      </div>` : ''}
     </div>`;
 }
 function examCard(a) {
@@ -144,7 +149,7 @@ function pageExamPrep(a) {
         <div class="card card-pad">
           <div class="flex-between mb-8">
             <h3 class="sg-h3">Topics</h3>
-            ${aiEnabled() ? `<button class="sg-link" onclick="openTopicsFromGuideModal('${a.id}')">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 12, 1.8)} From a study guide</button>` : ''}
+            ${aiEnabled() ? `<button class="sg-link" onclick="openTopicsFromGuideModal('${a.id}')">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 12)} From a study guide</button>` : ''}
           </div>
           ${topics.length ? `
             <div class="exam-conf-summary small" aria-label="Confidence summary">${CONFIDENCE.map(([label, v], i) => `<span class="conf-${v}"><strong>${counts[i]}</strong> ${label.toLowerCase()}</span>`).join('')}</div>
@@ -228,7 +233,7 @@ function openStudyPlanModal(id) {
   const daysOut = Math.max(0, daysBetween(a.dueDate));
   const suggested = clamp(Math.floor(daysOut / 2), 1, 4);
   openModal(`
-    <div class="modal-head"><h3>Plan study sessions</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Plan study sessions</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <p class="small muted mb-8">${daysOut ? `${daysOut} day${daysOut === 1 ? '' : 's'} until ${esc(a.title)}.` : `${esc(a.title)} is today.`} Sessions are spread out before it and go on your calendar as time blocks.</p>
       <div class="field-row">
@@ -279,15 +284,15 @@ function openTopicsFromGuideModal(id) {
   if (!requireAi('Pulling topics from a study guide')) return;
   delete _uploadZones.guide;
   openModal(`
-    <div class="modal-head"><h3>Topics from a study guide <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Topics from a study guide <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field"><label for="tg-text">Paste the study guide</label><textarea class="input" id="tg-text" style="min-height:150px" placeholder="Exam 1 covers chapters 5–8…"></textarea></div>
-      <label class="btn btn-sm">${icon('upload', 13, 1.8)} Or upload it
+      <label class="btn btn-sm">${icon('upload', 14)} Or upload it
         <input type="file" id="uz-guide-input" multiple style="display:none" onchange="loadUploadZone('guide', this.files)">
       </label>
       <span class="small muted" id="uz-guide-status"></span>
     </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="tg-run" onclick="runTopicsFromGuide('${id}')">${icon('sparkles', 13, 1.6)} Pull out topics</button></div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="tg-run" onclick="runTopicsFromGuide('${id}')">${icon('sparkles', 14)} Pull out topics</button></div>
   `);
 }
 async function runTopicsFromGuide(id) {

@@ -35,7 +35,12 @@ function openModal(html, { wide = false, onClose } = {}) {
   _modalCloseHandler = onClose || null;
   enhanceAccessibility(modal);
   // Move focus into the dialog (unless something inside already grabbed it).
-  if (!modal.contains(document.activeElement)) setTimeout(() => { if (!modal.contains(document.activeElement)) (modal.querySelector('.modal-body input:not([type=hidden]):not([disabled]), .modal-body textarea, .modal-body select') || modal).focus({ preventScroll: true }); }, 30);
+  // The first field that is actually rendered: a hidden file input can't take focus.
+  if (!modal.contains(document.activeElement)) setTimeout(() => {
+    if (modal.contains(document.activeElement)) return;
+    const first = [...modal.querySelectorAll('.modal-body input:not([type=hidden]):not([disabled]), .modal-body textarea:not([disabled]), .modal-body select:not([disabled])')].find(el => el.getClientRects().length && !el.closest('[hidden]'));
+    (first || modal).focus({ preventScroll: true });
+  }, 30);
 }
 function closeModal() {
   const wasOpen = $('#modal-wrap').classList.contains('show');
@@ -141,7 +146,7 @@ function inlineErrorHtml(message, retryOnclick = '', { retryLabel = 'Try again',
 // opts.titleHtml is trusted markup used instead of the escaped title (the
 // calendar needs it); opts.className adds classes to .page-head.
 function pageHead(title, sub, actionsHtml = '', opts = {}) {
-  const tools = `<button class="btn btn-icon btn-sm mobile-search" aria-label="Search" onclick="openCommandPalette()">${icon('search', 20)}</button><button class="btn btn-icon btn-sm mobile-search" aria-label="Quick capture" onclick="openQuickCapture()">${icon('camera', 20)}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}`;
+  const tools = `<button class="btn btn-icon btn-sm mobile-search" aria-label="Search" onclick="openCommandPalette()">${icon('search', 20)}</button><button class="btn btn-icon btn-sm mobile-search" aria-label="Quick capture" onclick="openQuickCapture()">${icon('camera', 20)}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}<button type="button" class="btn btn-icon btn-sm head-more-top" aria-label="More actions" aria-haspopup="true" onclick="openHeadMore(this)">${icon('more-horizontal', 20)}</button>`;
   const titleHtml = opts.titleHtml != null ? opts.titleHtml : esc(title);
   return `<div class="page-head${opts.className ? ' ' + esc(opts.className) : ''}">
     <div class="page-head-top"><div class="page-head-title"><h2>${titleHtml}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-tools">${tools}</div></div>
@@ -149,11 +154,18 @@ function pageHead(title, sub, actionsHtml = '', opts = {}) {
   </div>`;
 }
 // Runs after every render: a header that declared overflow (.head-menu)
-// shows its ··· button on a desktop.
+// shows its ··· button on a desktop. On a phone, a row 2 that would show
+// nothing but the ··· (no primary, no head-keep, no Log in) gets .only-more:
+// the CSS hides that row and shows the ··· beside the header tools instead.
 function enhancePageHeads(root) {
   if (!root) return;
   root.querySelectorAll('.head-actions').forEach(row => {
     row.classList.toggle('has-overflow', !!row.querySelector(':scope > .head-menu'));
+    const hasTop = !!row.closest('.page-head')?.querySelector(':scope > .page-head-top .head-more-top');
+    // What a phone still shows in row 2: anything but the ···, the desktop
+    // Capture copy, and the secondary buttons the phone moves into the sheet.
+    const stays = [...row.children].some(el => !el.matches('.head-more, .desktop-capture') && !(el.matches('.btn') && !el.matches('.btn-primary, .head-keep')));
+    row.classList.toggle('only-more', hasTop && !stays && headMoreItems(row).length > 0);
   });
 }
 // The right edge of a to-do or assignment row. Overdue says so in words
@@ -180,7 +192,8 @@ function headItemLabel(el) {
   return (el.textContent || '').trim() || el.getAttribute('aria-label') || el.getAttribute('data-tip') || el.getAttribute('title') || '';
 }
 function openHeadMore(btn) {
-  const row = btn.closest('.head-actions');
+  // The row-1 copy of the ··· (.head-more-top) reads its own header's row 2.
+  const row = btn.closest('.head-actions') || btn.closest('.page-head')?.querySelector(':scope > .head-actions');
   if (!row) return;
   if (window.matchMedia('(min-width: 761px)').matches) {
     const items = [...row.querySelectorAll(':scope > .head-menu')];
@@ -263,7 +276,8 @@ function openMenu(anchorEl, html, { align = 'end' } = {}) {
     else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length]?.focus(); }
     else if (e.key === 'Home') { e.preventDefault(); list[0]?.focus(); }
     else if (e.key === 'End') { e.preventDefault(); list[list.length - 1]?.focus(); }
-    else if (e.key === 'Tab') { closeMenu(false); }
+    // Back on the anchor first, so the browser's own Tab moves on from the ···.
+    else if (e.key === 'Tab') { closeMenu(true); }
   };
   const onDown = e => { if (!el.contains(e.target) && !anchorEl.contains(e.target)) closeMenu(false); };
   const onScroll = e => { if (!el.contains(e.target)) closeMenu(false); };

@@ -66,8 +66,8 @@ function pageCareer() {
         ${upcoming.map(i => `<div class="dash-due-row" onclick="openApplicationModal('${i.app.id}')"><span class="career-date">${dateTile(i.date)}</span><div class="row-title"><div>${esc(i.label)}</div><div class="assign-meta"><span>${esc(i.app.type)}</span><span>${esc(fmtSessionDay(i.date))}${i.time ? ` · ${fmtTime(i.time)}` : ''}</span></div></div></div>`).join('')}
       </div>` : ''}
       <div class="assign-toolbar">
-        <div class="chip-row">${['all', 'Internship', 'Job', 'Scholarship', 'Other'].map(t => `<button class="chip ${typeFilter === t ? 'active' : ''}" onclick="state._careerType='${t}';touch()">${t === 'all' ? 'All' : t === 'Other' ? 'Other' : t + 's'}</button>`).join('')}</div>
-        <div class="segmented"><button class="${view === 'board' ? 'active' : ''}" onclick="state._careerView='board';touch()">Board</button><button class="${view === 'list' ? 'active' : ''}" onclick="state._careerView='list';touch()">List</button></div>
+        <div class="chip-row">${['all', 'Internship', 'Job', 'Scholarship', 'Other'].map(t => `<button class="chip ${typeFilter === t ? 'active' : ''}" aria-pressed="${typeFilter === t}" onclick="state._careerType='${t}';touch()">${t === 'all' ? 'All' : t === 'Other' ? 'Other' : t + 's'}</button>`).join('')}</div>
+        <div class="segmented"><button class="${view === 'board' ? 'active' : ''}" aria-pressed="${view === 'board'}" onclick="state._careerView='board';touch()">Board</button><button class="${view === 'list' ? 'active' : ''}" aria-pressed="${view === 'list'}" onclick="state._careerView='list';touch()">List</button></div>
       </div>
       ${expandable(`career-${view}`, 'Applications', view === 'board' ? careerBoard(shown) : careerList(shown), { max: 620, count: shown.length })}
     ` : emptyStateHtml({

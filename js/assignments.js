@@ -39,12 +39,12 @@ function pageAssignments() {
     `)}
     <div class="assign-toolbar">
       <div class="chip-row" role="group" aria-label="Filter by course">
-        <button class="chip ${courseFilter === 'all' ? 'active' : ''}" onclick="state._assignCourseFilter='all';touch()">All courses</button>
-        ${activeCourses().map(c => `<button class="chip ${courseFilter === c.id ? 'active' : ''}" style="--course:${esc(c.color || '#5a6b7b')}" onclick="state._assignCourseFilter='${c.id}';touch()"><span class="course-dot"></span>${esc(c.code || c.name)}</button>`).join('')}
+        <button class="chip ${courseFilter === 'all' ? 'active' : ''}" aria-pressed="${courseFilter === 'all'}" onclick="state._assignCourseFilter='all';touch()">All courses</button>
+        ${activeCourses().map(c => `<button class="chip ${courseFilter === c.id ? 'active' : ''}" aria-pressed="${courseFilter === c.id}" style="--course:${esc(c.color || '#5a6b7b')}" onclick="state._assignCourseFilter='${c.id}';touch()"><span class="course-dot"></span>${esc(c.code || c.name)}</button>`).join('')}
       </div>
       <div class="assign-toolbar-right">
         ${total ? `<div class="assign-progress" title="${done.length} of ${total} finished"><div class="progress"><div style="width:${pctDone}%"></div></div><span class="small muted">${pctDone}% done</span></div>` : ''}
-        <div class="segmented">${[['todo', 'To do'], ['done', 'Done'], ['all', 'All']].map(([k, l]) => `<button class="${view === k ? 'active' : ''}" onclick="state._assignView='${k}';touch()">${l}</button>`).join('')}</div>
+        <div class="segmented">${[['todo', 'To do'], ['done', 'Done'], ['all', 'All']].map(([k, l]) => `<button class="${view === k ? 'active' : ''}" aria-pressed="${view === k}" onclick="state._assignView='${k}';touch()">${l}</button>`).join('')}</div>
       </div>
     </div>
 
@@ -55,7 +55,7 @@ function pageAssignments() {
       <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAssignSelectAll()"><span>Select all${visible.length ? ` (${visible.length})` : ''}</span></label>
       <div class="flex-gap" style="align-items:center">
         <span class="small muted">${selected.size} selected</span>
-        <button class="btn btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkMarkAssignmentsDone()">${icon('check', 14, 2.2)} Mark done</button>
+        <button class="btn btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkMarkAssignmentsDone()">${icon('check', 14)} Mark done</button>
         <button class="btn btn-danger btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkDeleteAssignments()">${icon('trash', 14)} Delete</button>
       </div>
     </div>` : ''}
@@ -66,8 +66,8 @@ function pageAssignments() {
       <section class="assign-group ${k === 'overdue' ? 'is-overdue' : ''}">
         <div class="assign-group-head">${k === 'overdue' ? icon('clock', 14) : ''}<span>${label}</span><span class="assign-count">${items.length}</span></div>
         ${expandable(`assign-${k}`, label, `<div class="card assign-list">${items.map(a => assignmentRow(a, selectMode, selected)).join('')}</div>`, { max: 420 })}
-      </section>`).join('') : emptyState(icon('cloud-sun', 26, 1.4), total ? 'All caught up' : 'No assignments yet', total ? '' : `<div class="flex-gap wrap mt-8" style="justify-content:center"><button class="btn btn-primary" onclick="openFeedImportModal()">${icon('calendar', 16)} Import from Canvas or your LMS</button><button class="btn" onclick="openAssignmentUploadModal()">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 16)} Upload a syllabus</button></div>`, total ? 'Nothing left to do here. Nice work.' : 'Paste your LMS calendar link and every due date lands here in one go, or upload a syllabus and Semester HQ reads the deadlines out of it.'))
-      : expandable(`assign-${view}`, view === 'done' ? 'Done' : 'All assignments', `<div class="card assign-list">${visible.length ? visible.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list', 26, 1.4), view === 'done' ? 'Nothing finished yet.' : 'No assignments match.')}</div>`}</div>`, { max: 420 })}
+      </section>`).join('') : emptyState(icon('cloud-sun', 26), total ? 'All caught up' : 'No assignments yet', total ? '' : `<div class="flex-gap wrap mt-8" style="justify-content:center"><button class="btn btn-primary" onclick="openFeedImportModal()">${icon('calendar', 16)} Import from Canvas or your LMS</button><button class="btn" onclick="openAssignmentUploadModal()">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 16)} Upload a syllabus</button></div>`, total ? 'Nothing left to do here. Nice work.' : 'Paste your LMS calendar link and every due date lands here in one go, or upload a syllabus and Semester HQ reads the deadlines out of it.'))
+      : expandable(`assign-${view}`, view === 'done' ? 'Done' : 'All assignments', `<div class="card assign-list">${visible.length ? visible.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list', 26), view === 'done' ? 'Nothing finished yet.' : 'No assignments match.')}</div>`}</div>`, { max: 420 })}
   `;
 }
 function assignmentRow(a, selectMode, selected) {
@@ -182,7 +182,7 @@ function assignRepeatFieldsHtml(a) {
   const series = assignmentSeries(a);
   if (series) {
     const left = upcomingInSeries(a).length;
-    return `<div class="sg-callout af-series mb-16"><span>${icon('refresh-cw', 14, 1.8)}</span><div class="small"><span class="sg-strong">${esc(ASSIGN_REPEAT_LABELS[series.freq] || 'Repeats')} on ${esc(repeatDaysText(series.days || []))}</span>${series.until ? ` until ${esc(fmtDate(series.until))}` : ''}. ${left ? `${left} more after this one.` : 'This is the last one.'}${left ? ' When you save or delete, you can include the upcoming ones too.' : ''}</div></div>`;
+    return `<div class="sg-callout af-series mb-16"><span>${icon('refresh-cw', 14)}</span><div class="small"><span class="sg-strong">${esc(ASSIGN_REPEAT_LABELS[series.freq] || 'Repeats')} on ${esc(repeatDaysText(series.days || []))}</span>${series.until ? ` until ${esc(fmtDate(series.until))}` : ''}. ${left ? `${left} more after this one.` : 'This is the last one.'}${left ? ' When you save or delete, you can include the upcoming ones too.' : ''}</div></div>`;
   }
   const r = window._assignRepeat;
   return `
@@ -298,7 +298,7 @@ function applyToUpcomingInSeries(d) {
 }
 function askSeriesScope({ title, message, oneLabel, allLabel, danger = false }, run) {
   openModal(`
-    <div class="modal-head"><h3>${esc(title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>${esc(title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body"><p style="font-size:14px">${esc(message)}</p></div>
     <div class="modal-foot">
       <button class="btn" style="margin-right:auto" onclick="closeModal()">Cancel</button>
@@ -314,7 +314,7 @@ function assignModalHeading(id, type) { return `${id ? 'Edit' : 'New'} ${ASSIGNM
 function renderAssignmentModal(id) {
   const a = _assignDraft;
   openModal(`
-    <div class="modal-head"><h3 id="af-heading">${assignModalHeading(id, a.type)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3 id="af-heading">${assignModalHeading(id, a.type)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field"><label>Title</label><input class="input" id="af-title" value="${esc(a.title)}"></div>
       <div class="field-row">
@@ -339,15 +339,15 @@ function renderAssignmentModal(id) {
         <div id="af-rubric">${a.rubric.map((r, i) => rubricRow(r, i)).join('')}</div>
         <button class="btn btn-sm mt-8" onclick="addRubricRow()">${icon('plus', 14)} Add a step</button>
       </div>
-      ${id && a.type === 'exam' ? `<button class="sg-callout af-link" onclick="closeModal();openExamPrep('${id}')"><span>${icon('target', 14, 1.8)}</span><div class="small"><span class="sg-strong">Exam prep</span> · topics, study sessions, and flashcards for this exam</div>${icon('chevron-right', 13, 2)}</button>` : ''}
-      ${id && ['project', 'paper', 'lab'].includes(a.type) ? `<button class="sg-callout af-link" onclick="planAssignmentAsProject('${id}')"><span>${icon('folder', 14, 1.8)}</span><div class="small"><span class="sg-strong">${state.projects.some(p => p.assignmentId === id) ? 'Open its project' : 'Plan it as a project'}</span> · break it into milestones spaced out to the due date</div>${icon('chevron-right', 13, 2)}</button>` : ''}
+      ${id && a.type === 'exam' ? `<button class="sg-callout af-link" onclick="closeModal();openExamPrep('${id}')"><span>${icon('target', 14)}</span><div class="small"><span class="sg-strong">Exam prep</span> · topics, study sessions, and flashcards for this exam</div>${icon('chevron-right', 14)}</button>` : ''}
+      ${id && ['project', 'paper', 'lab'].includes(a.type) ? `<button class="sg-callout af-link" onclick="planAssignmentAsProject('${id}')"><span>${icon('folder', 14)}</span><div class="small"><span class="sg-strong">${state.projects.some(p => p.assignmentId === id) ? 'Open its project' : 'Plan it as a project'}</span> · break it into milestones spaced out to the due date</div>${icon('chevron-right', 14)}</button>` : ''}
 
       <div class="field" style="margin-bottom:0">
         <label>Attachments <span class="small muted">(rubric, prompt, reference, reading, instructions)</span></label>
         <div id="af-attachments">${a.attachments.map((att, i) => attachmentRow(att, i)).join('')}</div>
         <div class="flex-gap mt-8">
-          <button class="btn btn-sm" onclick="addAttachmentLink()">${icon('link',13,1.8)} Add link</button>
-          <button class="btn btn-sm" onclick="$('#af-attach-file').click()">${icon('upload',13,1.8)} Upload file</button>
+          <button class="btn btn-sm" onclick="addAttachmentLink()">${icon('link', 14)} Add link</button>
+          <button class="btn btn-sm" onclick="$('#af-attach-file').click()">${icon('upload', 14)} Upload file</button>
           <input type="file" id="af-attach-file" multiple style="display:none" onchange="addAttachmentFile(this.files)">
         </div>
         <div class="field-row mt-8" id="af-link-row" style="display:none;align-items:center">
@@ -369,7 +369,7 @@ function attachmentRow(att, i) {
     <select class="select" style="max-width:140px" onchange="_assignDraft.attachments[${i}].kind=this.value">${ATTACHMENT_KINDS.map(k => `<option value="${k}" ${k === att.kind ? 'selected' : ''}>${k[0].toUpperCase() + k.slice(1)}</option>`).join('')}</select>
     <input class="input" value="${esc(att.name)}" placeholder="Name" oninput="_assignDraft.attachments[${i}].name=this.value">
     ${att.url ? `<a href="${esc(att.url)}" target="_blank" rel="noopener" class="btn btn-sm" onclick="event.stopPropagation()">Open</a>` : ''}
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove attachment" data-tip="Remove attachment" onclick="_assignDraft.attachments.splice(${i},1);syncAssignmentAttachmentsIfExisting();renderAssignmentModal(window._assignDraft.id && state.assignments.some(a=>a.id===window._assignDraft.id) ? window._assignDraft.id : null)">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove attachment" data-tip="Remove attachment" onclick="_assignDraft.attachments.splice(${i},1);syncAssignmentAttachmentsIfExisting();renderAssignmentModal(window._assignDraft.id && state.assignments.some(a=>a.id===window._assignDraft.id) ? window._assignDraft.id : null)">${icon('x', 14)}</button>
   </div>`;
 }
 // Attachments added to an assignment that already exists in state are persisted
@@ -435,7 +435,7 @@ function rubricRow(r, i) {
   return `<div class="field-row" style="align-items:center;margin-bottom:6px">
     <button type="button" class="row-check ${r.done ? 'checked' : ''}" style="flex-shrink:0" role="checkbox" aria-checked="${!!r.done}" aria-label="Mark ${esc(r.item || 'step')} as ${r.done ? 'not done' : 'done'}" onclick="syncAssignDraftFields();_assignDraft.rubric[${i}].done=!_assignDraft.rubric[${i}].done;renderAssignmentModal(assignDraftExistingId())">${r.done ? checkGlyph(true) : ''}</button>
     <input class="input" value="${esc(r.item)}" placeholder="Outline, first draft, cite sources…" aria-label="Step ${i + 1}" oninput="_assignDraft.rubric[${i}].item=this.value">
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove step" data-tip="Remove step" onclick="syncAssignDraftFields();_assignDraft.rubric.splice(${i},1);renderAssignmentModal(assignDraftExistingId())">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove step" data-tip="Remove step" onclick="syncAssignDraftFields();_assignDraft.rubric.splice(${i},1);renderAssignmentModal(assignDraftExistingId())">${icon('x', 14)}</button>
   </div>`;
 }
 function assignDraftExistingId() { return state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null; }
@@ -515,7 +515,7 @@ function openAssignmentUploadModal() {
   window._auActiveTab = 'file';
   delete _uploadZones.assignments;
   openModal(`
-    <div class="modal-head"><h3>Upload assignments <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Upload assignments <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       ${!aiEnabled() ? `<div class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px;margin-bottom:14px">AI parsing isn’t set up on this deployment yet.</div>` : ''}
       <div class="small muted mb-8">Upload a syllabus or assignment sheet to bulk-add deadlines to an existing course, instead of typing each one in by hand.</div>
@@ -530,7 +530,7 @@ function openAssignmentUploadModal() {
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="au-parse-btn" onclick="runAssignmentParse()" ${aiEnabled() ? '' : 'disabled'}>${icon('sparkles', 13, 1.5)} Parse with AI</button>
+      <button class="btn btn-primary" id="au-parse-btn" onclick="runAssignmentParse()" ${aiEnabled() ? '' : 'disabled'}>${icon('sparkles', 14)} Parse with AI</button>
     </div>
   `, { wide: true });
 }
@@ -566,7 +566,7 @@ function openAssignmentReviewModal(list) {
 }
 function renderAssignmentReviewModal() {
   openModal(`
-    <div class="modal-head"><h3>Review & add <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>Review & add <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="small muted mb-8">Double-check what the AI pulled out before adding it. Edit anything that's off, then pick which course these belong to.</div>
       <div class="field"><label>Add to course</label><select class="select" id="au-review-course" onchange="window._auCourseId=this.value">${activeCourses().map(c => `<option value="${c.id}" ${c.id === window._auCourseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>

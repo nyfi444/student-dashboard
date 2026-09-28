@@ -97,8 +97,9 @@
 .nb-no-match { padding: 12px 10px; font-size: 13px; line-height: 1.5; color: var(--bg-text-dim); }
 .nb-no-match .sg-link { color: var(--bg-text); font-size: 13px; }
 
-/* Resize handle: a hairline with an 8px hit area. */
-.notebook-resize-handle { position: relative; z-index: 2; flex-shrink: 0; width: 8px; margin: 0 -4px; background: transparent; cursor: col-resize; }
+/* Resize handle: a hairline with an 8px hit area. It sits above the
+   sticky top bar (z-index 6), so the hairline runs the full height. */
+.notebook-resize-handle { position: relative; z-index: 7; flex-shrink: 0; width: 8px; margin: 0 -4px; background: transparent; cursor: col-resize; }
 .notebook-resize-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; margin-left: -.5px; background: var(--border); transition: background var(--dur-1) 120ms, width var(--dur-1) 120ms, margin var(--dur-1) 120ms; }
 .notebook-resize-handle:hover::after, .notebook-resize-handle:focus-visible::after, .notebook-resize-handle.is-dragging::after { width: 2px; margin-left: -1px; background: var(--bg-control-border); }
 .notebook-resize-handle:focus-visible { outline: none; }
@@ -115,7 +116,7 @@
 
 /* The one bar: list toggle and path, the format group centered over the
    text, the note's actions. */
-.nb-topbar { position: sticky; top: 0; z-index: 6; display: grid; grid-template-columns: minmax(38px, 1fr) auto minmax(max-content, 1fr); align-items: center; gap: 12px;
+.nb-topbar { position: sticky; top: 0; z-index: 6; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px;
   height: 48px; padding: 0 12px 0 8px; background: color-mix(in srgb, var(--surface) 92%, transparent);
   -webkit-backdrop-filter: saturate(1.3) blur(14px); backdrop-filter: saturate(1.3) blur(14px);
   border-bottom: 1px solid transparent; transition: border-color var(--dur-2); }
@@ -124,7 +125,7 @@
 .nb-back { display: none; }
 .nb-breadcrumb { min-width: 0; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-dim); }
 .nb-crumb-sep { margin: 0 6px; color: var(--text-faint); }
-.nb-page-actions { justify-self: end; display: flex; align-items: center; gap: 2px; }
+.nb-page-actions { justify-self: end; display: flex; align-items: center; gap: 2px; min-width: 0; }
 .nb-page-actions .btn .i, .nb-list-toggle .i { width: 16px; height: 16px; }
 .nb-act-pin.is-on { background: transparent; color: var(--text); border-color: transparent; }
 .nb-act-pin.is-on svg { fill: currentColor; }
@@ -132,16 +133,49 @@
 #app.sidebar-collapsed .nb-page-actions .head-login { display: inline-flex; }
 @media (min-width: 761px) {
   .nb-topbar { container: nbbar / inline-size; }
+  /* The canvas is a size container on a computer only: on a phone the
+     keyboard bar inside it is position:fixed, which containment breaks. */
+  .notebook-page { container: nbpage / inline-size; }
   /* Collapsed sidebar: its expand button floats at the top left. */
   #app.sidebar-collapsed .nb-panel-head { padding-left: 48px; }
   #app.sidebar-collapsed .notebook-layout.list-hidden .nb-topbar { padding-left: 56px; }
 }
-@container nbbar (max-width: 880px) {
+/* The format group stays centered over the text, so the actions get half
+   of what is left beside it. Labels go before they would crowd it. The
+   widths are the bar's content box: the group (~380) plus twice the
+   labeled actions (~245, ~355 with Cover notes, ~65 more with Log in)
+   plus the two gaps. */
+@container nbbar (max-width: 890px) {
   .nb-act-label { display: none; }
-  .nb-page-actions .btn-sm:not(.btn-icon) { width: 30px; padding: 0; }
+  .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
+}
+@container nbbar (max-width: 1110px) {
+  .nb-topbar:has(.nb-act-cover) .nb-act-label, #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-act-label { display: none; }
+  .nb-topbar:has(.nb-act-cover) .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login), #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
+}
+@container nbbar (max-width: 1240px) {
+  #app.sidebar-collapsed .nb-topbar:has(.nb-act-cover):has(.head-login) .nb-act-label { display: none; }
+  #app.sidebar-collapsed .nb-topbar:has(.nb-act-cover):has(.head-login) .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
 }
 @container nbbar (max-width: 720px) {
   .nb-breadcrumb { display: none; }
+}
+/* Too narrow for all three on one line: the format group gets its own
+   centered row under the list toggle and the note's actions. (Asked of
+   the canvas, nbpage, since a container can't query itself.) */
+@container nbpage (max-width: 760px) {
+  .nb-topbar { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 48px auto; height: auto; row-gap: 0; }
+  /* On its own row it wraps rather than hiding buttons in a scroll strip. */
+  .nb-topbar .nb-toolbar { grid-row: 2; grid-column: 1 / -1; justify-self: center; flex-wrap: wrap; justify-content: center; height: auto; min-height: 40px; max-width: 100%; padding-bottom: 4px; overflow: visible; }
+  .nb-topbar .nb-toolbar-sep { display: none; }
+  .nb-topbar .nb-toolbar-select { min-width: 84px; }
+}
+/* The same, a little sooner, when the collapsed sidebar adds Log in or
+   its floating expand button's padding to the bar. */
+@container nbpage (max-width: 880px) {
+  #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 48px auto; height: auto; row-gap: 0; }
+  #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) .nb-toolbar { grid-row: 2; grid-column: 1 / -1; justify-self: center; flex-wrap: wrap; justify-content: center; height: auto; min-height: 40px; max-width: 100%; padding-bottom: 4px; overflow: visible; }
+  #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) .nb-toolbar-sep { display: none; }
 }
 
 /* The ··· menu: an L2 surface anchored under its summary. */
@@ -296,6 +330,8 @@ html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body 
 .nb-slash-glyph { width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-tight-active); color: var(--text-dim); }
 .nb-slash-glyph .i { width: 16px; height: 16px; }
 .nb-slash-glyph.is-h { font: 400 16px/1 var(--font-serif); color: var(--text); }
+/* The serif 1 reads as a lowercase l at this size, so the digit is sans. */
+.nb-slash-digit { margin-left: 1px; font: 500 .75em/1 var(--font); }
 .nb-slash-glyph.nb-slash-h2 { font-size: 14px; }
 .nb-slash-glyph.nb-slash-h3 { font-size: 12px; }
 .nb-slash-text { display: flex; flex-direction: column; min-width: 0; }
@@ -380,6 +416,19 @@ html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body 
 .nb-tpl-title { font: 500 14px/1.3 var(--font); }
 .nb-tpl-desc { font-size: 12px; line-height: 1.4; color: var(--text-dim); }
 
+/* A narrow canvas on a computer (list open in a small window, split view):
+   the wide layouts stack to one column like on a phone, and wide tables
+   scroll inside themselves instead of being cut off. */
+@container nbpage (max-width: 600px) {
+  .nb-page-inner { padding-left: 24px; padding-right: 24px; }
+  .rich-editor .nb-cornell { grid-template-columns: 1fr; min-height: 0; }
+  .rich-editor .nb-cornell-cues { border-right: none; border-bottom: 1px solid var(--border); min-height: 140px; }
+  .rich-editor .nb-cornell-notes { min-height: 300px; }
+  .rich-editor .nb-lab-section, .rich-editor .nb-sheet-section { padding-left: 34px; }
+  .rich-editor .nb-lab-section::before, .rich-editor .nb-sheet-section::before { font-size: 18px; top: 20px; }
+  .rich-editor table { display: block; overflow-x: auto; }
+}
+
 /* ══════════════════════════════════════════════════════════════════
    Export and print: black on white whatever the theme. Derived tokens
    do not re-derive, so every token an export can reach is pinned.
@@ -403,7 +452,10 @@ html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body 
    the format group docks above the keyboard.
    ══════════════════════════════════════════════════════════════════ */
 @media (max-width: 760px) {
-  .content.content-notebook { height: auto; overflow: visible; padding-bottom: 88px; }
+  .content.content-notebook { height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible; padding-bottom: 88px; }
+  /* An open note's paper runs to the bottom of the screen, under the tab
+     bar (the page's own 140px bottom padding keeps the text clear of it). */
+  .content.content-notebook:has(.notebook-layout.list-hidden) { padding-bottom: 0; }
   .content-notebook .page-head { border-bottom: 0; }
   .content-notebook:has(.notebook-layout.list-hidden) .page-head { display: none; }
   .notebook-layout { flex-direction: column; overflow: visible; }
@@ -446,7 +498,7 @@ html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body 
   /* Note view: a nav bar. No backdrop-filter, transform, filter or
      container here or above it: #nb-toolbar inside is position:fixed. */
   .notebook-page { height: auto; overflow: visible; padding: 0; }
-  .nb-topbar { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: auto; min-height: 52px; padding: max(6px, env(safe-area-inset-top)) 4px 6px; background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; container-type: normal; border-bottom: 1px solid var(--hairline); }
+  .nb-topbar { display: flex; align-items: center; justify-content: space-between; gap: 4px; box-sizing: border-box; height: calc(52px + env(safe-area-inset-top, 0px)); min-height: 0; padding: env(safe-area-inset-top, 0px) 4px 0; background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; container-type: normal; border-bottom: 1px solid var(--hairline); }
   .nb-list-toggle, .nb-breadcrumb { display: none; }
   .nb-back { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 8px 0 4px; font: 500 16px var(--font); color: var(--text); }
   .nb-back .i { width: 20px; height: 20px; }
@@ -460,20 +512,23 @@ html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body 
   .nb-page-inner { max-width: none; padding: 10px 16px 140px; }
   .nb-page-inner.tpl-cornell, .nb-page-inner.tpl-lab, .nb-page-inner.tpl-weekly, .nb-page-inner.tpl-meeting { max-width: none; }
   .nb-title-input { font-size: 30px; }
-  .nb-props { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: -2px -16px 2px -16px; padding: 8px 16px 8px 8px; }
+  .nb-props { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: -2px -16px 2px -16px; padding: 8px 16px 8px 8px;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
   .nb-props::-webkit-scrollbar { display: none; }
   /* 44px hit areas around the small controls; the look stays the same. */
   .nb-course-select, .nb-date-input { inset: -8px 0; height: calc(100% + 16px); }
-  .nb-prop-tpl::after, .nb-lab-chip::after, .nb-sort::after { content: ''; position: absolute; inset: -8px 0; }
+  .nb-prop-tpl::after, .nb-lab-chip::after { content: ''; position: absolute; inset: -8px 0; }
   .nb-lab-chip { position: relative; }
-  .nb-sort select { inset: -12px -8px; width: calc(100% + 16px); height: calc(100% + 24px); }
+  /* The sort control is 44px tall itself; the negative margin keeps the
+     section label's height where it was. */
+  .nb-sort { min-height: 44px; margin: -12px -6px -12px 0; padding: 0 8px; }
   .nb-tpl-start-row { height: 44px; }
   .nb-blank { min-height: 50vh; }
   .rich-editor table { display: block; overflow-x: auto; }
 
   /* Keyboard bar: the same #nb-toolbar, docked above the keyboard (or
      the tab bar) while the note is being written. */
-  #nb-toolbar { position: fixed; left: 0; right: 0; bottom: var(--nb-kb, 0px); z-index: 130; display: none; height: 48px; margin: 0; padding: 0 8px; border-top: 1px solid var(--hairline); background: color-mix(in srgb, var(--surface) 94%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
+  #nb-toolbar { position: fixed; left: 0; right: 0; bottom: var(--nb-kb, 0px); z-index: 130; display: none; height: 48px; margin: 0; padding: 0 8px; border-top: 1px solid var(--hairline); background: var(--surface); -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
   .notebook-layout.is-editing #nb-toolbar { display: flex; }
   #nb-toolbar button { width: 40px; height: 40px; }
   #nb-toolbar .nb-toolbar-select { height: 40px; font-size: 16px; }
@@ -487,6 +542,13 @@ html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body 
   .nb-tpl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 58vh; }
   .nb-tpl-preview { height: 64px; }
   .nb-tpl-desc { display: none; }
+}
+
+/* Checklist box: 18px to the eye, a 44px square to a finger. The tap
+   lands on the line and notebook.js toggles the box (NB_TODO_HIT_MQ). */
+@media (max-width: 760px), (pointer: coarse) {
+  .nb-todo-line { position: relative; }
+  .nb-todo-line::before { content: ''; position: absolute; left: -13px; top: calc(.8em - 22px); width: 44px; height: 44px; }
 }
 
 /* Nothing hides behind hover on a screen that cannot hover; delete lives

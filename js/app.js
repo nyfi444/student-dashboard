@@ -101,6 +101,7 @@ function renderSidebar() {
   const groupsUnread = typeof anyGroupUnread === 'function' && anyGroupUnread();
   let orgsUnread = false;
   try { orgsUnread = allOrgs().some(o => orgUnreadCount(o) > 0 || orgChatUnread(o)); } catch {}
+  const navScroll = $('#sidebar .sidebar-nav')?.scrollTop || 0;
   $('#sidebar').innerHTML = `
     <div class="sidebar-brand">
       <div><h1>Semester HQ</h1><p>${esc(activeSemesterName())}</p></div>
@@ -119,7 +120,7 @@ function renderSidebar() {
       `).join('')}
     </div>
     <div class="sidebar-foot">
-      <button class="nav-item nav-more ${PHONE_NAV.includes(state.route) ? '' : 'active'}" aria-haspopup="dialog" onclick="openMoreNav()"><span class="ic">${icon('more-horizontal', 18)}</span>More${groupsUnread || orgsUnread ? '<span class="nav-dot" aria-label="New activity"></span>' : ''}</button>
+      <button class="nav-item nav-more ${PHONE_NAV.includes(state.route) ? '' : 'active'}" ${PHONE_NAV.includes(state.route) ? '' : 'aria-current="page"'} aria-haspopup="dialog" onclick="openMoreNav()"><span class="ic">${icon('more-horizontal', 18)}</span>More${groupsUnread || orgsUnread ? '<span class="nav-dot" aria-label="New activity"></span>' : ''}</button>
       <button class="nav-item nav-settings ${state.route === 'settings' ? 'active' : ''}" ${state.route === 'settings' ? 'aria-current="page"' : ''} onclick="setState({route:'settings',subRoute:null})"><span class="ic">${icon('settings', 18)}</span>Settings</button>
       <div class="user-chip" onclick="setState({route:'settings',subRoute:null})">
         <div class="avatar">${(state.settings.displayName || _fbUser?.displayName || 'S')[0].toUpperCase()}</div>
@@ -128,7 +129,26 @@ function renderSidebar() {
       </div>
     </div>
   `;
+  keepActiveNavInView(navScroll);
 }
+// The nav list scrolls when it is taller than the window. A re-render keeps
+// its scroll position, and the current page's item is always in view (it
+// scrolls only the list, never the page).
+function keepActiveNavInView(prevScroll) {
+  const nav = $('#sidebar .sidebar-nav');
+  if (!nav) return;
+  nav.classList.remove('can-scroll');
+  const scrolls = nav.scrollHeight > nav.clientHeight + 1;
+  nav.classList.toggle('can-scroll', scrolls);
+  if (!scrolls) return;
+  nav.scrollTop = prevScroll;
+  const act = nav.querySelector('.nav-class.active') || nav.querySelector('.nav-item.active');
+  if (!act || !act.getClientRects().length) return;
+  const n = nav.getBoundingClientRect(), a = act.getBoundingClientRect();
+  if (a.bottom > n.bottom - 16) nav.scrollTop += a.bottom - n.bottom + 16;
+  else if (a.top < n.top) nav.scrollTop -= n.top - a.top + 8;
+}
+window.addEventListener('resize', () => { const nav = $('#sidebar .sidebar-nav'); if (nav) keepActiveNavInView(nav.scrollTop); });
 // The phone bar's More panel: every section not in the bar, grouped as in the sidebar, then Settings.
 function openMoreNav() {
   const groupsUnread = typeof anyGroupUnread === 'function' && anyGroupUnread();

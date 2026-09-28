@@ -44,7 +44,7 @@ function pageCourses() {
       ${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}
       <button class="btn btn-primary" onclick="openCourseModal()">${icon('plus', 14)} Add course</button>
     `)}
-    ${courses.length ? expandable('course-grid', 'Courses', `<div class="grid grid-2 course-grid">${courses.map(courseCard).join('')}</div>`, { max: 620, count: courses.length }) : emptyStateHtml({
+    ${courses.length ? `<div class="grid grid-2 course-grid">${courses.map(courseCard).join('')}</div>` : emptyStateHtml({
       icon: 'graduation-cap',
       title: 'Add your classes',
       body: 'Semester setup reads each syllabus and fills in meeting times, deadlines, and exam dates, or you can add a class by hand.',

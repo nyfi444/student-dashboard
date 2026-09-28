@@ -181,7 +181,7 @@ function themeTilesHtml(afterPick = '') {
     ${THEMES.map(t => {
       const p = t.light ? (state.settings.dark ? t.dark : t.light) : (state.settings.dark ? { bg: '#0f0f0f', surface: '#1a1a1a', accent: '#f2f2f2', text: '#fff' } : { bg: '#fafafa', surface: '#ffffff', accent: '#141414', text: '#000' });
       const locked = !themeInSeason(t) && cur.id !== t.id;
-      return `<button class="theme-tile ${cur.id === t.id ? 'active' : ''} ${locked ? 'locked' : ''}" onclick="setTheme('${t.id}');${afterPick}" aria-pressed="${cur.id === t.id}" ${locked ? `aria-disabled="true" data-tip="Returns in the ${t.season.label}"` : ''}>
+      return `<button class="theme-tile ${cur.id === t.id ? 'active' : ''} ${locked ? 'locked' : ''} ${t.season ? 'seasonal' : ''}" onclick="setTheme('${t.id}');${afterPick}" aria-pressed="${cur.id === t.id}" ${locked ? `aria-disabled="true" data-tip="Returns in the ${t.season.label}"` : ''}>
         <span class="theme-preview" style="background:${p.bg}"><span class="theme-card" style="background:${p.surface}"><span style="background:${p.accent}"></span><span style="background:${p.text};opacity:.18"></span></span><span class="theme-dot" style="background:${p.accent}"></span></span>
         <span class="theme-name">${esc(t.name)}</span>
         <span class="theme-note">${t.season ? (locked ? `Returns in the ${t.season.label}` : `Limited · until ${t.season.until}`) : esc(t.note)}</span>
@@ -219,9 +219,9 @@ function appearanceSettingsCard() {
       <h3 class="sg-h3 mb-8">Appearance</h3>
       <div class="field"><label>Theme</label>${themeTilesHtml()}</div>
       <div class="field"><label>Page color <span class="dim">(${state.settings.dark ? 'dark' : 'light'} mode)</span></label>${pageColorSwatchesHtml()}</div>
-      <div class="checkbox-row mb-8"><input type="checkbox" id="st-dark" ${state.settings.dark ? 'checked' : ''} onchange="toggleDark(this.checked)"><label for="st-dark">Dark mode</label></div>
-      <div class="checkbox-row mb-8"><input type="checkbox" id="st-sounds" ${state.settings.sounds !== false ? 'checked' : ''} onchange="state.settings.sounds=this.checked;save();if(this.checked)playUiSound('complete')"><label for="st-sounds">Sound effects</label></div>
-      <div class="checkbox-row"><input type="checkbox" id="st-motion" ${state.settings.reduceMotion ? 'checked' : ''} onchange="state.settings.reduceMotion=this.checked;applyTheme();save()"><label for="st-motion">Reduce motion</label></div>
+      <label class="checkbox-row settings-check"><input type="checkbox" id="st-dark" ${state.settings.dark ? 'checked' : ''} onchange="toggleDark(this.checked)"><span>Dark mode</span></label>
+      <label class="checkbox-row settings-check"><input type="checkbox" id="st-sounds" ${state.settings.sounds !== false ? 'checked' : ''} onchange="state.settings.sounds=this.checked;save();if(this.checked)playUiSound('complete')"><span>Sound effects</span></label>
+      <label class="checkbox-row settings-check"><input type="checkbox" id="st-motion" ${state.settings.reduceMotion ? 'checked' : ''} onchange="state.settings.reduceMotion=this.checked;applyTheme();save()"><span>Reduce motion</span></label>
       <div class="field mt-16"><label>App icon</label>
         <div class="icon-grid">${APP_ICONS.map(i => `<button class="icon-tile ${icon === i.id ? 'active' : ''}" onclick="setAppIcon('${i.id}')" aria-pressed="${icon === i.id}" aria-label="${esc(i.name)} icon"><img src="assets/icons/${i.id}-180.png" alt="" width="52" height="52" loading="lazy"><span>${esc(i.name)}</span></button>`).join('')}</div>
         <p class="small dim mt-8">Shows on your home screen when you install Semester HQ.</p>

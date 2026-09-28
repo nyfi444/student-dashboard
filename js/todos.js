@@ -51,9 +51,9 @@ function pageTodos() {
     ${quickAddBar('todos', { mode: 'todo' })}
     <div class="assign-toolbar">
       <div class="chip-row" role="group" aria-label="Filter by class">
-        <button class="chip ${filter === 'all' ? 'active' : ''}" onclick="setState({todoFilter:'all'})">Everything</button>
-        ${activeCourses().filter(c => state.todos.some(x => x.courseId === c.id)).map(c => `<button class="chip ${filter === c.id ? 'active' : ''}" style="--course:${esc(c.color || '#5a6b7b')}" onclick="setState({todoFilter:'${c.id}'})"><span class="course-dot"></span>${esc(c.code || c.name)}</button>`).join('')}
-        <button class="chip ${filter === 'none' ? 'active' : ''}" onclick="setState({todoFilter:'none'})">Personal</button>
+        <button class="chip ${filter === 'all' ? 'active' : ''}" aria-pressed="${filter === 'all'}" onclick="setState({todoFilter:'all'})">Everything</button>
+        ${activeCourses().filter(c => state.todos.some(x => x.courseId === c.id)).map(c => `<button class="chip ${filter === c.id ? 'active' : ''}" aria-pressed="${filter === c.id}" style="--course:${esc(c.color || '#5a6b7b')}" onclick="setState({todoFilter:'${c.id}'})"><span class="course-dot"></span>${esc(c.code || c.name)}</button>`).join('')}
+        <button class="chip ${filter === 'none' ? 'active' : ''}" aria-pressed="${filter === 'none'}" onclick="setState({todoFilter:'none'})">Personal</button>
       </div>
       <div class="segmented" role="group" aria-label="Group to-dos">
         <button class="${view === 'date' ? 'active' : ''}" aria-pressed="${view === 'date'}" onclick="state._todoView='date';touch()">${icon('calendar', 14)} By date</button>
@@ -87,7 +87,7 @@ function pageTodos() {
         <button class="btn btn-ghost btn-sm mt-8" onclick="clearCompletedTodos()">${icon('trash', 14)} Clear completed</button>
       </details>` : ''}
 
-    <details class="card card-pad todo-repeat" ${state.recurringTemplates.length ? '' : ''}>
+    <details class="card card-sm card-pad todo-repeat">
       <summary class="flex-between"><span class="sg-h3">${icon('refresh-cw', 16)}Repeating to-dos</span><span class="small muted">${state.recurringTemplates.length ? `${state.recurringTemplates.length} set up` : 'Readings, laundry, weekly check-ins'}</span></summary>
       <div class="mt-8">
         ${state.recurringTemplates.map(rt => `
@@ -122,8 +122,9 @@ function todoRow(x, { selectMode = false, selected = null, showList = true } = {
         ${x.notes ? `<span role="img" aria-label="Has notes">${icon('file-text', 12)}</span>` : ''}
       </div>` : ''}
     </div>
-    ${x.priority === 'high' && !x.done ? `<span class="todo-flag" role="img" aria-label="High priority">${icon('flag', 12)}</span>` : ''}
-    <div class="assign-due ${overdue ? 'is-overdue' : ''}">${dueBadgeHtml(x.dueDate, x.dueTime, x.done)}</div>
+    ${x.priority === 'high' && !x.done
+      ? `<div class="assign-due has-flag ${overdue ? 'is-overdue' : ''}"><span class="todo-flag" role="img" aria-label="High priority">${icon('flag', 12)}</span><span class="assign-due-stack">${dueBadgeHtml(x.dueDate, x.dueTime, x.done)}</span></div>`
+      : `<div class="assign-due ${overdue ? 'is-overdue' : ''}">${dueBadgeHtml(x.dueDate, x.dueTime, x.done)}</div>`}
   </div>`;
 }
 

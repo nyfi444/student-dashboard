@@ -63,11 +63,11 @@ function pageTimer() {
     <div class="timer-layout">
       <div class="card timer-main">
         <div class="timer-top">
-          <div class="segmented">
-            <button class="${t.mode === 'pomodoro' ? 'active' : ''}" onclick="setTimerMode('pomodoro')">Focus blocks</button>
-            <button class="${t.mode === 'stopwatch' ? 'active' : ''}" onclick="setTimerMode('stopwatch')">Stopwatch</button>
+          <div class="segmented" role="group" aria-label="Timer mode">
+            <button class="${t.mode === 'pomodoro' ? 'active' : ''}" aria-pressed="${t.mode === 'pomodoro'}" onclick="setTimerMode('pomodoro')">Focus blocks</button>
+            <button class="${t.mode === 'stopwatch' ? 'active' : ''}" aria-pressed="${t.mode === 'stopwatch'}" onclick="setTimerMode('stopwatch')">Stopwatch</button>
           </div>
-          ${t.mode === 'pomodoro' ? `<div class="timer-phases">${['focus', 'short', 'long'].map(p => `<button class="timer-phase ${t.phase === p ? 'active' : ''}" onclick="setTimerPhase('${p}')">${PHASE_LABEL[p]}</button>`).join('')}</div>` : ''}
+          ${t.mode === 'pomodoro' ? `<div class="segmented timer-phases" role="group" aria-label="Phase">${['focus', 'short', 'long'].map(p => `<button class="timer-phase ${t.phase === p ? 'active' : ''}" aria-pressed="${t.phase === p}" onclick="setTimerPhase('${p}')">${PHASE_LABEL[p]}</button>`).join('')}</div>` : ''}
         </div>
 
         <div class="timer-dial" id="timer-dial" style="--timer-color:${color}">
@@ -114,9 +114,9 @@ function pageTimer() {
               <div class="dash-focus-num">${durationFigure(weekMin)}</div>
               <div class="dash-focus-of">${goal ? `of ${fmtDuration(goal)} this week` : 'focused this week'}</div>
               ${goal ? `<div class="progress dash-focus-progress"><div style="width:${clamp((weekMin / goal) * 100, 0, 100)}%"></div></div>` : ''}
+              <div class="small dim mt-8">${(() => { const n = sessions.filter(x => x.date === today).length; return `Today ${esc(fmtDuration(todayMin))} · ${n} session${n === 1 ? '' : 's'}`; })()}</div>
+              ${goal ? '' : `<button class="sg-link mt-8" onclick="openTimerSettings()">Set a weekly goal</button>`}
             </div>
-            <div class="timer-today"><div class="timer-today-num">${esc(fmtDuration(todayMin))}</div><div class="small dim">today · ${sessions.filter(x => x.date === today).length} session${sessions.filter(x => x.date === today).length === 1 ? '' : 's'}</div>
-            ${goal ? `<div class="small dim mt-8">${weekMin >= goal ? 'Weekly goal reached.' : `${fmtDuration(goal - weekMin)} to go this week`}</div>` : `<button class="sg-link mt-8" onclick="openTimerSettings()">Set a weekly goal</button>`}</div>
           </div>
           ${stats.length ? `<div class="divider"></div>${stats.map(x => `
             <div class="mb-8">

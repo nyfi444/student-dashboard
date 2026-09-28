@@ -61,27 +61,27 @@ function classShareBar(course) {
   const sc = course.sharedClass;
   if (!sc) {
     return `<div class="class-share-bar">
-      <span class="class-share-ic">${icon('users', 15, 1.8)}</span>
+      <span class="class-share-ic">${icon('users', 16)}</span>
       <div style="flex:1;min-width:0"><div class="sg-strong">Share this class with your section</div><div class="small muted">Classmates get the class times and every deadline in one tap. Your notes and progress stay private.</div></div>
       <button class="btn btn-sm btn-primary" onclick="openShareClassModal('${course.id}')">Share class</button>
     </div>`;
   }
   const changes = unsharedChangeCount(course);
   return `<div class="class-share-bar is-shared">
-    <span class="class-share-ic">${icon('users', 15, 1.8)}</span>
+    <span class="class-share-ic">${icon('users', 16)}</span>
     <div style="flex:1;min-width:0">
       <div class="sg-strong">Shared class · code ${esc(sc.code)}</div>
       <div class="small muted">${sc.role === 'owner' ? `You shared this${sc.memberCount ? ` · ${sc.memberCount} classmate${sc.memberCount === 1 ? '' : 's'} joined` : ''}` : `Synced from ${esc(sc.sharedBy || 'a classmate')}${sc.syncedAt ? ` · updated ${fmtRelativeTime(sc.syncedAt)}` : ''}`}</div>
     </div>
     ${changes ? `<button class="btn btn-sm btn-primary" onclick="publishClassUpdates('${course.id}')">Share ${changes} update${changes === 1 ? '' : 's'}</button>` : ''}
-    <button class="btn btn-sm" onclick="openClassInviteModal('${course.id}')">${icon('user-plus', 13, 1.8)} Invite</button>
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Shared class options" onclick="openClassOptions('${course.id}')">${icon('more-horizontal', 16, 1.8)}</button>
+    <button class="btn btn-sm" onclick="openClassInviteModal('${course.id}')">${icon('user-plus', 14)} Invite</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Shared class options" onclick="openClassOptions('${course.id}')">${icon('more-horizontal', 16)}</button>
   </div>`;
 }
 function requireCloudForClasses() {
   if (cloudGroupsEnabled()) return true;
   openModal(`
-    <div class="modal-head"><h3>Shared classes</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Shared classes</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body"><p class="small muted">Sharing and joining classes needs a Semester HQ account, so everyone’s deadlines stay in sync.</p></div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Not now</button>${fbConfigured() ? `<a class="btn btn-primary" href="login.html">Log in or sign up</a>` : ''}</div>
   `);
@@ -95,7 +95,7 @@ function openShareClassModal(courseId) {
   const p = classPayload(c);
   const n = Object.keys(p.items).length;
   openModal(`
-    <div class="modal-head"><h3>Share ${esc(c.code || c.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Share ${esc(c.code || c.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <p class="small muted mb-16">Anyone in your section can join with a code or link and instantly get this class set up.</p>
       <div class="class-share-summary">
@@ -157,15 +157,15 @@ function openClassInviteModal(courseId, { justCreated = false } = {}) {
   const code = c.sharedClass.code;
   const link = classInviteLink(code);
   openModal(`
-    <div class="modal-head"><h3>${justCreated ? `${esc(c.code || c.name)} is shared` : `Invite classmates to ${esc(c.code || c.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>${justCreated ? `${esc(c.code || c.name)} is shared` : `Invite classmates to ${esc(c.code || c.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <p class="small muted" style="text-align:center">Post the link in your class GroupMe or Discord, or share the code:</p>
       <div class="sg-invite-code">${code.split('').map(ch => `<span>${ch}</span>`).join('')}</div>
       <div class="field mt-16"><label for="class-invite-link">Link</label>
-        <div class="sg-invite-row"><input class="input" id="class-invite-link" value="${esc(link)}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyClassInvite('${c.id}')">${icon('copy', 13, 1.8)} Copy</button></div>
+        <div class="sg-invite-row"><input class="input" id="class-invite-link" value="${esc(link)}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyClassInvite('${c.id}')">${icon('copy', 14)} Copy</button></div>
       </div>
-      ${navigator.share ? `<button class="btn" style="width:100%;justify-content:center" onclick="shareClassInvite('${c.id}')">${icon('send', 13, 1.8)} Share via…</button>` : ''}
-      <div class="sg-pricing-inline small mt-16"><span class="sg-feature-ic">${icon('graduation-cap', 15, 1.7)}</span><div><span class="sg-strong">Want the whole section covered?</span><div class="muted">Clubs, TAs, and departments can get everyone on Semester HQ with <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">group pricing</a>.</div></div></div>
+      ${navigator.share ? `<button class="btn" style="width:100%;justify-content:center" onclick="shareClassInvite('${c.id}')">${icon('send', 14)} Share via…</button>` : ''}
+      <div class="sg-pricing-inline small mt-16"><span class="sg-feature-ic">${icon('graduation-cap', 16)}</span><div><span class="sg-strong">Want the whole section covered?</span><div class="muted">Clubs, TAs, and departments can get everyone on Semester HQ with <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">group pricing</a>.</div></div></div>
     </div>
   `);
 }
@@ -182,11 +182,11 @@ function openClassOptions(courseId) {
   const c = getCourse(courseId);
   const owner = c.sharedClass.role === 'owner';
   openModal(`
-    <div class="modal-head"><h3>Shared class</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Shared class</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <p class="small muted mb-16">${owner ? 'You shared this class. Classmates who joined keep their copy even if you stop sharing, but they won’t get any more updates.' : 'Stop syncing and this class stays in your planner exactly as it is now, without future updates.'}</p>
       <div class="sg-danger">
-        ${owner ? `<button class="btn btn-danger btn-sm" onclick="stopSharingClass('${courseId}')">Stop sharing</button>` : `<button class="btn btn-sm" onclick="checkClassUpdates('${courseId}',true)">${icon('refresh-cw', 13, 1.8)} Check for updates</button><button class="btn btn-danger btn-sm" onclick="leaveSharedClass('${courseId}')">Stop syncing</button>`}
+        ${owner ? `<button class="btn btn-danger btn-sm" onclick="stopSharingClass('${courseId}')">Stop sharing</button>` : `<button class="btn btn-sm" onclick="checkClassUpdates('${courseId}',true)">${icon('refresh-cw', 14)} Check for updates</button><button class="btn btn-danger btn-sm" onclick="leaveSharedClass('${courseId}')">Stop syncing</button>`}
       </div>
     </div>
   `);
@@ -212,7 +212,7 @@ async function leaveSharedClass(courseId) {
 function openJoinClassModal(prefill = '', tab = 'code') {
   if (!requireCloudForClasses()) return;
   openModal(`
-    <div class="modal-head"><h3>Join a shared class</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Join a shared class</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="segmented mb-16">
         <button class="${tab === 'code' ? 'active' : ''}" onclick="openJoinClassModal('', 'code')">I have a code</button>
@@ -258,7 +258,7 @@ async function findClasses() {
       <button class="class-result" onclick="openJoinClassFromResult('${d.code}')">
         <div style="min-width:0;flex:1"><div class="sg-strong">${esc(d.courseCode)} · ${esc(d.name)}</div>
         <div class="small muted">${[d.term, d.section ? `Section ${d.section}` : '', d.instructor, `${sharedItemsFromDoc(d).length} deadlines`].filter(Boolean).map(esc).join(' · ')}</div></div>
-        ${icon('chevron-right', 14, 2)}
+        ${icon('chevron-right', 14)}
       </button>`).join('')
       : `<div class="sg-callout small"><div>No one has shared <strong>${esc(course)}</strong> at ${esc(school)} yet. Add the class and share it, and your classmates can join you.</div></div>`;
   } catch (e) { setBtnLoading(btn, false, 'Search'); diag.warn('classes', 'Class search failed', e); toast('Search didn’t work. Try again in a moment.', 'error'); }
@@ -272,7 +272,7 @@ function showClassPreview(code, d) {
   const meetings = validMeetings(d.meetings);
   const existing = activeCourses().find(c => c.sharedClass?.code === code);
   openModal(`
-    <div class="modal-head"><h3>Join shared class</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Join shared class</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="class-preview">
         <div class="sg-eyebrow">${[d.school, d.term, d.section ? `Section ${d.section}` : ''].filter(Boolean).map(esc).join(' · ')}</div>
@@ -408,7 +408,7 @@ async function handlePendingClass() {
     if (_classInviteShown) return;
     _classInviteShown = true;
     openModal(`
-      <div class="modal-head"><h3>A classmate shared a class with you</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+      <div class="modal-head"><h3>A classmate shared a class with you</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
       <div class="modal-body"><p class="small muted">Log in or create your Semester HQ account to add it. You’ll get the class times and every deadline in one tap.</p></div>
       <div class="modal-foot"><button class="btn" onclick="closeModal()">Look around first</button><a class="btn btn-primary" href="login.html">Log in to add it</a></div>
     `);

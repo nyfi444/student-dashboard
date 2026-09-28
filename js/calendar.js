@@ -20,7 +20,7 @@ function pageCalendar() {
         ${views.map(x => `<button class="${v === x ? 'active' : ''}" aria-pressed="${v === x}" onclick="setCalView('${x}')">${x[0].toUpperCase() + x.slice(1)}</button>`).join('')}
       </div>
       <span class="cal-divider" aria-hidden="true"></span>
-      <button class="btn btn-ghost btn-sm" onclick="openBreaksModal()">${icon('flag', 14)}Breaks</button>
+      <button class="btn btn-ghost btn-sm" onclick="openBreaksModal()">${icon('pause', 14)}Breaks</button>
       <button class="btn btn-primary" onclick="openEventModal(null,'${state.calDate}')">${icon('plus', 14)}Time block</button>`;
   return `
     ${pageHead('Calendar', has ? calUpcomingSummary() : '', actions, { titleHtml: calTitleHtml(v), className: 'cal-head' })}
@@ -37,13 +37,13 @@ function pageCalendar() {
     </div>` : ''}
   `;
 }
-// The headline: "September 2026", "Sep 27 – Oct 3 2026", "Monday, September 28".
-// The italic part is the one rose word the brand allows, at display size.
+// The headline: "September 2026", "Sep 27 – Oct 3 2026", "Monday, September 28 2026".
+// Only the year is italic: the one rose word the brand allows, at display size.
 function calTitleHtml(v) {
   const d = new Date(state.calDate + 'T00:00:00');
   if (v === 'year') return String(d.getFullYear());
   if (v === 'month') return `${d.toLocaleDateString('en-US', { month: 'long' })} <em>${d.getFullYear()}</em>`;
-  if (v === 'day') return `${d.toLocaleDateString('en-US', { weekday: 'long' })}, <em>${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</em>`;
+  if (v === 'day') return `${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} <em>${d.getFullYear()}</em>`;
   const s = startOfWeek(state.calDate), e = new Date(s + 'T00:00:00'); e.setDate(e.getDate() + 6);
   return `${fmtDate(s)} – ${fmtDate(iso(e))} <em>${e.getFullYear()}</em>`;
 }
@@ -190,16 +190,21 @@ function customEventsOnDate(dateIso) { return state.events.filter(e => e.date ==
 // due date looked like it did nothing. Same scope rule as reminders.js and
 // dashboard.js: keep it unless it belongs to a course from another semester.
 function calInScope(a) { return !a.courseId || activeCourses().some(c => c.id === a.courseId); }
-function examsOnDate(dateIso) { return state.assignments.filter(a => a.type === 'exam' && a.dueDate === dateIso && calInScope(a)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || '09:00', end: null, color: getCourseColor(a.courseId), kind: 'exam', action: `openExamPrep('${a.id}')` })); }
-function deadlinesOnDate(dateIso) { return state.assignments.filter(a => a.type !== 'exam' && a.dueDate === dateIso && calInScope(a)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || null, end: null, color: getCourseColor(a.courseId), kind: 'deadline', action: `openAssignmentModal('${a.id}')` })); }
+function examsOnDate(dateIso) { return state.assignments.filter(a => a.type === 'exam' && a.dueDate === dateIso && calInScope(a)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || '09:00', end: null, color: getCourseColor(a.courseId), courseId: a.courseId, kind: 'exam', action: `openExamPrep('${a.id}')` })); }
+function deadlinesOnDate(dateIso) { return state.assignments.filter(a => a.type !== 'exam' && a.dueDate === dateIso && calInScope(a)).map(a => ({ id: a.id, title: a.title, start: a.dueTime || null, end: null, color: getCourseColor(a.courseId), courseId: a.courseId, kind: 'deadline', action: `openAssignmentModal('${a.id}')` })); }
 // To-dos carry a due date and an optional time exactly like assignments do, but
 // they were never collected here, so a to-do due Friday appeared nowhere on the
 // calendar and rescheduling one looked like it hadn't saved. Finished ones stay
 // off: the calendar is for what's still ahead.
-function todosOnDate(dateIso) { return state.todos.filter(x => !x.done && x.dueDate === dateIso).map(x => ({ id: x.id, title: x.title, start: x.dueTime || null, end: null, color: getCourseColor(x.courseId), kind: 'todo', action: `openTodoModal('${x.id}')` })); }
+function todosOnDate(dateIso) { return state.todos.filter(x => !x.done && x.dueDate === dateIso).map(x => ({ id: x.id, title: x.title, start: x.dueTime || null, end: null, color: getCourseColor(x.courseId), courseId: x.courseId, kind: 'todo', action: `openTodoModal('${x.id}')` })); }
+// 11:59 PM is how the app writes "due that day" (dueBadgeHtml shows no time
+// for it). On the hour grid it had no real slot: it sat below the 10 PM row
+// and the sheet clipped it away. So a deadline at 11:59 PM counts as untimed
+// and lands in the All day row with undated to-dos, which is what it means.
+function calDueStart(it) { return it.start === '23:59' && !it.end ? { ...it, start: null } : it; }
 function itemsOnDate(dateIso) {
   return [...meetingsOnDate(dateIso), ...customEventsOnDate(dateIso), ...examsOnDate(dateIso), ...deadlinesOnDate(dateIso), ...todosOnDate(dateIso), ...groupSessionsOnDate(dateIso), ...careerItemsOnDate(dateIso),
-    ...officeHoursOnDate(dateIso), ...projectMilestonesOnDate(dateIso), ...orgEventsOnDate(dateIso)].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+    ...officeHoursOnDate(dateIso), ...projectMilestonesOnDate(dateIso), ...orgEventsOnDate(dateIso)].map(calDueStart).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 }
 const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list', todo: 'check-square', group: 'users', career: 'briefcase', office: 'clock', milestone: 'folder', org: 'shield' };
 
@@ -305,7 +310,20 @@ function monthView() {
 function openDayFromMonth(dIso) { setState({ calDate: dIso, calView: 'day' }); }
 
 function hourLabel(h) { return `${h % 12 || 12} ${h >= 12 ? 'PM' : 'AM'}`; }
-function hourLabels() { return `<div>${CAL_HOURS.map(h => `<div class="cal-hour-label"><span>${hourLabel(h)}</span></div>`).join('')}</div>`; }
+// The grid runs 7 AM to 11 PM, and stretches to hold anything outside that:
+// a 6:30 AM practice or a 10:30 PM study block used to hang off the sheet
+// edge and get clipped away with no trace.
+function calGridHours(timed) {
+  const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+  let first = CAL_HOURS[0], last = CAL_HOURS[CAL_HOURS.length - 1];
+  for (const it of timed) {
+    const s = toMin(it.start), e = it.end && toMin(it.end) > s ? toMin(it.end) : s + 45;
+    first = Math.min(first, Math.floor(s / 60));
+    if (e > (last + 1) * 60) last = Math.min(23, Math.ceil(e / 60) - 1);
+  }
+  return Array.from({ length: last - first + 1 }, (_, i) => first + i);
+}
+function hourLabels(hours = CAL_HOURS) { return `<div>${hours.map(h => `<div class="cal-hour-label"><span>${hourLabel(h)}</span></div>`).join('')}</div>`; }
 // "9–10:15 AM", "11 AM–12:15 PM": ':00' is dropped and AM/PM is written
 // once unless it changes, so a block's time fits on one line.
 function calClock(t) {
@@ -323,6 +341,7 @@ function fmtRange(start, end) {
 function weekView() {
   const start = new Date(startOfWeek(state.calDate) + 'T00:00:00');
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
+  const hours = calGridHours(days.flatMap(d => itemsOnDate(iso(d)).filter(it => it.start)));
   return `
     <div class="cal-sheet cal-time">
       <div class="cal-week-grid cal-week-head">
@@ -332,13 +351,13 @@ function weekView() {
       </div>
       ${allDayStrip(days.map(iso), '', true)}
       <div class="cal-week-grid cal-hours">
-        ${hourLabels()}
-        ${days.map(d => weekDayColumn(iso(d))).join('')}
+        ${hourLabels(hours)}
+        ${days.map(d => weekDayColumn(iso(d), hours)).join('')}
       </div>
     </div>
   `;
 }
-function weekDayColumn(dIso) {
+function weekDayColumn(dIso, hours = CAL_HOURS) {
   const items = itemsOnDate(dIso).filter(it => it.start);
   const brk = breakOnDate(dIso);
   const dow = new Date(dIso + 'T00:00:00').getDay();
@@ -346,16 +365,16 @@ function weekDayColumn(dIso) {
   const nowMin = dIso === today ? new Date().getHours() * 60 + new Date().getMinutes() : null;
   return `<div class="cal-day-col ${dow === 0 || dow === 6 ? 'weekend' : ''} ${dIso === today ? 'today' : ''}" onclick="openEventModal(null,'${dIso}')" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
     ${brk ? `<div class="cal-break-label" style="position:absolute;top:4px;left:6px;z-index:1">${esc(brk.name)}</div>` : ''}
-    ${CAL_HOURS.map(h => `<div class="cal-hour-row" ondragover="allowDrop(event)" ondrop="event.stopPropagation();dropTimeBlockOnSlot(event,'${dIso}',${h})"></div>`).join('')}
-    ${items.map(it => positionedBlock(it, dIso, nowMin, { past: dIso < today })).join('')}
-    ${nowLine(dIso)}
+    ${hours.map(h => `<div class="cal-hour-row" ondragover="allowDrop(event)" ondrop="event.stopPropagation();dropTimeBlockOnSlot(event,'${dIso}',${h})"></div>`).join('')}
+    ${items.map(it => positionedBlock(it, dIso, nowMin, { past: dIso < today, hours })).join('')}
+    ${nowLine(dIso, hours)}
   </div>`;
 }
 // A rose hairline at the current time, on today's column only.
-function nowLine(dIso) {
+function nowLine(dIso, hours = CAL_HOURS) {
   if (dIso !== todayIso()) return '';
-  const n = new Date(), min = n.getHours() * 60 + n.getMinutes() - CAL_HOURS[0] * 60;
-  if (min < 0 || min > CAL_HOURS.length * 60) return '';
+  const n = new Date(), min = n.getHours() * 60 + n.getMinutes() - hours[0] * 60;
+  if (min < 0 || min > hours.length * 60) return '';
   return `<div class="cal-now" style="top:${(min / 60) * 48}px" aria-hidden="true"></div>`;
 }
 // Week and Day lay events out on an hour grid, so anything without a time had
@@ -370,7 +389,7 @@ function allDayStrip(dates, cols = '', counts = false) {
   if (!perDay.some(list => list.length)) return '';
   return `<div class="cal-week-grid cal-allday ${counts ? 'has-counts' : ''}" ${cols ? `style="grid-template-columns:${cols}"` : ''}>
     <div class="cal-allday-label">All day</div>
-    ${dates.map((d, i) => `<div class="cal-allday-col" ${counts ? `onclick="calAllDayTap('${d}')"` : ''} ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${d}')">
+    ${dates.map((d, i) => `<div class="cal-allday-col" ${counts ? `onclick="calAllDayTap('${d}')" aria-label="${esc(`All day, ${fmtDate(d, { weekday: 'long', month: 'short', day: 'numeric' })}`)}"` : ''} ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${d}')">
       ${perDay[i].map(it => calEvtHtml(it, `aria-label="${esc(it.title)}" ` + (it.action ? `role="button" tabindex="0" onclick="event.stopPropagation();${it.action}" onkeydown="calKey(event,()=>{${it.action}})"` : ''))).join('')}
       ${counts && perDay[i].length ? `<button type="button" class="cal-allday-count" aria-label="${esc(`${perDay[i].length} all-day item${perDay[i].length === 1 ? '' : 's'} on ${fmtDateLong(d)}: ${perDay[i].map(it => it.title).join(', ')}`)}" onclick="event.stopPropagation();jumpToDay('${d}')">${perDay[i].length}</button>` : ''}
     </div>`).join('')}
@@ -382,9 +401,12 @@ function calAllDayTap(dIso) { if (window.matchMedia('(max-width: 760px)').matche
 function positionedBlock(it, dIso, nowMin = null, opts = {}) {
   const [sh, sm] = (it.start || '09:00').split(':').map(Number);
   const startMin = sh * 60 + sm;
-  const top = ((startMin - CAL_HOURS[0] * 60) / 60) * 48;
+  const hours = opts.hours || CAL_HOURS;
+  const top = ((startMin - hours[0] * 60) / 60) * 48;
   const endMin = it.end ? (() => { const [eh, em] = it.end.split(':').map(Number); return eh * 60 + em; })() : startMin + 45;
-  const height = Math.max(22, ((endMin - startMin) / 60) * 48 - 2);
+  // Never past the bottom of the grid: the sheet clips whatever hangs off it.
+  const room = hours.length * 48 - top - 2;
+  const height = Math.max(22, Math.min(((endMin - startMin) / 60) * 48 - 2, room));
   const clickable = it.action ? `onclick="event.stopPropagation();${it.action}"` : it.kind === 'custom' ? `onclick="event.stopPropagation();openEventModal('${it.id}')"` : (it.kind === 'exam' || it.kind === 'deadline') ? `onclick="event.stopPropagation();openAssignmentModal('${it.id}')"` : it.kind === 'group' ? `onclick="event.stopPropagation();openGroupSession('${it.code}')"` : it.kind === 'career' ? `onclick="event.stopPropagation();openApplicationModal('${it.id}')"` : `onclick="event.stopPropagation()"`;
   // A tint of the class color behind ink text: readable whatever color the
   // student picked, and calm enough that a busy week doesn't shout.
@@ -394,10 +416,14 @@ function positionedBlock(it, dIso, nowMin = null, opts = {}) {
   // Under 48px there is no room for a second line, so the Day view puts the
   // time beside the title; the place only gets a line of its own from 52px.
   const short = !!opts.day && height < 48;
-  const shortName = it.course?.code || String(it.title || '').split(' ')[0].replace(/[:,.;]+$/, '');
+  // On a phone the block only has room for a label: the course code when the
+  // item belongs to a class (a deadline or to-do carries only its courseId),
+  // or else the title's first word, cut with an ellipsis.
+  const code = (it.course || (it.courseId ? getCourse(it.courseId) : null))?.code || '';
+  const shortName = code || String(it.title || '').split(' ')[0].replace(/[:,.;]+$/, '');
   return `<div class="cal-block kind-${it.kind} ${past ? 'past' : ''} ${short ? 'is-short' : ''}" style="top:${top}px;height:${height}px;--c:${hex}" ${clickable} title="${esc(it.kind === 'group' ? `${it.title} (${it.groupName})` : it.title)}">
     <div class="cal-block-title">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 12)}</span>` : ''}<span>${esc(it.title)}</span></div>
-    <span class="cal-block-short">${esc(shortName)}</span>
+    <span class="cal-block-short${code ? '' : ' is-word'}">${esc(shortName)}</span>
     ${height >= 36 || opts.day ? `<span class="cal-block-time">${fmtRange(it.start, it.end)}</span>` : ''}
     ${where && height >= 52 ? `<span class="cal-block-where">${esc(where)}</span>` : ''}
   </div>`;
@@ -411,22 +437,23 @@ function dayView() {
   const dIso = state.calDate;
   const all = itemsOnDate(dIso);
   const items = all.filter(it => it.start);
+  const hours = calGridHours(items);
   const brk = breakOnDate(dIso);
   const isToday = dIso === todayIso();
   const nowMin = isToday ? new Date().getHours() * 60 + new Date().getMinutes() : null;
-  const pastPx = isToday ? Math.max(0, Math.min(CAL_HOURS.length * 60, nowMin - CAL_HOURS[0] * 60)) / 60 * 48 : 0;
+  const pastPx = isToday ? Math.max(0, Math.min(hours.length * 60, nowMin - hours[0] * 60)) / 60 * 48 : 0;
   return `
     <div class="cal-dayplan">
       <div class="cal-sheet cal-time">
         ${brk ? `<div class="cal-break-label" style="padding:10px 14px 0">${esc(brk.name)}, no classes</div>` : ''}
         ${allDayStrip([dIso], '58px 1fr')}
         <div class="cal-week-grid cal-hours" style="grid-template-columns:58px 1fr">
-          ${hourLabels()}
+          ${hourLabels(hours)}
           <div class="cal-day-col" onclick="openEventModal(null,'${dIso}')" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
-            ${CAL_HOURS.map(h => `<div class="cal-hour-row" ondragover="allowDrop(event)" ondrop="event.stopPropagation();dropTimeBlockOnSlot(event,'${dIso}',${h})"></div>`).join('')}
+            ${hours.map(h => `<div class="cal-hour-row" ondragover="allowDrop(event)" ondrop="event.stopPropagation();dropTimeBlockOnSlot(event,'${dIso}',${h})"></div>`).join('')}
             ${pastPx ? `<div class="cal-past" style="height:${pastPx}px" aria-hidden="true"></div>` : ''}
-            ${items.map(it => positionedBlock(it, dIso, nowMin, { day: true, past: dIso < todayIso() })).join('')}
-            ${nowLine(dIso)}
+            ${items.map(it => positionedBlock(it, dIso, nowMin, { day: true, past: dIso < todayIso(), hours })).join('')}
+            ${nowLine(dIso, hours)}
           </div>
         </div>
       </div>

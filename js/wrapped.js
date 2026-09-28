@@ -152,7 +152,7 @@ async function openWrapped() {
   if (st.focusMin < 30 && st.done < 1 && st.cards < 10) {
     openModal(`
       <div class="modal-head"><h3>Semester Wrapped</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
-      <div class="modal-body">${emptyState(icon('sparkles', 26, 1.4), 'Your Wrapped is still being written', '', 'Log focus sessions, finish assignments, and review flashcards. At the end of the semester, it all comes together here as a recap you can share.')}</div>
+      <div class="modal-body">${emptyState(icon('star', 20), 'Your Wrapped is still being written', '', 'Log focus sessions, finish assignments, and review flashcards. At the end of the semester, it all comes together here as a recap you can share.')}</div>
     `);
     return;
   }
@@ -238,7 +238,7 @@ function wrappedDashboardBanner() {
   if (!sem || sem.pct < 85 || state.settings.wrappedDismissed === state.currentSemesterId) return '';
   return `
     <button class="card wrapped-banner" onclick="openWrapped()">
-      <span class="wrapped-banner-mark">${icon('sparkles', 18, 1.6)}</span>
+      <span class="wrapped-banner-mark">${icon('star', 18)}</span>
       <span style="flex:1;min-width:0;text-align:left"><span class="wrapped-banner-title">Your ${esc(sem.name.replace(/\s*\(sample\)$/, ''))} Wrapped is ready</span><span class="small muted">See your semester in cards made for your story.</span></span>
       <span class="btn btn-primary btn-sm">Open</span>
     </button>`;

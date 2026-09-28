@@ -56,7 +56,7 @@ function pageNotebook() {
         <div class="notebook-tree">
           ${pinned.length ? `<div class="nb-section nb-section-pinned">
             <div class="nb-section-label"><span>Pinned</span></div>
-            <div class="nb-rows">${pinned.map(n => nbNoteRowHtml(n, selectedId)).join('')}</div>
+            <div class="nb-rows">${pinned.map(n => nbNoteRowHtml(n, selectedId, true)).join('')}</div>
           </div>` : ''}
           ${allNotes.length || hasFolders ? `<div class="nb-section nb-section-notes">
             <div class="nb-section-label"><span>Notes</span>
@@ -101,7 +101,11 @@ function pageNotebook() {
     wireNbKeyboardBar(); nbUpdateKeyboardInset();
     const editor = $('#note-editor');
     if (editor) nbTagInks(editor);
-    nbAutosizeTitle($('#nb-title-input'));
+    const title = $('#nb-title-input');
+    nbAutosizeTitle(title);
+    nbWatchTitleWidth(title);
+    // A note just made with + Note or Blank note opens with the caret in its title.
+    if (title && note && window._nbFocusTitle === note.id) { window._nbFocusTitle = null; title.focus({ preventScroll: true }); }
     wireNbStuckBar();
     // A re-render while typing (a sync, a pin) keeps the phone keyboard bar up.
     const layout = $('.notebook-layout');
@@ -123,21 +127,24 @@ const _nbSnippets = new Map();
 function nbNoteSnippet(n) {
   const key = n.id + ':' + (n.updatedAt || 0);
   if (!_nbSnippets.has(key)) {
-    // Blocks are joined with a space, so "Heading" and the next line don't run together.
-    const text = textOfHtml(String(n.content || '').replace(/(<\/(p|h[1-6]|li|div|blockquote|pre|td|th|tr)>|<br\s*\/?>)/gi, '$1 ')).replace(/\s+/g, ' ').trim();
+    // Leading headings are skipped (they read as a second title and ran
+    // into the first sentence); blocks are joined with a space.
+    const flat = html => textOfHtml(html.replace(/(<\/(p|h[1-6]|li|div|blockquote|pre|td|th|tr)>|<br\s*\/?>)/gi, '$1 ')).replace(/\s+/g, ' ').trim();
+    const all = String(n.content || '');
+    const text = flat(all.replace(/^(\s*<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>)+/i, '')) || flat(all);
     _nbSnippets.set(key, text.length > 90 ? text.slice(0, 89).trimEnd() + '…' : text);
     if (_nbSnippets.size > 600) _nbSnippets.delete(_nbSnippets.keys().next().value);
   }
   return _nbSnippets.get(key);
 }
-function nbNoteRowHtml(n, selectedId) {
+function nbNoteRowHtml(n, selectedId, inPinned) {
   const selected = n.id === selectedId;
   const title = n.name === 'Untitled note' ? 'Untitled' : n.name;
   const snippet = nbNoteSnippet(n);
   const course = n.courseId ? getCourse(n.courseId) : null;
   return `<div class="nb-note-row ${selected ? 'selected' : ''}" ${selected ? 'aria-current="true"' : ''} onclick="selectNote('${n.id}')">
       <div class="nb-note-meta">
-        <div class="nb-note-title"><span class="nb-note-name" title="${esc(title)}">${esc(title)}</span>${n.pinned ? `<span class="nb-note-pin" aria-label="Pinned">${icon('pin', 12)}</span>` : ''}</div>
+        <div class="nb-note-title"><span class="nb-note-name" title="${esc(title)}">${esc(title)}</span>${n.pinned && !inPinned ? `<span class="nb-note-pin" aria-label="Pinned">${icon('pin', 12)}</span>` : ''}</div>
         ${snippet ? `<div class="nb-note-snippet">${esc(snippet)}</div>` : ''}
         <div class="nb-note-sub">${course ? `<span class="pill-dot" style="background:${getCourseColor(n.courseId)}"></span><span>${esc(course.code || '')}</span><span aria-hidden="true">·</span>` : ''}<span>${fmtRelativeTime(n.updatedAt)}</span></div>
       </div>
@@ -177,7 +184,7 @@ function nbTypePopHtml() {
     <div class="menu-label">Size</div>
     <div class="nb-size-grid">${NB_FONT_SIZES.map(sz => `<button role="menuitem" ${pd} onclick="runNbFontSize(${sz});closeNbTypePop()" aria-label="${sz} pixels">${sz}</button>`).join('')}</div>`;
 }
-function openNbTypePop(anchorEl) {
+function openNbTypePop(anchorEl, ev) {
   const pop = $('#nb-type-pop');
   if (!pop) return;
   if (pop.style.display === 'block') { closeNbTypePop(); return; }
@@ -191,7 +198,10 @@ function openNbTypePop(anchorEl) {
   if (top + h > window.innerHeight - 8) top = rect.top - h - 8;
   pop.style.left = Math.max(8, left) + 'px';
   pop.style.top = Math.max(8, top) + 'px';
+  nbHideBubble(); // one formatting surface at a time
   updateNbFormatState();
+  // Opened from the keyboard, focus goes into the menu.
+  if (ev && ev.detail === 0) nbMenuItems(pop)[0]?.focus({ preventScroll: true });
   document.removeEventListener('mousedown', nbTypePopOutside);
   document.removeEventListener('keydown', nbTypePopKeydown);
   setTimeout(() => {
@@ -223,9 +233,11 @@ function nbUpdateKeyboardInset() {
   const tabBar = bar && window.matchMedia('(max-width: 760px)').matches ? bar.offsetHeight : 0;
   document.body.style.setProperty('--nb-kb', (kb > 0 ? kb : tabBar) + 'px');
 }
+function nbHideBubble() { const b = $('#nb-bubble'); if (b) b.style.display = 'none'; }
 function nbPopoverOpen() {
   return ['#nb-type-pop', '#nb-color-popover'].some(sel => { const el = $(sel); return el && el.style.display === 'block'; });
 }
+const NB_TODO_HIT_MQ = '(max-width: 760px), (pointer: coarse)';
 let _nbKbWired = false;
 function wireNbKeyboardBar() {
   if (_nbKbWired) return;
@@ -254,6 +266,19 @@ function wireNbKeyboardBar() {
     box.toggleAttribute('checked', box.checked);
     const editor = $('#note-editor');
     if (editor && window._nbCurrentNoteId) saveNoteContentDebounced(window._nbCurrentNoteId, editor.innerHTML);
+  });
+  // On a phone the 18px box has a 44px hit area (a ::before on the line,
+  // see notebook.css); a tap there lands on the line, so toggle it here.
+  document.addEventListener('click', e => {
+    const line = e.target;
+    if (!line.matches?.('#note-editor .nb-todo-line') || !window.matchMedia(NB_TODO_HIT_MQ).matches) return;
+    const box = line.querySelector(':scope > input[type=checkbox]');
+    if (!box) return;
+    const r = box.getBoundingClientRect();
+    if (Math.abs(e.clientX - (r.left + r.width / 2)) > 22 || Math.abs(e.clientY - (r.top + r.height / 2)) > 22) return;
+    e.preventDefault();
+    box.checked = !box.checked;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
   });
   // The bar gets its hairline once the page scrolls under it.
   window.addEventListener('scroll', nbSyncStuck, { passive: true });
@@ -384,6 +409,8 @@ function wireBubbleToolbar() {
   const bar = $('#nb-bubble');
   if (!editor || !bar) return;
   const positionBubble = () => {
+    // While Aa or a color popover is open, the bubble stays down.
+    if (nbPopoverOpen()) { bar.style.display = 'none'; return; }
     const sel = window.getSelection();
     if (!sel || !sel.anchorNode || !editor.contains(sel.anchorNode) || sel.isCollapsed) { bar.style.display = 'none'; return; }
     const rect = sel.getRangeAt(0).getBoundingClientRect();
@@ -586,6 +613,7 @@ function openNbColorPopover(anchorEl, mode) {
   });
   pop.style.display = 'block';
   positionNbColorPopover(anchorEl);
+  nbHideBubble(); // after placing, since the anchor may be a bubble button
   document.removeEventListener('mousedown', nbColorPopoverOutsideClick);
   document.removeEventListener('keydown', nbColorPopoverKeydown);
   setTimeout(() => {
@@ -744,7 +772,7 @@ function wireSlashMenu() {
 // with it, then the label or description contains it; ties go to the
 // layouts, so "/c" is still Cornell and "/l" still Lab report).
 function slashGlyphHtml(c) {
-  return c.glyph ? `<span class="nb-slash-glyph is-h nb-slash-${c.key}" aria-hidden="true">${c.glyph}</span>` : `<span class="nb-slash-glyph" aria-hidden="true">${icon(c.icon || 'type', 16)}</span>`;
+  return c.glyph ? `<span class="nb-slash-glyph is-h nb-slash-${c.key}" aria-hidden="true">${c.glyph.replace(/(\d)/, '<span class="nb-slash-digit">$1</span>')}</span>` : `<span class="nb-slash-glyph" aria-hidden="true">${icon(c.icon || 'type', 16)}</span>`;
 }
 function slashItemHtml(c) {
   return `<div class="nb-slash-item" role="option" data-key="${c.key}" onmousedown="event.preventDefault()" onclick="runSlashCommand('${c.key}')">${slashGlyphHtml(c)}<span class="nb-slash-text"><span class="nb-slash-label">${esc(c.label)}</span><span class="nb-slash-desc">${esc(c.desc)}</span></span></div>`;
@@ -786,6 +814,20 @@ function showSlashMenu(rect, query) {
   menu.style.top = Math.max(8, top) + 'px';
 }
 function hideSlashMenu() { const m = $('#nb-slash-menu'); if (m) m.style.display = 'none'; }
+function nbSlashLeaveContainer(block, editor) {
+  let outer = null;
+  for (let el = block; el && el !== editor; el = el.parentElement) if (/^(UL|OL|BLOCKQUOTE|PRE)$/.test(el.tagName)) outer = el;
+  if (!outer) return block;
+  const p = document.createElement('p');
+  p.innerHTML = '<br>';
+  outer.after(p);
+  // Take the emptied line out, and any list or quote it leaves empty.
+  let up = block === outer ? null : block.parentElement;
+  block.remove();
+  while (up && up !== editor && outer.contains(up) && !up.textContent.trim() && !up.querySelector('img, hr, input, table')) { const next = up.parentElement; up.remove(); if (up === outer) break; up = next; }
+  if (outer.isConnected && !outer.textContent.trim() && !outer.querySelector('img, hr, input, table')) outer.remove();
+  return p;
+}
 function runSlashCommand(key) {
   const block = window._slashBlock;
   const editor = $('#note-editor');
@@ -795,7 +837,13 @@ function runSlashCommand(key) {
     // instead of replacing the editor.
     let target = block;
     if (block === editor) { editor.innerHTML = '<p><br></p>'; target = editor.firstChild; window._slashBlock = target; }
-    else block.textContent = '';
+    else {
+      block.textContent = '';
+      // A block or layout picked on a list line, or inside a quote or code
+      // block, lands on a new line after it, never inside it. The two list
+      // commands are left to the browser, which switches the list type.
+      if (key !== 'bullet' && key !== 'number') { target = nbSlashLeaveContainer(block, editor); window._slashBlock = target; }
+    }
     const range = document.createRange();
     range.selectNodeContents(target);
     range.collapse(false);
@@ -878,6 +926,35 @@ function selectNote(id) {
 // The note's "More" menu is a <details>; a click anywhere else closes it.
 document.addEventListener('click', e => {
   document.querySelectorAll('details.nb-more[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
+  // Opened from the keyboard (a click with no pointer), focus goes to the first item.
+  const summary = e.target.closest?.('details.nb-more > summary');
+  if (summary && e.detail === 0) setTimeout(() => { const d = summary.parentElement; if (d.open) nbMenuItems(d)[0]?.focus({ preventScroll: true }); }, 0);
+});
+// The ··· note menu and the Aa popover work like menus from the keyboard:
+// arrows, Home and End move between items; Escape and Tab close back to
+// the button that opened them.
+function nbMenuItems(root) { return [...root.querySelectorAll('[role=menuitem]')].filter(b => !b.disabled && b.getClientRects().length); }
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  const more = t.closest?.('details.nb-more[open]');
+  const pop = $('#nb-type-pop');
+  const popOpen = !more && pop && pop.style.display === 'block' && (pop.contains(t) || t.id === 'nb-type-btn');
+  if (!more && !popOpen) return;
+  const root = more || pop;
+  const trigger = more ? more.querySelector('summary') : $('#nb-type-btn');
+  const list = nbMenuItems(root);
+  const i = list.indexOf(document.activeElement);
+  const go = n => { e.preventDefault(); list[n]?.focus({ preventScroll: true }); };
+  if (e.key === 'ArrowDown') go(i < 0 ? 0 : (i + 1) % list.length);
+  else if (e.key === 'ArrowUp') go(i < 0 ? list.length - 1 : (i - 1 + list.length) % list.length);
+  else if (e.key === 'Home') go(0);
+  else if (e.key === 'End') go(list.length - 1);
+  else if (e.key === 'Escape' && more) { e.preventDefault(); more.open = false; trigger?.focus({ preventScroll: true }); }
+  else if (e.key === 'Tab') {
+    // Back on the trigger first, so the browser's own Tab moves on from it.
+    if (more) more.open = false; else closeNbTypePop();
+    trigger?.focus({ preventScroll: true });
+  }
 });
 function createFolder(parentId) {
   const parent = state.notes.find(n => n.id === parentId);
@@ -904,7 +981,9 @@ function commitCreateFolder(parentId) {
 function createNote(parentId) {
   const id = uid();
   state.notes.push({ id, type: 'note', name: 'Untitled note', parentId, courseId: null, pinned: false, content: '', updatedAt: Date.now() });
-  // A new note opens straight away, on a phone too (not behind the list).
+  // A new note opens straight away, on a phone too (not behind the list),
+  // ready to type into.
+  window._nbFocusTitle = id;
   nbShowNoteOnPhone();
   setState({ notebookSelected: id });
 }
@@ -1127,6 +1206,7 @@ function createNoteFromTemplate(parentId) {
   if (NOTE_TEMPLATES[key]) applyNoteTemplate(id, key);
   else { nbShowNoteOnPhone(); setState({ route: 'notebook', notebookSelected: id }); }
 }
+function nbMarkFirstCornell(n, key) { if (key === 'cornell' && !state.settings.nbCornellHintNote) state.settings.nbCornellHintNote = n.id; }
 // Puts the layout on a note. A blank note becomes the template; a note
 // with writing in it keeps that writing and gets the layout added below.
 function applyNoteTemplate(id, key) {
@@ -1138,6 +1218,7 @@ function applyNoteTemplate(id, key) {
   const html = t.html();
   n.content = noteIsBlank(n) ? html : `${n.content}${html}`;
   n.template = key;
+  nbMarkFirstCornell(n, key);
   if (!n.date) n.date = todayIso();
   if (!n.name || n.name === 'Untitled note') n.name = t.name(n);
   n.updatedAt = Date.now();
@@ -1154,8 +1235,11 @@ function insertTemplateBlock(key) {
   const block = window._slashBlock;
   if (block && block.parentElement && editor.contains(block)) { block.insertAdjacentHTML('beforebegin', t.html()); block.remove(); }
   else runNbInsertHtml(t.html());
+  // The caret-line marker is a live-editing aid; it is not saved with the note.
+  editor.querySelectorAll('.nb-caret-line').forEach(el => el.classList.remove('nb-caret-line'));
   n.content = editor.innerHTML;
   n.template = key;
+  nbMarkFirstCornell(n, key);
   if (!n.date) n.date = todayIso();
   n.updatedAt = Date.now();
   touch();
@@ -1170,7 +1254,8 @@ function focusTemplateStart(key) {
   range.collapse(true);
   const sel = window.getSelection();
   sel.removeAllRanges(); sel.addRange(range);
-  $('#note-editor')?.focus();
+  const editor = $('#note-editor');
+  if (editor) { editor.focus(); updateCaretLineHighlight(editor); }
 }
 function setNoteDate(id, value) {
   const n = state.notes.find(x => x.id === id);
@@ -1268,7 +1353,8 @@ function renderNoteEditor(note) {
   const dateLabel = tpl === 'lab' ? 'Lab date' : tplDef?.sheet ? 'Date' : 'Lecture date';
   const pd = 'onmousedown="event.preventDefault()"';
   const sep = '<span class="nb-prop-sep" aria-hidden="true">·</span>';
-  const hint = tpl === 'cornell' ? 'Cues and questions on the left, notes on the right. Afterward, sum it up at the bottom and use Cover notes to test yourself.'
+  // The Cornell how-to shows on a student's first Cornell note only.
+  const hint = tpl === 'cornell' ? state.settings.nbCornellHintNote !== note.id ? '' : 'Cues and questions in one column, notes in the other. Afterward, sum it up at the bottom and use Cover notes to test yourself.'
     : tpl === 'lab' ? 'Work down the sections. The tracker above fills in as you go, and Table row grows the data table.'
     : tplDef?.hint || '';
   return `
@@ -1292,7 +1378,7 @@ function renderNoteEditor(note) {
         <button ${pd} onclick="insertNbChecklist()" aria-label="Checklist" data-tip="Checklist">${icon('check-square', 16)}</button>
         <span class="nb-toolbar-sep" aria-hidden="true"></span>
         <button ${pd} onclick="promptInsertLink()" aria-label="Insert link" data-tip="Link">${icon('link', 16)}</button>
-        <button id="nb-type-btn" ${pd} onclick="openNbTypePop(this)" aria-label="More formatting" aria-haspopup="menu" aria-expanded="false" data-tip="More formatting">${icon('type', 16)}</button>
+        <button id="nb-type-btn" ${pd} onclick="openNbTypePop(this, event)" aria-label="More formatting" aria-haspopup="menu" aria-expanded="false" data-tip="More formatting">${icon('type', 16)}</button>
       </div>
       <div class="nb-page-actions">
         ${signInHeaderButton()}
@@ -1329,7 +1415,7 @@ function renderNoteEditor(note) {
           <input type="date" class="nb-date-input" value="${esc(note.date || '')}" aria-label="${dateLabel}" onclick="try{this.showPicker()}catch(e){}" onchange="setNoteDate('${note.id}',this.value)">
         </div>
         ${sep}<button type="button" class="nb-prop nb-prop-tpl" aria-label="Layout: ${esc(tplDef.label)}. Add another layout" data-tip="Add a layout" onclick="openNoteTemplateModal('${note.parentId}','${note.id}')">${icon(tplDef.icon, 14)}<span>${esc(tplDef.label)}</span></button>` : ''}
-        ${sep}<span class="nb-prop-status" id="nb-save-status">Edited ${fmtRelativeTime(note.updatedAt) || 'now'} · ${words} word${words === 1 ? '' : 's'}</span>
+        ${sep}<span class="nb-prop-status" id="nb-save-status">Edited ${nbEditedWhen(note.updatedAt)} · ${words} word${words === 1 ? '' : 's'}</span>
       </div>
       ${tpl === 'lab' ? `<div class="nb-lab-rail" id="nb-lab-rail" data-keep-scroll>${labRailHtml(labSections)}</div>` : ''}
       ${hint && words < 20 ? `<div class="nb-hint">${icon('info', 16)}<span>${esc(hint)}</span></div>` : ''}
@@ -1342,11 +1428,28 @@ function renderNoteEditor(note) {
     </div>
   `;
 }
+// "Edited just now", "Edited yesterday", "Edited 5m ago", "Edited Oct 3":
+// mid-sentence, only the words are lowercased, never a month.
+function nbEditedWhen(ms) { const rel = fmtRelativeTime(ms) || 'now'; return /^(Just now|Yesterday)$/.test(rel) ? rel.toLowerCase() : rel; }
 // The title grows with its text instead of scrolling inside one line.
+// The height is set again whenever the canvas changes width (a window
+// resize, rotation or split view), so wrapped lines are never cut off.
+// (CSS field-sizing alone came up 4px short of the last line in Chrome.)
 function nbAutosizeTitle(el) {
   if (!el) return;
   el.style.height = 'auto';
   el.style.height = el.scrollHeight + 'px';
+}
+function nbWatchTitleWidth(el) {
+  if (window._nbTitleRO) { window._nbTitleRO.disconnect(); window._nbTitleRO = null; }
+  if (!el || !window.ResizeObserver) return;
+  let lastW = el.clientWidth;
+  window._nbTitleRO = new ResizeObserver(() => {
+    if (el.clientWidth === lastW) return; // our own height change, not a new width
+    lastW = el.clientWidth;
+    nbAutosizeTitle(el);
+  });
+  window._nbTitleRO.observe(el);
 }
 // Enter in the title moves to the start of the note, like a document.
 function nbTitleKeydown(e) {
@@ -1382,7 +1485,14 @@ function onNoteEdit(id, el) {
   const start = $('#nb-tpl-start');
   if (start && !start.classList.contains('is-hidden') && (el.textContent || '').trim()) start.classList.add('is-hidden');
 }
-function renameNote(id, name) { const n = state.notes.find(x => x.id === id); n.name = String(name).replace(/[\r\n]+/g, ' ').trim() ? String(name).replace(/[\r\n]+/g, ' ') : 'Untitled note'; save(); }
+function renameNote(id, name) {
+  const n = state.notes.find(x => x.id === id);
+  n.name = String(name).replace(/[\r\n]+/g, ' ').trim() ? String(name).replace(/[\r\n]+/g, ' ') : 'Untitled note';
+  save();
+  // The list row follows along without a render, so the caret stays put.
+  const label = n.name === 'Untitled note' ? 'Untitled' : n.name.trim();
+  document.querySelectorAll('.nb-note-row.selected .nb-note-name').forEach(el => { el.textContent = label; el.title = label; });
+}
 function setNoteCourse(id, courseId) { const n = state.notes.find(x => x.id === id); n.courseId = courseId || null; touch(); }
 const saveNoteContentDebounced = debounce((id, html) => {
   const n = state.notes.find(x => x.id === id);

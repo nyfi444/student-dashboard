@@ -217,8 +217,15 @@
   .cal-head .cal-stepper { order: 11; }
   .cal-head .cal-views { order: 12; margin-left: auto; }
   .cal-divider { display: none; }
-  .cal-stepper .btn { min-height: 38px; }
-  .cal-stepper .btn-icon { width: 36px; min-width: 36px; }
+  /* The arrows are how a phone moves through dates: each tap area reaches
+     44px (the buttons stay 38 tall to sit level with the view switch), so
+     the stepper stops clipping and rounds its own end buttons instead. */
+  .cal-stepper { overflow: visible; }
+  .cal-stepper .btn { position: relative; min-height: 38px; }
+  .cal-stepper .btn::after { content: ''; position: absolute; inset: -3px 0; }
+  .cal-stepper .btn:first-child { border-radius: calc(var(--r-tight) - 1px) 0 0 calc(var(--r-tight) - 1px); }
+  .cal-stepper .btn:last-child { border-radius: 0 calc(var(--r-tight) - 1px) calc(var(--r-tight) - 1px) 0; }
+  .cal-stepper .btn-icon { width: 44px; min-width: 44px; }
   .cal-views button { min-height: 36px; padding: 0 8px; }
 
   .cal-dow { padding: 8px 0 6px; text-align: center; letter-spacing: .04em; }
@@ -231,6 +238,9 @@
   .cal-cell .cal-evt { width: 6px; height: 6px; padding: 0; gap: 0; font-size: 0; border-radius: 50%; background: var(--cc); }
   .cal-cell .cal-evt::before, .cal-cell .cal-evt > * { display: none; }
   .cal-cell .cal-evt.kind-class { background: color-mix(in srgb, var(--cc) 45%, var(--surface)); }
+  /* Past days: one mix, not two. Mixing the already faded --cc again left a
+     past class dot at about a fifth of its color, gone on dark paper. */
+  .cal-cell.past .cal-evt.kind-class, .cal-cell.muted .cal-evt.kind-class { background: color-mix(in srgb, var(--c) 35%, var(--surface)); }
   .cal-cell .cal-evt.kind-exam { background: transparent; box-shadow: inset 0 0 0 2px var(--cc); width: 8px; height: 8px; }
   .cal-break-label { display: none; }
   .cal-more { padding: 0; font-size: var(--fs-xs); }
@@ -249,6 +259,8 @@
   .cal-block.kind-deadline, .cal-block.kind-todo { padding: 4px 2px 3px 3px; }
   .cal-block-title, .cal-block-time, .cal-block-where { display: none; }
   .cal-block-short { display: block; font: 600 var(--fs-xs)/1.2 var(--font); letter-spacing: -.01em; white-space: normal; overflow-wrap: normal; overflow: hidden; }
+  /* No course: the title's first word, cut with an ellipsis, not mid-letter. */
+  .cal-block-short.is-word { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* All-day items in a phone week: one count per day; the column opens it. */
   .cal-allday.has-counts .cal-allday-col { min-height: 44px; padding: 4px 2px; align-items: center; justify-content: center; cursor: pointer; }
   .cal-allday.has-counts .cal-evt { display: none; }

@@ -263,7 +263,7 @@ function openFeedImportModal({ feedId = null } = {}) {
   const tab = existing?.kind === 'file' ? 'file' : signedIn && canLink ? 'link' : 'file';
   window._feedDraft = { tab, file: null, feedId, url: existing?.url || '' };
   openModal(`
-    <div class="modal-head"><h3>${existing ? `Update the ${esc(feedSourceName(existing.source))} import` : 'Import from Canvas or your LMS'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>${existing ? `Update the ${esc(feedSourceName(existing.source))} import` : 'Import from Canvas or your LMS'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <p class="small muted mb-8">Every Canvas, Blackboard, Brightspace, and Moodle account has a private calendar link with every due date in it. Paste it once and your assignments stay in step with it, including dates that move.</p>
       <div class="segmented mb-8" id="fi-tabs"><button class="${tab === 'link' ? 'active' : ''}" data-tab="link" onclick="feedTab('link')">Paste the feed link</button><button class="${tab === 'file' ? 'active' : ''}" data-tab="file" onclick="feedTab('file')">Upload an .ics file</button></div>
@@ -271,7 +271,7 @@ function openFeedImportModal({ feedId = null } = {}) {
         ${signedIn && canLink ? `
           <div class="field"><label for="fi-url">Feed link</label><input class="input" id="fi-url" type="url" value="${esc(existing?.url || '')}" placeholder="https://….instructure.com/feeds/calendars/user_….ics" autocomplete="off" spellcheck="false" oninput="onFeedUrlInput(this.value)"></div>
           <div class="small muted" id="fi-source-note">${existing?.url ? `Looks like ${esc(feedSourceName(guessFeedSource(existing.url)))}.` : ''}</div>`
-        : `<div class="sg-callout small"><span>${icon('lock', 14, 1.8)}</span><div>Keeping a feed in sync needs a Semester HQ account. ${fbConfigured() ? '<a href="login.html">Log in</a>, or' : 'For now,'} upload the .ics file instead to try it.</div></div>`}
+        : `<div class="sg-callout small"><span>${icon('lock', 14)}</span><div>Keeping a feed in sync needs a Semester HQ account. ${fbConfigured() ? '<a href="login.html">Log in</a>, or' : 'For now,'} upload the .ics file instead to try it.</div></div>`}
       </div>
       <div id="fi-file" ${tab === 'file' ? '' : 'hidden'}>
         <div class="upload-drop" onclick="if(event.target.id!=='fi-file-input')$('#fi-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');handleFeedFilePick(event.dataTransfer.files[0])">
@@ -287,7 +287,7 @@ function openFeedImportModal({ feedId = null } = {}) {
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="fi-go" onclick="runFeedImport()">${icon('calendar', 13, 1.8)} Find my deadlines</button>
+      <button class="btn btn-primary" id="fi-go" onclick="runFeedImport()">${icon('calendar', 14)} Find my deadlines</button>
     </div>
   `, { wide: true });
   setTimeout(() => $('#fi-url')?.focus(), 60);
@@ -356,7 +356,7 @@ function renderFeedPreviewModal() {
   groups.sort((a, b) => b.items.length - a.items.length);
   const n = d.items.length;
   openModal(`
-    <div class="modal-head"><h3>${n} deadline${n === 1 ? '' : 's'} found</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>${n} deadline${n === 1 ? '' : 's'} found</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <p class="small muted mb-8">Match each calendar to one of your classes. ${esc(feedSkippedText(d.skipped))}</p>
       <div class="feed-map">
@@ -373,7 +373,7 @@ function renderFeedPreviewModal() {
             </select>
           </div>`).join('')}
       </div>
-      ${!courses.length ? `<div class="sg-callout small mt-8"><span>${icon('graduation-cap', 14, 1.8)}</span><div>No classes yet, so these land under “No class”. Add your classes in Courses and move them from there, or run this again afterward.</div></div>` : ''}
+      ${!courses.length ? `<div class="sg-callout small mt-8"><span>${icon('graduation-cap', 14)}</span><div>No classes yet, so these land under “No class”. Add your classes in Courses and move them from there, or run this again afterward.</div></div>` : ''}
       ${d.kind === 'link' ? `<p class="small muted mt-8">From now on this refreshes when you open Semester HQ, so a moved due date moves here too.</p>` : ''}
     </div>
     <div class="modal-foot">
@@ -407,7 +407,7 @@ function feedSettingsCard() {
   const feeds = feedEntries();
   return `
     <div class="card card-pad">
-      <h3 style="font-size:15px" class="mb-8">Calendar feeds</h3>
+      <h3 class="sg-h3 mb-8">Calendar feeds</h3>
       <p class="small muted mb-8">Due dates from Canvas, Blackboard, Brightspace, or Moodle, kept in step with the LMS.</p>
       ${feeds.map(f => `
         <div class="feed-row">
@@ -417,10 +417,10 @@ function feedSettingsCard() {
             ${f.lastError ? `<div class="small" style="color:var(--danger)">${esc(f.lastError)}</div>` : ''}
           </div>
           <div class="flex-gap">
-            ${f.kind === 'link' ? `<button class="btn btn-sm" onclick="syncFeed('${f.id}')">${icon('refresh-cw', 13, 1.8)} Refresh</button>` : `<button class="btn btn-sm" onclick="openFeedImportModal({feedId:'${f.id}'})">${icon('upload', 13, 1.8)} Upload a newer file</button>`}
+            ${f.kind === 'link' ? `<button class="btn btn-sm" onclick="syncFeed('${f.id}')">${icon('refresh-cw', 14)} Refresh</button>` : `<button class="btn btn-sm" onclick="openFeedImportModal({feedId:'${f.id}'})">${icon('upload', 14)} Upload a newer file</button>`}
             <button class="btn btn-ghost btn-sm" onclick="removeFeed('${f.id}')">Remove</button>
           </div>
         </div>`).join('')}
-      <button class="btn btn-sm ${feeds.length ? 'mt-8' : ''}" onclick="openFeedImportModal()">${icon('calendar', 13, 1.8)} ${feeds.length ? 'Add another calendar' : 'Connect Canvas or another LMS'}</button>
+      <button class="btn btn-sm ${feeds.length ? 'mt-8' : ''}" onclick="openFeedImportModal()">${icon('calendar', 14)} ${feeds.length ? 'Add another calendar' : 'Connect Canvas or another LMS'}</button>
     </div>`;
 }

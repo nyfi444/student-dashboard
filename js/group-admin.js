@@ -268,7 +268,7 @@ function planHtml() {
         <button class="btn" onclick="deletePending(this,'${plan.id}')">Delete</button></div>`)}`;
   }
   return `
-    ${view.plans.length > 1 ? `<div class="ga-plan-tabs">${view.plans.map(p => `<button class="btn btn-sm ${p.id === view.planId ? 'btn-primary' : ''}" onclick="pickPlan('${p.id}')">${esc(p.name)}</button>`).join('')}<button class="btn btn-sm btn-ghost" onclick="view.planId='';view.details=null;render()">+ New plan</button></div>` : ''}
+    ${view.plans.length > 1 ? `<div class="ga-plan-tabs">${view.plans.map(p => `<button class="btn btn-sm ${p.id === view.planId ? 'btn-primary' : ''}" onclick="pickPlan('${p.id}')">${esc(p.name)}</button>`).join('')}<button class="btn btn-sm btn-ghost" onclick="view.planId='';view.details=null;render()">${icon('plus', 14)} New plan</button></div>` : ''}
     <div class="ga-top" style="align-items:flex-start">
       <div>
         <h1 class="ga-title" style="margin-bottom:6px">${esc(plan.name)}</h1>

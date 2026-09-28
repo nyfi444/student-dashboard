@@ -69,7 +69,7 @@ function reviewSettingsCard() {
       </div>
       <textarea class="input mt-8" id="rev-text" placeholder="What’s it saved you? What’s still annoying?" style="min-height:90px"></textarea>
       ${_fbUser?.email ? '' : `<input class="input mt-8" id="rev-email" type="email" placeholder="Your email, so I can reply" autocomplete="email">`}
-      <label class="checkbox-row small mt-8"><input type="checkbox" id="rev-quote"><span>You can quote this on semester-hq.com (first name only)</span></label>
+      <label class="checkbox-row settings-check small mt-8"><input type="checkbox" id="rev-quote"><span>You can quote this on semester-hq.com (first name only)</span></label>
       <button class="btn btn-primary btn-sm mt-8" onclick="submitReview(this)">Send</button>
     </div>`;
 }

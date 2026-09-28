@@ -139,7 +139,7 @@ function setupStepClasses() {
         <div class="setup-spectrum">${spectrumHtml(`setup-spec-${i}`, c.color)}</div>
         <div class="setup-hexrow"><span class="course-dot setup-course-dot" aria-hidden="true"></span><input class="input" id="setup-hex-${i}" value="${esc(c.color)}" aria-label="Color hex code" onchange="setSetupCourseHex(${i},this.value)"></div>
       </div>`).join('')}
-    <button class="btn btn-sm" onclick="window._setup.courses.push(setupNewCourse());renderSetupStep()">+ Add another class</button>
+    <button class="btn btn-sm" onclick="window._setup.courses.push(setupNewCourse());renderSetupStep()">${icon('plus', 14)} Add another class</button>
     <div class="small muted mt-8">Columns: name, course code, credits.</div>`;
 }
 function setupStepTimes() {
@@ -151,7 +151,7 @@ function setupStepTimes() {
       const ci = window._setup.courses.indexOf(c);
       if (!c.slots.length) c.slots.push({ days: [], start: '10:00', end: '11:15' });
       return `
-        <div class="setup-course" style="--course:${esc(c.color)}">
+        <div class="setup-course" style="${colorVars('course', c.color)}">
           <div class="sg-strong mb-8"><span class="course-dot"></span> ${esc(c.name)}${c.code ? ` <span class="muted">${esc(c.code)}</span>` : ''}</div>
           ${c.slots.map((s, si) => `
             <div class="setup-slot">
@@ -161,7 +161,7 @@ function setupStepTimes() {
               <input class="input" type="time" value="${esc(s.end)}" aria-label="End time" onchange="window._setup.courses[${ci}].slots[${si}].end=this.value">
               ${c.slots.length > 1 ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove time" onclick="window._setup.courses[${ci}].slots.splice(${si},1);renderSetupStep()">${icon('x', 13, 2.2)}</button>` : ''}
             </div>`).join('')}
-          <button class="sg-link mt-8" onclick="window._setup.courses[${ci}].slots.push({days:[],start:'13:00',end:'14:15'});renderSetupStep()">+ Different time on other days</button>
+          <button class="sg-link mt-8" onclick="window._setup.courses[${ci}].slots.push({days:[],start:'13:00',end:'14:15'});renderSetupStep()">${icon('plus', 12)} Different time on other days</button>
         </div>`;
     }).join('')}`;
 }

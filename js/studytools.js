@@ -104,7 +104,7 @@ function pageStudyTools() {
           ${totalDue ? `<button class="btn btn-primary mt-16" onclick="openReview()">${icon('play', 16)} Start review</button>` : ''}
         </div>
         ${(() => { const all = decks.flatMap(d => d.cards); const mastered = decks.reduce((s, d) => s + deckProgress(d).mastered, 0);
-          const parts = [[today.reviewed || 0, 'reviewed today'], [mastered, 'mastered'], [all.length, `card${all.length === 1 ? '' : 's'} in ${decks.length} deck${decks.length === 1 ? '' : 's'}`]].filter(([n]) => n);
+          const parts = [[today.reviewed || 0, 'reviewed today'], [mastered, 'mastered'], [decks.length > 1 && all.length !== totalDue ? all.length : 0, `cards in ${decks.length} decks`]].filter(([n]) => n);
           return parts.length ? `<div class="fc-stats">${parts.map(([n, l]) => `<span><b>${n}</b> ${l}</span>`).join(' · ')}</div>` : ''; })()}
       </div>
       </div>
@@ -136,7 +136,7 @@ function deckCard(d) {
           <div class="fc-deck-name">${esc(d.name)}</div>
           <div class="fc-deck-meta">${c ? `<span class="assign-course"><span class="course-dot"></span>${esc(c.code || c.name)}</span>` : ''}<span>${d.cards.length} card${d.cards.length === 1 ? '' : 's'}</span></div>
         </div>
-        ${due ? `<span class="fc-due">${due} due</span>` : d.cards.length ? `<span class="fc-done" role="img" aria-label="Nothing due">${icon('check', 12, 2.4)}</span>` : ''}
+        ${due ? `<span class="fc-due">${due} due</span>` : d.cards.length ? `<span class="fc-done" role="img" aria-label="Nothing due">${icon('check', 12)}</span>` : ''}
       </div>
       ${d.cards.length ? `
         <div class="fc-mastery" title="${p.mastered} mastered · ${p.learning} learning · ${p.newCount} new">
@@ -165,7 +165,7 @@ function renderDeckModal(id) {
   const d = _deckDraft;
   const existing = id || (state.decks.some(x => x.id === d.id) ? d.id : '');
   openModal(`
-    <div class="modal-head"><h3>${existing ? 'Edit deck' : 'New deck'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>${existing ? 'Edit deck' : 'New deck'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field-row">
         <div class="field"><label for="df-name">Deck name</label><input class="input" id="df-name" value="${esc(d.name)}" placeholder="Chapter 4 vocab" oninput="_deckDraft.name=this.value"></div>
@@ -176,7 +176,7 @@ function renderDeckModal(id) {
         <div class="flex-gap wrap mt-8">
           <button class="btn btn-sm" onclick="_deckDraft.cards.push({id:uid(),front:'',back:''});renderDeckModal('${existing}');setTimeout(()=>$$('#df-cards .fc-edit-front').at(-1)?.focus(),60)">${icon('plus', 14)} Add card</button>
           <button class="btn btn-sm btn-ghost" onclick="$('#df-bulk-wrap').hidden=!$('#df-bulk-wrap').hidden">Paste a list</button>
-          <button class="btn btn-sm btn-ghost" onclick="$('#df-file').click()" title="A Quizlet or Anki export, or a spreadsheet or Word doc with the front in the first column and the back in the second">${icon('upload', 12, 1.8)} Import a file</button>
+          <button class="btn btn-sm btn-ghost" onclick="$('#df-file').click()" title="A Quizlet or Anki export, or a spreadsheet or Word doc with the front in the first column and the back in the second">${icon('upload', 12)} Import a file</button>
           <input type="file" id="df-file" hidden onchange="importCardListFile(this.files[0],'${existing}')">
         </div>
         <div id="df-bulk-wrap" hidden class="mt-8">
@@ -196,7 +196,7 @@ function cardRow(c, i, existing) {
   return `<div class="fc-edit-row">
     <textarea class="input fc-edit-front" rows="1" placeholder="Front" oninput="_deckDraft.cards[${i}].front=this.value">${esc(c.front)}</textarea>
     <textarea class="input" rows="1" placeholder="Back" oninput="_deckDraft.cards[${i}].back=this.value">${esc(c.back)}</textarea>
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove card" data-tip="Remove card" onclick="_deckDraft.cards.splice(${i},1);renderDeckModal('${existing}')">${icon('x', 13, 2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove card" data-tip="Remove card" onclick="_deckDraft.cards.splice(${i},1);renderDeckModal('${existing}')">${icon('x', 14)}</button>
   </div>`;
 }
 function importBulkCards(existing) {
@@ -306,16 +306,16 @@ async function importCardListFile(file, existing) {
 function openFlashcardFileModal() {
   const locked = !aiLooksUnlocked();
   openModal(`
-    <div class="modal-head"><h3>Make flashcards from a file</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Make flashcards from a file</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="capture-drop fc-file-drop" id="fc-file-drop" onclick="if(event.target.id!=='fc-file-input')$('#fc-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');handleFlashcardFiles(event.dataTransfer.files)">
-        <span class="capture-drop-ic">${icon('upload', 24, 1.6)}</span>
+        <span class="capture-drop-ic">${icon('upload', 24)}</span>
         <div class="sg-strong" id="fc-file-status">Choose a file</div>
         <div class="small muted">or drop it here</div>
         <input type="file" id="fc-file-input" multiple hidden onchange="handleFlashcardFiles(this.files)">
       </div>
       <div class="fc-file-kinds">
-        <div class="fc-file-kind"><span class="sg-feature-ic">${icon('layers', 15, 1.7)}</span><div><div class="sg-strong small">Card lists</div><div class="small muted">A Quizlet or Anki export, or a spreadsheet (Excel or CSV) with the front in the first column. Every row becomes a card.</div></div></div>
+        <div class="fc-file-kind"><span class="sg-feature-ic">${icon('layers', 16)}</span><div><div class="sg-strong small">Card lists</div><div class="small muted">A Quizlet or Anki export, or a spreadsheet (Excel or CSV) with the front in the first column. Every row becomes a card.</div></div></div>
         <div class="fc-file-kind"><span class="sg-feature-ic">${icon(locked ? 'lock' : 'file-text', 16)}</span><div><div class="sg-strong small">Notes and slides</div><div class="small muted">A PDF, Word doc, PowerPoint, or photos of your notes. Semester HQ writes question-and-answer cards for you to review.${locked ? ' Included with Semester HQ Plus.' : ''}</div></div></div>
       </div>
     </div>
@@ -409,7 +409,7 @@ function renderReview() {
   openModal(`
     <div class="modal-head">
       <h3 class="fc-review-title"><span class="course-dot" style="--course:${esc(c?.color || '#5a6b7b')}"></span> ${esc(deck.name)}</h3>
-      <div class="flex-gap" style="align-items:center"><span class="small muted">${left} left</span><button class="close-x" aria-label="End review" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+      <div class="flex-gap" style="align-items:center"><span class="small muted">${left} left</span><button class="close-x" aria-label="End review" onclick="closeModal()">${icon('x', 16)}</button></div>
     </div>
     <div class="fc-review-progress"><div style="width:${r.total ? (done / r.total) * 100 : 0}%"></div></div>
     <div class="modal-body">
@@ -462,10 +462,10 @@ function renderReviewSummary() {
   const mins = Math.max(1, Math.round((Date.now() - r.startedAt) / 60000));
   const tomorrow = visibleDecks().reduce((s, d) => s + d.cards.filter(c => { const st = srsState(c); return st && st.due === addDays(todayIso(), 1); }).length, 0);
   openModal(`
-    <div class="modal-head"><h3>Review complete</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Review complete</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="setup-done">
-        <div class="setup-done-mark">${icon('check', 26, 2.4)}</div>
+        <div class="setup-done-mark">${icon('check', 26)}</div>
         <h3 class="welcome-title" style="font-size:30px">Nice work.</h3>
         <p class="muted">${reviewed} review${reviewed === 1 ? '' : 's'} in ${mins} min · you remembered ${remembered}%</p>
         <div class="hub-stats mt-16" style="text-align:left">
@@ -506,8 +506,8 @@ function renderStudyMode() {
   const { deck, cards } = studyCards();
   if (!cards.length) {
     openModal(`
-      <div class="modal-head"><h3>${esc(deck.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
-      <div class="modal-body">${emptyState(icon('star', 24, 1.4), window._study.starredOnly ? 'No starred cards yet.' : 'This deck has no cards.')}</div>
+      <div class="modal-head"><h3>${esc(deck.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
+      <div class="modal-body">${emptyState(icon('star', 24), window._study.starredOnly ? 'No starred cards yet.' : 'This deck has no cards.')}</div>
       <div class="modal-foot"><button class="btn" onclick="toggleStarredOnly()">${window._study.starredOnly ? 'Show all cards' : 'Show starred only'}</button></div>
     `);
     return;
@@ -518,7 +518,7 @@ function renderStudyMode() {
   const mode = window._study.mode;
   const due = srsDueCount(deck);
   openModal(`
-    <div class="modal-head"><h3>${esc(deck.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>${esc(deck.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="flex-between mb-8">
         <div class="segmented">
@@ -555,7 +555,7 @@ function renderStudyMode() {
       </div>
       <div class="flex-gap">
         <button class="btn" onclick="studyNav(-1)" ${idx === 0 ? 'disabled' : ''}>← Prev</button>
-        <button class="btn" onclick="shuffleDeck()">${icon('shuffle', 13, 2)} Shuffle</button>
+        <button class="btn" onclick="shuffleDeck()">${icon('shuffle', 14)} Shuffle</button>
         <button class="btn btn-primary" onclick="studyNav(1)" ${idx === cards.length - 1 ? 'disabled' : ''}>Next ${icon('chevron-right', 14)}</button>
       </div>
     </div>
@@ -599,7 +599,7 @@ function openGenerateDeckModal(noteId, { files } = {}) {
   const pre = noteId ? state.notes.find(n => n.id === noteId) : null;
   window._genDeck = { source: files ? 'file' : notes.length || pre ? 'note' : 'file', noteId: pre?.id || notes[0]?.id || null, cards: null, file: null };
   openModal(`
-    <div class="modal-head"><h3>Make flashcards <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Make flashcards <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <p class="small muted mb-16">Semester HQ reads your notes, slides, or photos and writes question-and-answer cards. You’ll review them before the deck is created.</p>
       <div class="segmented mb-16" id="gd-sources" role="group" aria-label="Make cards from">
@@ -611,7 +611,7 @@ function openGenerateDeckModal(noteId, { files } = {}) {
         <div class="field"><label for="gd-course">Class</label><select class="select" id="gd-course"><option value="">None</option>${activeCourses().map(c => `<option value="${c.id}" ${pre && c.id === pre.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
       </div>
     </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="gd-go" onclick="runGenerateDeck()">${icon('sparkles', 13, 1.5)} Make flashcards</button></div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="gd-go" onclick="runGenerateDeck()">${icon('sparkles', 14)} Make flashcards</button></div>
   `, { wide: true });
   if (files) loadGenerateFiles(files);
 }
@@ -632,7 +632,7 @@ function generateSourceFields(notes, pre) {
     const f = g.file;
     return `<div class="field"><label>File</label>
       <div class="upload-drop fc-gen-drop" onclick="if(event.target.id!=='gd-file-input')$('#gd-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');loadGenerateFiles(event.dataTransfer.files)">
-        <div class="small ${f?.ready ? 'sg-strong' : ''}">${f ? `${icon(f.ready ? 'check' : 'refresh-cw', 12, 2.2)} ${esc(f.name)} · ${esc(f.status)}` : 'Choose a PDF, Word doc, PowerPoint, or photos of your notes'}</div>
+        <div class="small ${f?.ready ? 'sg-strong' : ''}">${f ? `${icon(f.ready ? 'check' : 'refresh-cw', 12)} ${esc(f.name)} · ${esc(f.status)}` : 'Choose a PDF, Word doc, PowerPoint, or photos of your notes'}</div>
         <input type="file" id="gd-file-input" multiple hidden onchange="loadGenerateFiles(this.files)">
       </div>
       ${f?.ready ? '' : '<div class="small muted mt-8">Up to 8 photos at once, or one document.</div>'}</div>`;
@@ -700,7 +700,7 @@ function renderGeneratedReview() {
   const g = window._genDeck;
   const count = g.cards.filter(c => c._include).length;
   openModal(`
-    <div class="modal-head"><h3>Review your cards <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Review your cards <span class="ai-badge">AI</span></h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <p class="small muted mb-16">Edit anything that’s off, and uncheck cards you don’t want.</p>
       ${g.cards.map((c, i) => `
