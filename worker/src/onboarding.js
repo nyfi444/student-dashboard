@@ -330,14 +330,15 @@ export async function handleEmailLink(request, env, pathname) {
 
 /* ── Admin: test sends and (staging only) a run at a chosen date ── */
 // The admin token, or EMAIL_TEST_TOKEN: a second token that can do only
-// this, since the test can only ever reach hello@.
+// this, since the test can only ever reach hello@ or Nyla's own inboxes.
 async function emailTestAllowed(request, env) {
   const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   if (env.EMAIL_TEST_TOKEN && token && timingSafeEqual(token, env.EMAIL_TEST_TOKEN)) return true;
   return !!env.ADMIN_TOKEN && adminTokenOk(request, env);
 }
 
-// POST /admin/email-test: every customer email, once, to hello@ only, with
+// POST /admin/email-test: every customer email, once, to hello@ (or one of
+// Nyla's own inboxes, ?to=), with
 // "[Test]" in the subject. Writes no records and no log.
 export async function handleAdminEmailTest(request, env) {
   const headers = { 'content-type': 'application/json', 'Access-Control-Allow-Origin': '*' };
@@ -350,7 +351,10 @@ export async function handleAdminEmailTest(request, env) {
   const to = owners.includes(asked) ? asked : 'hello@semester-hq.com';
   const only = new URL(request.url).searchParams.get('only') || '';
   const links = (await emailLinks(env, to)) || { prefsUrl: 'https://app.semester-hq.com/email-preferences.html', unsubscribeUrl: 'https://app.semester-hq.com/email-preferences.html', oneClickUrl: '' };
-  const keys = ['receipt', 'welcome', ...EMAIL_TIPS.map(t => t.key), 'group-receipt', 'group-welcome', 'member-welcome'];
+  const all = ['receipt', 'welcome', ...EMAIL_TIPS.map(t => t.key), 'group-receipt', 'group-welcome', 'member-welcome'];
+  // ?only=receipt,welcome sends just those, so an inbox check is one or two
+  // emails rather than ten.
+  const keys = only ? all.filter(k => only.split(',').includes(k)) : all;
   // ?images= may point the pictures at a site Preview (before they're live),
   // and nowhere else.
   const images = new URL(request.url).searchParams.get('images') || '';
