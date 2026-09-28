@@ -103,7 +103,7 @@ html.dark {
    tied to real interaction, not decoration. See --r-card above for
    which surfaces take which token; this block is only the things that
    answer to a pointer. */
-.card, .btn, .modal, .cal-cell, .empty .ic, .avatar, .nav-item,
+.card, .btn, .modal, .empty .ic, .avatar, .nav-item,
 .list-row, .assign-row, .dash-due-row, .dash-exam-row, .headsup-row,
 .hub-stat, .setup-course, .theme-tile, .icon-tile, .career-card,
 .proj-ms, .proj-template, .capture-thumb, .class-result, .sg-date-tile,
@@ -112,7 +112,7 @@ html.dark {
   transition: border-radius .16s cubic-bezier(.4,0,.2,1), background .15s, box-shadow .15s, color .15s;
 }
 .card:hover, .btn:hover, .btn:focus-visible, .btn:active,
-.cal-cell:hover, .avatar:hover, .nav-item:hover, .nav-item.active,
+.avatar:hover, .nav-item:hover, .nav-item.active,
 .list-row:hover, .assign-row:hover, .dash-due-row:hover, .dash-exam-row:hover,
 .headsup-row:hover, .setup-course:focus-within, .theme-tile:hover,
 .icon-tile:hover, .career-card:hover, .proj-ms:hover, .proj-template:hover,
@@ -189,6 +189,31 @@ button .i, .btn .i { vertical-align: -2.5px; }
 .page-head h2 { font-family: var(--font-serif); font-size: 32px; font-weight: 400; letter-spacing: -.2px; color: var(--text); }
 .page-head .sub { font-size: 13px; color: var(--text-faint); margin-top: 4px; }
 .head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.page-head-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-width: 0; }
+.head-tools { display: none; }
+.head-actions .head-more { display: none; }
+/* The phone header: title with its tools beside it, then one row holding
+   Log in and the page's primary button; everything else is in "More". */
+@media (max-width: 760px) {
+  .page-head { flex-direction: column; align-items: stretch; gap: 14px; margin-bottom: 20px; }
+  .page-head h2 { font-size: 30px; line-height: 1.1; }
+  .page-head .sub { font-size: 12.5px; }
+  .page-head-top { width: 100%; }
+  .page-head-title { min-width: 0; }
+  .head-tools { display: flex; gap: 6px; flex-shrink: 0; }
+  .head-tools .btn { width: 40px; height: 40px; padding: 0; justify-content: center; }
+  .head-actions { flex-wrap: nowrap; align-items: center; min-height: 40px; }
+  .head-actions > .btn:not(.btn-primary):not(.head-keep):not(.head-more) { display: none !important; }
+  .head-actions > .btn { min-height: 40px; }
+  .head-actions .head-more { display: inline-flex; width: 40px; height: 40px; padding: 0; justify-content: center; margin-left: auto; order: 2; }
+  .head-actions > .btn-primary { order: 3; }
+  .head-actions:not(:has(> .btn:not(.btn-primary):not(.head-keep):not(.head-more):not(.desktop-capture))) .head-more.head-more { display: none; }
+  .head-actions:not(:has(> .btn:not(.btn-primary):not(.head-keep):not(.head-more):not(.desktop-capture))) > .btn-primary { margin-left: auto; }
+  .head-actions:not(:has(> *:not(.head-more):not(.desktop-capture))) { display: none; }
+}
+.head-sheet { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+.head-sheet .head-sheet-item { display: flex !important; align-items: center; gap: 10px; width: 100%; justify-content: flex-start; min-height: 48px; padding: 12px 14px; font-size: 14.5px; font-weight: 600; box-shadow: none; }
+.head-sheet .head-sheet-item .i { flex-shrink: 0; }
 /* Tips that name a mouse action get a touch version; which one shows follows the pointer, not the width. */
 .hint-touch { display: none; }
 @media (hover: none) and (pointer: coarse) { .hint-mouse { display: none; } .hint-touch { display: inline; } }
@@ -385,53 +410,9 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .cw-hexrow { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .cw-swatch { width: 22px; height: 22px; border-radius: var(--r-mark); border: 1px solid var(--border); flex-shrink: 0; }
 
-/* ── Calendar ──────────────────────────────────────────────── */
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.cal-dow { text-align: center; font-size: 11px; font-weight: 700; color: var(--text-faint); padding-bottom: 6px; text-transform: uppercase; }
-.cal-cell { min-height: 96px; min-width: 0; background: var(--surface); border: 1px solid var(--border); padding: 6px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; }
-.cal-cell.muted { background: var(--bg); }
-.cal-cell.muted .d-num { color: var(--text-faint); font-weight: 600; }
-.cal-cell.today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.cal-cell .d-num { font-size: 11.5px; font-weight: 700; color: var(--text-dim); }
-.cal-evt, .course-chip.tinted { background: color-mix(in srgb, var(--c) 13%, transparent); color: color-mix(in srgb, var(--c) 58%, var(--text)); }
-.cal-evt { font-size: 10px; padding: 2px 5px; border-radius: var(--r-mark); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cal-evt-ic { display: inline-block; vertical-align: -1px; margin-right: 2px; }
-.cal-evt.kind-exam { border: 1px solid currentColor; font-weight: 700; }
-.cal-evt.kind-deadline { border: 1px dashed currentColor; }
-.cal-block.kind-exam { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.55); font-weight: 700; }
-.cal-block.kind-deadline { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.16) 0 6px, transparent 6px 12px); }
-
-/* ── Year view: 12 mini months, each a tiny click-through calendar ── */
-.cal-year-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-.cal-mini-month { background: var(--surface); border: 1px solid var(--border); padding: 10px; }
-.cal-mini-month-head { font-family: var(--font-serif); font-style: italic; font-size: 15px; margin-bottom: 8px; cursor: pointer; }
-.cal-mini-month-head:hover { color: var(--accent-dark); }
-.cal-mini-dow { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 2px; }
-.cal-mini-dow span { text-align: center; font-size: 8.5px; font-weight: 700; color: var(--text-faint); }
-.cal-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
-.cal-mini-cell { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 9.5px; color: var(--text-dim); cursor: pointer; border-radius: var(--r-mark); gap: 1px; }
-.cal-mini-cell:hover { background: var(--surface-2); }
-.cal-mini-cell.muted { color: var(--text-faint); }
-.cal-mini-cell.today { background: var(--accent); color: var(--accent-text); font-weight: 700; }
-.cal-mini-dot { width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-.cal-mini-cell.today .cal-mini-dot { background: var(--accent-text); }
-.cal-mini-dot.exam { border-radius: 0; }
-@media (max-width: 900px) {
-  .cal-year-grid { grid-template-columns: repeat(2, 1fr); }
-}
-.cal-week-grid { display: grid; grid-template-columns: 52px repeat(7, 1fr); }
-.cal-hour-label { font-size: 10px; color: var(--text-faint); text-align: right; padding-right: 6px; height: 48px; }
-.cal-day-col { border-left: 1px solid var(--border); position: relative; }
-.cal-hour-row { height: 48px; border-bottom: 1px solid var(--border); }
-.cal-block { position: absolute; left: 3px; right: 3px; border-radius: var(--r-tight); padding: 4px 7px; font-size: 10.5px; color: #fff; font-weight: 600; overflow: hidden; }
-/* Untimed items (a to-do due Friday, a deadline with no set time) sit above the
-   hour grid instead of being dropped from Week and Day entirely. */
-.cal-allday { border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 6px; align-items: start; }
-.cal-allday-label { font-size: 10px; color: var(--text-faint); text-align: right; padding-right: 6px; padding-top: 3px; }
-/* min-width:0 on both: without it a long title (nowrap, so it can't wrap) makes
-   its grid column demand the full text width and every other day gets squeezed. */
-.cal-allday-col { border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; padding: 0 3px; min-height: 20px; min-width: 0; }
-.cal-allday-col .cal-evt { cursor: pointer; min-width: 0; }
+/* Calendar styles live in css/calendar.css. The class tag tint stays here
+   because tags appear on every page, not just the calendar. */
+.course-chip.tinted { background: color-mix(in srgb, var(--c) 13%, transparent); color: color-mix(in srgb, var(--c) 58%, var(--text)); }
 
 /* ── Flashcards ────────────────────────────────────────────── */
 .flip-card { perspective: 1200px; height: 220px; cursor: pointer; }
@@ -538,7 +519,19 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 }
 .nb-breadcrumb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
 .nb-breadcrumb { font-size: 12px; color: var(--text-faint); }
-.nb-page-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+/* The note's own actions: the three used most stay out, the rest are in
+   the "More" menu, so the row never wraps above the title. */
+.nb-page-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.nb-page-actions .btn.is-on { background: var(--accent-light); color: var(--text); }
+.nb-back { display: none; }
+.nb-more { position: relative; }
+.nb-more > summary { list-style: none; cursor: pointer; }
+.nb-more > summary::-webkit-details-marker { display: none; }
+.nb-more[open] > summary { background: var(--surface-2); }
+.nb-more-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 210px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 2px; }
+.nb-more-menu button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 9px 12px; min-height: 40px; border: none; background: none; border-radius: var(--r-tight); font-size: 13.5px; font-weight: 600; color: var(--text); cursor: pointer; }
+.nb-more-menu button:hover, .nb-more-menu button:focus-visible { background: var(--surface-2); outline: none; }
+.nb-more-menu button .i { color: var(--text-faint); }
 .nb-crumb-sep { margin: 0 6px; opacity: .6; }
 .nb-icon-avatar { width: 46px; height: 46px; border-radius: var(--r-card); display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
 .nb-title-input { width: 100%; border: none; background: transparent; font-family: var(--font-serif); font-style: italic; font-size: 36px; font-weight: 400; color: var(--text); padding: 0; letter-spacing: -.2px; }
@@ -573,7 +566,11 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
 .nb-bubble-sep { width: 1px; height: 18px; background: color-mix(in srgb, var(--cloud) 22%, transparent); margin: 0 3px; flex-shrink: 0; }
 
 /* Persistent formatting toolbar above the editor: an elevated card, not bare buttons */
-.nb-toolbar { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 5px; margin: 20px 0 6px; }
+/* One row that stays at the top of the page while you write; on a narrow
+   screen it scrolls sideways instead of wrapping onto a second line. */
+.nb-toolbar { display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; position: sticky; top: 10px; z-index: 5; background: color-mix(in srgb, var(--surface-2) 92%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 5px; margin: 20px 0 6px; }
+.nb-toolbar::-webkit-scrollbar { display: none; }
+.nb-toolbar > * { flex-shrink: 0; }
 .nb-toolbar button { background: transparent; border: none; min-width: 30px; height: 30px; padding: 0 7px; border-radius: var(--r-tight); display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--text-dim); cursor: pointer; transition: background .12s, color .12s; }
 .nb-toolbar button:hover { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .nb-toolbar button.active { background: var(--accent); color: var(--accent-text); }
@@ -690,26 +687,19 @@ textarea.input { resize: vertical; min-height: 70px; font-family: var(--font); }
   .content.content-notebook { height: auto; overflow: visible; padding-bottom: 88px; }
   .content-notebook .page-head { padding: 16px; }
   .notebook-layout { flex-direction: column; overflow: visible; }
-  .notebook-tree-panel { width: auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+  /* Phone: the list and the open note take turns filling the screen. */
+  .notebook-tree-panel { width: auto; max-height: none; border-right: none; padding: 12px 8px; }
   .notebook-layout.list-hidden .notebook-tree-panel { display: none; }
+  .notebook-layout:not(.list-hidden) .notebook-page { display: none; }
+  .nb-back { display: inline-flex; margin-left: -8px; }
+  .nb-breadcrumb { display: none; }
+  .nb-breadcrumb-row { flex-wrap: nowrap; margin-bottom: 12px; }
+  .nb-page-actions .btn:not(.btn-icon) { padding-left: 8px; padding-right: 8px; }
+  .nb-note-row { padding: 10px 8px; }
+  .nb-note-title { font-size: 14px; }
+  .nb-toolbar { top: 6px; margin-top: 14px; }
   .notebook-page { height: auto; overflow: visible; padding: 20px 12px 60px; }
   .nb-page-inner { max-width: none; min-height: auto; }
-  .cal-grid { gap: 3px; }
-  .cal-cell { min-height: 64px; padding: 4px; }
-  .cal-dow { font-size: 9.5px; padding-bottom: 3px; }
-  .cal-evt { font-size: 8.5px; padding: 1px 3px; }
-  .cal-evt-ic { display: none; }
-  /* Month view on a phone: a label cut to "Calc…" says nothing, so each item
-     is a dot in its course colour (a ring for an exam) and tapping the day
-     opens it in full. The title stays in the markup for screen readers. */
-  .cal-cell .cal-evt { display: inline-block; vertical-align: top; width: 7px; height: 7px; padding: 0; margin: 0 3px 3px 0; font-size: 0; border: none; border-radius: 50%; background: var(--c); }
-  .cal-cell .cal-evt.kind-exam { background: transparent; border: 2px solid var(--c); }
-  .cal-cell { flex-direction: row; flex-wrap: wrap; align-content: flex-start; gap: 0; }
-  .cal-cell > :not(.cal-evt):not(.cal-more) { flex-basis: 100%; margin-bottom: 4px; }
-  .cal-cell .cal-more { font-size: 9.5px; line-height: 7px; }
-  .cal-more-word { display: none; }
-  .cal-week-grid { grid-template-columns: 40px repeat(7, 1fr); }
-  .cal-hour-label { font-size: 8.5px; padding-right: 3px; }
   .modal, .modal.wide { width: calc(100vw - 24px); }
   .sticky-note, .sticky-note.size-sm, .sticky-note.size-lg { width: 100%; transform: none; }
   .btn.sidebar-expand-fab { top: auto; bottom: 18px; left: 18px; }
@@ -974,17 +964,30 @@ kbd { font-family: var(--font); font-size: 10.5px; font-weight: 600; padding: 1p
    it, matching .list-row (the spaced-row pattern used everywhere else), so a
    list of deadlines scans as distinct things you have to do. */
 .assign-list { padding: 0; background: transparent; border: none; box-shadow: none; display: flex; flex-direction: column; gap: 8px; }
-.assign-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-card); cursor: pointer; position: relative; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); transition: background .12s, border-color .12s; }
-.assign-row:hover { background: var(--surface-2); border-color: var(--text-faint); }
+/* Every row carries its class color as a bar on the left edge (the same
+   language as the calendar), the class as a tinted tag, and a due column
+   that says Overdue or Today in words. */
+.assign-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px 12px 18px; border-radius: var(--r-card); cursor: pointer; position: relative; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); transition: background .12s, border-color .12s, transform .12s; }
+.assign-row::before { content: ''; position: absolute; left: 6px; top: 12px; bottom: 12px; width: 3px; border-radius: var(--r-mark); background: var(--course, var(--border)); }
+.assign-row:hover { background: var(--surface-2); border-color: color-mix(in srgb, var(--text-faint) 60%, var(--border)); }
 .assign-row.selected { background: var(--accent-light); border-color: var(--accent); }
+.assign-row.is-done::before { opacity: .35; }
 .assign-main { flex: 1; min-width: 0; }
-.assign-title { font-size: 14px; line-height: 1.35; }
-.assign-row.is-done .assign-title { color: var(--text-faint); text-decoration: line-through; }
-.assign-meta { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+.assign-title { font-size: 14.5px; font-weight: 500; line-height: 1.35; color: var(--text); }
+.assign-row.is-done .assign-title { color: var(--text-faint); text-decoration: line-through; font-weight: 400; }
+.assign-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 11.5px; color: var(--text-faint); margin-top: 4px; }
+.assign-tag { padding: 2px 8px; font-size: 11px; }
+.assign-row.is-done .assign-tag { opacity: .6; }
+.assign-type { text-transform: capitalize; }
 .assign-course { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: var(--text-dim); }
 .assign-status { color: var(--text); font-weight: 600; }
-.assign-due { font-size: 12.5px; font-weight: 600; text-align: right; min-width: 74px; line-height: 1.25; }
-.assign-due span { display: block; font-size: 11px; font-weight: 500; color: var(--text-faint); }
+.assign-due { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; min-width: 78px; text-align: right; line-height: 1.2; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
+.assign-due .due-when { font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
+.assign-due .due-time { font-size: 11px; font-weight: 500; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.assign-due .due-none { font-size: 11.5px; color: var(--text-faint); }
+.due-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: var(--r-pill); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.due-tag.is-today { background: var(--accent); color: var(--accent-text); }
+.due-tag.is-overdue { background: var(--surface); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--text); }
 
 /* ── Dashboard ─────────────────────────────────────────────────── */
 .dash-hero { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 18px; margin-bottom: 18px; }
@@ -1291,16 +1294,41 @@ button.dash-next-title:hover { text-decoration: underline; text-decoration-thick
 .timer-pill-btn:hover { background: color-mix(in srgb, var(--accent-text) 26%, transparent); }
 
 /* ── Flashcards ────────────────────────────────────────────────── */
-.fc-hero { display: grid; grid-template-columns: 1fr minmax(260px, 1fr); gap: 24px; padding: 24px; margin-bottom: 18px; align-items: center; }
-.fc-hero-num { font-family: var(--font-serif); font-size: 34px; line-height: 1.05; margin: 6px 0 4px; }
-.fc-forecast-bars { display: flex; justify-content: space-between; align-items: flex-end; gap: 6px; height: 88px; }
-.fc-fbar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; }
-.fc-fbar-fill { width: 100%; max-width: 26px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--accent) 28%, var(--border)); }
+/* Flashcards home: today's review as a card on a small stack, three plain
+   numbers under it, the week as a strip, and each deck as an index card. */
+.fc-top { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 18px; margin-bottom: 22px; align-items: stretch; }
+.fc-hero-wrap { position: relative; margin: 0 10px 8px 0; }
+.fc-hero { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; gap: 22px; padding: 26px 26px 20px; margin: 0; }
+.fc-stack { position: absolute; inset: 0; pointer-events: none; }
+.fc-stack span { position: absolute; inset: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow); }
+.fc-stack span:first-child { transform: translate(10px, 8px) rotate(1.4deg); opacity: .7; }
+.fc-stack span:last-child { transform: translate(5px, 4px) rotate(.6deg); }
+.fc-hero-num { font-family: var(--font-serif); font-size: 30px; line-height: 1.1; margin: 8px 0 6px; color: var(--text); }
+.fc-hero-num b { font-weight: 400; font-size: 64px; line-height: .9; display: block; letter-spacing: -1px; }
+.fc-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--border); padding-top: 14px; }
+.fc-stats > div { display: flex; flex-direction: column; gap: 2px; padding-right: 10px; }
+.fc-stats > div + div { border-left: 1px solid var(--border); padding-left: 14px; }
+.fc-stats b { font-family: var(--font-serif); font-weight: 400; font-size: 24px; line-height: 1.1; color: var(--text); }
+.fc-stats span { font-size: 11.5px; color: var(--text-faint); }
+.fc-forecast { padding: 20px 20px 16px; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; }
+.fc-forecast-bars { display: flex; justify-content: space-between; align-items: flex-end; gap: 6px; flex: 1; min-height: 120px; }
+.fc-fbar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 5px; height: 100%; }
+.fc-fbar-fill { width: 100%; max-width: 16px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--accent) 28%, var(--border)); }
 .fc-fbar.today .fc-fbar-fill { background: var(--accent); }
-.fc-fbar-n { font-size: 10.5px; font-weight: 700; color: var(--text-dim); min-height: 13px; }
-.fc-fbar em { font-style: normal; font-size: 10px; color: var(--text-faint); }
-.fc-deck { padding: 18px; display: flex; flex-direction: column; border-top: 3px solid var(--course); }
-.fc-deck-name { font-weight: 700; font-size: 15px; margin-bottom: 2px; }
+.fc-fbar.zero .fc-fbar-fill { background: var(--border); }
+.fc-fbar-n { font-family: var(--font-serif); font-size: 17px; line-height: 1; color: var(--text); }
+.fc-fbar.zero .fc-fbar-n { color: var(--text-faint); }
+.fc-fbar em { font-style: normal; font-size: 10.5px; color: var(--text-faint); }
+.fc-fbar.today em { color: var(--text); font-weight: 700; }
+.fc-deck { position: relative; padding: 18px 18px 16px; display: flex; flex-direction: column; overflow: hidden; }
+.fc-deck::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--course); }
+.fc-deck-name { font-family: var(--font-serif); font-weight: 400; font-size: 22px; line-height: 1.15; margin-bottom: 6px; color: var(--text); }
+.fc-deck-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-faint); }
+.fc-new-deck { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 180px; padding: 18px; border: 1.5px dashed var(--border); border-radius: var(--r-card); background: transparent; color: var(--text-dim); cursor: pointer; font-family: inherit; transition: border-color .15s, background .15s, color .15s; }
+.fc-new-deck:hover, .fc-new-deck:focus-visible { border-color: var(--accent); color: var(--text); background: var(--surface); outline: none; }
+.fc-new-deck span { font-size: 14px; font-weight: 700; }
+.fc-new-deck small { font-size: 11.5px; color: var(--text-faint); }
+@media (max-width: 900px) { .fc-top { grid-template-columns: 1fr; } }
 .fc-due { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: var(--r-pill); background: var(--accent); color: var(--accent-text); white-space: nowrap; }
 .fc-done { width: 22px; height: 22px; border-radius: 50%; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim); flex-shrink: 0; }
 .fc-mastery { display: flex; height: 7px; border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden; margin-top: 14px; }

@@ -571,7 +571,19 @@ function notebookTree(parentId, depth, search, sort) {
   return rows.join('');
 }
 function toggleFolder(id) { const f = state.notes.find(n => n.id === id); f.open = !f.open; touch(); }
-function selectNote(id) { setState({ notebookSelected: id }); }
+// On a phone the list and the note take turns filling the screen: opening a
+// note hides the list, and the note's "Notes" button brings it back.
+function selectNote(id) {
+  if (window.matchMedia('(max-width: 760px)').matches && !notebookListHidden()) {
+    _nbListHidden = true;
+    try { localStorage.setItem(NB_LIST_HIDDEN_KEY, '1'); } catch {}
+  }
+  setState({ notebookSelected: id });
+}
+// The note's "More" menu is a <details>; a click anywhere else closes it.
+document.addEventListener('click', e => {
+  document.querySelectorAll('details.nb-more[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
+});
 function createFolder(parentId) {
   const parent = state.notes.find(n => n.id === parentId);
   openModal(`
@@ -937,15 +949,21 @@ function renderNoteEditor(note) {
     <div class="nb-page-inner ${tpl ? `tpl-${tpl}` : ''}">
       <div class="nb-breadcrumb-row">
         ${crumbs.length ? `<div class="nb-breadcrumb">Notebook<span class="nb-crumb-sep">/</span>${crumbs.map(c => `${esc(c)}<span class="nb-crumb-sep">/</span>`).join('')}</div>` : `<div class="nb-breadcrumb">Notebook</div>`}
+        <button type="button" class="btn btn-ghost btn-sm nb-back" onclick="toggleNotebookList()">${icon('chevron-left', 14, 2)} Notes</button>
         <div class="nb-page-actions">
-          <button class="btn ${note.pinned ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="toggleNotePinned('${note.id}')">${icon('pin', 13)} ${note.pinned ? 'Pinned' : 'Pin'}</button>
-          <button class="btn btn-ghost btn-sm" onclick="duplicateNote('${note.id}')">${icon('layers', 13)} Duplicate</button>
-          <button class="btn btn-ghost btn-sm" onclick="openMoveNoteModal('${note.id}')">${icon('folder', 13)} Move</button>
-          <button class="btn btn-ghost btn-sm" onclick="exportNoteToPdf('${note.id}')">${icon('download', 13)} Export PDF</button>
-          <button class="btn btn-ghost btn-sm" onclick="triggerNoteFileUpload('${note.id}')">${icon('upload', 13)} Upload file</button>
+          ${tpl === 'cornell' ? `<button class="btn btn-sm ${window._nbCovered ? 'btn-primary' : ''}" id="nb-cover-btn" title="Hide the notes column and answer from your cues" onclick="toggleCornellCover()">${icon(window._nbCovered ? 'eye' : 'lock', 13)} ${window._nbCovered ? 'Reveal notes' : 'Cover notes'}</button>` : ''}
+          <button class="btn btn-ghost btn-sm btn-icon ${note.pinned ? 'is-on' : ''}" aria-pressed="${!!note.pinned}" aria-label="${note.pinned ? 'Unpin' : 'Pin'} this note" title="${note.pinned ? 'Pinned' : 'Pin'}" onclick="toggleNotePinned('${note.id}')">${icon('pin', 14)}</button>
           <button class="btn btn-ghost btn-sm" onclick="openGenerateDeckModal('${note.id}')">${icon('layers', 13)} Flashcards</button>
           <button class="btn btn-ghost btn-sm" onclick="shareNoteToGroup('${note.id}')">${icon('users', 13)} Share</button>
-          ${tpl === 'cornell' ? `<button class="btn btn-sm ${window._nbCovered ? 'btn-primary' : ''}" id="nb-cover-btn" title="Hide the notes column and answer from your cues" onclick="toggleCornellCover()">${icon(window._nbCovered ? 'eye' : 'lock', 13)} ${window._nbCovered ? 'Reveal notes' : 'Cover notes'}</button>` : ''}
+          <details class="nb-more">
+            <summary class="btn btn-ghost btn-sm btn-icon" aria-label="More for this note" title="More">${icon('more-horizontal', 16, 2)}</summary>
+            <div class="nb-more-menu" role="menu">
+              <button role="menuitem" onclick="this.closest('details').open=false;duplicateNote('${note.id}')">${icon('layers', 14)} Duplicate</button>
+              <button role="menuitem" onclick="this.closest('details').open=false;openMoveNoteModal('${note.id}')">${icon('folder', 14)} Move to a folder</button>
+              <button role="menuitem" onclick="this.closest('details').open=false;triggerNoteFileUpload('${note.id}')">${icon('upload', 14)} Upload a file</button>
+              <button role="menuitem" onclick="this.closest('details').open=false;exportNoteToPdf('${note.id}')">${icon('download', 14)} Export as PDF</button>
+            </div>
+          </details>
         </div>
       </div>
       <div class="nb-icon-avatar" style="background:${iconColor}18;color:${iconColor}">${icon(tplDef ? tplDef.icon : 'file-text', 20, 1.6)}</div>

@@ -84,13 +84,13 @@ function assignmentRow(a, selectMode, selected) {
     <div class="assign-main">
       <div class="assign-title">${esc(a.title)}${a.attachments && a.attachments.length ? ` <span class="muted">${icon('paperclip', 12, 1.8)}</span>` : ''}${assignmentSeries(a) ? ` <span class="muted" title="Repeats">${icon('refresh-cw', 11, 2)}</span>` : ''}</div>
       <div class="assign-meta">
-        <span class="assign-course"><span class="course-dot"></span>${esc(c ? (c.code || c.name) : 'No course')}</span>
-        <span>${esc(a.type)}</span>
+        ${c ? `<span class="course-chip tinted assign-tag" style="--c:${esc(c.color || '#8a8a8a')}">${esc(c.code || c.name)}</span>` : '<span class="assign-course">No course</span>'}
+        <span class="assign-type">${esc(a.type)}</span>
         ${a.status === 'in-progress' || a.status === 'waiting' ? `<span class="assign-status">${esc(STATUS_LABELS[a.status])}</span>` : ''}
         ${(a.rubric || []).length ? `<span>${rubricDone}/${a.rubric.length} steps</span>` : ''}
       </div>
     </div>
-    <div class="assign-due ${overdue ? 'sg-overdue' : ''}">${a.dueDate ? `${esc(isDone ? fmtDate(a.dueDate) : relativeDay(a.dueDate).replace(' (overdue)', ''))}${a.dueTime && a.dueTime !== '23:59' && !isDone ? `<span>${fmtTime(a.dueTime)}</span>` : ''}` : '<span class="muted">No date</span>'}</div>
+    <div class="assign-due ${overdue ? 'is-overdue' : ''}">${dueBadgeHtml(a.dueDate, a.dueTime, isDone, 'No date')}</div>
   </div>`;
 }
 function bulkMarkAssignmentsDone() {

@@ -122,8 +122,48 @@ function inlineErrorHtml(message, retryOnclick = '', { retryLabel = 'Try again',
     ${extra}
   </div>`;
 }
+// On a desktop the title sits left and every action sits right, as before.
+// On a phone every page used to stack search, capture, the bell, Log in and
+// then its own buttons, wrapping into two or three rows before the page even
+// started. There, the tools ride next to the title, the row below keeps
+// Log in and the page's one primary button, and everything else moves into
+// a "More" sheet (openHeadMore) that lists each action by name.
 function pageHead(title, sub, actionsHtml = '') {
-  return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions"><button class="btn btn-icon btn-sm mobile-search" aria-label="Search" onclick="openCommandPalette()">${typeof searchIcon === 'function' ? searchIcon() : ''}</button><button class="btn btn-icon btn-sm mobile-search" aria-label="Quick capture" onclick="openQuickCapture()">${icon('camera', 15, 1.8)}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}${signInHeaderButton()}${actionsHtml}</div></div>`;
+  const tools = `<button class="btn btn-icon btn-sm mobile-search" aria-label="Search" onclick="openCommandPalette()">${typeof searchIcon === 'function' ? searchIcon() : ''}</button><button class="btn btn-icon btn-sm mobile-search" aria-label="Quick capture" onclick="openQuickCapture()">${icon('camera', 15, 1.8)}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}`;
+  return `<div class="page-head">
+    <div class="page-head-top"><div class="page-head-title"><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-tools">${tools}</div></div>
+    <div class="head-actions">${signInHeaderButton()}${actionsHtml}<button type="button" class="btn btn-sm btn-icon head-more" aria-label="More actions" aria-haspopup="dialog" onclick="openHeadMore(this)">${icon('more-horizontal', 16, 2)}</button></div>
+  </div>`;
+}
+// The right edge of a to-do or assignment row. Overdue says so in words
+// with an icon (never color alone), today gets a filled tag, and everything
+// later stays quiet. 11:59 PM is "due that day" and isn't printed.
+function dueBadgeHtml(date, time, done, emptyLabel = '') {
+  const t = time && time !== '23:59' && !done ? `<span class="due-time">${fmtTime(time)}</span>` : '';
+  if (!date) return time && !done ? t : emptyLabel ? `<span class="due-none">${esc(emptyLabel)}</span>` : '';
+  if (done) return `<span class="due-when">${esc(fmtDate(date))}</span>`;
+  const when = esc(relativeDay(date).replace(' (overdue)', ''));
+  if (date < todayIso()) return `<span class="due-tag is-overdue">${icon('clock', 11, 2.2)}Overdue</span><span class="due-time">${when}</span>`;
+  if (date === todayIso()) return `<span class="due-tag is-today">Today</span>${t}`;
+  return `<span class="due-when">${when}</span>${t}`;
+}
+// The phone's "More" sheet: the header actions a phone hides, by name. Each
+// runs its own onclick unchanged; the sheet closes first, so an action that
+// opens its own modal isn't closed straight after.
+function openHeadMore(btn) {
+  const row = btn.closest('.head-actions');
+  const title = btn.closest('.page-head')?.querySelector('h2')?.textContent || 'More';
+  const items = [...row.children].filter(el => el.matches('.btn, a.btn') && !el.matches('.btn-primary, .head-keep, .head-more, .desktop-capture, .mobile-search'));
+  const html = items.map(el => {
+    const c = el.cloneNode(true);
+    c.removeAttribute('id'); c.classList.remove('btn-sm', 'btn-icon', 'btn-primary'); c.classList.add('head-sheet-item');
+    const label = (el.textContent || '').trim() || el.getAttribute('aria-label') || el.getAttribute('title') || '';
+    if (!(el.textContent || '').trim()) c.insertAdjacentHTML('beforeend', `<span>${esc(label)}</span>`);
+    return c.outerHTML;
+  }).join('');
+  openModal(`<div class="modal-head"><h3>${esc(title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div><div class="modal-body head-sheet">${html}</div>`);
+  const sheet = document.querySelector('#modal .head-sheet');
+  if (sheet) sheet.addEventListener('click', e => { if (e.target.closest('.head-sheet-item')) closeModal(); }, true);
 }
 // A persistent, always-visible way to log in, not just buried in a modal or
 // Settings, since it's the same click for a brand-new account or an existing
@@ -133,7 +173,7 @@ function pageHead(title, sub, actionsHtml = '') {
 // a popup layered on top of whatever you were doing.
 function signInHeaderButton() {
   if (!fbConfigured() || _fbUser) return '';
-  return `<a class="btn btn-sm" href="login.html">${icon('sparkles', 13, 2)} Log in</a>`;
+  return `<a class="btn btn-sm head-keep" href="login.html">${icon('sparkles', 13, 2)} Log in</a>`;
 }
 // Circular progress indicator (0-100, or null for an empty ring).
 function progressRing(pct, color, size = 76) {

@@ -1,0 +1,222 @@
+/* ────────────────────────────────────────────────────────────────
+   Calendar: month, week, day and year.
+
+   The month is one sheet of paper with hairline rules, not 42 separate
+   boxes: the grid reads as a page from a planner, which is what the
+   brand is. Day numbers are Instrument Serif; today is an ink circle.
+
+   Events are an ink label with a bar in the class color, so the text
+   always has full contrast whatever the class color is, and the kind of
+   event never depends on color alone:
+     class     solid bar, quieter text (it repeats every week)
+     deadline  dashed bar, light tint
+     exam      solid bar, stronger tint, bold, flag icon
+     to-do     check icon
+   Week and Day use the same language as blocks on the hour grid.
+──────────────────────────────────────────────────────────────── */
+
+/* ── Toolbar: the month as a headline, controls on one line ── */
+.cal-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; margin-bottom: 16px; }
+.cal-title { font-family: var(--font-serif); font-weight: 400; font-size: 34px; line-height: 1.05; letter-spacing: -.3px; color: var(--text); }
+/* Rose-deep is allowed only as large display type (3.2:1); this is 34px. */
+.cal-title em { font-style: italic; color: var(--rose-deep); }
+html.dark .cal-title em { color: var(--rose); }
+.cal-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cal-views button[aria-pressed="true"] { font-weight: 700; }
+
+/* ── The sheet ── */
+.cal-sheet { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow); overflow: hidden; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-dow { font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint); padding: 11px 10px 9px; border-bottom: 1px solid var(--border); }
+.cal-dow.weekend { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+
+.cal-cell { position: relative; min-height: 116px; min-width: 0; padding: 7px 7px 6px; display: flex; flex-direction: column; gap: 3px; cursor: pointer;
+  border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); transition: background .12s; }
+.cal-month .cal-cell:nth-child(7n) { border-right: none; }
+.cal-month .cal-cell:nth-last-child(-n+7) { border-bottom: none; }
+.cal-cell.weekend { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+.cal-cell:hover { background: var(--surface-2); }
+.cal-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cal-cell .d-num { align-self: flex-start; font-family: var(--font-serif); font-size: 17px; line-height: 26px; min-width: 26px; height: 26px; padding: 0 4px; text-align: center; border-radius: 13px; color: var(--text); margin-bottom: 1px; }
+.cal-cell.today .d-num { background: var(--accent); color: var(--accent-text); }
+.cal-cell.muted .d-num { color: var(--text-faint); }
+.cal-cell.muted .cal-evt { opacity: .55; }
+/* A break (spring break, reading days): hatched, named in italic serif. */
+.cal-cell.break { background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--border) 80%, transparent) 0 1px, transparent 1px 8px); }
+.cal-break-label { font-family: var(--font-serif); font-style: italic; font-size: 13px; color: var(--text-dim); line-height: 1.2; }
+.cal-dots { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cal-more { font-size: 10.5px; font-weight: 600; color: var(--text-faint); padding-left: 8px; }
+
+/* ── Event labels (month, and the all-day row in week/day) ── */
+.cal-evt { position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 11px; line-height: 1.35; font-weight: 600; color: var(--text); padding: 2px 5px 2px 9px; border-radius: var(--r-mark); white-space: nowrap; }
+.cal-evt::before { content: ''; position: absolute; left: 2px; top: 3px; bottom: 3px; width: 3px; border-radius: 2px; background: var(--c); }
+.cal-evt-title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cal-evt-time { flex-shrink: 0; font-weight: 500; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.cal-evt-ic { display: inline-flex; flex-shrink: 0; color: var(--c); }
+.cal-evt.kind-class { font-weight: 500; color: var(--text-dim); }
+.cal-evt.kind-class::before { opacity: .7; }
+.cal-evt.kind-deadline { background: color-mix(in srgb, var(--c) 9%, transparent); }
+.cal-evt.kind-deadline::before { background: repeating-linear-gradient(to bottom, var(--c) 0 3px, transparent 3px 5px); }
+.cal-evt.kind-exam { background: color-mix(in srgb, var(--c) 17%, transparent); font-weight: 700; }
+.cal-evt.kind-exam .cal-evt-ic { color: var(--text); }
+
+/* ── Legend: every color is named ── */
+.cal-foot { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px 24px; flex-wrap: wrap; margin-top: 14px; }
+.cal-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 12px; color: var(--text-dim); }
+.cal-key { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cal-key i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex-shrink: 0; }
+.cal-key .bar { width: 3px; height: 13px; border-radius: 2px; background: var(--text-faint); }
+.cal-key .bar.dashed { background: repeating-linear-gradient(to bottom, var(--text-faint) 0 3px, transparent 3px 5px); }
+.cal-legend-sep { width: 1px; height: 14px; background: var(--border); }
+.cal-hint { max-width: 460px; text-align: right; }
+
+/* ── Week and Day: blocks on an hour grid ── */
+.cal-time { padding: 0 0 8px; }
+.cal-week-grid { display: grid; grid-template-columns: 58px repeat(7, minmax(0, 1fr)); }
+.cal-week-head { border-bottom: 1px solid var(--border); }
+.cal-wd { display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 12px 4px 10px; cursor: pointer; border-left: 1px solid transparent; }
+.cal-wd:hover .cal-wd-num { background: var(--surface-2); }
+.cal-wd-dow { font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint); }
+.cal-wd-num { font-family: var(--font-serif); font-size: 20px; line-height: 30px; min-width: 30px; text-align: center; border-radius: 15px; color: var(--text); }
+.cal-wd.today .cal-wd-num { background: var(--accent); color: var(--accent-text); }
+.cal-wd.weekend .cal-wd-dow { opacity: .8; }
+
+.cal-hour-label { position: relative; height: 48px; font-size: 10.5px; color: var(--text-faint); text-align: right; padding-right: 10px; font-variant-numeric: tabular-nums; }
+.cal-hour-label span { position: relative; top: -7px; background: var(--surface); padding-left: 2px; }
+.cal-hour-label:first-child span { top: 3px; }
+.cal-day-col { position: relative; border-left: 1px solid var(--border); min-width: 0; }
+.cal-day-col.weekend { background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+.cal-day-col.today { background: color-mix(in srgb, var(--accent) 3%, transparent); }
+.cal-hour-row { height: 48px; border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  background-image: linear-gradient(to right, color-mix(in srgb, var(--border) 45%, transparent) 50%, transparent 0); background-size: 6px 1px; background-repeat: repeat-x; background-position: 0 24px; }
+
+.cal-block { position: absolute; left: 3px; right: 4px; border-radius: 3px var(--r-tight) var(--r-tight) 3px; padding: 4px 7px 4px 9px; overflow: hidden; cursor: pointer;
+  font-size: 11.5px; line-height: 1.3; font-weight: 600; color: var(--text);
+  background: color-mix(in srgb, var(--c) 15%, var(--surface)); border-left: 3px solid var(--c); box-shadow: 0 1px 2px rgba(0,0,0,.04); transition: box-shadow .12s, transform .12s; }
+.cal-block:hover { box-shadow: 0 4px 14px rgba(0,0,0,.10); transform: translateY(-1px); z-index: 2; }
+.cal-block-title { display: flex; align-items: center; gap: 4px; }
+.cal-block-title > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cal-block-time { display: block; margin-top: 1px; font-size: 10.5px; font-weight: 500; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cal-block .cal-evt-ic { color: var(--c); }
+.cal-block.kind-class { background: color-mix(in srgb, var(--c) 11%, var(--surface)); }
+.cal-block.kind-deadline { background: color-mix(in srgb, var(--c) 8%, var(--surface)); border-left-style: dashed; }
+.cal-block.kind-exam { background: color-mix(in srgb, var(--c) 24%, var(--surface)); font-weight: 700; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 45%, transparent); }
+.cal-block.kind-exam .cal-evt-ic { color: var(--text); }
+/* Now: a rose hairline across today (an accent, not text). */
+.cal-now { position: absolute; left: -1px; right: 0; height: 2px; background: var(--rose-deep); z-index: 3; pointer-events: none; }
+.cal-now::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--rose-deep); }
+html.dark .cal-now, html.dark .cal-now::before { background: var(--rose); }
+
+/* Untimed items (a to-do due Friday, a deadline with no set time) sit above
+   the hour grid instead of being dropped from Week and Day entirely. */
+.cal-allday { border-bottom: 1px solid var(--border); align-items: stretch; }
+.cal-allday-label { font-size: 10.5px; color: var(--text-faint); text-align: right; padding: 7px 10px 0 0; }
+/* min-width:0: a long title (nowrap) would otherwise make its column demand
+   the full text width and squeeze every other day. */
+.cal-allday-col { border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; padding: 5px 4px; min-height: 30px; min-width: 0; }
+.cal-allday-col .cal-evt { cursor: pointer; }
+
+/* ── The daily page: timeline + the day at a glance ── */
+.cal-dayplan { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+.cal-daypanel { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 16px; }
+.cal-panel-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 16px 16px 14px; }
+.cal-panel-card h4 { font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 10px; }
+.cal-panel-empty { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+.cal-glance { display: grid; grid-template-columns: repeat(3, 1fr); padding: 14px 6px; }
+.cal-glance > div { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.cal-glance > div + div { border-left: 1px solid var(--border); }
+.cal-glance b { font-family: var(--font-serif); font-weight: 400; font-size: 32px; line-height: 1; color: var(--text); }
+.cal-glance span { font-size: 11.5px; color: var(--text-faint); }
+.cal-due-list { display: flex; flex-direction: column; }
+.cal-due-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; }
+.cal-due-row + .cal-due-row { border-top: 1px solid var(--border); }
+.cal-due-row .row-check { margin-top: 1px; }
+.cal-due-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: none; padding: 0; color: inherit; cursor: pointer; }
+.cal-due-main:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--r-mark); }
+.cal-due-title { display: flex; align-items: center; gap: 5px; font-size: 13.5px; font-weight: 600; line-height: 1.35; color: var(--text); }
+.cal-due-meta { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-faint); }
+.cal-due-meta i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.cal-due-row.done .cal-due-title { color: var(--text-faint); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-faint) 60%, transparent); }
+.cal-free-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; }
+.cal-free-row + .cal-free-row { border-top: 1px solid var(--border); }
+.cal-free-row > div { display: flex; flex-direction: column; gap: 1px; }
+.cal-free-time { font-size: 13.5px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.cal-free-len { font-size: 11.5px; color: var(--text-faint); }
+.cal-daymini .cal-mini-month-head { font-size: 17px; }
+.cal-daymini .cal-mini-cell { border: none; background: none; font-family: inherit; padding: 0; aspect-ratio: auto; height: 32px; width: 32px; justify-self: center; font-size: 11px; }
+.cal-daymini .cal-mini-cell.today { background: var(--accent); }
+.cal-daymini .cal-mini-cell.selected:not(.today) { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--text); font-weight: 700; }
+.cal-mini-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Today: the hours already gone step back. */
+.cal-past { position: absolute; left: 0; right: 0; top: 0; background: color-mix(in srgb, var(--bg) 55%, transparent); pointer-events: none; }
+.cal-block.past { opacity: .6; }
+@media (max-width: 1100px) { .cal-dayplan { grid-template-columns: minmax(0, 1fr) 280px; } }
+
+/* ── Year: twelve small months ── */
+.cal-year-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.cal-mini-month { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: 14px 14px 12px; }
+.cal-mini-month.current { box-shadow: 0 0 0 1px var(--accent); }
+.cal-mini-month-head { font-family: var(--font-serif); font-size: 19px; margin-bottom: 8px; cursor: pointer; color: var(--text); }
+.cal-mini-month-head:hover { text-decoration: underline; text-underline-offset: 3px; }
+.cal-mini-dow { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 3px; }
+.cal-mini-dow span { text-align: center; font-size: 9px; font-weight: 600; letter-spacing: .08em; color: var(--text-faint); }
+.cal-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.cal-mini-cell { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: var(--text-dim); cursor: pointer; border-radius: 50%; gap: 1px; font-variant-numeric: tabular-nums; }
+.cal-mini-cell:hover { background: var(--surface-2); }
+.cal-mini-cell.muted { color: var(--text-faint); opacity: .6; }
+.cal-mini-cell.today { background: var(--accent); color: var(--accent-text); font-weight: 700; }
+.cal-mini-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
+.cal-mini-dot.exam { background: var(--rose-deep); }
+html.dark .cal-mini-dot.exam { background: var(--rose); }
+.cal-mini-cell.today .cal-mini-dot { background: var(--accent-text); }
+@media (max-width: 900px) { .cal-year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ── Phone ── */
+@media (max-width: 760px) {
+  .cal-toolbar { align-items: flex-start; flex-direction: column; margin-bottom: 12px; }
+  .cal-title { font-size: 28px; }
+  .cal-controls { width: 100%; justify-content: space-between; flex-wrap: nowrap; gap: 6px; }
+  .cal-stepper { gap: 4px; }
+  .cal-stepper .btn { padding: 6px 9px; }
+  .cal-views { padding: 2px; }
+  .cal-views button { padding: 6px 9px; font-size: 12.5px; }
+  .cal-dow { font-size: 9.5px; letter-spacing: .08em; padding: 8px 0 6px; text-align: center; }
+  .cal-cell { min-height: 66px; padding: 4px 3px; align-items: center; }
+  .cal-cell .d-num { align-self: center; font-size: 15px; line-height: 24px; height: 24px; min-width: 24px; padding: 0; }
+  /* A label cut to "Calc…" says nothing on a phone, so each item is a dot in
+     its class color (a ring for an exam) and tapping the day opens it in full.
+     The title stays in the markup for screen readers. */
+  .cal-cell .cal-dots { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 3px; max-width: 34px; }
+  .cal-cell .cal-evt { width: 6px; height: 6px; padding: 0; font-size: 0; border-radius: 50%; background: var(--c); opacity: 1; }
+  .cal-cell .cal-evt::before, .cal-cell .cal-evt > * { display: none; }
+  .cal-cell .cal-evt.kind-class { opacity: .45; }
+  .cal-cell .cal-evt.kind-exam { background: transparent; box-shadow: inset 0 0 0 2px var(--c); width: 7px; height: 7px; }
+  .cal-cell .cal-evt.kind-deadline { background: var(--c); }
+  .cal-break-label { font-size: 0; }
+  .cal-more { padding: 0; font-size: 9.5px; }
+  .cal-more-word { display: none; }
+  .cal-foot { flex-direction: column; }
+  .cal-hint { text-align: left; }
+  .cal-legend { font-size: 11.5px; gap: 6px 12px; }
+  .cal-week-grid { grid-template-columns: 40px repeat(7, minmax(0, 1fr)); }
+  .cal-wd { flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; }
+  .cal-wd-dow { font-size: 9px; letter-spacing: .06em; }
+  .cal-wd-num { font-size: 16px; line-height: 26px; min-width: 26px; }
+  .cal-hour-label { font-size: 9px; padding-right: 4px; }
+  .cal-block { font-size: 10px; padding: 3px 3px 3px 5px; left: 1px; right: 1px; border-left-width: 2px; }
+  .cal-block-time, .cal-block .cal-evt-ic { display: none; }
+  /* The daily page on a phone: the glance, what's due and free time first,
+     then the timeline. The small month is left out; the arrows move days. */
+  .cal-dayplan { grid-template-columns: 1fr; gap: 12px; }
+  .cal-daypanel { order: -1; position: static; gap: 10px; }
+  .cal-daymini { display: none; }
+  .cal-dayplan .cal-block { font-size: 11.5px; padding: 4px 6px 4px 8px; left: 3px; right: 4px; border-left-width: 3px; }
+  .cal-dayplan .cal-block-time { display: block; }
+  .cal-dayplan .cal-allday-col .cal-evt { justify-content: flex-start; padding: 2px 5px 2px 9px; }
+  .cal-dayplan .cal-allday-col .cal-evt-title { display: block; }
+  /* All-day items in a phone week: a seventh of a phone is too narrow for a
+     title, so each is its icon on the class-color bar; tap opens it. */
+  .cal-allday-col { padding: 4px 2px; }
+  .cal-allday-col .cal-evt { padding: 2px 2px 2px 7px; justify-content: center; }
+  .cal-allday-col .cal-evt-title, .cal-allday-col .cal-evt-time { display: none; }
+}

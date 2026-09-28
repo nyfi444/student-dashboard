@@ -109,7 +109,6 @@ function todoRow(x, { selectMode = false, selected = null, showList = true } = {
   const overdue = !x.done && x.dueDate && x.dueDate < todayIso();
   const list = showList && x.sectionId ? state.todoSections.find(s => s.id === x.sectionId) : null;
   const rowClick = selectMode ? `toggleTodoSelected('${x.id}')` : `openTodoModal('${x.id}')`;
-  const due = x.dueDate ? `${esc(x.done ? fmtDate(x.dueDate) : relativeDay(x.dueDate).replace(' (overdue)', ''))}${x.dueTime && !x.done ? `<span>${fmtTime(x.dueTime)}</span>` : ''}` : (x.dueTime ? `<span>${fmtTime(x.dueTime)}</span>` : '');
   return `<div class="assign-row todo-row ${isSelected ? 'selected' : ''} ${x.done ? 'is-done' : ''}" data-item-id="${x.id}" style="--course:${esc(c?.color || 'var(--border)')}" onclick="${rowClick}" draggable="${selectMode ? 'false' : 'true'}" ondragstart="event.stopPropagation();dragStartItem(event,'todo','${x.id}')">
     ${selectMode
       ? `<button type="button" class="row-check ${isSelected ? 'checked' : ''}" role="checkbox" aria-checked="${isSelected}" aria-label="${isSelected ? 'Deselect' : 'Select'} ${esc(x.title)}" onclick="event.stopPropagation();toggleTodoSelected('${x.id}')">${isSelected ? checkGlyph(true) : ''}</button>`
@@ -117,14 +116,14 @@ function todoRow(x, { selectMode = false, selected = null, showList = true } = {
     <div class="assign-main">
       <div class="assign-title">${x.priority === 'high' && !x.done ? `<span class="todo-flag" title="High priority">${icon('flag', 12, 2)}</span>` : ''}${esc(x.title)}</div>
       ${c || list || x.recurringTemplateId || x.notes ? `<div class="assign-meta">
-        ${c ? `<span class="assign-course"><span class="course-dot"></span>${esc(c.code || c.name)}</span>` : ''}
+        ${c ? `<span class="course-chip tinted assign-tag" style="--c:${esc(c.color || '#8a8a8a')}">${esc(c.code || c.name)}</span>` : ''}
         ${list ? `<span>${esc(list.name)}</span>` : ''}
         ${x.recurringTemplateId ? `<span title="Repeating">${icon('refresh-cw', 11, 2)}</span>` : ''}
         ${x.notes ? `<span title="Has notes">${icon('file-text', 11, 2)}</span>` : ''}
         ${x.priority === 'low' && !x.done ? '<span>Low priority</span>' : ''}
       </div>` : ''}
     </div>
-    <div class="assign-due ${overdue ? 'sg-overdue' : ''}">${due}</div>
+    <div class="assign-due ${overdue ? 'is-overdue' : ''}">${dueBadgeHtml(x.dueDate, x.dueTime, x.done)}</div>
   </div>`;
 }
 

@@ -94,19 +94,31 @@ function pageStudyTools() {
       <button class="btn btn-primary" onclick="openDeckModal()">+ New deck</button>
     `)}
     ${decks.length ? `
-    <div class="card fc-hero">
-      <div class="fc-hero-main">
-        <div class="sg-eyebrow">Today</div>
-        <div class="fc-hero-num">${totalDue ? `${totalDue} card${totalDue === 1 ? '' : 's'} to review` : 'You’re all caught up'}</div>
-        <div class="small muted">${today.reviewed ? `${today.reviewed} reviewed so far today. ` : ''}${totalDue ? 'About ' + Math.max(1, Math.round(totalDue * 8 / 60)) + ' min.' : 'Come back tomorrow, or browse a deck anytime.'}</div>
-        ${totalDue ? `<button class="btn btn-primary mt-16" onclick="openReview()">${icon('play', 12, 1.5)} Start review</button>` : ''}
+    <div class="fc-top">
+      <div class="fc-hero-wrap">
+      <div class="fc-stack" aria-hidden="true"><span></span><span></span></div>
+      <div class="card fc-hero">
+        <div class="fc-hero-main">
+          <div class="sg-eyebrow">Today</div>
+          ${totalDue ? `<div class="fc-hero-num"><b>${totalDue}</b> card${totalDue === 1 ? '' : 's'} to review</div>` : `<div class="fc-hero-num">You’re all caught up</div>`}
+          <div class="small muted">${today.reviewed ? `${today.reviewed} reviewed so far today. ` : ''}${totalDue ? 'About ' + Math.max(1, Math.round(totalDue * 8 / 60)) + ' min.' : 'Come back tomorrow, or browse a deck anytime.'}</div>
+          ${totalDue ? `<button class="btn btn-primary mt-16" onclick="openReview()">${icon('play', 12, 1.5)} Start review</button>` : ''}
+        </div>
+        <div class="fc-stats">
+          ${(() => { const all = decks.flatMap(d => d.cards); const mastered = decks.reduce((s, d) => s + deckProgress(d).mastered, 0);
+            return [[today.reviewed || 0, 'reviewed today'], [mastered, 'mastered'], [all.length, `card${all.length === 1 ? '' : 's'} in ${decks.length} deck${decks.length === 1 ? '' : 's'}`]]
+              .map(([n, l]) => `<div><b>${n}</b><span>${l}</span></div>`).join(''); })()}
+        </div>
       </div>
-      <div class="fc-forecast" aria-label="Cards due over the next week">
-        <div class="small muted mb-8">Coming up</div>
-        <div class="fc-forecast-bars">${forecast.map((f, i) => `<div class="fc-fbar ${i === 0 ? 'today' : ''}" title="${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'long' })}: ${f.n} due"><span class="fc-fbar-n">${f.n || ''}</span><span class="fc-fbar-fill" style="height:${f.n ? 6 + (f.n / maxF) * 46 : 2}px"></span><em>${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'short' })}</em></div>`).join('')}</div>
+      </div>
+      <div class="card fc-forecast" aria-label="Cards due over the next week">
+        <div class="sg-eyebrow">Next 7 days</div>
+        <div class="fc-forecast-bars">${forecast.map((f, i) => `<div class="fc-fbar ${i === 0 ? 'today' : ''} ${f.n ? '' : 'zero'}" title="${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'long' })}: ${f.n} due"><span class="fc-fbar-n">${f.n}</span><span class="fc-fbar-fill" style="height:${f.n ? 8 + (f.n / maxF) * 40 : 2}%"></span><em>${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'short' })}</em></div>`).join('')}</div>
       </div>
     </div>
-    <div class="grid grid-3">${decks.map(deckCard).join('')}</div>`
+    <div class="grid grid-3 fc-decks">${decks.map(deckCard).join('')}
+      <button type="button" class="fc-new-deck" onclick="openDeckModal()">${icon('plus', 18, 2)}<span>New deck</span><small>Type cards, paste a list, or upload slides</small></button>
+    </div>`
     : emptyStateHtml({
       icon: 'layers',
       title: 'Make your first deck',
@@ -125,7 +137,7 @@ function deckCard(d) {
       <div class="flex-between" style="align-items:flex-start;gap:8px">
         <div style="min-width:0">
           <div class="fc-deck-name">${esc(d.name)}</div>
-          <div class="small muted">${c ? `<span class="course-dot"></span> ${esc(c.code || c.name)} · ` : ''}${d.cards.length} card${d.cards.length === 1 ? '' : 's'}</div>
+          <div class="fc-deck-meta">${c ? `<span class="course-chip tinted assign-tag" style="--c:${esc(c.color || '#5a6b7b')}">${esc(c.code || c.name)}</span>` : ''}<span>${d.cards.length} card${d.cards.length === 1 ? '' : 's'}</span></div>
         </div>
         ${due ? `<span class="fc-due">${due} due</span>` : d.cards.length ? `<span class="fc-done">${icon('check', 11, 2.4)}</span>` : ''}
       </div>
