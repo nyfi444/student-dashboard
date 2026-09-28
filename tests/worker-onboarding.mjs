@@ -333,6 +333,14 @@ function setup({ resendOk = true } = {}) {
   check('every email once', body.results.length, 10);
   ok('all to hello@, whatever is asked', sent.every(m => m.to === 'hello@semester-hq.com'));
   ok('marked as tests', sent.every(m => m.subject.startsWith('[Test] ')));
+  const { w: w2, env: env2, sent: sent2 } = setup();
+  env2.OWNER_TEST_EMAILS = 'me@icloud.com, other@gmail.com';
+  await w2.handleAdminEmailTest(new Request('https://w/admin/email-test?to=ME@icloud.com&only=receipt,welcome', { method: 'POST', headers: { Authorization: 'Bearer admintoken' } }), env2);
+  check('an owner inbox can be picked, and only the emails asked for', sent2.map(m => [m.to, m.subject]), [['me@icloud.com', '[Test] Your Semester HQ Plus subscription is active'], ['me@icloud.com', '[Test] Welcome to Semester HQ']]);
+  const { w: w3, env: env3, sent: sent3 } = setup();
+  env3.OWNER_TEST_EMAILS = 'me@icloud.com';
+  await w3.handleAdminEmailTest(new Request('https://w/admin/email-test?to=student@school.edu&only=receipt', { method: 'POST', headers: { Authorization: 'Bearer admintoken' } }), env3);
+  check('anyone else still gets hello@', sent3.map(m => m.to), ['hello@semester-hq.com']);
   const denied = await w.handleAdminEmailTest(new Request('https://w/admin/email-test', { method: 'POST' }), env);
   check('no token, no test', denied.status, 401);
   const run = await w.handleAdminOnboardingRun(new Request('https://w/admin/onboarding-run', { method: 'POST', headers: { Authorization: 'Bearer admintoken' } }), env);

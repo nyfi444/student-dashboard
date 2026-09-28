@@ -342,7 +342,13 @@ async function emailTestAllowed(request, env) {
 export async function handleAdminEmailTest(request, env) {
   const headers = { 'content-type': 'application/json', 'Access-Control-Allow-Origin': '*' };
   if (!(await emailTestAllowed(request, env))) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers });
-  const to = 'hello@semester-hq.com';
+  // ?to= may pick one of Nyla's own inboxes (OWNER_TEST_EMAILS in
+  // wrangler.toml), for checking that real emails land in the inbox and not
+  // Junk. Anything else goes to hello@, whatever is asked.
+  const owners = ['hello@semester-hq.com', ...String(env.OWNER_TEST_EMAILS || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)];
+  const asked = (new URL(request.url).searchParams.get('to') || '').trim().toLowerCase();
+  const to = owners.includes(asked) ? asked : 'hello@semester-hq.com';
+  const only = new URL(request.url).searchParams.get('only') || '';
   const links = (await emailLinks(env, to)) || { prefsUrl: 'https://app.semester-hq.com/email-preferences.html', unsubscribeUrl: 'https://app.semester-hq.com/email-preferences.html', oneClickUrl: '' };
   const keys = ['receipt', 'welcome', ...EMAIL_TIPS.map(t => t.key), 'group-receipt', 'group-welcome', 'member-welcome'];
   // ?images= may point the pictures at a site Preview (before they're live),

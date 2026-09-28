@@ -53,6 +53,9 @@ RESEND_DAILY_LIMIT = "100"
 SELF_URL = "https://student-planner-ai-proxy.semesterhq.workers.dev"
 # Estimated Anthropic spend in a UTC day, in cents, that emails an alert.
 AI_SPEND_ALERT_CENTS = "500"
+# Nyla's own inboxes, which /admin/email-test may send to (?to=) for an
+# inbox-placement check. Nobody else can be picked.
+OWNER_TEST_EMAILS = "semesterhq@gmail.com,nylaiman@icloud.com,nnylabrown111@gmail.com"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
