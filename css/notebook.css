@@ -141,21 +141,36 @@
   #app.sidebar-collapsed .notebook-layout.list-hidden .nb-topbar { padding-left: 56px; }
 }
 /* The format group stays centered over the text, so the actions get half
-   of what is left beside it. Labels go before they would crowd it. The
-   widths are the bar's content box: the group (~380) plus twice the
-   labeled actions (~245, ~355 with Cover notes, ~65 more with Log in)
-   plus the two gaps. */
+   of what is left beside it: (bar content box - 378 group - 24 gaps) / 2.
+   Pin, Flashcards, Share and ··· take 242 labeled (126 as icons), Log in
+   adds 56. A Cornell note keeps the same four-button shape: while space is
+   short its Pin moves into the ··· menu (Cornell needs 1040 to show it,
+   1152 with Log in), then Cover drops to an icon (976, 1088), and last,
+   with every other note, Flashcards and Share lose their labels (886,
+   998). A few px of slack cover "Reveal", a little wider than "Cover". */
+@container nbbar (max-width: 1050px) {
+  .nb-topbar:has(.nb-act-cover) .nb-act-pin { display: none; }
+  .nb-topbar:has(.nb-act-cover) .nb-more-menu .nb-menu-pin { display: flex; }
+}
+@container nbbar (max-width: 986px) {
+  .nb-act-cover .nb-act-label { display: none; }
+  .nb-page-actions .nb-act-cover { width: 30px; padding: 0; }
+}
 @container nbbar (max-width: 890px) {
   .nb-act-label { display: none; }
   .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
 }
-@container nbbar (max-width: 1110px) {
-  .nb-topbar:has(.nb-act-cover) .nb-act-label, #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-act-label { display: none; }
-  .nb-topbar:has(.nb-act-cover) .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login), #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
+@container nbbar (max-width: 1160px) {
+  #app.sidebar-collapsed .nb-topbar:has(.nb-act-cover):has(.head-login) .nb-act-pin { display: none; }
+  #app.sidebar-collapsed .nb-topbar:has(.nb-act-cover):has(.head-login) .nb-more-menu .nb-menu-pin { display: flex; }
 }
-@container nbbar (max-width: 1240px) {
-  #app.sidebar-collapsed .nb-topbar:has(.nb-act-cover):has(.head-login) .nb-act-label { display: none; }
-  #app.sidebar-collapsed .nb-topbar:has(.nb-act-cover):has(.head-login) .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
+@container nbbar (max-width: 1096px) {
+  #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-act-cover .nb-act-label { display: none; }
+  #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-page-actions .nb-act-cover { width: 30px; padding: 0; }
+}
+@container nbbar (max-width: 1004px) {
+  #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-act-label { display: none; }
+  #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
 }
 @container nbbar (max-width: 720px) {
   .nb-breadcrumb { display: none; }
@@ -165,8 +180,10 @@
    the canvas, nbpage, since a container can't query itself.) */
 @container nbpage (max-width: 760px) {
   .nb-topbar { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 48px auto; height: auto; row-gap: 0; }
-  /* On its own row it wraps rather than hiding buttons in a scroll strip. */
-  .nb-topbar .nb-toolbar { grid-row: 2; grid-column: 1 / -1; justify-self: center; flex-wrap: wrap; justify-content: center; height: auto; min-height: 40px; max-width: 100%; padding-bottom: 4px; overflow: visible; }
+  /* On its own row it stays one row: never wraps. A narrow canvas folds
+     the least-used buttons into the Aa popover (below); only past that
+     does it scroll, from the start, so nothing is out of reach. */
+  .nb-topbar .nb-toolbar { grid-row: 2; grid-column: 1 / -1; justify-self: center; flex-wrap: nowrap; justify-content: flex-start; height: 40px; max-width: 100%; padding-bottom: 4px; overflow-x: auto; }
   .nb-topbar .nb-toolbar-sep { display: none; }
   .nb-topbar .nb-toolbar-select { min-width: 84px; }
 }
@@ -174,8 +191,20 @@
    its floating expand button's padding to the bar. */
 @container nbpage (max-width: 880px) {
   #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 48px auto; height: auto; row-gap: 0; }
-  #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) .nb-toolbar { grid-row: 2; grid-column: 1 / -1; justify-self: center; flex-wrap: wrap; justify-content: center; height: auto; min-height: 40px; max-width: 100%; padding-bottom: 4px; overflow: visible; }
+  #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) .nb-toolbar { grid-row: 2; grid-column: 1 / -1; justify-self: center; flex-wrap: nowrap; justify-content: flex-start; height: 40px; max-width: 100%; padding-bottom: 4px; overflow-x: auto; }
   #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) .nb-toolbar-sep { display: none; }
+}
+
+/* Row two holds the group at 331px (84 style + 7 buttons + gaps) inside
+   the bar's 20px of padding. Below that, Link and Checklist fold into the
+   Aa popover (263px), and on the narrowest canvas Bulleted list too,
+   with no gaps (219px). openNbTypePop shows each folded item's popover twin. */
+@container nbpage (max-width: 356px) {
+  .nb-topbar [data-nb-fold="link"], .nb-topbar [data-nb-fold="checklist"] { display: none; }
+}
+@container nbpage (max-width: 288px) {
+  .nb-topbar [data-nb-fold="list"] { display: none; }
+  .nb-topbar .nb-toolbar { gap: 0; }
 }
 
 /* The ··· menu: an L2 surface anchored under its summary. */
@@ -195,7 +224,9 @@
 .nb-title-input:focus, .nb-title-input:focus-visible { outline: none; }
 .nb-title-input::placeholder { color: var(--text-faint); }
 
-.nb-props { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 4px; margin: 12px 0 24px -8px; }
+/* Plain space between the pills, no text separators: a wrapped row can
+   never leave a dot hanging at the end of a line. */
+.nb-props { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 12px 0 24px -8px; }
 .nb-prop { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--r-tight-active); background: none; font: 500 13px var(--font); color: var(--text-dim); white-space: nowrap; flex-shrink: 0; cursor: pointer; transition: background var(--dur-1), color var(--dur-1); }
 .nb-prop:hover { background: var(--fill-hover); color: var(--text); }
 .nb-prop:has(:focus-visible), button.nb-prop:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -204,7 +235,6 @@
 .nb-prop-text { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 .nb-course-select, .nb-date-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; font-size: 16px; -webkit-appearance: none; appearance: none; background: none; color: inherit; }
 .nb-date-input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.nb-prop-sep { color: var(--text-faint); font-size: 13px; }
 .nb-prop-status { padding: 0 8px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
 
 .nb-hint { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 16px; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
@@ -299,6 +329,8 @@ html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body 
 
 /* The Aa popover (L2) */
 #nb-type-pop { display: none; position: fixed; z-index: 260; width: 272px; max-height: calc(100vh - 16px); overflow-y: auto; animation: menuIn var(--dur-2) var(--ease-out); }
+#nb-type-pop .nb-type-folded { display: none; }
+#nb-type-pop .nb-type-folded.is-shown { display: flex; }
 .nb-type-row { display: flex; align-items: center; justify-content: space-between; gap: 2px; padding: 2px 2px 4px; border-bottom: 1px solid var(--hairline); margin-bottom: 2px; }
 .nb-font-item { font-size: 14px; }
 .nb-size-grid { display: grid; grid-template-columns: repeat(6, 32px); justify-content: space-between; gap: 4px 0; padding: 0 6px 6px; }

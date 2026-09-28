@@ -135,7 +135,7 @@ function pageCourseHub(c) {
         </div>
 
         ${finished.length ? `<div class="card card-pad">
-          <details class="hub-finished">
+          <details class="hub-finished disclosure">
             <summary class="flex-between"><h3 class="sg-h3">Finished</h3><span class="small dim">${finished.length} done</span></summary>
             <div class="mt-8">${finished.slice(0, 25).map(a => `
               <div class="list-row sg-task compact" onclick="openAssignmentModal('${a.id}')">
@@ -432,7 +432,7 @@ function openSyllabusReviewModal(data, forceNew = false) {
         <div class="field"><label>Location</label><input class="input" id="cf-location" value="${esc(draft.location)}"></div>
       </div>
       ${detailBits.length ? `<div class="field"><label>Class details found</label><ul class="syl-found">${detailBits.map(b => `<li>${icon('check', 12, 2.4)} ${b}</li>`).join('')}</ul><div class="small muted">These go on the class page. You can edit them there any time.</div></div>` : ''}
-      <div class="field"><label>Assignments found (${window._sylAssignments.length})</label>
+      <div class="field"><label>Assignments found <span class="disclosure-count">${window._sylAssignments.length}</span></label>
         <div id="syl-assignment-list" style="max-height:220px;overflow-y:auto">
           ${window._sylAssignments.map((a, i) => `
             <div class="list-row">

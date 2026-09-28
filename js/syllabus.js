@@ -131,12 +131,12 @@ function syllabusCard(c) {
             <div class="small"><strong>${used} of ${limit}</strong> allowed absence${limit === 1 ? '' : 's'} used${used >= limit ? (used > limit ? `. You’re ${used - limit} over.` : '. That’s the limit.') : ''}</div>
           </div>` : `<div class="small muted">${used ? `${used} absence${used === 1 ? '' : 's'} logged.` : 'No absences logged.'} ${d.absencePolicy ? '' : 'Add the limit from the syllabus to track it.'}</div>`}
         ${d.absencePolicy ? `<p class="small mt-4">${esc(d.absencePolicy)}</p>` : ''}
-        ${absences.length ? `<details class="syl-absence-log"><summary class="small muted">${absences.length} logged</summary>${absences.map(a => `
+        ${absences.length ? `<details class="syl-absence-log disclosure"><summary class="small muted">${absences.length} logged</summary>${absences.map(a => `
           <div class="sg-person"><div class="row-title small">${esc(fmtDate(a.date, { weekday: 'short', month: 'short', day: 'numeric' }))}${a.excused ? ' <span class="muted">· excused</span>' : ''}${a.note ? ` <span class="muted">· ${esc(a.note)}</span>` : ''}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove absence on ${esc(fmtDate(a.date))}" onclick="removeAbsence('${c.id}','${a.id}')">${icon('x', 12, 2.2)}</button></div>`).join('')}</details>` : ''}
       </div>
 
       ${policyBlock('Late work', 'clock', d.latePolicy)}
-      ${d.policies?.length ? `<details class="syl-more"><summary class="small">More policies (${d.policies.length})</summary>${d.policies.map(p => policyBlock(p.title, 'file-text', p.text)).join('')}</details>` : ''}
+      ${d.policies?.length ? `<details class="syl-more disclosure"><summary class="small">More policies <span class="disclosure-count">${d.policies.length}</span></summary>${d.policies.map(p => policyBlock(p.title, 'file-text', p.text)).join('')}</details>` : ''}
       ${d.textbook ? `<div class="syl-section"><div class="syl-label">${icon('book-open', 12, 1.9)} Textbook</div><p class="small">${esc(d.textbook)}</p></div>` : ''}
       ${storedSyllabusHtml(c)}
     </div>`;

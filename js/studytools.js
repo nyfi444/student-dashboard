@@ -95,22 +95,20 @@ function pageStudyTools() {
     `)}
     ${decks.length ? `
     <div class="fc-top">
-      <div class="fc-hero-wrap">
       <div class="card fc-hero">
         <div class="fc-hero-main">
           <div class="sg-eyebrow">Today</div>
           ${totalDue ? `<div class="fc-hero-num"><b>${totalDue}</b> card${totalDue === 1 ? '' : 's'} to review</div>` : `<div class="fc-hero-num is-clear">You’re all caught up</div>`}
           <div class="small dim">${today.reviewed ? `${today.reviewed} reviewed so far today. ` : ''}${totalDue ? 'About ' + Math.max(1, Math.round(totalDue * 8 / 60)) + ' min.' : 'Come back tomorrow, or browse a deck anytime.'}</div>
           ${totalDue ? `<button class="btn btn-primary mt-16" onclick="openReview()">${icon('play', 16)} Start review</button>` : ''}
+          ${(() => { const all = decks.flatMap(d => d.cards); const mastered = decks.reduce((s, d) => s + deckProgress(d).mastered, 0);
+            const parts = [[today.reviewed || 0, 'reviewed today'], [mastered, 'mastered'], [decks.length > 1 && all.length !== totalDue ? all.length : 0, `cards in ${decks.length} decks`]].filter(([n]) => n);
+            return parts.length ? `<div class="fc-stats">${parts.map(([n, l]) => `<span><b>${n}</b> ${l}</span>`).join(' · ')}</div>` : ''; })()}
         </div>
-        ${(() => { const all = decks.flatMap(d => d.cards); const mastered = decks.reduce((s, d) => s + deckProgress(d).mastered, 0);
-          const parts = [[today.reviewed || 0, 'reviewed today'], [mastered, 'mastered'], [decks.length > 1 && all.length !== totalDue ? all.length : 0, `cards in ${decks.length} decks`]].filter(([n]) => n);
-          return parts.length ? `<div class="fc-stats">${parts.map(([n, l]) => `<span><b>${n}</b> ${l}</span>`).join(' · ')}</div>` : ''; })()}
-      </div>
-      </div>
-      <div class="card fc-forecast" aria-label="Cards due over the next week">
-        <div class="sg-eyebrow">Next 7 days</div>
-        <div class="fc-forecast-bars">${forecast.map((f, i) => `<div class="fc-fbar ${i === 0 ? 'today' : ''} ${f.n ? '' : 'zero'}" title="${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'long' })}: ${f.n} due"><span class="fc-fbar-n">${f.n}</span><span class="fc-fbar-fill" style="height:${f.n ? Math.round(8 + (f.n / maxF) * 56) : 4}px"></span><em>${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'short' })}</em></div>`).join('')}</div>
+        <div class="fc-forecast" role="group" aria-label="Cards due over the next week">
+          <div class="sg-eyebrow">Next 7 days</div>
+          <div class="fc-forecast-bars">${forecast.map((f, i) => `<div class="fc-fbar ${i === 0 ? 'today' : ''} ${f.n ? '' : 'zero'}" title="${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'long' })}: ${f.n} due"><span class="fc-fbar-n">${f.n}</span><span class="fc-fbar-fill" style="height:${f.n ? Math.round(8 + (f.n / maxF) * 56) : 4}px"></span><em>${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'short' })}</em></div>`).join('')}</div>
+        </div>
       </div>
     </div>
     <div class="grid grid-3 fc-decks">${decks.map(deckCard).join('')}
@@ -171,7 +169,7 @@ function renderDeckModal(id) {
         <div class="field"><label for="df-name">Deck name</label><input class="input" id="df-name" value="${esc(d.name)}" placeholder="Chapter 4 vocab" oninput="_deckDraft.name=this.value"></div>
         <div class="field"><label for="df-course">Class</label><select class="select" id="df-course" onchange="_deckDraft.courseId=this.value||null"><option value="">None</option>${activeCourses().map(c => `<option value="${c.id}" ${c.id === d.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
       </div>
-      <div class="field"><label>Cards (${d.cards.length})</label>
+      <div class="field"><label>Cards <span class="disclosure-count">${d.cards.length}</span></label>
         <div id="df-cards">${d.cards.map((c, i) => cardRow(c, i, existing)).join('')}</div>
         <div class="flex-gap wrap mt-8">
           <button class="btn btn-sm" onclick="_deckDraft.cards.push({id:uid(),front:'',back:''});renderDeckModal('${existing}');setTimeout(()=>$$('#df-cards .fc-edit-front').at(-1)?.focus(),60)">${icon('plus', 14)} Add card</button>

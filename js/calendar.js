@@ -20,7 +20,7 @@ function pageCalendar() {
         ${views.map(x => `<button class="${v === x ? 'active' : ''}" aria-pressed="${v === x}" onclick="setCalView('${x}')">${x[0].toUpperCase() + x.slice(1)}</button>`).join('')}
       </div>
       <span class="cal-divider" aria-hidden="true"></span>
-      <button class="btn btn-ghost btn-sm" onclick="openBreaksModal()">${icon('pause', 14)}Breaks</button>
+      <button class="btn btn-ghost btn-sm" onclick="openBreaksModal()">${icon('coffee', 14)}Breaks</button>
       <button class="btn btn-primary" onclick="openEventModal(null,'${state.calDate}')">${icon('plus', 14)}Time block</button>`;
   return `
     ${pageHead('Calendar', has ? calUpcomingSummary() : '', actions, { titleHtml: calTitleHtml(v), className: 'cal-head' })}
@@ -423,7 +423,7 @@ function positionedBlock(it, dIso, nowMin = null, opts = {}) {
   const shortName = code || String(it.title || '').split(' ')[0].replace(/[:,.;]+$/, '');
   return `<div class="cal-block kind-${it.kind} ${past ? 'past' : ''} ${short ? 'is-short' : ''}" style="top:${top}px;height:${height}px;--c:${hex}" ${clickable} title="${esc(it.kind === 'group' ? `${it.title} (${it.groupName})` : it.title)}">
     <div class="cal-block-title">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 12)}</span>` : ''}<span>${esc(it.title)}</span></div>
-    <span class="cal-block-short${code ? '' : ' is-word'}">${esc(shortName)}</span>
+    <span class="cal-block-short${code ? '' : ' is-word'}">${code ? esc(code).replace(/([A-Za-z])(?=\d)/, '$1<wbr>') : esc(shortName)}</span>
     ${height >= 36 || opts.day ? `<span class="cal-block-time">${fmtRange(it.start, it.end)}</span>` : ''}
     ${where && height >= 52 ? `<span class="cal-block-where">${esc(where)}</span>` : ''}
   </div>`;

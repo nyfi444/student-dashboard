@@ -254,9 +254,11 @@
   .cal-wd-dow { letter-spacing: .04em; }
   .cal-wd-num { font-size: 16px; line-height: 26px; height: 26px; min-width: 26px; border-radius: 13px; }
   .cal-hour-label { padding-right: 4px; }
-  /* A seventh of a phone fits a course code, not a title. */
-  .cal-block { left: 1px; right: 1px; padding: 3px 2px 3px 4px; border-left-width: 2px; }
-  .cal-block.kind-deadline, .cal-block.kind-todo { padding: 4px 2px 3px 3px; }
+  /* A seventh of a phone fits a course code, not a title. Side padding is
+     only 3px in total, so a wide subject (COMM, MGMT) fits whole at 360px;
+     the 2px stripe already sets the text off the grid line. */
+  .cal-block { left: 0; right: 1px; padding: 3px 1px 3px 2px; border-left-width: 2px; }
+  .cal-block.kind-deadline, .cal-block.kind-todo { padding: 4px 1px 3px 2px; }
   .cal-block-title, .cal-block-time, .cal-block-where { display: none; }
   .cal-block-short { display: block; font: 600 var(--fs-xs)/1.2 var(--font); letter-spacing: -.01em; white-space: normal; overflow-wrap: normal; overflow: hidden; }
   /* No course: the title's first word, cut with an ellipsis, not mid-letter. */
@@ -281,7 +283,7 @@
   .cal-dayplan .cal-block-short { display: none; }
   .cal-dayplan .cal-allday-col .cal-evt-title { display: block; }
 }
-/* A 360px phone leaves 30px per day: CHEM and MATH must still fit whole. */
+/* A 360px phone leaves 34px of text per day: COMM and MGMT must still fit whole. */
 @media (max-width: 380px) {
   .cal-block-short { font-size: 10px; letter-spacing: -.02em; }
 }

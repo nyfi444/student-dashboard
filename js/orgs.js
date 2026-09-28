@@ -324,7 +324,7 @@ function pageOrgs() {
       <button class="btn btn-sm" onclick="openJoinOrgModal()">${icon('user-plus', 14)} Join with code</button>
       <button class="btn btn-primary" onclick="openCreateOrgModal()">${icon('plus', 14)} Start one</button>
     ` : '')}
-    ${!fbConfigured() || cloudGroupsEnabled() ? '' : `<div class="sg-callout mb-16">${icon('info', 16)}<div class="small">You’re looking around without an account, so anything you make here disappears when you close the tab. <a href="login.html">Log in</a> to invite members.</div></div>`}
+    ${!fbConfigured() || cloudGroupsEnabled() || demoBarShowing() ? '' : `<div class="sg-callout mb-16">${icon('info', 16)}<div class="small">You’re looking around without an account, so anything you make here disappears when you close the tab. <a href="login.html">Log in</a> to invite members.</div></div>`}
     ${orgs.length ? `
       ${orgUpcomingForMe(7).length ? `<div class="card card-pad mb-16"><h3 class="sg-h3 mb-8">This week</h3>${orgUpcomingForMe(7).slice(0, 6).map(({ o, e }) => orgEventRow(o, e, { showOrg: true })).join('')}</div>` : ''}
       <div class="sg-section-label">Yours</div>

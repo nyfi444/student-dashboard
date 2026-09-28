@@ -280,7 +280,7 @@ function openFeedImportModal({ feedId = null } = {}) {
         </div>
         <div class="small muted mt-8">A file is a one-time import. Paste the link instead and it refreshes on its own.</div>
       </div>
-      <details class="mt-16 small feed-help"><summary class="sg-strong">Where do I find the link?</summary>
+      <details class="mt-16 small feed-help disclosure"><summary class="sg-strong">Where do I find the link?</summary>
         <ul class="mt-8">${FEED_SOURCES.filter(s => s[0] !== 'other').map(s => `<li><span class="sg-strong">${esc(s[1])}:</span> ${esc(s[2])}</li>`).join('')}</ul>
         <p class="muted mt-8">The link is private to you. Semester HQ keeps it with your planner and uses it only to read your due dates.</p>
       </details>
@@ -414,7 +414,7 @@ function feedSettingsCard() {
           <div class="row-title">
             <div class="small sg-strong">${esc(feedSourceName(f.source))}${f.label ? ` · ${esc(f.label)}` : ''}</div>
             <div class="small muted">${f.kind === 'file' ? 'From an uploaded file' : esc(feedHost(f.url))} · ${f.lastSyncAt ? `updated ${fmtRelativeTime(f.lastSyncAt)}` : 'never updated'}${f.itemCount ? ` · ${f.itemCount} item${f.itemCount === 1 ? '' : 's'}` : ''}</div>
-            ${f.lastError ? `<div class="small" style="color:var(--danger)">${esc(f.lastError)}</div>` : ''}
+            ${f.lastError ? `<div class="small feed-error">${esc(f.lastError)}</div>` : ''}
           </div>
           <div class="flex-gap">
             ${f.kind === 'link' ? `<button class="btn btn-sm" onclick="syncFeed('${f.id}')">${icon('refresh-cw', 14)} Refresh</button>` : `<button class="btn btn-sm" onclick="openFeedImportModal({feedId:'${f.id}'})">${icon('upload', 14)} Upload a newer file</button>`}

@@ -252,7 +252,7 @@ function pageRecentlyDeleted() {
     <p class="small muted mb-8">Deleted notes, courses, assignments, to-dos, time blocks, projects, and flashcard decks land here for ${TRASH_RETENTION_DAYS} days before they're gone for good.</p>
     ${items.length ? `
       <details class="settings-collapse">
-        <summary>View Recently Deleted (${items.length} item${items.length === 1 ? '' : 's'})</summary>
+        <summary><span>Recently deleted <span class="disclosure-count">${items.length}</span></span></summary>
         <div class="settings-collapse-body settings-collapse-scroll">${rows}</div>
       </details>
     ` : emptyState(icon('trash', 22, 1.4), 'Nothing deleted recently.')}

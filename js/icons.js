@@ -33,6 +33,8 @@ const ICON_PATHS = {
   minimize: '<path d="M4.5 9H9V4.5M19.5 9H15V4.5M4.5 15H9v4.5M19.5 15H15v4.5"/>',
   'chevron-left': '<path d="M15 5.5 8 12l7 6.5"/>',
   'chevron-right': '<path d="M9 5.5 16 12l-7 6.5"/>',
+  // A coffee cup, for breaks and holidays on the calendar.
+  coffee: '<path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v2M10 2v2M14 2v2"/>',
   'cloud-sun': '<circle cx="8" cy="7.5" r="2.7"/><path d="M8 2.5v1.3M4 5.4l.9.9M12 5.4l-.9.9"/><path d="M8.5 20h8a3.5 3.5 0 0 0 .6-6.95A5 5 0 0 0 8 12.2"/>',
   flag: '<path d="M6 21V4"/><path d="M6 4.5c1.6-1 3.4-1 5 0s3.4 1 5 0v9c-1.6 1-3.4 1-5 0s-3.4-1-5 0Z"/>',
   'panel-left': '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/>',

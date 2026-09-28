@@ -695,8 +695,11 @@ function pageStudyGroups() {
     <div class="sg-pricing-note small">${icon('users', 14)} Bringing a whole class, club, or team onto Semester HQ? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">See group pricing</a></div>
   `;
 }
+// The global demo bar already says nothing is saved and offers Log in, so this
+// only shows when that bar is not up (e.g. signed in without cloud groups).
+function demoBarShowing() { return typeof demoBannerHtml === 'function' && !!demoBannerHtml(); }
 function groupsAccountBanner() {
-  if (!fbConfigured() || cloudGroupsEnabled()) return '';
+  if (!fbConfigured() || cloudGroupsEnabled() || demoBarShowing()) return '';
   return `<div class="sg-callout mb-16">${icon('info', 16)}<div class="small">You’re trying Study Groups without an account, so groups you make here only last until you close this tab. <a href="login.html">Log in</a> to invite classmates and keep everything synced.</div></div>`;
 }
 function groupsThisWeek(groups) {

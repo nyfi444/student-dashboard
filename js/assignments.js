@@ -52,7 +52,7 @@ function pageAssignments() {
 
     ${selectMode ? `
     <div class="card card-pad mb-16 select-bar">
-      <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAssignSelectAll()"><span>Select all${visible.length ? ` (${visible.length})` : ''}</span></label>
+      <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAssignSelectAll()"><span>Select all${visible.length ? ` <span class="disclosure-count">${visible.length}</span>` : ''}</span></label>
       <div class="flex-gap" style="align-items:center">
         <span class="small muted">${selected.size} selected</span>
         <button class="btn btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkMarkAssignmentsDone()">${icon('check', 14)} Mark done</button>
@@ -570,7 +570,7 @@ function renderAssignmentReviewModal() {
     <div class="modal-body">
       <div class="small muted mb-8">Double-check what the AI pulled out before adding it. Edit anything that's off, then pick which course these belong to.</div>
       <div class="field"><label>Add to course</label><select class="select" id="au-review-course" onchange="window._auCourseId=this.value">${activeCourses().map(c => `<option value="${c.id}" ${c.id === window._auCourseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Assignments found (${window._auParsed.length})</label>
+      <div class="field"><label>Assignments found <span class="disclosure-count">${window._auParsed.length}</span></label>
         <div id="au-review-list" style="max-height:320px;overflow-y:auto">
           ${window._auParsed.length ? window._auParsed.map((a, i) => `
             <div class="list-row">

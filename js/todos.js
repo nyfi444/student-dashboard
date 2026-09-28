@@ -63,7 +63,7 @@ function pageTodos() {
 
     ${selectMode ? `
     <div class="card card-pad mb-16 select-bar">
-      <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleTodoSelectAll()"><span>Select all${open.length ? ` (${open.length})` : ''}</span></label>
+      <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleTodoSelectAll()"><span>Select all${open.length ? ` <span class="disclosure-count">${open.length}</span>` : ''}</span></label>
       <div class="flex-gap" style="align-items:center">
         <span class="small muted">${selected.size} selected</span>
         <button class="btn btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkCompleteTodos()">${icon('check', 14, 2.2)} Mark done</button>

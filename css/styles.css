@@ -275,6 +275,7 @@ b, strong { font-weight: 600; }
 .user-chip > div:not(.avatar) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-login { margin-left: auto; flex-shrink: 0; font: 600 var(--fs-sm)/1.2 var(--font); color: var(--bg-text); text-decoration: none; padding: 4px 0; }
 .sidebar-login:hover { text-decoration: underline; text-underline-offset: 3px; }
+@media (pointer: coarse) { .sidebar-login { position: relative; } .sidebar-login::after { content: ''; position: absolute; inset: -10px -8px; } }
 .avatar { width: 24px; height: 24px; background: var(--accent); color: var(--accent-text); display: flex; align-items: center; justify-content: center; font-size: var(--fs-xs); font-weight: 600; flex-shrink: 0; }
 
 .content { flex: 1; min-width: 0; max-width: 1184px; margin-inline: auto; padding: 32px 40px 64px; }
@@ -399,6 +400,8 @@ a.btn-ghost { color: var(--text-dim); }
 .rev-star { background: none; border: 0; padding: 2px; font-size: 22px; line-height: 1; cursor: pointer; color: var(--text-dim); }
 .rev-star.on { color: var(--accent); }
 .rev-stars .small { margin-left: 8px; }
+/* Touch: each star gets a 44px square at a 44px pitch; the glyph stays 22px. */
+@media (pointer: coarse) { .rev-stars { gap: 0; margin-left: -11px; } .rev-star { width: 44px; height: 44px; padding: 0; } .rev-stars .small { margin-left: 4px; } }
 
 .dup-list { margin: 8px 0 0; padding-left: 18px; }
 .dup-list li { margin-bottom: 3px; }
@@ -729,6 +732,28 @@ input[type=radio] { accent-color: var(--accent); }
 .settings-collapse[open] summary::after { transform: rotate(45deg); color: var(--text); }
 .settings-collapse .settings-collapse-body { margin-top: 10px; }
 .settings-collapse-scroll { max-height: 320px; overflow-y: auto; }
+@media (max-width: 760px), (pointer: coarse) { .settings-collapse summary { min-height: 44px; } }
+
+/* ── Disclosure: the one shared look for an opt-in <details class="disclosure">.
+   No native triangle; a 14px chevron-right in --text-faint that turns to point
+   down when open; the count sits after the label as bare 12px text, no
+   parentheses (<span class="disclosure-count">3</span>). Screens with their own
+   summary language (FAQ, settings-collapse, sg-past) keep it. ─────────────── */
+.disclosure > summary {
+  display: flex; align-items: center; gap: 6px; min-height: 32px; list-style: none; cursor: pointer;
+  border-radius: var(--r-tight);
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::marker { content: ''; }
+.disclosure > summary::before {
+  content: ''; flex-shrink: 0; width: 14px; height: 14px; background: var(--text-faint);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.14' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5.5 16 12l-7 6.5'/%3E%3C/svg%3E") center / 14px 14px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.14' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5.5 16 12l-7 6.5'/%3E%3C/svg%3E") center / 14px 14px no-repeat;
+  transition: transform var(--dur-1);
+}
+.disclosure[open] > summary::before { transform: rotate(90deg); }
+.disclosure-count { font: 500 var(--fs-sm)/1.2 var(--font); color: var(--text-faint); letter-spacing: 0; }
+@media (max-width: 760px), (pointer: coarse) { .disclosure > summary { min-height: 44px; } }
 
 /* ── Print / PDF export (notebook notes) ──────────────────────── */
 #print-area { display: none; }
@@ -751,7 +776,7 @@ input[type=radio] { accent-color: var(--accent); }
   .sidebar {
     width: 100%; height: auto; position: fixed; bottom: 0; top: auto; left: 0; right: 0; z-index: 120;
     flex-direction: row; align-items: stretch; padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); gap: 0;
-    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
     -webkit-backdrop-filter: saturate(1.4) blur(18px); backdrop-filter: saturate(1.4) blur(18px);
     border-right: none; border-top: 1px solid var(--hairline); box-shadow: none;
   }
@@ -802,6 +827,7 @@ input[type=radio] { accent-color: var(--accent); }
 .sg-overdue { color: var(--danger-text); font-weight: 600; }
 .sg-pricing-note { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 28px; color: var(--bg-text-faint); flex-wrap: wrap; text-align: center; }
 .sg-pricing-note a { color: var(--bg-text); font-weight: 600; }
+@media (pointer: coarse) { .sg-pricing-note a { position: relative; } .sg-pricing-note a::after { content: ''; position: absolute; inset: -14px -8px; } }
 
 /* avatars */
 .sg-avatar { background: var(--shade, var(--accent)); color: var(--accent-text); border-radius: 50% !important; font-weight: 600; box-shadow: 0 0 0 2px var(--surface); }
@@ -1105,6 +1131,9 @@ kbd { font-family: var(--font); font-size: var(--fs-xs); font-weight: 500; paddi
 .dash-next-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--text-dim); }
 button.dash-next-title:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
 .dash-next > .sg-eyebrow { margin-bottom: 4px; }
+/* The eyebrow, title and meta sit centred in the room above the ledger: the
+   two auto margins (here and on .dash-tiles) split the spare height evenly. */
+.dash-next > .sg-eyebrow:first-child { margin-top: auto; }
 .dash-timeline { padding: 16px 20px; max-height: 300px; overflow-y: auto; }
 .dash-timeline-head { display: flex; justify-content: space-between; align-items: center; padding: 0 0 8px; }
 .dash-tl-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 6px; border: none; background: none; border-radius: var(--r-tight-active); text-align: left; color: var(--text); }
@@ -1346,6 +1375,9 @@ button.dash-next-title:hover { text-decoration: underline; text-decoration-thick
 .hub-stat.is-alert strong { color: var(--danger-text); }
 .hub-finished > summary { list-style: none; cursor: pointer; }
 .hub-finished > summary::-webkit-details-marker { display: none; }
+/* With the shared chevron, the heading sits beside it and the count goes right. */
+.hub-finished.disclosure > summary { justify-content: flex-start; }
+.hub-finished.disclosure > summary > .small { margin-left: auto; }
 .sidebar-classes { margin: -2px 0 6px 20px; border-left: 1px solid var(--hairline); padding-left: 6px; }
 .nav-class { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 0 8px; font-size: var(--fs-sm); color: var(--bg-text-dim); border-radius: var(--r-tight-active); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav-class:hover { background: var(--bg-fill-hover); color: var(--bg-text); }
@@ -1405,12 +1437,21 @@ button.dash-next-title:hover { text-decoration: underline; text-decoration-thick
 .timer-btn-main { min-width: 132px; min-height: 44px; justify-content: center; padding: 0 20px; font-size: var(--fs-lg); }
 .timer-hint { text-align: center; max-width: 420px; }
 .timer-week { align-items: flex-start; }
-.timer-session { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.timer-session { position: relative; display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .timer-session-dur { min-width: 56px; text-align: right; font: 500 var(--fs-md)/1.2 var(--font); color: var(--text); font-variant-numeric: tabular-nums; }
-/* The delete icon shows on hover or focus; a touch screen always shows it. */
-.timer-session-del { opacity: 0; transition: opacity var(--dur-1); }
-.timer-session:hover .timer-session-del, .timer-session:focus-within .timer-session-del { opacity: 1; }
-@media (hover: none) { .timer-session-del { opacity: 1; } }
+/* The delete icon takes no room until it is wanted: it floats over the right
+   edge (covering the duration) on hover or focus, so durations line up with the
+   This week figures. A touch screen shows it in the row at a 44px target. */
+.timer-session-del { position: absolute; right: 0; top: 50%; transform: translateY(-50%); opacity: 0; pointer-events: none; background: var(--surface); transition: opacity var(--dur-1); }
+.timer-session-del:hover { background: linear-gradient(var(--fill-hover), var(--fill-hover)), var(--surface); }
+.timer-session:hover .timer-session-del, .timer-session:focus-within .timer-session-del { opacity: 1; pointer-events: auto; }
+@media (hover: hover) {
+  .timer-session-dur { transition: opacity var(--dur-1); }
+  .timer-session:hover .timer-session-dur, .timer-session:focus-within .timer-session-dur { opacity: 0; }
+}
+@media (hover: none) {
+  .timer-session .timer-session-del { position: static; transform: none; opacity: 1; pointer-events: auto; background: transparent; width: 44px; height: 44px; margin: -6px -10px -6px -4px; }
+}
 .timer-pill { position: fixed; right: 16px; bottom: 16px; z-index: 180; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: var(--r-pill); background: var(--accent); color: var(--accent-text); border: 1px solid var(--float-edge); box-shadow: var(--shadow-float); animation: menuIn var(--dur-2) var(--ease-out); max-width: min(320px, calc(100vw - 32px)); }
 .timer-pill-main { display: flex; align-items: center; gap: 8px; border: none; background: none; color: inherit; padding: 6px 10px 6px 12px; min-width: 0; }
 .timer-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--course, currentColor); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-text) 30%, transparent); flex-shrink: 0; }
@@ -1425,16 +1466,25 @@ button.dash-next-title:hover { text-decoration: underline; text-decoration-thick
 /* ── Flashcards ────────────────────────────────────────────────── */
 /* Flashcards home: today's review as the hero, a one-line tally under it,
    the week as a strip, and each deck as a card. */
-.fc-top { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 16px; margin-bottom: 24px; align-items: start; }
-.fc-hero-wrap { position: relative; margin: 0; }
-.fc-hero { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 20px; padding: 24px; margin: 0; }
+/* One hero card like the dashboard: today's count on the left, the week's
+   forecast on the right behind a hairline; stacked when the card is narrow. */
+.fc-top { container: fchero / inline-size; margin-bottom: 24px; }
+.fc-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); padding: 0; margin: 0; overflow: hidden; }
+.fc-hero-main { padding: 28px; display: flex; flex-direction: column; align-items: flex-start; }
+.fc-hero-main > .fc-stats { align-self: stretch; margin-top: auto; }
+.fc-hero-main > :has(+ .fc-stats) { margin-bottom: 20px; }
 .fc-hero-num { font: 500 var(--fs-xl)/1.3 var(--font); margin: 8px 0 6px; color: var(--text-dim); }
 .fc-hero-num b { font: 400 var(--fs-hero)/.95 var(--font-serif); letter-spacing: -.025em; display: block; color: var(--text); margin-bottom: 4px; }
 .fc-hero-num.is-clear { font: 400 var(--fs-title)/1.1 var(--font-serif); letter-spacing: -.015em; color: var(--text); text-wrap: balance; }
 .fc-stats { border-top: 1px solid var(--hairline); padding-top: 12px; font-size: var(--fs-sm); color: var(--text-dim); }
 .fc-stats b { font: 600 var(--fs-lg)/1.2 var(--font); color: var(--text); }
-.fc-forecast { padding: 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 16px; }
-.fc-forecast-bars { display: flex; justify-content: space-between; align-items: flex-end; gap: 6px; }
+.fc-forecast { padding: 28px; display: flex; flex-direction: column; gap: 16px; border-left: 1px solid var(--hairline); }
+.fc-forecast-bars { flex: 1; display: flex; justify-content: space-between; align-items: flex-end; gap: 6px; }
+@container fchero (max-width: 700px) {
+  .fc-hero { grid-template-columns: minmax(0, 1fr); }
+  .fc-forecast { border-left: 0; border-top: 1px solid var(--hairline); padding: 20px 24px 24px; }
+  .fc-hero-main { padding: 24px; }
+}
 .fc-fbar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; }
 .fc-fbar-fill { width: 100%; max-width: 10px; max-height: 64px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--accent) 35%, var(--border)); }
 .fc-fbar.today .fc-fbar-fill { background: var(--accent); }
@@ -1446,14 +1496,16 @@ button.dash-next-title:hover { text-decoration: underline; text-decoration-thick
 .fc-deck { position: relative; padding: 20px; display: flex; flex-direction: column; overflow: hidden; }
 .fc-deck-name { font: 400 var(--fs-heading)/1.15 var(--font-serif); letter-spacing: -.01em; text-wrap: balance; margin-bottom: 6px; color: var(--text); }
 .fc-deck-meta { display: flex; align-items: center; gap: 12px; font-size: var(--fs-sm); color: var(--text-dim); }
-.fc-new-deck { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 180px; height: 100%; padding: 20px; border: 1px dashed var(--border); border-radius: var(--r-card); background: transparent; color: var(--bg-text-dim); cursor: pointer; font-family: inherit; transition: background var(--dur-1), color var(--dur-1); }
+/* Compact add tile: sits at the top of its grid cell instead of stretching
+   to the deck height, so it never reads as a big empty box. */
+.fc-new-deck { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 12px; row-gap: 2px; align-self: start; min-height: 72px; padding: 14px 20px; text-align: left; border: 1px dashed var(--border); border-radius: var(--r-card); background: transparent; color: var(--bg-text-dim); cursor: pointer; font-family: inherit; transition: background var(--dur-1), color var(--dur-1); }
 .fc-new-deck:hover { color: var(--bg-text); background: var(--bg-fill-hover); }
 .fc-new-deck:focus-visible { outline: 2px solid var(--bg-text); outline-offset: 2px; }
-.fc-new-deck span { font-size: var(--fs-lg); font-weight: 600; }
-.fc-new-deck small { font-size: var(--fs-sm); color: var(--bg-text-dim); }
+.fc-new-deck > .i { grid-row: 1 / 3; }
+.fc-new-deck span { font-size: var(--fs-lg); font-weight: 600; color: var(--bg-text); }
+.fc-new-deck small { grid-column: 2; font-size: var(--fs-sm); color: var(--bg-text-dim); }
 .grid.fc-decks { grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); align-items: stretch; }
 .fc-deck-actions { flex-wrap: wrap; row-gap: 8px; }
-@media (max-width: 900px) { .fc-top { grid-template-columns: 1fr; } }
 .fc-due { font: 600 var(--fs-sm)/1.3 var(--font); color: var(--text); white-space: nowrap; }
 .fc-done { width: 22px; height: 22px; border-radius: 50%; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim); flex-shrink: 0; }
 .fc-mastery { display: flex; height: 7px; border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden; margin-top: 14px; }
@@ -1498,7 +1550,7 @@ button.dash-next-title:hover { text-decoration: underline; text-decoration-thick
 .fc-gen-row.is-off textarea { opacity: .45; }
 
 @media (max-width: 1000px) {
-  .timer-layout, .fc-hero { grid-template-columns: 1fr; }
+  .timer-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
   .timer-pill { bottom: calc(84px + env(safe-area-inset-bottom)); right: 12px; }
@@ -1532,6 +1584,14 @@ button.dash-next-title:hover { text-decoration: underline; text-decoration-thick
 .sg-legend-person.active { border-color: var(--p); box-shadow: inset 0 0 0 1px var(--p); }
 .sg-legend-person.dim { color: var(--text-faint); border-style: dashed; }
 .sg-legend-person.dim .sg-legend-dot { opacity: .4; }
+/* Touch: a 44px-tall hit area around each 26px chip (the inset is measured
+   from inside the 1px border); wrapped rows get 18px between them so the
+   invisible areas meet instead of overlapping. */
+@media (pointer: coarse) {
+  .sg-legend-people { row-gap: 18px; margin-top: 9px; margin-bottom: 19px; }
+  .sg-legend-person { position: relative; }
+  .sg-legend-person::after { content: ''; position: absolute; inset: -10px -4px; }
+}
 .sg-legend-dot, .sg-name-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--p); flex-shrink: 0; }
 .sg-name-dot { width: 7px; height: 7px; margin-right: 4px; vertical-align: 1px; }
 /* No borders on people cells: painted stripes run the full height, so a
@@ -1739,6 +1799,9 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
 .todo-done > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 30px; font: 600 var(--fs-lg)/1.3 var(--font); letter-spacing: -.01em; color: var(--bg-text); margin: 0 0 8px 2px; }
 .todo-done > summary > .i { color: var(--bg-text-faint); }
 .todo-done > summary::-webkit-details-marker { display: none; }
+/* On the page background, the shared chevron uses the page-text tone. */
+.todo-done.disclosure > summary::before { background: var(--bg-text-faint); }
+@media (max-width: 760px), (pointer: coarse) { .todo-done > summary { min-height: 44px; } }
 .todo-done > .btn { color: var(--bg-text-dim); }
 .todo-repeat { margin-top: 32px; }
 .todo-repeat > summary { list-style: none; cursor: pointer; }
@@ -1985,6 +2048,16 @@ textarea.input.ex-topic-input { resize: none; min-height: 36px; height: 36px; li
   .exam-logistics { grid-template-columns: 1fr; }
   .exam-hero.compact { align-items: stretch; }
   .exam-hero-body { width: 100%; }
+  /* Phone: the prep meta sits above a full-width bar, and the actions are one
+     full-width primary over a row of equal secondaries, so nothing wraps raggedly. */
+  .exam-prep-line { flex-direction: column; align-items: stretch; gap: 8px; }
+  .exam-prep-line > .small { order: -1; }
+  .exam-prep-line .progress { width: 100%; }
+  .exam-hero-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+  .exam-hero-actions > .btn { justify-content: center; min-width: 0; }
+  .exam-hero-actions > .btn-primary, .exam-hero-actions > :nth-child(2):last-child,
+  .exam-hero-actions > .btn:has(+ span), .exam-hero-actions > span { grid-column: 1 / -1; }
+  .exam-hero-actions > span { text-align: center; }
   .exam-topic { flex-wrap: wrap; row-gap: 6px; }
   .exam-topic > .btn { order: 2; }
   .exam-conf { order: 3; width: 100%; }
@@ -2125,6 +2198,12 @@ textarea.input.ex-topic-input { resize: none; min-height: 36px; height: 36px; li
 .org-link-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 10px; border-radius: var(--r-pill); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: var(--fs-sm); font-weight: 500; text-decoration: none; transition: background var(--dur-1), border-color var(--dur-1); cursor: pointer; font-family: inherit; }
 .org-link-pill:hover { background: color-mix(in srgb, var(--text) 4%, var(--surface)); border-color: var(--line-strong); }
 .org-link-pill.is-edit { color: var(--text-dim); border-style: dashed; }
+/* Touch: same invisible 44px hit area as the study group chips. */
+@media (pointer: coarse) {
+  .org-links { row-gap: 18px; }
+  .org-link-pill { position: relative; }
+  .org-link-pill::after { content: ''; position: absolute; inset: -10px -4px; }
+}
 .org-link-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
 .org-cat { display: inline-flex; align-items: center; gap: 4px; }
 .org-need-answer .list-row { margin-bottom: 8px; }
@@ -2165,14 +2244,14 @@ textarea.input.ex-topic-input { resize: none; min-height: 36px; height: 36px; li
 }
 
 /* LMS feed import */
-.feed-map-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+.feed-map-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--hairline); }
 .feed-map-row:first-child { border-top: none; padding-top: 0; }
 .feed-map-info { flex: 1; min-width: 0; }
 .feed-map-info .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed-map-row .select { max-width: 210px; flex-shrink: 0; }
-.feed-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.feed-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--hairline); flex-wrap: wrap; }
+.feed-error { color: var(--danger-text); }
 .feed-row:first-of-type { border-top: none; padding-top: 0; }
-.feed-help summary { cursor: pointer; }
 .feed-help ul { padding-left: 18px; }
 .feed-help li { margin: 4px 0; line-height: 1.45; }
 
