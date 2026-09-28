@@ -81,7 +81,7 @@ function syllabusCard(c) {
   }
   const contact = [
     d.email ? `<a class="btn btn-sm" href="mailto:${esc(d.email)}?subject=${encodeURIComponent(c.code || c.name)}">${icon('send', 12, 1.8)} Email</a>` : '',
-    d.email ? `<button class="btn btn-sm btn-ghost btn-icon" aria-label="Copy email address" title="Copy ${esc(d.email)}" onclick="copyText('${esc(d.email)}','Email copied')">${icon('copy', 13, 1.8)}</button>` : '',
+    d.email ? `<button class="btn btn-sm btn-ghost btn-icon" aria-label="Copy email address" data-tip="Copy email" onclick="copyText('${esc(d.email)}','Email copied')">${icon('copy', 14)}</button>` : '',
     d.website ? `<a class="btn btn-sm" href="${esc(d.website)}" target="_blank" rel="noopener noreferrer">${icon('link', 12, 1.8)} Course site</a>` : '',
   ].filter(Boolean).join('');
   const policyBlock = (label, iconName, text) => text ? `<div class="syl-policy"><div class="syl-label">${icon(iconName, 12, 1.9)} ${label}</div><p class="small">${esc(text)}</p></div>` : '';
@@ -91,7 +91,7 @@ function syllabusCard(c) {
         <h3 class="sg-h3">Syllabus</h3>
         <div class="flex-gap">
           ${aiEnabled() ? `<button class="sg-link" onclick="openSyllabusUploadModal('${c.id}')">${has ? 'Update from syllabus' : 'Upload syllabus'}</button>` : ''}
-          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit syllabus details" title="Edit" onclick="openCourseDetailsModal('${c.id}')">${icon('pencil', 13, 1.7)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit syllabus details" data-tip="Edit" onclick="openCourseDetailsModal('${c.id}')">${icon('pencil', 14)}</button>
         </div>
       </div>
 

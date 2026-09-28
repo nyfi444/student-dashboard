@@ -127,15 +127,35 @@ const _nbSnippets = new Map();
 function nbNoteSnippet(n) {
   const key = n.id + ':' + (n.updatedAt || 0);
   if (!_nbSnippets.has(key)) {
-    // Leading headings are skipped (they read as a second title and ran
-    // into the first sentence); blocks are joined with a space.
-    const flat = html => textOfHtml(html.replace(/(<\/(p|h[1-6]|li|div|blockquote|pre|td|th|tr)>|<br\s*\/?>)/gi, '$1 ')).replace(/\s+/g, ' ').trim();
-    const all = String(n.content || '');
-    const text = flat(all.replace(/^(\s*<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>)+/i, '')) || flat(all);
+    const text = nbSnippetText(String(n.content || ''));
     _nbSnippets.set(key, text.length > 90 ? text.slice(0, 89).trimEnd() + '…' : text);
     if (_nbSnippets.size > 600) _nbSnippets.delete(_nbSnippets.keys().next().value);
   }
   return _nbSnippets.get(key);
+}
+// The row snippet: the note's blocks joined with ' · ', so list items and
+// paragraphs don't run together. A layout's own labels (section headings,
+// table header rows, the pre-filled first column like 1 2 3 or Mon Tue)
+// are left out, so an untouched layout has no snippet, like a new Cornell
+// note. Leading headings are skipped (they read as a second title); if
+// nothing else is left, the headings are used after all.
+const NB_SNIPPET_BLOCKS = 'p,h1,h2,h3,h4,h5,h6,li,div,blockquote,pre,td,th,tr,br';
+function nbSnippetText(html) {
+  if (!html) return '';
+  const body = new DOMParser().parseFromString('<!doctype html><html><body>' + html + '</body></html>', 'text/html').body;
+  body.querySelectorAll('.nb-lab-section > h2, .nb-sheet-section > h2, :is(.nb-lab, .nb-sheet) thead').forEach(el => el.remove());
+  const prefilled = new Set(['1', '2', '3', ...Object.values(SHEET_TEMPLATES).flatMap(t => t.sections.filter(s => s[1] === 'table').flatMap(s => s[3]))]);
+  body.querySelectorAll(':is(.nb-lab, .nb-sheet) tbody tr').forEach(tr => {
+    const cells = [...tr.cells].map(c => c.textContent.trim());
+    if (cells.slice(1).every(t => !t) && (!cells[0] || prefilled.has(cells[0]))) tr.remove();
+  });
+  const flat = root => {
+    root.querySelectorAll(NB_SNIPPET_BLOCKS).forEach(el => { el.before('\u0001'); el.after('\u0001'); });
+    return root.textContent.split('\u0001').map(t => t.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' · ');
+  };
+  const lead = body.cloneNode(true);
+  while (lead.firstChild && (lead.firstChild.nodeType === 3 ? !lead.firstChild.textContent.trim() : /^H[1-6]$/.test(lead.firstChild.nodeName))) lead.firstChild.remove();
+  return flat(lead) || flat(body);
 }
 function nbNoteRowHtml(n, selectedId, inPinned) {
   const selected = n.id === selectedId;
@@ -1018,7 +1038,11 @@ function moveNoteTo(id) {
 }
 function deleteNoteItem(id) {
   const root = state.notes.find(n => n.id === id);
-  confirmDialog('Delete this? Folders delete everything inside them. You can restore it from Recently Deleted for 30 days.', () => {
+  // confirmDialog escapes the message itself.
+  const msg = root?.type === 'folder'
+    ? 'Delete this? Folders delete everything inside them. You can restore it from Recently Deleted for 30 days.'
+    : `Delete “${root?.name && root.name !== 'Untitled note' ? root.name : 'Untitled'}”? You can restore it from Recently Deleted for 30 days.`;
+  confirmDialog(msg, () => {
     const toDelete = new Set([id]);
     let grew = true;
     while (grew) { grew = false; state.notes.forEach(n => { if (n.parentId && toDelete.has(n.parentId) && !toDelete.has(n.id)) { toDelete.add(n.id); grew = true; } }); }

@@ -363,7 +363,7 @@ function weekDayColumn(dIso, hours = CAL_HOURS) {
   const dow = new Date(dIso + 'T00:00:00').getDay();
   const today = todayIso();
   const nowMin = dIso === today ? new Date().getHours() * 60 + new Date().getMinutes() : null;
-  return `<div class="cal-day-col ${dow === 0 || dow === 6 ? 'weekend' : ''} ${dIso === today ? 'today' : ''}" onclick="openEventModal(null,'${dIso}')" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
+  return `<div class="cal-day-col ${dow === 0 || dow === 6 ? 'weekend' : ''} ${dIso === today ? 'today' : ''}" onclick="openEventModal(null,'${dIso}')" aria-label="${esc(`Add to ${fmtDate(dIso, { weekday: 'long', month: 'short', day: 'numeric' })}`)}" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
     ${brk ? `<div class="cal-break-label" style="position:absolute;top:4px;left:6px;z-index:1">${esc(brk.name)}</div>` : ''}
     ${hours.map(h => `<div class="cal-hour-row" ondragover="allowDrop(event)" ondrop="event.stopPropagation();dropTimeBlockOnSlot(event,'${dIso}',${h})"></div>`).join('')}
     ${items.map(it => positionedBlock(it, dIso, nowMin, { past: dIso < today, hours })).join('')}
@@ -449,7 +449,7 @@ function dayView() {
         ${allDayStrip([dIso], '58px 1fr')}
         <div class="cal-week-grid cal-hours" style="grid-template-columns:58px 1fr">
           ${hourLabels(hours)}
-          <div class="cal-day-col" onclick="openEventModal(null,'${dIso}')" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
+          <div class="cal-day-col" onclick="openEventModal(null,'${dIso}')" aria-label="${esc(`Add to ${fmtDate(dIso, { weekday: 'long', month: 'short', day: 'numeric' })}`)}" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
             ${hours.map(h => `<div class="cal-hour-row" ondragover="allowDrop(event)" ondrop="event.stopPropagation();dropTimeBlockOnSlot(event,'${dIso}',${h})"></div>`).join('')}
             ${pastPx ? `<div class="cal-past" style="height:${pastPx}px" aria-hidden="true"></div>` : ''}
             ${items.map(it => positionedBlock(it, dIso, nowMin, { day: true, past: dIso < todayIso(), hours })).join('')}

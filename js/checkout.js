@@ -17,7 +17,7 @@ function demoBannerHtml() {
   if (typeof isDemoMode !== 'function' || !isDemoMode()) return '';
   if (typeof _fbUser !== 'undefined' && _fbUser) return '';
   const plan = typeof isEmbedded === 'function' && isEmbedded() ? '' : ', or <a href="https://semester-hq.com/pricing.html" target="_blank" rel="noopener">see the plan</a>';
-  return `<div class="demo-bar" role="status"><strong>Demo.</strong> Nothing here is saved. <a href="#" onclick="event.preventDefault();signIn()">Log in</a> to keep your semester${plan}.</div>`;
+  return `<div class="demo-bar" role="status"><strong>Demo.</strong> Nothing here is saved. <a href="#" onclick="event.preventDefault();signIn()">Log in</a><span class="demo-long"> to keep your semester${plan}</span>.</div>`;
 }
 
 function checkoutReturnPending() { return new URLSearchParams(window.location.search).get('checkout') === 'success'; }

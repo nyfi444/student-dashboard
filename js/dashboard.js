@@ -140,6 +140,19 @@ function dashHero() {
             <div class="dash-next-title is-static">You’re all clear.</div>
             <div class="small muted">Nothing scheduled and nothing due. Get ahead, or take the win.</div>
           `}
+          <div class="dash-tiles">
+            <button class="dash-tile" onclick="state._assignView='todo';setState({route:'assignments',subRoute:null})">
+              <span class="dash-tile-num">${dueWeek.length}</span><span class="dash-tile-lbl">Due this week</span>
+            </button>
+            <button class="dash-tile ${overdue.length ? 'is-alert' : ''}" onclick="state._assignView='todo';setState({route:'assignments',subRoute:null})">
+              <span class="dash-tile-num">${overdue.length}</span><span class="dash-tile-lbl">${overdue.length ? icon('clock', 12) : ''}Overdue</span>
+            </button>
+            <button class="dash-tile" onclick="${cardsDue ? `openReview()` : `setState({route:'timer',subRoute:null})`}">
+              ${cardsDue
+                ? `<span class="dash-tile-num">${cardsDue}</span><span class="dash-tile-lbl">To review</span>`
+                : `<span class="dash-tile-num">${durationFigure(weekMin)}</span><span class="dash-tile-lbl">Focus this week</span>`}
+            </button>
+          </div>
         </div>
         <div class="dash-timeline">
           <div class="dash-timeline-head"><h3 class="sg-h3">Today</h3><button class="sg-link" onclick="setState({route:'calendar',calView:'day',calDate:todayIso()})">Calendar ${icon('chevron-right', 12)}</button></div>
@@ -159,19 +172,6 @@ function dashHero() {
               </button>`;
             }).join('');
           })() : `<div class="small muted dash-tl-empty">No classes or events today.</div>`}
-        </div>
-        <div class="dash-tiles">
-          <button class="dash-tile" onclick="state._assignView='todo';setState({route:'assignments',subRoute:null})">
-            <span class="dash-tile-num">${dueWeek.length}</span><span class="dash-tile-lbl">Due this week</span>
-          </button>
-          <button class="dash-tile ${overdue.length ? 'is-alert' : ''}" onclick="state._assignView='todo';setState({route:'assignments',subRoute:null})">
-            <span class="dash-tile-num">${overdue.length}</span><span class="dash-tile-lbl">${overdue.length ? icon('clock', 12) : ''}Overdue</span>
-          </button>
-          <button class="dash-tile" onclick="${cardsDue ? `openReview()` : `setState({route:'timer',subRoute:null})`}">
-            ${cardsDue
-              ? `<span class="dash-tile-num">${cardsDue}</span><span class="dash-tile-lbl">To review</span>`
-              : `<span class="dash-tile-num">${durationFigure(weekMin)}</span><span class="dash-tile-lbl">Focus this week</span>`}
-          </button>
         </div>
       </div>
     </div>`;

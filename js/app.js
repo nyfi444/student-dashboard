@@ -35,6 +35,9 @@ function render() {
   if (isNewView) diag.crumb('view', viewKey.replace(/\|+$/, ''));
   const demoBar = typeof demoBannerHtml === 'function' ? demoBannerHtml() : '';
   $('#content').innerHTML = `${demoBar}<div class="${isNewView ? 'fade-in' : ''}">${fn()}</div>`;
+  // A different page opens at the top, not at the old page's scroll offset.
+  // 'instant' because the page may set smooth scroll-behavior.
+  if (isNewView) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   enhancePageHeads($('#content'));
   enhanceAccessibility($('#content'));
   enhanceAccessibility($('#sidebar'));
@@ -115,7 +118,7 @@ function renderSidebar() {
       ${NAV.map(([label, items]) => `
         <div class="nav-group">
           <div class="nav-group-label">${label}</div>
-          ${items.map(([id, iconName, name]) => `<button class="nav-item ${PHONE_NAV.includes(id) ? 'nav-primary' : ''} ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" data-nav="${id}" ${state.route === id ? 'aria-current="page"' : ''} ${id === 'notebook' && state.route === 'notebook' ? `aria-controls="notebook-tree-panel" aria-expanded="${typeof notebookListHidden === 'function' ? !notebookListHidden() : true}" title="Show or hide your notes list"` : ''} onclick="navTo('${id}')"><span class="ic">${icon(iconName, 18)}</span>${id === 'todos' ? `<span class="nav-label">${name}</span><span class="nav-label-short">To-Do</span>` : name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}${id === 'orgs' && orgsUnread ? '<span class="nav-dot" aria-label="New club activity"></span>' : ''}</button>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
+          ${items.map(([id, iconName, name]) => `<button class="nav-item ${PHONE_NAV.includes(id) ? 'nav-primary' : ''} ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" data-nav="${id}" ${state.route === id ? 'aria-current="page"' : ''} ${id === 'notebook' && state.route === 'notebook' ? `aria-controls="notebook-tree-panel" aria-expanded="${typeof notebookListHidden === 'function' ? !notebookListHidden() : true}"` : ''} onclick="navTo('${id}')"><span class="ic">${icon(iconName, 18)}</span>${id === 'todos' ? `<span class="nav-label">${name}</span><span class="nav-label-short">To-Do</span>` : name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}${id === 'orgs' && orgsUnread ? '<span class="nav-dot" aria-label="New club activity"></span>' : ''}</button>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
         </div>
       `).join('')}
     </div>

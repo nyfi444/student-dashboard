@@ -146,7 +146,7 @@ function inlineErrorHtml(message, retryOnclick = '', { retryLabel = 'Try again',
 // opts.titleHtml is trusted markup used instead of the escaped title (the
 // calendar needs it); opts.className adds classes to .page-head.
 function pageHead(title, sub, actionsHtml = '', opts = {}) {
-  const tools = `<button class="btn btn-icon btn-sm mobile-search" aria-label="Search" onclick="openCommandPalette()">${icon('search', 20)}</button><button class="btn btn-icon btn-sm mobile-search" aria-label="Quick capture" onclick="openQuickCapture()">${icon('camera', 20)}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}<button type="button" class="btn btn-icon btn-sm head-more-top" aria-label="More actions" aria-haspopup="true" onclick="openHeadMore(this)">${icon('more-horizontal', 20)}</button>`;
+  const tools = `<button class="btn btn-icon btn-sm mobile-search" aria-label="Search" data-tip="Search" onclick="openCommandPalette()">${icon('search', 20)}</button><button class="btn btn-icon btn-sm mobile-search" aria-label="Quick capture" data-tip="Quick capture" onclick="openQuickCapture()">${icon('camera', 20)}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}<button type="button" class="btn btn-icon btn-sm head-more-top" aria-label="More actions" data-tip="More actions" aria-haspopup="true" onclick="openHeadMore(this)">${icon('more-horizontal', 20)}</button>`;
   const titleHtml = opts.titleHtml != null ? opts.titleHtml : esc(title);
   return `<div class="page-head${opts.className ? ' ' + esc(opts.className) : ''}">
     <div class="page-head-top"><div class="page-head-title"><h2>${titleHtml}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-tools">${tools}</div></div>
@@ -164,7 +164,9 @@ function enhancePageHeads(root) {
     const hasTop = !!row.closest('.page-head')?.querySelector(':scope > .page-head-top .head-more-top');
     // What a phone still shows in row 2: anything but the ···, the desktop
     // Capture copy, and the secondary buttons the phone moves into the sheet.
-    const stays = [...row.children].some(el => !el.matches('.head-more, .desktop-capture') && !(el.matches('.btn') && !el.matches('.btn-primary, .head-keep')));
+    // While the demo line shows, the phone hides Log in (it is in that line).
+    const skip = document.querySelector('#content > .demo-bar') ? '.head-more, .desktop-capture, .head-login' : '.head-more, .desktop-capture';
+    const stays = [...row.children].some(el => !el.matches(skip) && !(el.matches('.btn') && !el.matches('.btn-primary, .head-keep')));
     row.classList.toggle('only-more', hasTop && !stays && headMoreItems(row).length > 0);
   });
 }
@@ -405,7 +407,7 @@ function progressRing(pct, color, size = 76) {
 // `cls` adds classes, e.g. 'head-menu' when the button sits in a page head.
 function aiButton(label, onclick, id, cls = '') {
   const locked = typeof aiLooksUnlocked === 'function' && !aiLooksUnlocked();
-  return `<button class="btn btn-sm${cls ? ' ' + cls : ''}" ${id ? `id="${id}"` : ''} onclick="${onclick}" ${locked ? 'title="Included with Semester HQ Plus"' : ''}>${esc(label)}${locked ? `<span class="ai-lock">${icon('lock', 12)}</span>` : ''}</button>`;
+  return `<button class="btn btn-sm${cls ? ' ' + cls : ''}" ${id ? `id="${id}"` : ''} onclick="${onclick}" ${locked ? 'data-tip="Included with Semester HQ Plus"' : ''}>${esc(label)}${locked ? `<span class="ai-lock">${icon('lock', 12)}</span>` : ''}</button>`;
 }
 function setBtnLoading(btn, loading, labelWhenDone) {
   if (!btn) return;

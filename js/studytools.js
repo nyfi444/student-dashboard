@@ -143,7 +143,7 @@ function deckCard(d) {
           <span style="width:${p.mastered / n * 100}%" class="m"></span><span style="width:${p.learning / n * 100}%" class="l"></span>
         </div>
         <div class="fc-legend small dim"><span><i class="m"></i>${p.mastered} mastered</span><span><i class="l"></i>${p.learning} learning</span><span><i></i>${p.newCount} new</span></div>` : `<p class="small muted mt-8">No cards yet.</p>`}
-      <div class="flex-gap mt-16">
+      <div class="flex-gap mt-16 fc-deck-actions">
         <button class="btn btn-sm" onclick="${due ? `openReview(['${d.id}'])` : `openStudyMode('${d.id}')`}" ${d.cards.length ? '' : 'disabled'}>${due ? 'Review' : 'Browse'}</button>
         ${due ? `<button class="btn btn-sm" onclick="openStudyMode('${d.id}')" ${d.cards.length ? '' : 'disabled'}>Browse</button>` : ''}
         <button class="btn btn-sm" onclick="openDeckModal('${d.id}')">Edit</button>

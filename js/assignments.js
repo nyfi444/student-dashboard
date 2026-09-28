@@ -34,7 +34,7 @@ function pageAssignments() {
     ${pageHead('Assignments', `${open.length} to do · ${weekCount} due this week${overdueCount ? ` · ${overdueCount} overdue` : ''}`, `
       <button class="btn btn-sm" onclick="openFeedImportModal()" data-tip="Every due date from Canvas, Blackboard, Brightspace, or Moodle">${icon('calendar', 14)} Import from Canvas</button>
       <button class="btn btn-sm head-keep${selectMode ? ' is-on' : ''}" aria-pressed="${selectMode}" onclick="toggleAssignSelectMode()">${icon('check-square', 14)} ${selectMode ? 'Cancel' : 'Select'}</button>
-      ${aiButton('Quick capture', 'openQuickCapture()', '', 'head-menu')}
+      ${aiButton('Quick capture', 'openQuickCapture()', '', 'head-menu desktop-capture')}
       <button class="btn btn-primary" onclick="openAssignmentModal(null, state._assignCourseFilter !== 'all' ? state._assignCourseFilter : null)">${icon('plus', 14)} Add assignment</button>
     `)}
     <div class="assign-toolbar">

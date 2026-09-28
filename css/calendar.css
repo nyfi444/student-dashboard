@@ -261,6 +261,8 @@
   .cal-block-short { display: block; font: 600 var(--fs-xs)/1.2 var(--font); letter-spacing: -.01em; white-space: normal; overflow-wrap: normal; overflow: hidden; }
   /* No course: the title's first word, cut with an ellipsis, not mid-letter. */
   .cal-block-short.is-word { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* All-day items the phone shows as rows (the Day view): a 28px tap box. */
+  .cal-allday-col .cal-evt { min-height: 28px; }
   /* All-day items in a phone week: one count per day; the column opens it. */
   .cal-allday.has-counts .cal-allday-col { min-height: 44px; padding: 4px 2px; align-items: center; justify-content: center; cursor: pointer; }
   .cal-allday.has-counts .cal-evt { display: none; }
@@ -278,4 +280,8 @@
   .cal-dayplan .cal-block-time, .cal-dayplan .cal-block-where { display: block; }
   .cal-dayplan .cal-block-short { display: none; }
   .cal-dayplan .cal-allday-col .cal-evt-title { display: block; }
+}
+/* A 360px phone leaves 30px per day: CHEM and MATH must still fit whole. */
+@media (max-width: 380px) {
+  .cal-block-short { font-size: 10px; letter-spacing: -.02em; }
 }

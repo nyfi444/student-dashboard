@@ -235,7 +235,7 @@ function colorSwatches(g, onPickJs) {
   const mine = personColor(g, myUidFor(g));
   const takenBy = {};
   groupPeople(g).forEach(p => { if (p.uid !== myUidFor(g) && HEX_COLOR.test(g.people?.[p.uid]?.color || '')) takenBy[g.people[p.uid].color] = p.name; });
-  return `<div class="sg-swatches" role="radiogroup" aria-label="Your color">${PERSON_COLORS.map(c => `<button class="sg-swatch ${c === mine ? 'active' : ''}" role="radio" aria-checked="${c === mine}" style="background:${c}" title="${takenBy[c] ? `Also used by ${esc(takenBy[c])}` : 'Use this color'}" aria-label="Color ${c}${takenBy[c] ? `, used by ${esc(takenBy[c])}` : ''}" onclick="${onPickJs}('${g.code}','${c}')">${takenBy[c] ? '<span class="sg-swatch-taken"></span>' : ''}</button>`).join('')}</div>`;
+  return `<div class="sg-swatches" role="radiogroup" aria-label="Your color">${PERSON_COLORS.map(c => `<button class="sg-swatch ${c === mine ? 'active' : ''}" role="radio" aria-checked="${c === mine}" style="background:${c}" data-tip="${takenBy[c] ? `Also used by ${esc(takenBy[c])}` : 'Use this color'}" aria-label="Color ${c}${takenBy[c] ? `, used by ${esc(takenBy[c])}` : ''}" onclick="${onPickJs}('${g.code}','${c}')">${takenBy[c] ? '<span class="sg-swatch-taken"></span>' : ''}</button>`).join('')}</div>`;
 }
 function groupPeople(g) {
   const members = new Set(g.memberUids || []);
@@ -644,9 +644,21 @@ function closeGroupDetailListeners() {
   _detailSubs.unsubs.forEach(u => u());
   _detailSubs = { code: null, unsubs: [] };
 }
+// A phone-width tab strip opens scrolled to its start, which can leave a later
+// active tab (and its underline) off screen. Centre it by setting scrollLeft
+// directly; scrollIntoView would also move the page. Shared with orgs.js.
+function centerActiveSgTab() {
+  const a = document.querySelector('#content .sg-tabs button.active');
+  if (!a) return;
+  const s = a.parentElement;
+  if (s.scrollWidth <= s.clientWidth) return;
+  const left = a.getBoundingClientRect().left - s.getBoundingClientRect().left + s.scrollLeft;
+  s.scrollLeft = Math.max(0, left - s.clientWidth / 2 + a.offsetWidth / 2);
+}
 function afterGroupPageRender() {
   const code = state.route === 'studygroups' ? state.subRoute : null;
   if (!code || !groupEntry(code)) { if (_detailSubs.code) closeGroupDetailListeners(); return; }
+  centerActiveSgTab();
   ensureGroupDetailListeners(code);
   bindAvailabilityPainting();
   const log = document.getElementById('sg-chat-log');
@@ -821,7 +833,7 @@ function groupOverviewTab(g) {
       <div class="sg-col">
         <div class="card card-pad">
           <h3 class="sg-h3 mb-8">Members</h3>
-          ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, personColor(g, p.uid))}<div class="row-title">${esc(p.name)}${p.uid === u ? ' <span class="small muted">(you)</span>' : ''}</div>${p.role === 'owner' ? '<span class="small muted">Owner</span>' : ''}</div>`).join('')}
+          ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, personColor(g, p.uid))}<div class="row-title">${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' <span class="small muted">(you)</span>' : ''}</div>${p.role === 'owner' ? '<span class="small muted">Owner</span>' : ''}</div>`).join('')}
           ${legacyNames.length ? `<div class="small muted mt-8">From before the update: ${legacyNames.map(esc).join(', ')}. They’ll appear here once they open the group.</div>` : ''}
         </div>
         <div class="card card-pad">
@@ -876,7 +888,7 @@ function showGroupSessionModal(code, sid) {
   const same = window._groupSessionModal?.code === code && window._groupSessionModal.sid === sid;
   const openGroups = same ? $$('#modal .org-rsvp-group').map(d => d.open) : null;
   window._groupSessionModal = { code, sid };
-  const person = (p) => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, personColor(g, p.uid))}<div class="row-title small">${esc(p.name)}${p.uid === u ? ' <span class="muted">(you)</span>' : ''}</div></div>`;
+  const person = (p) => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, personColor(g, p.uid))}<div class="row-title small">${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div></div>`;
   const group = (label, list, open) => `
     <details class="org-rsvp-group" ${open ? 'open' : ''}>
       <summary><span class="sg-strong">${label}</span><span class="assign-count">${list.length}</span></summary>
@@ -1138,7 +1150,7 @@ function groupAvailabilityTab(g) {
       </div>
       <div class="card card-pad">
         <h3 class="sg-h3 mb-8">Who’s added theirs</h3>
-        ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, personColor(g, p.uid))}<div class="row-title small">${esc(p.name)}${p.uid === u ? ' <span class="muted">(you)</span>' : ''}</div>${availHasAny(g.avail?.[p.uid]) ? `<span class="small">${icon('check', 12)} Added</span>` : '<span class="small muted">Not yet</span>'}</div>`).join('')}
+        ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, personColor(g, p.uid))}<div class="row-title small">${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div>${availHasAny(g.avail?.[p.uid]) ? `<span class="small">${icon('check', 12)} Added</span>` : '<span class="small muted">Not yet</span>'}</div>`).join('')}
         ${missing.length && !g.local ? `<button class="btn btn-sm mt-8" onclick="copyAvailabilityNudge('${g.code}')">${icon('copy', 14)} Copy a reminder for the group</button>` : ''}
       </div>
     </div>
@@ -1325,7 +1337,7 @@ function groupTasksTab(g) {
       <div class="sg-task-add">
         <input class="input" id="sg-task-title" maxlength="200" placeholder="Add a task, like “outline the intro” or “make a practice quiz”" onkeydown="if(event.key==='Enter')addGroupTask('${g.code}')">
         <input class="input" type="date" id="sg-task-due" aria-label="Due date (optional)" title="Due date (optional)">
-        <select class="select" id="sg-task-assignee" aria-label="Assign to"><option value="">Unassigned</option>${people.map(p => `<option value="${esc(p.uid)}">${esc(p.name)}${p.uid === u ? ' (you)' : ''}</option>`).join('')}</select>
+        <select class="select" id="sg-task-assignee" aria-label="Assign to"><option value="">Unassigned</option>${people.map(p => `<option value="${esc(p.uid)}">${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' (you)' : ''}</option>`).join('')}</select>
         <button class="btn btn-primary" onclick="addGroupTask('${g.code}')">Add</button>
       </div>
     </div>
@@ -1355,7 +1367,7 @@ function groupTaskRow(g, t, { compact = false } = {}) {
       ${compact ? '' : `
         ${!t.done && !t.assignee ? `<button class="btn btn-sm sg-claim" onclick="setGroupTaskAssignee('${g.code}','${t.id}','${esc(u)}')">${icon('user-plus', 12)} I’ll take it</button>` : ''}
         <select class="select sg-assignee" aria-label="Assign ${esc(t.title)}" onchange="setGroupTaskAssignee('${g.code}','${t.id}',this.value)">
-          <option value="">Unassigned</option>${groupPeople(g).map(p => `<option value="${esc(p.uid)}" ${p.uid === t.assignee ? 'selected' : ''}>${esc(p.name)}${p.uid === u ? ' (you)' : ''}</option>`).join('')}
+          <option value="">Unassigned</option>${groupPeople(g).map(p => `<option value="${esc(p.uid)}" ${p.uid === t.assignee ? 'selected' : ''}>${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' (you)' : ''}</option>`).join('')}
         </select>
         <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(t.title)}" data-tip="Delete" onclick="deleteGroupTask('${g.code}','${t.id}')">${icon('trash', 14)}</button>`}
     </div>`;
@@ -1622,7 +1634,7 @@ function groupChatTab(g) {
           ${!mine && !grouped ? `<div class="sg-msg-name">${esc(m.name)} <span class="muted">${new Date(m.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></div>` : ''}
           <div class="sg-bubble" title="${esc(new Date(m.at).toLocaleString())}">${linkifyText(m.text)}</div>
         </div>
-        ${mine || isOwner ? `<button class="sg-msg-del" aria-label="Delete message" title="Delete" onclick="deleteGroupMessage('${g.code}','${m.id}')">${icon('x', 11)}</button>` : ''}
+        ${mine || isOwner ? `<button class="sg-msg-del" aria-label="Delete message" data-tip="Delete" onclick="deleteGroupMessage('${g.code}','${m.id}')">${icon('x', 11)}</button>` : ''}
       </div>`;
   }).join('');
   return `
@@ -1864,7 +1876,7 @@ function openGroupSettingsModal(code) {
       <div class="field"><label>Your color in this group</label>${colorSwatches(g, 'pickGroupColorFromSettings')}</div>
       <div class="field"><label>Group color <span class="muted">(its sessions on your calendar)</span></label>
         <div class="org-colors" role="group" aria-label="Group color">
-          <button type="button" class="page-color sg-color-auto ${HEX_COLOR.test(g.color || '') ? '' : 'active'}" aria-pressed="${!HEX_COLOR.test(g.color || '')}" title="${groupCourse(g) ? `Match ${esc(groupCourse(g).code || groupCourse(g).name)}` : 'No color'}" aria-label="${groupCourse(g) ? 'Match the class color' : 'No color'}" style="${groupCourse(g) ? `background:${groupCourse(g).color}` : ''}" onclick="setGroupColor('${code}','')">${groupCourse(g) ? '' : icon('x', 11)}</button>
+          <button type="button" class="page-color sg-color-auto ${HEX_COLOR.test(g.color || '') ? '' : 'active'}" aria-pressed="${!HEX_COLOR.test(g.color || '')}" data-tip="${groupCourse(g) ? `Match ${esc(groupCourse(g).code || groupCourse(g).name)}` : 'No color'}" aria-label="${groupCourse(g) ? 'Match the class color' : 'No color'}" style="${groupCourse(g) ? `background:${groupCourse(g).color}` : ''}" onclick="setGroupColor('${code}','')">${groupCourse(g) ? '' : icon('x', 11)}</button>
           ${GROUP_COLORS.map((c, i) => `<button type="button" class="page-color ${g.color === c ? 'active' : ''}" style="background:${c}" aria-label="Color ${i + 1}" aria-pressed="${g.color === c}" onclick="setGroupColor('${code}','${c}')"></button>`).join('')}
         </div>
         <div class="small muted mt-4">${groupCourse(g) ? `The first swatch follows ${esc(groupCourse(g).code || groupCourse(g).name)}’s color.` : g.courseLabel ? 'Add a class in Courses with the same code and the group can match its color.' : 'Pick one, or set a class above so the group can match it.'}</div>
@@ -1874,7 +1886,7 @@ function openGroupSettingsModal(code) {
       ${people.map(p => `
         <div class="sg-person">
           ${personAvatar(p.uid, p.name, 26, personColor(g, p.uid))}
-          <div class="row-title small">${esc(p.name)}${p.uid === u ? ' <span class="muted">(you)</span>' : ''}</div>
+          <div class="row-title small">${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div>
           ${p.role === 'owner' ? '<span class="small muted">Owner</span>' : isOwner && !g.local && p.uid !== u ? `<button class="btn btn-ghost btn-sm" onclick="confirmRemoveMember('${code}','${esc(p.uid)}')">Remove</button>` : ''}
         </div>`).join('')}
       <div class="divider"></div>

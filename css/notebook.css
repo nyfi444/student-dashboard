@@ -497,7 +497,9 @@ html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body 
 
   /* Note view: a nav bar. No backdrop-filter, transform, filter or
      container here or above it: #nb-toolbar inside is position:fixed. */
-  .notebook-page { height: auto; overflow: visible; padding: 0; }
+  /* The paper grows with the note (flex-basis auto, no shrink), so a long
+     note never runs past the surface; a short one still fills the screen. */
+  .notebook-page { height: auto; overflow: visible; padding: 0; flex: 1 0 auto; }
   .nb-topbar { display: flex; align-items: center; justify-content: space-between; gap: 4px; box-sizing: border-box; height: calc(52px + env(safe-area-inset-top, 0px)); min-height: 0; padding: env(safe-area-inset-top, 0px) 4px 0; background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; container-type: normal; border-bottom: 1px solid var(--hairline); }
   .nb-list-toggle, .nb-breadcrumb { display: none; }
   .nb-back { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 8px 0 4px; font: 500 16px var(--font); color: var(--text); }
@@ -528,7 +530,12 @@ html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body 
 
   /* Keyboard bar: the same #nb-toolbar, docked above the keyboard (or
      the tab bar) while the note is being written. */
-  #nb-toolbar { position: fixed; left: 0; right: 0; bottom: var(--nb-kb, 0px); z-index: 130; display: none; height: 48px; margin: 0; padding: 0 8px; border-top: 1px solid var(--hairline); background: var(--surface); -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
+  #nb-toolbar { position: fixed; left: 0; right: 0; bottom: var(--nb-kb, 0px); z-index: 130; display: none; height: 48px; margin: 0; padding: 0 8px; border-top: 1px solid var(--hairline); background: var(--surface); }
+  /* Fade on the right while more buttons sit off-screen. A mask would also
+     fade the bar's own background and hairline, so the note showed through.
+     The bar scrolls sideways, so the fade is a sticky last item, not an
+     absolute one: at the end of the scroll it sits past the last button. */
+  #nb-toolbar::after { content: ''; position: sticky; right: 0; flex: 0 0 40px; align-self: stretch; margin-left: -2px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); }
   .notebook-layout.is-editing #nb-toolbar { display: flex; }
   #nb-toolbar button { width: 40px; height: 40px; }
   #nb-toolbar .nb-toolbar-select { height: 40px; font-size: 16px; }

@@ -386,7 +386,7 @@ function orgAttendanceHtml(o, e) {
   const group = (label, list, open = true) => `
     <details class="org-rsvp-group" ${open ? 'open' : ''}>
       <summary><span class="sg-strong">${label}</span><span class="assign-count">${list.length}</span></summary>
-      ${list.length ? `<div class="org-rsvp-list">${list.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, p.officer ? orgColor(o) : '#6b6b6b')}<div class="row-title small">${esc(p.name)}${p.uid === myOrgUid(o) ? ' <span class="muted">(you)</span>' : ''}</div><span class="small muted">${esc(orgRoleLabel(o, p))}</span></div>`).join('')}</div>` : '<div class="small muted org-rsvp-empty">No one yet.</div>'}
+      ${list.length ? `<div class="org-rsvp-list">${list.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, p.officer ? orgColor(o) : '#6b6b6b')}<div class="row-title small">${esc(p.name)}${p.uid === myOrgUid(o) && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div><span class="small muted">${esc(orgRoleLabel(o, p))}</span></div>`).join('')}</div>` : '<div class="small muted org-rsvp-empty">No one yet.</div>'}
     </details>`;
   const going = people.filter(p => answer(p) === 'yes'), cant = people.filter(p => answer(p) === 'no'), none = people.filter(p => !answer(p));
   return `
@@ -519,7 +519,7 @@ function orgOverviewTab(o) {
         </div>` : ''; })()}
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Officers</h3><button class="sg-link" onclick="setState({orgTab:'members'})">${o.memberUids.length} members ${icon('chevron-right', 12)}</button></div>
-          ${officers.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, orgColor(o))}<div class="row-title small">${esc(p.name)}${p.uid === myOrgUid(o) ? ' <span class="muted">(you)</span>' : ''}</div><span class="small muted">${esc(orgRoleLabel(o, p))}</span></div>`).join('')}
+          ${officers.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, orgColor(o))}<div class="row-title small">${esc(p.name)}${p.uid === myOrgUid(o) && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div><span class="small muted">${esc(orgRoleLabel(o, p))}</span></div>`).join('')}
         </div>
         <label class="checkbox-row small org-cal-toggle"><input type="checkbox" ${o.hideCalendar ? '' : 'checked'} onchange="setOrgOnCalendar('${o.code}',this.checked)"><span>Show ${esc(o.name)} events on my calendar</span></label>
       </div>
@@ -573,7 +573,7 @@ function orgMembersTab(o) {
   const memberRow = (p) => `
         <div class="sg-person org-member" data-search="${esc((p.name + ' ' + orgRoleLabel(o, p)).toLowerCase())}">
           ${personAvatar(p.uid, p.name, 30, p.officer ? orgColor(o) : '#6b6b6b')}
-          <div class="row-title"><div class="small sg-strong">${esc(p.name)}${p.uid === me ? ' <span class="muted">(you)</span>' : ''}</div><div class="small muted">${esc(orgRoleLabel(o, p))}${p.officer && p.title ? ` · <span class="org-officer-tag">${icon('shield', 11)} ${p.owner ? 'Founder' : 'Officer'}</span>` : ''}</div></div>
+          <div class="row-title"><div class="small sg-strong">${esc(p.name)}${p.uid === me && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div><div class="small muted">${esc(orgRoleLabel(o, p))}${p.officer && p.title ? ` · <span class="org-officer-tag">${icon('shield', 11)} ${p.owner ? 'Founder' : 'Officer'}</span>` : ''}</div></div>
           ${officer && !o.local ? `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>` : p.uid === me ? `<button class="btn btn-ghost btn-sm" onclick="openMyOrgTitleModal('${o.code}')">Edit title</button>` : ''}
         </div>`;
   const officers = people.filter(p => p.officer), general = people.filter(p => !p.officer);
@@ -598,7 +598,7 @@ function orgMembersTab(o) {
       <p class="small muted org-member-none" hidden>No one matches that.</p>
     </div>
     <details class="card card-pad org-roles-help mt-16">
-      <summary class="sg-strong small">How roles work</summary>
+      <summary class="sg-strong small">${icon('chevron-right', 12)}How roles work</summary>
       <div class="small muted mt-8">
         <p><span class="sg-strong">Founder:</span> whoever started ${esc(o.name)}. The founder is an officer and is the only one who can make someone else an officer.</p>
         <p><span class="sg-strong">Officers:</span> add events, post announcements, share files, see who hasn’t RSVPed, and manage members.</p>
@@ -698,7 +698,7 @@ function orgAdminTab(o) {
         <div class="small muted mb-8">${people.length} member${people.length === 1 ? '' : 's'} · ${officers.length} officer${officers.length === 1 ? '' : 's'}</div>
         ${officers.map(p => `<div class="sg-person">
           ${personAvatar(p.uid, p.name, 26, orgColor(o))}
-          <div class="row-title small"><span class="sg-strong">${esc(p.name)}</span>${p.uid === myOrgUid(o) ? ' <span class="muted">(you)</span>' : ''} <span class="muted">· ${esc(orgRoleLabel(o, p))}</span></div>
+          <div class="row-title small"><span class="sg-strong">${esc(p.name)}</span>${p.uid === myOrgUid(o) && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''} <span class="muted">· ${esc(orgRoleLabel(o, p))}</span></div>
           ${o.local ? '' : `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>`}
         </div>`).join('')}
         <div class="flex-gap wrap mt-8">
@@ -1190,6 +1190,7 @@ function ensureOrgChatListener(code) {
 // Runs after every render (see render() in app.js).
 function afterOrgPageRender() {
   const code = state.route === 'orgs' ? state.subRoute : null;
+  if (code && typeof centerActiveSgTab === 'function') centerActiveSgTab();
   if (!code || state.orgTab !== 'chat' || !orgEntry(code)) {
     if (_orgChatSub.code) closeOrgChatListener();
     Object.keys(_orgChatFailed).forEach(k => delete _orgChatFailed[k]);
@@ -1221,7 +1222,7 @@ function orgChatTab(o) {
           ${!mine && !grouped ? `<div class="sg-msg-name">${esc(who)}${p ? ` <span class="org-msg-role">${esc(orgRoleLabel(o, p))}</span>` : ''} <span class="muted">${new Date(m.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></div>` : ''}
           <div class="sg-bubble" title="${esc(new Date(m.at).toLocaleString())}">${linkifyText(m.text)}</div>
         </div>
-        ${mine || officer ? `<button class="sg-msg-del" aria-label="Delete message" title="Delete" onclick="deleteOrgMessage('${o.code}','${m.id}')">${icon('x', 11)}</button>` : ''}
+        ${mine || officer ? `<button class="sg-msg-del" aria-label="Delete message" data-tip="Delete" onclick="deleteOrgMessage('${o.code}','${m.id}')">${icon('x', 11)}</button>` : ''}
       </div>`;
   }).join('');
   return `
