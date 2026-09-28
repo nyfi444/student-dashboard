@@ -110,6 +110,11 @@ async function sendEmailOnce(env, { email, key, logKey = key, ctx = {}, schedule
   }
   if (!result.sent) {
     await commitFirestore(env, [{ path: logPath, remove: true }]).catch(() => {});
+    // A held receipt is never routine, and on staging an address missing from
+    // the allow-list should say so rather than look like nothing happened.
+    if (result.reason === 'allowlist' || (final.transactional && result.reason === 'budget')) {
+      await logServerIssue(env, 'email', `The ${key} email was held: ${result.reason === 'allowlist' ? 'the address is not on MAIL_ALLOWLIST' : 'the day\'s email budget is used up'}`, null, { key }).catch(() => {});
+    }
     return result;
   }
   await commitFirestore(env, [{ path: logPath, fields: { sentAt: new Date(), resendId: String(result.id || '').slice(0, 80) } }]).catch(() => {});
@@ -365,6 +370,20 @@ export async function handleAdminOnboardingRun(request, env) {
   const asked = Date.parse(new URL(request.url).searchParams.get('now') || '');
   const out = await runOnboardingEmails(env, Number.isFinite(asked) ? asked : Date.now());
   return new Response(JSON.stringify(out), { headers });
+}
+
+// POST /admin/onboarding-start {email, plan, groupName?}, staging only: starts
+// (or restarts the missing parts of) a customer's emails by hand, for
+// testing without a second checkout. Anything already sent stays sent.
+export async function handleAdminOnboardingStart(request, env) {
+  const headers = { 'content-type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+  if (env.STAGING !== '1') return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers });
+  if (!env.ADMIN_TOKEN || !(await adminTokenOk(request, env))) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers });
+  let body = {};
+  try { body = await request.json(); } catch {}
+  const plan = ['plus', 'group-admin', 'member'].includes(body.plan) ? body.plan : 'plus';
+  await startCustomerEmails(env, { email: body.email, uid: body.uid || '', plan, sessionId: body.sessionId || 'by-hand', groupName: body.groupName || '', seats: body.seats || 0 });
+  return new Response(JSON.stringify({ ok: true, plan }), { headers });
 }
 
 // Recent email activity for the business summary: counts only, no addresses.

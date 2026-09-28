@@ -152,7 +152,7 @@ FIREBASE_PROJECT_ID = "semester-hq-staging"
 FIREBASE_STORAGE_BUCKET = "semester-hq-staging.firebasestorage.app"
 NOTIFY_EMAIL = "semesterhq@gmail.com"
 NOTIFY_FROM = "Semester HQ Staging <notifications@send.semester-hq.com>"
-MAIL_ALLOWLIST = "semesterhq@gmail.com,hello@semester-hq.com,nnylabrown111@gmail.com"
+MAIL_ALLOWLIST = "semesterhq@gmail.com,hello@semester-hq.com,nnylabrown111@gmail.com,nylaiman@icloud.com"
 # Its own small slice of the one Resend account, so testing can never use
 # up the day that production's sign-in links need.
 RESEND_DAILY_LIMIT = "12"

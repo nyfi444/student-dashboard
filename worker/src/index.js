@@ -117,7 +117,7 @@ import { handleGroupRoute } from './groups.js';
 import { checkRateLimit, corsHeaders, isAllowedOrigin, jsonError, stagingProblem } from './http.js';
 import { handleAdminLedger, writeDailyLedger } from './ledger.js';
 import { handleCheckEmail, handleClaimLicense, handleStripeWebhook } from './licensing.js';
-import { fetchEmailSummary, handleAccountEmail, handleAdminEmailTest, handleAdminOnboardingRun, handleEmailLink, runOnboardingEmails } from './onboarding.js';
+import { fetchEmailSummary, handleAccountEmail, handleAdminEmailTest, handleAdminOnboardingRun, handleAdminOnboardingStart, handleEmailLink, runOnboardingEmails } from './onboarding.js';
 
 export default {
   // Every request passes through here. A route that throws still answers with
@@ -164,7 +164,7 @@ async function routeRequest(request, env, ctx) {
   // /admin/errors needs GET + an Authorization header, unlike every other
   // route here (POST + content-type only), handle its preflight separately
   // so the browser doesn't reject the real request for a disallowed method/header.
-  if (request.method === 'OPTIONS' && ['/admin/errors', '/admin/business-summary', '/admin/biz-events', '/admin/ledger', '/admin/email-test', '/admin/onboarding-run'].includes(url.pathname)) {
+  if (request.method === 'OPTIONS' && ['/admin/errors', '/admin/business-summary', '/admin/biz-events', '/admin/ledger', '/admin/email-test', '/admin/onboarding-run', '/admin/onboarding-start'].includes(url.pathname)) {
     return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
   }
   if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env, origin) });
@@ -179,6 +179,7 @@ async function routeRequest(request, env, ctx) {
   }
   if (url.pathname === '/admin/email-test' && request.method === 'POST') return handleAdminEmailTest(request, env);
   if (url.pathname === '/admin/onboarding-run' && request.method === 'POST') return handleAdminOnboardingRun(request, env);
+  if (url.pathname === '/admin/onboarding-start' && request.method === 'POST') return handleAdminOnboardingStart(request, env);
 
   // Stripe calls this server-to-server, no Origin header, verified by signature instead of CORS.
   if (url.pathname === '/stripe-webhook' && request.method === 'POST') return handleStripeWebhook(request, env);

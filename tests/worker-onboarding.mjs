@@ -339,5 +339,27 @@ function setup({ resendOk = true } = {}) {
   check('the time-travel run exists only on staging', run.status, 404);
 }
 
+/* ── A held email says so; the by-hand start is staging only ──────── */
+{
+  const { w, env, sent, db } = setup();
+  const issues = [];
+  w.logServerIssue = async (env2, feature, message) => { issues.push([feature, message]); };
+  env.MAIL_ALLOWLIST = 'me@x.co';
+  await w.startCustomerEmails(env, { email: 'stranger@school.edu', plan: 'plus', sessionId: 'cs_h' });
+  check('nothing goes to an address off the allow-list', sent.length, 0);
+  check('and it is logged, not silent', issues.map(i => i[1]), ['The receipt email was held: the address is not on MAIL_ALLOWLIST', 'The welcome email was held: the address is not on MAIL_ALLOWLIST']);
+  const prod = await w.handleAdminOnboardingStart(new Request('https://w/admin/onboarding-start', { method: 'POST', headers: { Authorization: 'Bearer admintoken' }, body: '{}' }), env);
+  check('the by-hand start does not exist in production', prod.status, 404);
+  env.STAGING = '1';
+  env.MAIL_ALLOWLIST = 'me@x.co,stranger@school.edu';
+  const res = await w.handleAdminOnboardingStart(new Request('https://w/admin/onboarding-start', { method: 'POST', headers: { Authorization: 'Bearer admintoken' }, body: JSON.stringify({ email: 'stranger@school.edu' }) }), env);
+  check('on staging it starts the emails', [res.status, sent.map(m => m.subject)], [200, ['Your Semester HQ Plus subscription is active', 'Welcome to Semester HQ']]);
+  const again = await w.handleAdminOnboardingStart(new Request('https://w/admin/onboarding-start', { method: 'POST', headers: { Authorization: 'Bearer admintoken' }, body: JSON.stringify({ email: 'stranger@school.edu' }) }), env);
+  check('and running it again sends nothing twice', [again.status, sent.length], [200, 2]);
+  const noToken = await w.handleAdminOnboardingStart(new Request('https://w/admin/onboarding-start', { method: 'POST', body: '{}' }), env);
+  check('it needs the admin token', noToken.status, 401);
+  void db;
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
