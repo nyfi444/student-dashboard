@@ -13,6 +13,9 @@ import { firestoreAdmin, newAccount, openSignedIn, requireEmulators } from './si
 test.beforeEach(requireEmulators);
 
 test('an officer starts a club, a classmate joins with the code, and each sees the other', async ({ browser }) => {
+  // Two browsers, two accounts and two sign-ins: this takes ~13s alone and
+  // runs past the shared 30s budget when the whole suite runs in parallel.
+  test.setTimeout(60_000);
   const alice = await newAccount('alice');
   const bob = await newAccount('bob');
 
