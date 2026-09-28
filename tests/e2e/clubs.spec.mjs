@@ -20,7 +20,7 @@ test('an officer starts a club, a classmate joins with the code, and each sees t
   const a = await (await browser.newContext()).newPage();
   const aConsole = await openSignedIn(a, alice);
   await navTo(a, 'orgs');
-  await a.getByRole('button', { name: '+ Start a club or team' }).click();
+  await a.getByRole('button', { name: 'Start a club or team', exact: true }).click();
   await a.locator('#modal #of-name').fill('Chess Club');
   await a.locator('#modal #of-title').fill('President');
   await a.locator('#modal #of-create').click();

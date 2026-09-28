@@ -22,7 +22,7 @@
 ──────────────────────────────────────────────────────────────── */
 const ORG_KINDS = [['club', 'Club', 'flag'], ['team', 'Team', 'trophy'], ['chapter', 'Sorority or fraternity', 'shield'], ['org', 'Organization', 'users'], ['other', 'Other', 'star']];
 // [key, label, icon]: the icon is what makes a list of twelve events scannable.
-const ORG_EVENT_CATEGORIES = [['meeting', 'Meeting', 'users'], ['practice', 'Practice', 'timer'], ['game', 'Game or match', 'trophy'], ['social', 'Social', 'star'], ['service', 'Service or philanthropy', 'sparkles'], ['deadline', 'Deadline or dues', 'flag'], ['other', 'Other', 'calendar']];
+const ORG_EVENT_CATEGORIES = [['meeting', 'Meeting', 'users'], ['practice', 'Practice', 'timer'], ['game', 'Game or match', 'trophy'], ['social', 'Social', 'star'], ['service', 'Service or philanthropy', 'target'], ['deadline', 'Deadline or dues', 'flag'], ['other', 'Other', 'calendar']];
 function orgCat(e) { return ORG_EVENT_CATEGORIES.find(c => c[0] === e?.category) || ORG_EVENT_CATEGORIES[ORG_EVENT_CATEGORIES.length - 1]; }
 function orgCatHtml(e) { const c = orgCat(e); return `<span class="org-cat">${icon(c[2], 11, 1.9)} ${c[1]}</span>`; }
 const ORG_COLORS = GROUP_COLORS; // shared with study groups, see studygroups.js
@@ -123,13 +123,13 @@ function openOrgLinksModal(code) {
   const o = findOrg(code);
   if (!o || !isOrgOfficer(o)) return;
   const links = orgLinkList(o);
-  const row = (l = { label: '', url: '' }) => `<div class="org-link-row"><input class="input" maxlength="30" placeholder="GroupMe" value="${esc(l.label)}" aria-label="Link name"><input class="input" type="url" placeholder="https://…" value="${esc(l.url)}" aria-label="Link address"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove link" onclick="this.parentNode.remove()">${icon('x', 12, 2.2)}</button></div>`;
+  const row = (l = { label: '', url: '' }) => `<div class="org-link-row"><input class="input" maxlength="30" placeholder="GroupMe" value="${esc(l.label)}" aria-label="Link name"><input class="input" type="url" placeholder="https://…" value="${esc(l.url)}" aria-label="Link address"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove link" data-tip="Remove link" onclick="this.parentNode.remove()">${icon('x', 12, 2.2)}</button></div>`;
   openModal(`
     <div class="modal-head"><h3>Links for ${esc(o.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
     <div class="modal-body">
       <p class="small muted mb-8">Up to ${ORG_LINKS_MAX}. They sit under the club’s name where every member can find them.</p>
       <div id="ol-rows">${(links.length ? links : [{ label: '', url: '' }]).map(row).join('')}</div>
-      <div class="chip-row mt-8">${ORG_LINK_SUGGESTIONS.map(t => `<button type="button" class="chip" onclick="addOrgLinkRow('${t}')">+ ${t}</button>`).join('')}<button type="button" class="chip" onclick="addOrgLinkRow('')">+ Other</button></div>
+      <div class="chip-row mt-8">${ORG_LINK_SUGGESTIONS.map(t => `<button type="button" class="chip" onclick="addOrgLinkRow('${t}')">${icon('plus', 12)} ${t}</button>`).join('')}<button type="button" class="chip" onclick="addOrgLinkRow('')">${icon('plus', 12)} Other</button></div>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ol-save" onclick="saveOrgLinks('${code}')">Save</button></div>
   `);
@@ -137,7 +137,7 @@ function openOrgLinksModal(code) {
 function addOrgLinkRow(label) {
   const rows = $('#ol-rows');
   if (!rows || rows.children.length >= ORG_LINKS_MAX) { toast(`Up to ${ORG_LINKS_MAX} links`, 'info'); return; }
-  rows.insertAdjacentHTML('beforeend', `<div class="org-link-row"><input class="input" maxlength="30" placeholder="GroupMe" value="${esc(label)}" aria-label="Link name"><input class="input" type="url" placeholder="https://…" aria-label="Link address"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove link" onclick="this.parentNode.remove()">${icon('x', 12, 2.2)}</button></div>`);
+  rows.insertAdjacentHTML('beforeend', `<div class="org-link-row"><input class="input" maxlength="30" placeholder="GroupMe" value="${esc(label)}" aria-label="Link name"><input class="input" type="url" placeholder="https://…" aria-label="Link address"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove link" data-tip="Remove link" onclick="this.parentNode.remove()">${icon('x', 12, 2.2)}</button></div>`);
   rows.lastElementChild.querySelector(label ? 'input[type=url]' : 'input').focus();
 }
 async function saveOrgLinks(code) {
@@ -298,7 +298,7 @@ function dashboardOrgsWidget() {
   const unread = orgs.map(o => [o, orgUnreadCount(o)]).filter(([, n]) => n);
   return `
     <div class="card card-pad">
-      <div class="flex-between mb-8"><h3 class="sg-h3">Clubs & teams</h3><button class="sg-link" onclick="setState({route:'orgs',subRoute:null})">All →</button></div>
+      <div class="flex-between mb-8"><h3 class="sg-h3">Clubs & teams</h3><button class="sg-link" onclick="setState({route:'orgs',subRoute:null})">All ${icon('chevron-right', 12)}</button></div>
       ${unread.length ? `<div class="sg-dash-unread">${unread.map(([o, n]) => `<button class="pill sg-unread-pill" onclick="openOrg('${o.code}','announcements')"><span class="sg-unread-dot"></span>${esc(o.name)} · ${n} new</button>`).join('')}</div>` : ''}
       ${rows.length ? rows.map(({ o, e }) => `
         <div class="list-row sg-session-row" style="--course:${esc(orgColor(o))}" onclick="openOrgEvent('${o.code}','${e.id}')">
@@ -320,17 +320,17 @@ function pageOrgs() {
   }
   const orgs = allOrgs();
   return `
-    ${pageHead('Clubs & Teams', 'Your club, team, or chapter’s calendar, right next to your classes.', `
-      <button class="btn btn-sm" onclick="openJoinOrgModal()">${icon('user-plus', 13, 1.8)} Join with code</button>
-      <button class="btn btn-primary" onclick="openCreateOrgModal()">+ Start one</button>
-    `)}
-    ${!fbConfigured() || cloudGroupsEnabled() ? '' : `<div class="sg-callout mb-16"><span>${icon('sparkles', 14, 1.8)}</span><div class="small">You’re looking around without an account, so anything you make here disappears when you close the tab. <a href="login.html">Log in</a> to invite members.</div></div>`}
+    ${pageHead('Clubs & Teams', 'Your club, team, or chapter’s calendar, right next to your classes.', orgs.length ? `
+      <button class="btn btn-sm" onclick="openJoinOrgModal()">${icon('user-plus', 14)} Join with code</button>
+      <button class="btn btn-primary" onclick="openCreateOrgModal()">${icon('plus', 14)} Start one</button>
+    ` : '')}
+    ${!fbConfigured() || cloudGroupsEnabled() ? '' : `<div class="sg-callout mb-16">${icon('info', 16)}<div class="small">You’re looking around without an account, so anything you make here disappears when you close the tab. <a href="login.html">Log in</a> to invite members.</div></div>`}
     ${orgs.length ? `
       ${orgUpcomingForMe(7).length ? `<div class="card card-pad mb-16"><h3 class="sg-h3 mb-8">This week</h3>${orgUpcomingForMe(7).slice(0, 6).map(({ o, e }) => orgEventRow(o, e, { showOrg: true })).join('')}</div>` : ''}
       <div class="sg-section-label">Yours</div>
       <div class="grid grid-3">${orgs.map(orgIndexCard).join('')}</div>
     ` : orgsEmptyHero()}
-    <div class="sg-pricing-note small muted">${icon('users', 13, 1.8)} Bringing your whole team or chapter? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Group pricing</a> covers every member at a lower rate.</div>
+    <div class="sg-pricing-note small">${icon('users', 14)} Bringing your whole team or chapter? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Group pricing</a> covers every member at a lower rate.</div>
   `;
 }
 function orgsEmptyHero() {
@@ -338,8 +338,8 @@ function orgsEmptyHero() {
     icon: 'shield',
     title: 'Your org’s calendar, in everyone’s planner.',
     body: 'For clubs, teams, and chapters: officers post a meeting or practice once, and it shows up for every member next to their classes and deadlines.',
-    actions: [{ label: '+ Start a club or team', onclick: 'openCreateOrgModal()' }, { label: 'Join with code', onclick: 'openJoinOrgModal()' }],
-    extra: cloudGroupsEnabled() ? '' : `<button class="btn btn-ghost btn-sm" onclick="createSampleOrg()">${icon('eye', 13, 1.8)} Explore a sample club first</button>`,
+    actions: [{ label: 'Start a club or team', onclick: 'openCreateOrgModal()', icon: 'plus' }, { label: 'Join with code', onclick: 'openJoinOrgModal()' }],
+    extra: cloudGroupsEnabled() ? '' : `<button class="btn btn-ghost btn-sm" onclick="createSampleOrg()">${icon('eye', 14)} Explore a sample club first</button>`,
   });
 }
 function orgIndexCard(o) {
@@ -349,16 +349,18 @@ function orgIndexCard(o) {
   const kind = orgKind(o);
   return `
     <div class="card sg-card org-card" style="--org:${esc(orgColor(o))}" role="button" tabindex="0" onclick="openOrg('${o.code}')" onkeydown="if(event.key==='Enter')openOrg('${o.code}')">
-      <div class="org-card-band" aria-hidden="true"><span class="org-crest">${orgMonogram(o)}</span></div>
       <div class="sg-card-top">
-        <div style="min-width:0">
-          <div class="sg-card-name">${esc(o.name)}</div>
-          <div class="small muted">${[kind[1], o.school ? esc(o.school) : '', o.sample ? 'Sample' : ''].filter(Boolean).join(' · ')}</div>
+        <div class="org-card-id">
+          <span class="org-crest" aria-hidden="true">${orgMonogram(o)}</span>
+          <div style="min-width:0">
+            <div class="sg-card-name">${esc(o.name)}</div>
+            <div class="small dim">${[kind[1], o.school ? esc(o.school) : '', o.sample ? 'Sample' : ''].filter(Boolean).join(' · ')}</div>
+          </div>
         </div>
-        ${unread || chatUnread ? `<span class="sg-unread-dot" title="${[unread ? `${unread} new announcement${unread === 1 ? '' : 's'}` : '', chatUnread ? 'New messages' : ''].filter(Boolean).join(', ')}"></span>` : ''}
+        ${unread || chatUnread ? `<span class="sg-unread-dot" role="img" aria-label="${[unread ? `${unread} new announcement${unread === 1 ? '' : 's'}` : '', chatUnread ? 'New messages' : ''].filter(Boolean).join(', ')}"></span>` : ''}
       </div>
-      <div class="sg-card-line"><span class="sg-card-ic">${icon('calendar', 13)}</span>${next ? `<span><span class="sg-strong">${esc(next.title)}</span><br><span class="muted">${fmtSessionDay(next.date)}${next.start ? ` · ${fmtTime(next.start)}` : ''}</span></span>` : '<span class="muted">Nothing scheduled</span>'}</div>
-      <div class="sg-card-foot"><span class="small muted">${o.loading ? 'Loading…' : `${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'}`}${isOrgOfficer(o) ? ' · You’re an officer' : ''}</span></div>
+      <div class="sg-card-line"><span class="sg-card-ic">${icon('calendar', 14)}</span>${next ? `<span><span class="sg-strong">${esc(next.title)}</span><br><span class="dim">${fmtSessionDay(next.date)}${next.start ? ` · ${fmtTime(next.start)}` : ''}</span></span>` : '<span class="dim">Nothing scheduled</span>'}</div>
+      <div class="sg-card-foot"><span class="small dim">${o.loading ? 'Loading…' : `${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'}`}${isOrgOfficer(o) ? ' · You’re an officer' : ''}</span></div>
     </div>`;
 }
 function orgEventRow(o, e, { showOrg = false } = {}) {
@@ -436,9 +438,9 @@ function pageOrgDetail(o) {
       </div>
       <div class="sg-head-actions">
         ${signInHeaderButton()}
-        ${isOrgOfficer(o) ? `<button class="btn btn-sm" onclick="openOrgEventModal('${o.code}')">+ Event</button><button class="btn btn-sm" onclick="openAnnouncementModal('${o.code}')">${icon('megaphone', 13, 1.8)} Announce</button>` : ''}
+        ${isOrgOfficer(o) ? `<button class="btn btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Event</button><button class="btn btn-sm" onclick="openAnnouncementModal('${o.code}')">${icon('megaphone', 13, 1.8)} Announce</button>` : ''}
         <button class="btn btn-primary btn-sm" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 13, 1.8)} Invite</button>
-        <button class="btn btn-icon" aria-label="${isOrgOfficer(o) ? `Admin for ${esc(o.name)}` : `Settings for ${esc(o.name)}`}" title="${isOrgOfficer(o) ? 'Admin' : 'Settings'}" onclick="${isOrgOfficer(o) ? `setState({orgTab:'admin'})` : `openOrgSettingsModal('${o.code}')`}">${icon(isOrgOfficer(o) ? 'shield' : 'settings', 16, 1.6)}</button>
+        <button class="btn btn-icon" aria-label="${isOrgOfficer(o) ? `Admin for ${esc(o.name)}` : `Settings for ${esc(o.name)}`}" data-tip="${isOrgOfficer(o) ? 'Admin' : 'Settings'}" onclick="${isOrgOfficer(o) ? `setState({orgTab:'admin'})` : `openOrgSettingsModal('${o.code}')`}">${icon(isOrgOfficer(o) ? 'shield' : 'settings', 16, 1.6)}</button>
       </div>
     </div>
     ${orgLoadNotice(o)}
@@ -461,7 +463,7 @@ function orgFirstStepsHtml(o) {
     icon: 'user-plus',
     title: 'It’s just you so far',
     body: officer ? 'Invite your members with the club code or a link, then add the first meeting or practice and it shows up on everyone’s calendar.' : 'Invite the rest of the group with the club code or a link.',
-    actions: [{ label: 'Invite members', onclick: `openOrgInviteModal('${o.code}')`, icon: 'user-plus' }, ...(officer ? [{ label: '+ Add an event', onclick: `openOrgEventModal('${o.code}')` }] : [])],
+    actions: [{ label: 'Invite members', onclick: `openOrgInviteModal('${o.code}')`, icon: 'user-plus' }, ...(officer ? [{ label: 'Add an event', onclick: `openOrgEventModal('${o.code}')`, icon: 'plus' }] : [])],
   });
 }
 function orgOverviewTab(o) {
@@ -496,26 +498,26 @@ function orgOverviewTab(o) {
             <div class="sg-eyebrow">Calendar</div>
             <div class="sg-next-title">Nothing scheduled yet</div>
             <p class="small muted">${isOrgOfficer(o) ? 'Add your first meeting or practice and it shows up on every member’s calendar.' : 'When officers add events, they’ll show up here and on your calendar.'}</p>
-            ${isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm mt-8" onclick="openOrgEventModal('${o.code}')">+ Add an event</button>` : ''}
+            ${isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm mt-8" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Add an event</button>` : ''}
           </div>`}
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Coming up</h3><button class="sg-link" onclick="setState({orgTab:'events'})">Full calendar →</button></div>
+          <div class="flex-between mb-8"><h3 class="sg-h3">Coming up</h3><button class="sg-link" onclick="setState({orgTab:'events'})">Full calendar ${icon('chevron-right', 12)}</button></div>
           ${upcoming.slice(1, 6).map(e => orgEventRow(o, e)).join('') || '<p class="small muted">Nothing else scheduled.</p>'}
         </div>
       </div>
       <div class="sg-col">
-        ${unanswered.length ? `<div class="card card-pad org-officer-card"><div class="sg-eyebrow">${icon('shield', 12, 1.8)} Officer view</div>${unanswered.map(({ e, c }) => `<div class="small mt-8"><span class="sg-strong">${esc(e.title)}</span>: ${c.none} haven’t RSVPed. <button class="sg-link" onclick="showOrgEventModal('${o.code}','${e.id}')">See who</button></div>`).join('')}</div>` : ''}
+        ${unanswered.length ? `<div class="card card-pad org-officer-card"><div class="sg-eyebrow">${icon('shield', 12)} Officer view</div>${unanswered.map(({ e, c }) => `<div class="small mt-8"><span class="sg-strong">${esc(e.title)}</span>: ${c.none} haven’t RSVPed. <button class="sg-link" onclick="showOrgEventModal('${o.code}','${e.id}')">See who</button></div>`).join('')}</div>` : ''}
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Announcements</h3>${isOrgOfficer(o) ? `<button class="sg-link" onclick="openAnnouncementModal('${o.code}')">+ Post</button>` : `<button class="sg-link" onclick="setState({orgTab:'announcements'})">All →</button>`}</div>
+          <div class="flex-between mb-8"><h3 class="sg-h3">Announcements</h3>${isOrgOfficer(o) ? `<button class="sg-link" onclick="openAnnouncementModal('${o.code}')">${icon('plus', 12)} Post</button>` : `<button class="sg-link" onclick="setState({orgTab:'announcements'})">All ${icon('chevron-right', 12)}</button>`}</div>
           ${anns.length ? anns.map(a => orgAnnouncementHtml(o, a, { compact: true })).join('') : '<p class="small muted">No announcements yet.</p>'}
         </div>
         ${(() => { const files = orgFileList(o).slice(0, 3); return files.length ? `
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Files</h3><button class="sg-link" onclick="setState({orgTab:'files'})">All ${orgFileList(o).length} →</button></div>
+          <div class="flex-between mb-8"><h3 class="sg-h3">Files</h3><button class="sg-link" onclick="setState({orgTab:'files'})">All ${orgFileList(o).length} ${icon('chevron-right', 12)}</button></div>
           ${files.map(f => orgFileRow(o, f, { compact: true })).join('')}
         </div>` : ''; })()}
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Officers</h3><button class="sg-link" onclick="setState({orgTab:'members'})">${o.memberUids.length} members →</button></div>
+          <div class="flex-between mb-8"><h3 class="sg-h3">Officers</h3><button class="sg-link" onclick="setState({orgTab:'members'})">${o.memberUids.length} members ${icon('chevron-right', 12)}</button></div>
           ${officers.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, orgColor(o))}<div class="row-title small">${esc(p.name)}${p.uid === myOrgUid(o) ? ' <span class="muted">(you)</span>' : ''}</div><span class="small muted">${esc(orgRoleLabel(o, p))}</span></div>`).join('')}
         </div>
         <label class="checkbox-row small org-cal-toggle"><input type="checkbox" ${o.hideCalendar ? '' : 'checked'} onchange="setOrgOnCalendar('${o.code}',this.checked)"><span>Show ${esc(o.name)} events on my calendar</span></label>
@@ -534,10 +536,10 @@ function orgEventsTab(o) {
       <div class="small muted">${o.hideCalendar ? 'These events are hidden from your calendar.' : 'Events you haven’t said no to are on your calendar.'}</div>
       <div class="flex-gap">
         ${upcoming.length ? `<button class="btn btn-sm" onclick="downloadOrgIcs('${o.code}')">${icon('download', 13, 1.8)} Add all to calendar app</button>` : ''}
-        ${isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm" onclick="openOrgEventModal('${o.code}')">+ Event</button>` : ''}
+        ${isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Event</button>` : ''}
       </div>
     </div>
-    ${byMonth.length ? byMonth.map(g => `<div class="sg-section-label">${esc(g.label)}</div><div class="card card-pad mb-16">${g.items.map(e => orgEventRow(o, e)).join('')}</div>`).join('') : emptyState(icon('calendar', 24, 1.4), 'No upcoming events', isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm" onclick="openOrgEventModal('${o.code}')">+ Add an event</button>` : '', isOrgOfficer(o) ? 'Weekly meetings can repeat, so you only add them once.' : '')}
+    ${byMonth.length ? byMonth.map(g => `<div class="sg-section-label">${esc(g.label)}</div><div class="card card-pad mb-16">${g.items.map(e => orgEventRow(o, e)).join('')}</div>`).join('') : emptyState(icon('calendar', 24, 1.4), 'No upcoming events', isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Add an event</button>` : '', isOrgOfficer(o) ? 'Weekly meetings can repeat, so you only add them once.' : '')}
     ${past.length ? `<details class="sg-past"><summary class="small muted">Past events (${past.length})</summary><div class="card card-pad">${past.slice(0, 40).map(e => orgEventRow(o, e)).join('')}</div></details>` : ''}
   `;
 }
@@ -547,7 +549,7 @@ function orgAnnouncementHtml(o, a, { compact = false } = {}) {
     <div class="org-ann ${a.pinned ? 'is-pinned' : ''}">
       <div class="flex-between">
         <div class="small"><span class="sg-strong">${esc(a.name)}</span> <span class="muted">· ${fmtRelativeTime(a.at)}</span>${a.pinned ? ` <span class="org-pin">${icon('pin', 11, 1.8)} Pinned</span>` : ''}</div>
-        ${!compact && isOrgOfficer(o) ? `<div class="flex-gap"><button class="btn btn-ghost btn-icon btn-sm" aria-label="${a.pinned ? 'Unpin' : 'Pin'} announcement" onclick="pinAnnouncement('${o.code}','${a.id}',${!a.pinned})">${icon('pin', 13, 1.8)}</button><button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete announcement" onclick="deleteAnnouncement('${o.code}','${a.id}')">${icon('trash', 13)}</button></div>` : ''}
+        ${!compact && isOrgOfficer(o) ? `<div class="flex-gap"><button class="btn btn-ghost btn-icon btn-sm" aria-label="${a.pinned ? 'Unpin' : 'Pin'} announcement" onclick="pinAnnouncement('${o.code}','${a.id}',${!a.pinned})">${icon('pin', 13, 1.8)}</button><button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete announcement" data-tip="Delete announcement" onclick="deleteAnnouncement('${o.code}','${a.id}')">${icon('trash', 13)}</button></div>` : ''}
       </div>
       <div class="org-ann-text">${linkifyText(text)}</div>
     </div>`;
@@ -1029,7 +1031,7 @@ function orgFileRow(o, f, { compact = false } = {}) {
       <span class="sg-res-ic">${icon(isFile ? 'paperclip' : 'link', 16)}</span>
       <div class="row-title"><div class="sg-strong">${esc(f.title)}</div><div class="row-meta">${meta.filter(Boolean).map(esc).join(' · ')}</div></div>
       ${open}
-      ${!compact && isOrgOfficer(o) ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(f.title)}" onclick="removeOrgFile('${o.code}','${f.id}')">${icon('trash', 14)}</button>` : ''}
+      ${!compact && isOrgOfficer(o) ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(f.title)}" data-tip="Remove" onclick="removeOrgFile('${o.code}','${f.id}')">${icon('trash', 14)}</button>` : ''}
     </div>`;
 }
 function orgFilesTab(o) {
@@ -1038,7 +1040,7 @@ function orgFilesTab(o) {
   return `
     <div class="sg-toolbar">
       <div class="small muted">${officer ? 'Share forms, schedules, rosters, and links with everyone.' : 'Forms, schedules, and links from your officers.'}</div>
-      ${officer ? `<button class="btn btn-primary btn-sm" onclick="openOrgFileModal('${o.code}')">+ Share a file or link</button>` : ''}
+      ${officer ? `<button class="btn btn-primary btn-sm" onclick="openOrgFileModal('${o.code}')">${icon('plus', 14)} Share a file or link</button>` : ''}
     </div>
     ${files.length ? `<div class="card card-pad">${files.map(f => orgFileRow(o, f)).join('')}</div>`
       : emptyState(icon('paperclip', 24, 1.4), 'No files yet', officer ? `<button class="btn btn-sm mt-8" onclick="openOrgFileModal('${o.code}')">Share the first file</button>` : '', officer ? 'A dues form, the practice schedule, your constitution, a link to the photo drive.' : 'When officers share something, it shows up here.')}

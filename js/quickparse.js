@@ -216,10 +216,10 @@ function quickAddBar(id, { mode = 'auto', placeholder, defaultCourseId = null } 
   return `
     <div class="quick-add card qa-smart" id="qa-wrap-${id}">
       <div class="qa-row">
-        <span class="quick-add-ic">${icon('plus', 15, 2)}</span>
+        <span class="quick-add-ic">${icon('plus', 16)}</span>
         <input class="quick-add-input" id="qa-${id}" placeholder="${esc(ph)}" autocomplete="off" aria-label="${mode === 'todo' ? 'Add a to-do' : mode === 'assignment' ? 'Add an assignment' : 'Quick add'}" aria-describedby="qa-${id}-preview"
           oninput="qaPreview('${id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();qaSubmit('${id}')}else if(event.key==='Escape'){this.value='';qaReset('${id}')}">
-        <button class="btn btn-sm btn-primary qa-add-btn" onclick="qaSubmit('${id}')">Add</button>
+        <button class="btn btn-sm qa-add-btn" onclick="qaSubmit('${id}')">Add</button>
       </div>
       <div class="qa-preview" id="qa-${id}-preview" aria-live="polite">${qaPreviewHtml(id, '')}</div>
     </div>`;

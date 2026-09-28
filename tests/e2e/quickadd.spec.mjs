@@ -10,7 +10,7 @@ import { openApp, navTo } from './helpers.mjs';
 
 async function addCourse(page) {
   await navTo(page, 'courses');
-  await page.getByRole('button', { name: '+ Add course' }).click();
+  await page.getByRole('button', { name: 'Add course', exact: true }).first().click();
   await page.locator('#modal #cf-name').fill('Cell Biology');
   await page.locator('#modal #cf-code').fill('BIO 210');
   await page.locator('#modal').getByRole('button', { name: 'Save course' }).click();

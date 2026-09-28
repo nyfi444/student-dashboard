@@ -45,23 +45,24 @@ function pageCareer() {
   const upcoming = appDueItems(todayIso(), addDays(todayIso(), 14)).slice(0, 6);
   const overdue = all.filter(a => a.stage === 'saved' && a.deadline && a.deadline < todayIso());
 
+  // The tally lives in the page subtitle; zeros are left out.
+  const tally = [
+    applied ? `${applied} applied` : '',
+    applied && heard ? `${Math.round((heard / applied) * 100)}% heard back` : '',
+    interviews ? `${interviews} interview${interviews === 1 ? '' : 's'}` : '',
+    offers ? `${offers} offer${offers === 1 ? '' : 's'}` : '',
+    scholarshipWon ? `$${scholarshipWon.toLocaleString()} in scholarships won` : '',
+  ].filter(Boolean).join(' · ');
   return `
-    ${pageHead('Applications', 'Internships, jobs, and scholarships, all in one place', `
+    ${pageHead('Applications', tally || (all.length ? `${all.length} saved` : 'Internships, jobs, and scholarships, all in one place'), `
       ${aiButton('Paste a posting', 'openPastePostingModal()')}
-      <button class="btn btn-primary" onclick="openApplicationModal()">+ Add</button>
+      <button class="btn btn-primary" onclick="openApplicationModal()">${icon('plus', 14)} Add</button>
     `)}
     ${all.length ? `
-      <div class="career-stats">
-        <div class="career-stat"><strong>${applied}</strong><span>Applied</span></div>
-        <div class="career-stat"><strong>${applied ? Math.round((heard / applied) * 100) : 0}%</strong><span>Heard back</span></div>
-        <div class="career-stat"><strong>${interviews}</strong><span>Interviews</span></div>
-        <div class="career-stat"><strong>${offers}</strong><span>Offers</span></div>
-        ${scholarshipWon ? `<div class="career-stat"><strong>$${scholarshipWon.toLocaleString()}</strong><span>Scholarships won</span></div>` : ''}
-      </div>
       ${upcoming.length || overdue.length ? `
       <div class="card card-pad mb-16">
         <h3 class="sg-h3 mb-8">Coming up</h3>
-        ${overdue.map(a => `<div class="dash-due-row" onclick="openApplicationModal('${a.id}')"><span class="career-date is-overdue">${icon('flag', 12, 2)}</span><div class="row-title"><div>Deadline passed: ${esc(a.org)}</div><div class="assign-meta"><span>${esc(a.role || a.type)}</span><span>was due ${esc(fmtSessionDay(a.deadline))}</span></div></div></div>`).join('')}
+        ${overdue.map(a => `<div class="dash-due-row" onclick="openApplicationModal('${a.id}')"><span class="career-date is-overdue">${icon('flag', 14)}</span><div class="row-title"><div>Deadline passed: ${esc(a.org)}</div><div class="assign-meta"><span>${esc(a.role || a.type)}</span><span>was due ${esc(fmtSessionDay(a.deadline))}</span></div></div></div>`).join('')}
         ${upcoming.map(i => `<div class="dash-due-row" onclick="openApplicationModal('${i.app.id}')"><span class="career-date">${dateTile(i.date)}</span><div class="row-title"><div>${esc(i.label)}</div><div class="assign-meta"><span>${esc(i.app.type)}</span><span>${esc(fmtSessionDay(i.date))}${i.time ? ` · ${fmtTime(i.time)}` : ''}</span></div></div></div>`).join('')}
       </div>` : ''}
       <div class="assign-toolbar">
@@ -73,7 +74,7 @@ function pageCareer() {
       icon: 'briefcase',
       title: 'Your next move, organized.',
       body: 'Track every internship, job, and scholarship from saved to offer, with deadlines and interviews on your dashboard and calendar.',
-      actions: [{ label: '+ Add an application', onclick: 'openApplicationModal()' }, { label: 'Paste a job posting', onclick: 'openPastePostingModal()', icon: 'sparkles' }],
+      actions: [{ label: 'Add an application', onclick: 'openApplicationModal()', icon: 'plus' }, { label: 'Paste a job posting', onclick: 'openPastePostingModal()' }],
     })}
   `;
 }
@@ -81,9 +82,9 @@ function careerBoard(list) {
   return `<div class="career-board">${APP_STAGES.map(([stage, label]) => {
     const items = list.filter(a => a.stage === stage).sort((a, b) => (appNextDate(a) || '9999').localeCompare(appNextDate(b) || '9999') || (b.updatedAt || 0) - (a.updatedAt || 0));
     return `<section class="career-col" data-stage="${stage}" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="this.classList.remove('drop');dropApplication(event,'${stage}')">
-      <div class="career-col-head"><span>${label}</span><span class="assign-count">${items.length}</span></div>
+      <div class="career-col-head"><span>${label}</span>${items.length ? `<span class="assign-count">${items.length}</span>` : ''}</div>
       ${items.map(careerCard).join('') || `<div class="career-col-empty">${stage === 'saved' ? 'Things you plan to apply to' : 'Drag cards here'}</div>`}
-      ${stage === 'saved' ? `<button class="career-add" onclick="openApplicationModal(null,'saved')">+ Add</button>` : ''}
+      ${stage === 'saved' ? `<button class="career-add" onclick="openApplicationModal(null,'saved')">${icon('plus', 12)} Add</button>` : ''}
     </section>`;
   }).join('')}</div>`;
 }
@@ -95,9 +96,9 @@ function careerCard(a) {
   return `<article class="career-card" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${a.id}')" onclick="openApplicationModal('${a.id}')">
     <div class="career-card-top"><span class="career-type">${esc(a.type)}</span>${a.stage === 'closed' && a.outcome ? `<span class="career-outcome">${esc((APP_OUTCOMES.find(o => o[0] === a.outcome) || [])[1] || '')}</span>` : ''}</div>
     <div class="career-org">${esc(a.org || 'Untitled')}</div>
-    ${a.role ? `<div class="small muted">${esc(a.role)}${a.amount && a.type === 'Scholarship' ? ` · $${Number(a.amount).toLocaleString()}` : ''}</div>` : a.amount ? `<div class="small muted">$${Number(a.amount).toLocaleString()}</div>` : ''}
-    ${next ? `<div class="career-next ${overdue ? 'sg-overdue' : ''}">${icon('calendar', 11, 1.8)} ${esc(next.label || 'Next step')} · ${esc(fmtSessionDay(next.date))}</div>` : ''}
-    ${total ? `<div class="career-progress" title="${done} of ${total} done"><div class="progress"><div style="width:${(done / total) * 100}%"></div></div><span>${done}/${total}</span></div>` : ''}
+    ${a.role ? `<div class="small dim">${esc(a.role)}${a.amount && a.type === 'Scholarship' ? ` · $${Number(a.amount).toLocaleString()}` : ''}</div>` : a.amount ? `<div class="small dim">$${Number(a.amount).toLocaleString()}</div>` : ''}
+    ${next ? `<div class="career-next ${overdue ? 'sg-overdue' : ''}">${icon(overdue ? 'clock' : 'calendar', 12)} ${esc(next.label || 'Next step')} · ${esc(fmtSessionDay(next.date))}</div>` : ''}
+    ${total ? `<div class="career-progress" aria-label="${done} of ${total} done"><div class="progress"><div style="width:${(done / total) * 100}%"></div></div><span>${done}/${total}</span></div>` : ''}
     <select class="select career-stage-select" aria-label="Stage for ${esc(a.org)}" onclick="event.stopPropagation()" onchange="setApplicationStage('${a.id}',this.value)">${APP_STAGES.map(([s, l]) => `<option value="${s}" ${s === a.stage ? 'selected' : ''}>${l}</option>`).join('')}</select>
   </article>`;
 }
@@ -107,7 +108,7 @@ function careerList(list) {
   return `<div class="card assign-list">${rows.map(a => {
     const next = appNextDate(a);
     return `<div class="assign-row" onclick="openApplicationModal('${a.id}')">
-      <div class="assign-main"><div class="assign-title">${esc(a.org)}${a.role ? ` <span class="muted">· ${esc(a.role)}</span>` : ''}</div>
+      <div class="assign-main"><div class="assign-title">${esc(a.org)}${a.role ? ` <span class="dim">· ${esc(a.role)}</span>` : ''}</div>
       <div class="assign-meta"><span>${esc(a.type)}</span><span class="assign-status">${esc((APP_STAGES.find(s => s[0] === a.stage) || [])[1])}</span>${a.location ? `<span>${esc(a.location)}</span>` : ''}</div></div>
       <div class="assign-due">${next ? esc(fmtSessionDay(next)) : '<span class="muted">No date</span>'}</div>
     </div>`;
@@ -182,18 +183,18 @@ function renderApplicationModal() {
           <div class="career-check">
             <button type="button" class="row-check ${c.done ? 'checked' : ''}" role="checkbox" aria-checked="${c.done}" aria-label="Mark ${esc(c.text)} ${c.done ? 'not done' : 'done'}" onclick="_appDraft.checklist[${i}].done=!_appDraft.checklist[${i}].done;renderApplicationModal()">${c.done ? checkGlyph(true) : ''}</button>
             <input class="input" value="${esc(c.text)}" aria-label="Checklist item" oninput="_appDraft.checklist[${i}].text=this.value">
-            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove item" onclick="_appDraft.checklist.splice(${i},1);renderApplicationModal()">${icon('x', 12, 2.2)}</button>
+            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove item" data-tip="Remove item" onclick="_appDraft.checklist.splice(${i},1);renderApplicationModal()">${icon('x', 12, 2.2)}</button>
           </div>`).join('')}
-        <button class="sg-link mt-8" onclick="_appDraft.checklist.push({id:uid(),text:'',done:false});renderApplicationModal()">+ Add item</button>
+        <button class="sg-link mt-8" onclick="_appDraft.checklist.push({id:uid(),text:'',done:false});renderApplicationModal()">${icon('plus', 12)} Add item</button>
       </div>
       <div class="field"><label>Contacts</label>
         ${d.contacts.map((c, i) => `
           <div class="career-contact">
             <input class="input" value="${esc(c.name)}" placeholder="Name" aria-label="Contact name" oninput="_appDraft.contacts[${i}].name=this.value">
             <input class="input" value="${esc(c.email)}" placeholder="Email or LinkedIn" aria-label="Contact email or LinkedIn" oninput="_appDraft.contacts[${i}].email=this.value">
-            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove contact" onclick="_appDraft.contacts.splice(${i},1);renderApplicationModal()">${icon('x', 12, 2.2)}</button>
+            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove contact" data-tip="Remove contact" onclick="_appDraft.contacts.splice(${i},1);renderApplicationModal()">${icon('x', 12, 2.2)}</button>
           </div>`).join('')}
-        <button class="sg-link mt-8" onclick="_appDraft.contacts.push({name:'',email:''});renderApplicationModal()">+ Add a recruiter or contact</button>
+        <button class="sg-link mt-8" onclick="_appDraft.contacts.push({name:'',email:''});renderApplicationModal()">${icon('plus', 12)} Add a recruiter or contact</button>
       </div>
       <div class="field" style="margin-bottom:0"><label for="ap-notes">Notes</label><textarea class="input" id="ap-notes" placeholder="Interview questions, salary, what to follow up on…" oninput="_appDraft.notes=this.value">${esc(d.notes)}</textarea></div>
     </div>

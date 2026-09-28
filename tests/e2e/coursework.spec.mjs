@@ -16,7 +16,7 @@ const COURSE = { name: 'Cell Biology', code: 'BIO 210', credits: '4' };
 /* Fills in the add-course modal and saves. */
 async function addCourse(page, course = COURSE) {
   await navTo(page, 'courses');
-  await page.getByRole('button', { name: '+ Add course' }).click();
+  await page.getByRole('button', { name: 'Add course', exact: true }).first().click();
   const modal = page.locator('#modal');
   await expect(modal.locator('h3')).toHaveText('Add course');
   await modal.locator('#cf-name').fill(course.name);
@@ -55,7 +55,7 @@ test('work can be added to a course and ticked off', async ({ page }) => {
   await addCourse(page);
 
   await navTo(page, 'assignments');
-  await page.getByRole('button', { name: '+ Add assignment' }).click();
+  await page.getByRole('button', { name: 'Add assignment', exact: true }).click();
   const modal = page.locator('#modal');
   await expect(modal.locator('h3')).toHaveText('New assignment');
   await modal.locator('#af-title').fill('Lab report 1');
@@ -88,7 +88,7 @@ test('adding an exam says exam, not assignment', async ({ page }) => {
   await addCourse(page);
 
   await navTo(page, 'exams');
-  await page.getByRole('button', { name: '+ Add exam' }).first().click();
+  await page.getByRole('button', { name: 'Add exam', exact: true }).first().click();
   const modal = page.locator('#modal');
   await expect(modal.locator('h3')).toHaveText('New exam');
   await expect(modal.locator('#af-type')).toHaveValue('exam');

@@ -89,41 +89,38 @@ function pageStudyTools() {
   const maxF = Math.max(1, ...forecast.map(f => f.n));
   return `
     ${pageHead('Flashcards', 'Review each card right before you’d forget it', `
-      <button class="btn btn-sm" onclick="openFlashcardFileModal()">${icon('upload', 13, 1.8)} Upload a file</button>
+      <button class="btn btn-sm" onclick="openFlashcardFileModal()">${icon('upload', 14)} Upload a file</button>
       ${aiButton('Make from a note', 'openGenerateDeckModal()')}
-      <button class="btn btn-primary" onclick="openDeckModal()">+ New deck</button>
+      <button class="btn btn-primary" onclick="openDeckModal()">${icon('plus', 14)} New deck</button>
     `)}
     ${decks.length ? `
     <div class="fc-top">
       <div class="fc-hero-wrap">
-      <div class="fc-stack" aria-hidden="true"><span></span><span></span></div>
       <div class="card fc-hero">
         <div class="fc-hero-main">
           <div class="sg-eyebrow">Today</div>
-          ${totalDue ? `<div class="fc-hero-num"><b>${totalDue}</b> card${totalDue === 1 ? '' : 's'} to review</div>` : `<div class="fc-hero-num">You’re all caught up</div>`}
-          <div class="small muted">${today.reviewed ? `${today.reviewed} reviewed so far today. ` : ''}${totalDue ? 'About ' + Math.max(1, Math.round(totalDue * 8 / 60)) + ' min.' : 'Come back tomorrow, or browse a deck anytime.'}</div>
-          ${totalDue ? `<button class="btn btn-primary mt-16" onclick="openReview()">${icon('play', 12, 1.5)} Start review</button>` : ''}
+          ${totalDue ? `<div class="fc-hero-num"><b>${totalDue}</b> card${totalDue === 1 ? '' : 's'} to review</div>` : `<div class="fc-hero-num is-clear">You’re all caught up</div>`}
+          <div class="small dim">${today.reviewed ? `${today.reviewed} reviewed so far today. ` : ''}${totalDue ? 'About ' + Math.max(1, Math.round(totalDue * 8 / 60)) + ' min.' : 'Come back tomorrow, or browse a deck anytime.'}</div>
+          ${totalDue ? `<button class="btn btn-primary mt-16" onclick="openReview()">${icon('play', 16)} Start review</button>` : ''}
         </div>
-        <div class="fc-stats">
-          ${(() => { const all = decks.flatMap(d => d.cards); const mastered = decks.reduce((s, d) => s + deckProgress(d).mastered, 0);
-            return [[today.reviewed || 0, 'reviewed today'], [mastered, 'mastered'], [all.length, `card${all.length === 1 ? '' : 's'} in ${decks.length} deck${decks.length === 1 ? '' : 's'}`]]
-              .map(([n, l]) => `<div><b>${n}</b><span>${l}</span></div>`).join(''); })()}
-        </div>
+        ${(() => { const all = decks.flatMap(d => d.cards); const mastered = decks.reduce((s, d) => s + deckProgress(d).mastered, 0);
+          const parts = [[today.reviewed || 0, 'reviewed today'], [mastered, 'mastered'], [all.length, `card${all.length === 1 ? '' : 's'} in ${decks.length} deck${decks.length === 1 ? '' : 's'}`]].filter(([n]) => n);
+          return parts.length ? `<div class="fc-stats">${parts.map(([n, l]) => `<span><b>${n}</b> ${l}</span>`).join(' · ')}</div>` : ''; })()}
       </div>
       </div>
       <div class="card fc-forecast" aria-label="Cards due over the next week">
         <div class="sg-eyebrow">Next 7 days</div>
-        <div class="fc-forecast-bars">${forecast.map((f, i) => `<div class="fc-fbar ${i === 0 ? 'today' : ''} ${f.n ? '' : 'zero'}" title="${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'long' })}: ${f.n} due"><span class="fc-fbar-n">${f.n}</span><span class="fc-fbar-fill" style="height:${f.n ? 8 + (f.n / maxF) * 40 : 2}%"></span><em>${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'short' })}</em></div>`).join('')}</div>
+        <div class="fc-forecast-bars">${forecast.map((f, i) => `<div class="fc-fbar ${i === 0 ? 'today' : ''} ${f.n ? '' : 'zero'}" title="${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'long' })}: ${f.n} due"><span class="fc-fbar-n">${f.n}</span><span class="fc-fbar-fill" style="height:${f.n ? Math.round(8 + (f.n / maxF) * 56) : 4}px"></span><em>${i === 0 ? 'Today' : fmtDate(f.d, { weekday: 'short' })}</em></div>`).join('')}</div>
       </div>
     </div>
     <div class="grid grid-3 fc-decks">${decks.map(deckCard).join('')}
-      <button type="button" class="fc-new-deck" onclick="openDeckModal()">${icon('plus', 18, 2)}<span>New deck</span><small>Type cards, paste a list, or upload slides</small></button>
+      <button type="button" class="fc-new-deck" onclick="openDeckModal()">${icon('plus', 20)}<span>New deck</span><small>Type cards, paste a list, or upload slides</small></button>
     </div>`
     : emptyStateHtml({
       icon: 'layers',
       title: 'Make your first deck',
       body: 'Type the cards in, paste a list of terms, or upload your class slides or a Quizlet export, and each card comes back right before you’d forget it.',
-      actions: [{ label: '+ New deck', onclick: 'openDeckModal()' }, { label: 'Upload a file', onclick: 'openFlashcardFileModal()', icon: 'upload' }],
+      actions: [{ label: 'New deck', onclick: 'openDeckModal()', icon: 'plus' }, { label: 'Upload a file', onclick: 'openFlashcardFileModal()', icon: 'upload' }],
     })}
   `;
 }
@@ -137,22 +134,22 @@ function deckCard(d) {
       <div class="flex-between" style="align-items:flex-start;gap:8px">
         <div style="min-width:0">
           <div class="fc-deck-name">${esc(d.name)}</div>
-          <div class="fc-deck-meta">${c ? `<span class="course-chip tinted assign-tag" style="--c:${esc(c.color || '#5a6b7b')}">${esc(c.code || c.name)}</span>` : ''}<span>${d.cards.length} card${d.cards.length === 1 ? '' : 's'}</span></div>
+          <div class="fc-deck-meta">${c ? `<span class="assign-course"><span class="course-dot"></span>${esc(c.code || c.name)}</span>` : ''}<span>${d.cards.length} card${d.cards.length === 1 ? '' : 's'}</span></div>
         </div>
-        ${due ? `<span class="fc-due">${due} due</span>` : d.cards.length ? `<span class="fc-done">${icon('check', 11, 2.4)}</span>` : ''}
+        ${due ? `<span class="fc-due">${due} due</span>` : d.cards.length ? `<span class="fc-done" role="img" aria-label="Nothing due">${icon('check', 12, 2.4)}</span>` : ''}
       </div>
       ${d.cards.length ? `
         <div class="fc-mastery" title="${p.mastered} mastered · ${p.learning} learning · ${p.newCount} new">
           <span style="width:${p.mastered / n * 100}%" class="m"></span><span style="width:${p.learning / n * 100}%" class="l"></span>
         </div>
-        <div class="fc-legend small muted"><span><i class="m"></i>${p.mastered} mastered</span><span><i class="l"></i>${p.learning} learning</span><span><i></i>${p.newCount} new</span></div>` : `<p class="small muted mt-8">No cards yet.</p>`}
+        <div class="fc-legend small dim"><span><i class="m"></i>${p.mastered} mastered</span><span><i class="l"></i>${p.learning} learning</span><span><i></i>${p.newCount} new</span></div>` : `<p class="small muted mt-8">No cards yet.</p>`}
       <div class="flex-gap mt-16">
-        <button class="btn btn-sm ${due ? 'btn-primary' : ''}" onclick="${due ? `openReview(['${d.id}'])` : `openStudyMode('${d.id}')`}" ${d.cards.length ? '' : 'disabled'}>${due ? 'Review' : 'Browse'}</button>
+        <button class="btn btn-sm" onclick="${due ? `openReview(['${d.id}'])` : `openStudyMode('${d.id}')`}" ${d.cards.length ? '' : 'disabled'}>${due ? 'Review' : 'Browse'}</button>
         ${due ? `<button class="btn btn-sm" onclick="openStudyMode('${d.id}')" ${d.cards.length ? '' : 'disabled'}>Browse</button>` : ''}
         <button class="btn btn-sm" onclick="openDeckModal('${d.id}')">Edit</button>
         <span style="flex:1"></span>
-        <button class="btn btn-ghost btn-icon btn-sm" onclick="shareDeckToGroup('${d.id}')" title="Share to a study group" aria-label="Share ${esc(d.name)} to a study group">${icon('users', 14)}</button>
-        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(d.name)}" onclick="deleteDeck('${d.id}')">${icon('trash', 14)}</button>
+        <button class="btn btn-ghost btn-icon btn-sm" onclick="shareDeckToGroup('${d.id}')" data-tip="Share to a study group" aria-label="Share ${esc(d.name)} to a study group">${icon('users', 14)}</button>
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(d.name)}" data-tip="Delete deck" onclick="deleteDeck('${d.id}')">${icon('trash', 14)}</button>
       </div>
     </div>`;
 }
@@ -177,7 +174,7 @@ function renderDeckModal(id) {
       <div class="field"><label>Cards (${d.cards.length})</label>
         <div id="df-cards">${d.cards.map((c, i) => cardRow(c, i, existing)).join('')}</div>
         <div class="flex-gap wrap mt-8">
-          <button class="btn btn-sm" onclick="_deckDraft.cards.push({id:uid(),front:'',back:''});renderDeckModal('${existing}');setTimeout(()=>$$('#df-cards .fc-edit-front').at(-1)?.focus(),60)">+ Add card</button>
+          <button class="btn btn-sm" onclick="_deckDraft.cards.push({id:uid(),front:'',back:''});renderDeckModal('${existing}');setTimeout(()=>$$('#df-cards .fc-edit-front').at(-1)?.focus(),60)">${icon('plus', 14)} Add card</button>
           <button class="btn btn-sm btn-ghost" onclick="$('#df-bulk-wrap').hidden=!$('#df-bulk-wrap').hidden">Paste a list</button>
           <button class="btn btn-sm btn-ghost" onclick="$('#df-file').click()" title="A Quizlet or Anki export, or a spreadsheet or Word doc with the front in the first column and the back in the second">${icon('upload', 12, 1.8)} Import a file</button>
           <input type="file" id="df-file" hidden onchange="importCardListFile(this.files[0],'${existing}')">
@@ -199,7 +196,7 @@ function cardRow(c, i, existing) {
   return `<div class="fc-edit-row">
     <textarea class="input fc-edit-front" rows="1" placeholder="Front" oninput="_deckDraft.cards[${i}].front=this.value">${esc(c.front)}</textarea>
     <textarea class="input" rows="1" placeholder="Back" oninput="_deckDraft.cards[${i}].back=this.value">${esc(c.back)}</textarea>
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove card" onclick="_deckDraft.cards.splice(${i},1);renderDeckModal('${existing}')">${icon('x', 13, 2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove card" data-tip="Remove card" onclick="_deckDraft.cards.splice(${i},1);renderDeckModal('${existing}')">${icon('x', 13, 2.2)}</button>
   </div>`;
 }
 function importBulkCards(existing) {
@@ -319,7 +316,7 @@ function openFlashcardFileModal() {
       </div>
       <div class="fc-file-kinds">
         <div class="fc-file-kind"><span class="sg-feature-ic">${icon('layers', 15, 1.7)}</span><div><div class="sg-strong small">Card lists</div><div class="small muted">A Quizlet or Anki export, or a spreadsheet (Excel or CSV) with the front in the first column. Every row becomes a card.</div></div></div>
-        <div class="fc-file-kind"><span class="sg-feature-ic">${icon(locked ? 'lock' : 'sparkles', 15, 1.7)}</span><div><div class="sg-strong small">Notes and slides</div><div class="small muted">A PDF, Word doc, PowerPoint, or photos of your notes. Semester HQ writes question-and-answer cards for you to review.${locked ? ' Included with Semester HQ Plus.' : ''}</div></div></div>
+        <div class="fc-file-kind"><span class="sg-feature-ic">${icon(locked ? 'lock' : 'file-text', 16)}</span><div><div class="sg-strong small">Notes and slides</div><div class="small muted">A PDF, Word doc, PowerPoint, or photos of your notes. Semester HQ writes question-and-answer cards for you to review.${locked ? ' Included with Semester HQ Plus.' : ''}</div></div></div>
       </div>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button></div>
@@ -528,7 +525,7 @@ function renderStudyMode() {
           <button class="${mode === 'flip' ? 'active' : ''}" onclick="setStudyMode('flip')">Browse</button>
           <button class="${mode === 'test' ? 'active' : ''}" onclick="setStudyMode('test')">Test yourself</button>
         </div>
-        <button class="btn btn-icon btn-sm ${card.starred ? 'btn-primary' : ''}" onclick="toggleCardStar()" title="Star as difficult" aria-pressed="${!!card.starred}" aria-label="Star as difficult">${icon('star', 14)}</button>
+        <button class="btn btn-icon btn-sm${card.starred ? ' is-on' : ''}" onclick="toggleCardStar()" data-tip="Star as difficult" aria-pressed="${!!card.starred}" aria-label="Star as difficult">${icon('star', 14)}</button>
       </div>
       <div class="small muted mb-8" style="text-align:center">${idx + 1} / ${cards.length}${window._study.starredOnly ? ' · starred only' : ''}</div>
       ${mode === 'flip' ? `
@@ -559,7 +556,7 @@ function renderStudyMode() {
       <div class="flex-gap">
         <button class="btn" onclick="studyNav(-1)" ${idx === 0 ? 'disabled' : ''}>← Prev</button>
         <button class="btn" onclick="shuffleDeck()">${icon('shuffle', 13, 2)} Shuffle</button>
-        <button class="btn btn-primary" onclick="studyNav(1)" ${idx === cards.length - 1 ? 'disabled' : ''}>Next →</button>
+        <button class="btn btn-primary" onclick="studyNav(1)" ${idx === cards.length - 1 ? 'disabled' : ''}>Next ${icon('chevron-right', 14)}</button>
       </div>
     </div>
   `);

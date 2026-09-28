@@ -39,16 +39,16 @@ function pageCourses() {
   const courses = activeCourses();
   const credits = courses.reduce((s, c) => s + (Number(c.credits) || 0), 0);
   return `
-    ${pageHead('Courses', `${courses.length} course${courses.length === 1 ? '' : 's'} · ${credits} credits · Click a class to open its page`, `
-      <button class="btn btn-sm" onclick="openJoinClassModal()">${icon('users', 13, 1.8)} Join a shared class</button>
+    ${pageHead('Courses', `${courses.length} course${courses.length === 1 ? '' : 's'} · ${credits} credit${credits === 1 ? '' : 's'}`, `
+      <button class="btn btn-sm" onclick="openJoinClassModal()">${icon('users', 14)} Join a shared class</button>
       ${aiButton('Upload syllabus', 'openSyllabusUploadModal()')}
-      <button class="btn btn-primary" onclick="openCourseModal()">+ Add course</button>
+      <button class="btn btn-primary" onclick="openCourseModal()">${icon('plus', 14)} Add course</button>
     `)}
     ${courses.length ? expandable('course-grid', 'Courses', `<div class="grid grid-2 course-grid">${courses.map(courseCard).join('')}</div>`, { max: 620, count: courses.length }) : emptyStateHtml({
       icon: 'graduation-cap',
       title: 'Add your classes',
       body: 'Semester setup reads each syllabus and fills in meeting times, deadlines, and exam dates, or you can add a class by hand.',
-      actions: [{ label: 'Set up my semester', onclick: 'openSemesterSetup()', icon: 'sparkles' }, { label: '+ Add a course', onclick: 'openCourseModal()' }],
+      actions: [{ label: 'Set up my semester', onclick: 'openSemesterSetup()', icon: 'calendar' }, { label: 'Add a course', onclick: 'openCourseModal()', icon: 'plus' }],
     })}
   `;
 }
@@ -69,22 +69,19 @@ function courseCard(c) {
     <div class="card course-card" role="button" tabindex="0" onclick="openCourse('${c.id}')" onkeydown="if(event.key==='Enter')openCourse('${c.id}')" style="--course:${esc(c.color || '#5a6b7b')}">
       <div class="course-card-top">
         <div style="min-width:0">
-          <div class="course-code"><span class="course-dot"></span>${esc(c.code || 'Course')}${c.instructor ? ` · ${esc(c.instructor)}` : ''}${c.sharedClass ? ` <span class="class-shared-tag">${icon('users', 10, 2)} Shared</span>` : ''}</div>
+          <div class="course-code"><span class="course-dot"></span>${esc(c.code || 'Course')}${c.instructor ? ` · ${esc(c.instructor)}` : ''}${c.sharedClass ? ` <span class="class-shared-tag">${icon('users', 12)} Shared</span>` : ''}</div>
           <div class="course-name">${esc(c.name)}</div>
-        </div>
-        <div class="course-ring" title="${w.done.length} of ${w.items.length} assignments finished">
-          ${progressRing(w.pct, c.color, 58)}
-          <div class="course-ring-num">${w.items.length ? `<strong>${Math.round(w.pct)}%</strong><span>done</span>` : `<span class="muted">No<br>work yet</span>`}</div>
         </div>
       </div>
       <div class="course-lines">
-        <div><span class="course-ic">${icon('clock', 13, 1.8)}</span><span>${next ? esc(fmtNextMeeting(next)) + (c.location ? ` · ${esc(c.location)}` : '') : '<span class="muted">No class times added</span>'}</span></div>
-        <div><span class="course-ic">${icon('clipboard-list', 13, 1.8)}</span><span>${nextDue ? `Next due: <span class="sg-strong">${esc(nextDue.title)}</span>, ${esc(relativeDay(nextDue.dueDate))}` : '<span class="muted">Nothing due soon</span>'}</span></div>
+        <div><span class="course-ic">${icon('clock', 14)}</span><span>${next ? esc(fmtNextMeeting(next)) + (c.location ? ` · ${esc(c.location)}` : '') : '<span class="dim">No class times added</span>'}</span></div>
+        <div><span class="course-ic">${icon('clipboard-list', 14)}</span><span>${nextDue ? `Next due: <span class="sg-strong">${esc(nextDue.title)}</span>, ${esc(relativeDay(nextDue.dueDate))}` : '<span class="dim">Nothing due soon</span>'}</span></div>
       </div>
-      <div class="course-foot small muted">
-        <span>${w.open.length} open${overdue ? ` · <span class="sg-overdue">${overdue} overdue</span>` : ''}${due ? ` · ${due} card${due === 1 ? '' : 's'} to review` : ''}${c.details?.absenceLimit != null && countedAbsences(c) ? ` · <span class="${countedAbsences(c) >= c.details.absenceLimit ? 'sg-overdue' : ''}">${countedAbsences(c)}/${c.details.absenceLimit} absences</span>` : ''}</span>
-        <span class="course-open">Open class page ${icon('chevron-right', 12, 2)}</span>
+      <div class="course-foot small dim">
+        <span>${w.items.length ? `<span class="em">${Math.round(w.pct)}%</span> done · ` : ''}${w.open.length} open${overdue ? ` · <span class="sg-overdue">${overdue} overdue</span>` : ''}${due ? ` · ${due} card${due === 1 ? '' : 's'} to review` : ''}${c.details?.absenceLimit != null && countedAbsences(c) ? ` · <span class="${countedAbsences(c) >= c.details.absenceLimit ? 'sg-overdue' : ''}">${countedAbsences(c)}/${c.details.absenceLimit} absences</span>` : ''}</span>
+        <span class="course-open"><span class="course-open-label">Open class page</span>${icon('chevron-right', 16)}</span>
       </div>
+      <div class="course-progress" style="--p:${w.items.length ? Math.round(w.pct) : 0}%" aria-hidden="true"></div>
     </div>`;
 }
 function openCourse(id) { setState({ route: 'courses', subRoute: id }); window.scrollTo(0, 0); }
@@ -105,17 +102,17 @@ function pageCourseHub(c) {
   const exams = w.items.filter(a => a.type === 'exam' && a.dueDate && a.dueDate >= t).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   return `
     <div style="--course:${esc(c.color || '#5a6b7b')}">
-    <button class="btn btn-ghost btn-sm sg-back" onclick="setState({subRoute:null})">${icon('arrow-left', 14, 1.9)} All courses</button>
+    <button class="btn btn-ghost btn-sm sg-back" onclick="setState({subRoute:null})">${icon('arrow-left', 14)} All courses</button>
     <div class="sg-head">
       <div style="min-width:0">
         <div class="sg-eyebrow"><span class="course-dot"></span>${[c.code, c.instructor, `${Number(c.credits) || 0} credits`].filter(Boolean).map(esc).join(' · ')}</div>
         <h2 class="sg-title">${esc(c.name)}</h2>
-        <p class="small muted sg-desc">${next ? `${icon('clock', 12, 1.8)} ${esc(fmtNextMeeting(next))}` : 'No class times yet'}${c.location ? ` · ${icon('map-pin', 12, 1.8)} ${esc(c.location)}` : ''}</p>
+        <p class="small sg-desc">${next ? `${icon('clock', 12)} ${esc(fmtNextMeeting(next))}` : 'No class times yet'}${c.location ? ` · ${icon('map-pin', 12)} ${esc(c.location)}` : ''}</p>
       </div>
       <div class="sg-head-actions">
         ${signInHeaderButton()}
-        <button class="btn" onclick="openAssignmentModal(null,'${c.id}')">+ Assignment</button>
-        <button class="btn btn-icon" aria-label="Edit course" title="Edit course" onclick="openCourseModal('${c.id}')">${icon('pencil', 15, 1.7)}</button>
+        <button class="btn" onclick="openAssignmentModal(null,'${c.id}')">${icon('plus', 14)} Assignment</button>
+        <button class="btn btn-icon" aria-label="Edit course" data-tip="Edit course" onclick="openCourseModal('${c.id}')">${icon('pencil', 16)}</button>
       </div>
     </div>
 
@@ -133,13 +130,13 @@ function pageCourseHub(c) {
         </div>
 
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Coming up</h3><button class="sg-link" onclick="state._assignCourseFilter='${c.id}';setState({route:'assignments',subRoute:null})">All assignments →</button></div>
+          <div class="flex-between mb-8"><h3 class="sg-h3">Coming up</h3><button class="sg-link" onclick="state._assignCourseFilter='${c.id}';setState({route:'assignments',subRoute:null})">All assignments ${icon('chevron-right', 12)}</button></div>
           ${open.length ? open.slice(0, 8).map(hubAssignmentRow).join('') : `<p class="small muted">Nothing open for this class. <button class="sg-link" onclick="openAssignmentModal(null,'${c.id}')">Add an assignment</button></p>`}
         </div>
 
         ${finished.length ? `<div class="card card-pad">
           <details class="hub-finished">
-            <summary class="flex-between"><h3 class="sg-h3">Finished</h3><span class="small muted">${finished.length} done</span></summary>
+            <summary class="flex-between"><h3 class="sg-h3">Finished</h3><span class="small dim">${finished.length} done</span></summary>
             <div class="mt-8">${finished.slice(0, 25).map(a => `
               <div class="list-row sg-task compact" onclick="openAssignmentModal('${a.id}')">
                 <button type="button" class="row-check checked" role="checkbox" aria-checked="true" aria-label="Mark ${esc(a.title)} as not done" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${checkGlyph(true)}</button>
@@ -154,21 +151,21 @@ function pageCourseHub(c) {
         ${exams.length ? `<div class="card card-pad hub-exam">
           <div class="sg-eyebrow">Next exam</div>
           <div class="hub-exam-row"><div class="hub-exam-days"><strong>${daysBetween(exams[0].dueDate)}</strong><span>day${daysBetween(exams[0].dueDate) === 1 ? '' : 's'}</span></div>
-          <div style="min-width:0"><div class="sg-strong">${esc(exams[0].title)}</div><div class="small muted">${esc(fmtDateLong(exams[0].dueDate))}</div></div></div>
+          <div style="min-width:0"><div class="sg-strong">${esc(exams[0].title)}</div><div class="small dim">${esc(fmtDateLong(exams[0].dueDate))}</div></div></div>
         </div>` : ''}
         ${syllabusCard(c)}
         <div class="card card-pad">
           <h3 class="sg-h3 mb-8">Class schedule</h3>
           ${(c.meetings || []).length ? [...c.meetings].sort((a, b) => a.day - b.day || a.start.localeCompare(b.start)).map(m => `<div class="sg-person"><span class="hub-day">${DOW_NAMES[m.day]}</span><div class="row-title small">${fmtTime(m.start)} – ${fmtTime(m.end)}</div></div>`).join('') : `<p class="small muted">No meeting times. <button class="sg-link" onclick="openCourseModal('${c.id}')">Add them</button></p>`}
-          ${(c.resources || []).length ? `<div class="divider"></div><div class="flex-gap wrap">${c.resources.map(r => `<a class="btn btn-sm" href="${esc(r.url)}" target="_blank" rel="noopener">${icon('link', 12, 1.8)} ${esc(r.label)}</a>`).join('')}</div>` : ''}
+          ${(c.resources || []).length ? `<div class="divider"></div><div class="flex-gap wrap">${c.resources.map(r => `<a class="btn btn-sm" href="${esc(r.url)}" target="_blank" rel="noopener">${icon('link', 14)} ${esc(r.label)}</a>`).join('')}</div>` : ''}
         </div>
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Notes</h3><button class="sg-link" onclick="createCourseNote('${c.id}')">+ New note</button></div>
-          ${notes.length ? notes.map(n => `<div class="sg-person hub-link" onclick="setState({route:'notebook',notebookSelected:'${n.id}',subRoute:null})"><span class="sg-activity-ic">${icon(n.pinned ? 'pin' : 'file-text', 13, 1.8)}</span><div class="row-title small">${esc(n.name || 'Untitled note')}</div><span class="small muted">${fmtRelativeTime(n.updatedAt)}</span></div>`).join('') : `<p class="small muted">Notes you tag with this class collect here.</p>`}
+          <div class="flex-between mb-8"><h3 class="sg-h3">Notes</h3><button class="sg-link" onclick="createCourseNote('${c.id}')">${icon('plus', 12)} New note</button></div>
+          ${notes.length ? notes.map(n => `<div class="sg-person hub-link" onclick="setState({route:'notebook',notebookSelected:'${n.id}',subRoute:null})"><span class="sg-activity-ic">${icon(n.pinned ? 'pin' : 'file-text', 14)}</span><div class="row-title small">${esc(n.name || 'Untitled note')}</div><span class="small muted">${fmtRelativeTime(n.updatedAt)}</span></div>`).join('') : `<p class="small muted">Notes you tag with this class collect here.</p>`}
         </div>
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Study</h3><button class="sg-link" onclick="startCourseFocus('${c.id}')">${icon('play', 11, 1.5)} Focus session</button></div>
-          ${decks.length ? decks.map(d => { const due = srsDueCount(d); return `<div class="sg-person"><span class="sg-activity-ic">${icon('layers', 13, 1.8)}</span><div class="row-title small">${esc(d.name)} <span class="muted">· ${due ? `${due} to review` : `${d.cards.length} cards`}</span></div><button class="btn btn-sm ${due ? 'btn-primary' : ''}" onclick="openReview(['${d.id}'])" ${d.cards.length ? '' : 'disabled'}>${due ? 'Review' : 'Study'}</button></div>`; }).join('') : `<p class="small muted">No flashcard decks for this class. <button class="sg-link" onclick="setState({route:'studytools',subRoute:null});openDeckModal(null,'${c.id}')">Make one</button></p>`}
+          <div class="flex-between mb-8"><h3 class="sg-h3">Study</h3><button class="sg-link" onclick="startCourseFocus('${c.id}')">${icon('play', 12)} Focus session</button></div>
+          ${decks.length ? decks.map(d => { const due = srsDueCount(d); return `<div class="sg-person"><span class="sg-activity-ic">${icon('layers', 14)}</span><div class="row-title small">${esc(d.name)} <span class="dim">· ${due ? `${due} to review` : `${d.cards.length} cards`}</span></div><button class="btn btn-sm" onclick="openReview(['${d.id}'])" ${d.cards.length ? '' : 'disabled'}>${due ? 'Review' : 'Study'}</button></div>`; }).join('') : `<p class="small muted">No flashcard decks for this class. <button class="sg-link" onclick="setState({route:'studytools',subRoute:null});openDeckModal(null,'${c.id}')">Make one</button></p>`}
         </div>
       </div>
     </div>
@@ -221,12 +218,12 @@ function openCourseModal(id) {
 
       <div class="field"><label>Class meetings</label>
         <div id="cf-meetings">${draft.meetings.map((m, i) => meetingRow(m, i)).join('')}</div>
-        <button class="btn btn-sm mt-8" onclick="addMeetingRow()">+ Add meeting time</button>
+        <button class="btn btn-sm mt-8" onclick="addMeetingRow()">${icon('plus', 14)} Add meeting time</button>
       </div>
 
       <div class="field" style="margin-bottom:0"><label>Resources <span class="small muted">(one-click links)</span></label>
         <div id="cf-resources">${draft.resources.map((r, i) => resourceRow(r, i)).join('')}</div>
-        <button class="btn btn-sm mt-8" onclick="addResourceRow()">+ Add resource</button>
+        <button class="btn btn-sm mt-8" onclick="addResourceRow()">${icon('plus', 14)} Add resource</button>
       </div>
     </div>
     <div class="modal-foot">
@@ -243,7 +240,7 @@ function resourceRow(r, i) {
       ${RESOURCE_KINDS.map(k => `<option value="${k.key}" ${k.key === r.kind ? 'selected' : ''}>${k.label}</option>`).join('')}
     </select>
     <input class="input" value="${esc(r.url)}" placeholder="https://…  or  mailto:prof@school.edu" oninput="_courseDraft.resources[${i}].url=this.value">
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove resource" onclick="_courseDraft.resources.splice(${i},1);$('#cf-resources').innerHTML=_courseDraft.resources.map(resourceRow).join('')">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove resource" data-tip="Remove resource" onclick="_courseDraft.resources.splice(${i},1);$('#cf-resources').innerHTML=_courseDraft.resources.map(resourceRow).join('')">${icon('x',13,2.2)}</button>
   </div>`;
 }
 function addResourceRow() { _courseDraft.resources.push({ id: uid(), kind: 'other', label: 'Other', url: '' }); $('#cf-resources').innerHTML = _courseDraft.resources.map(resourceRow).join(''); }
@@ -252,7 +249,7 @@ function meetingRow(m, i) {
     <select class="select" style="max-width:110px" onchange="_courseDraft.meetings[${i}].day=Number(this.value)">${DOW_NAMES.map((d, di) => `<option value="${di}" ${di === m.day ? 'selected' : ''}>${d}</option>`).join('')}</select>
     <input class="input" type="time" value="${m.start}" style="max-width:120px" onchange="_courseDraft.meetings[${i}].start=this.value">
     <input class="input" type="time" value="${m.end}" style="max-width:120px" onchange="_courseDraft.meetings[${i}].end=this.value">
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove meeting" onclick="removeMeetingRow(${i})">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove meeting" data-tip="Remove meeting" onclick="removeMeetingRow(${i})">${icon('x',13,2.2)}</button>
   </div>`;
 }
 function addMeetingRow() { _courseDraft.meetings.push({ day: 1, start: '10:00', end: '11:00' }); $('#cf-meetings').insertAdjacentHTML('beforeend', meetingRow(_courseDraft.meetings.at(-1), _courseDraft.meetings.length - 1)); }

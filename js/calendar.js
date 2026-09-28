@@ -1,38 +1,35 @@
 /* ── Calendar: month / week / day + time blocking ────────────────── */
 const CAL_HOURS = Array.from({ length: 16 }, (_, i) => i + 7); // 7am–10pm
 
-// The page head keeps only what adds things (Breaks, + Time block). The
-// period being shown is the headline of the calendar itself, with the view
-// switch and the arrows on the same line, so on a phone the head doesn't
-// wrap into three rows of buttons before the grid even starts.
+// The period being shown is the page title ("September 2026"), and every
+// control sits in one compact cluster beside it: the arrows, the view
+// switch, then Breaks and the one primary. On a phone the arrows and views
+// break onto their own full-width line under Time block.
 function pageCalendar() {
   const v = state.calView;
   const has = calendarHasAnything();
   const views = ['year', 'month', 'week', 'day'];
+  const actions = `
+      <span class="cal-row-break" aria-hidden="true"></span>
+      <span class="cal-stepper">
+        <button class="btn btn-sm btn-icon" aria-label="Previous ${v}" data-tip="Previous" onclick="calNav(-1)">${icon('chevron-left', 16)}</button>
+        <button class="btn btn-sm" onclick="calToday()">Today</button>
+        <button class="btn btn-sm btn-icon" aria-label="Next ${v}" data-tip="Next" onclick="calNav(1)">${icon('chevron-right', 16)}</button>
+      </span>
+      <div class="segmented cal-views" role="group" aria-label="Calendar view">
+        ${views.map(x => `<button class="${v === x ? 'active' : ''}" aria-pressed="${v === x}" onclick="setCalView('${x}')">${x[0].toUpperCase() + x.slice(1)}</button>`).join('')}
+      </div>
+      <span class="cal-divider" aria-hidden="true"></span>
+      <button class="btn btn-ghost btn-sm" onclick="openBreaksModal()">${icon('flag', 14)}Breaks</button>
+      <button class="btn btn-primary" onclick="openEventModal(null,'${state.calDate}')">${icon('plus', 14)}Time block</button>`;
   return `
-    ${pageHead('Calendar', has ? calUpcomingSummary() : '', `
-      <button class="btn btn-sm" onclick="openBreaksModal()">${icon('flag', 13, 2)} Breaks</button>
-      <button class="btn btn-primary" onclick="openEventModal(null,'${state.calDate}')">+ Time block</button>
-    `)}
+    ${pageHead('Calendar', has ? calUpcomingSummary() : '', actions, { titleHtml: calTitleHtml(v), className: 'cal-head' })}
     ${!has ? `<div class="mb-16">${emptyStateHtml({
       icon: 'calendar',
       title: 'Nothing on the calendar yet',
       body: 'Add your classes and every meeting time, deadline, and exam lands here, next to any time you block out for yourself.',
-      actions: [{ label: 'Set up my semester', onclick: 'openSemesterSetup()', icon: 'sparkles' }, { label: '+ Time block', onclick: `openEventModal(null,'${state.calDate}')` }],
+      actions: [{ label: 'Set up my semester', onclick: 'openSemesterSetup()', icon: 'calendar' }, { label: 'Time block', onclick: `openEventModal(null,'${state.calDate}')`, icon: 'plus' }],
     })}</div>` : ''}
-    <div class="cal-toolbar">
-      <h3 class="cal-title">${calTitleHtml(v)}</h3>
-      <div class="cal-controls">
-        <span class="cal-stepper">
-          <button class="btn btn-sm btn-icon" aria-label="Previous ${v}" onclick="calNav(-1)">${icon('chevron-left', 15, 2)}</button>
-          <button class="btn btn-sm" onclick="calToday()">Today</button>
-          <button class="btn btn-sm btn-icon" aria-label="Next ${v}" onclick="calNav(1)">${icon('chevron-right', 15, 2)}</button>
-        </span>
-        <div class="segmented cal-views" role="group" aria-label="Calendar view">
-          ${views.map(x => `<button class="${v === x ? 'active' : ''}" aria-pressed="${v === x}" onclick="setCalView('${x}')">${x[0].toUpperCase() + x.slice(1)}</button>`).join('')}
-        </div>
-      </div>
-    </div>
     <div id="cal-body">${v === 'year' ? yearView() : v === 'month' ? monthView() : v === 'week' ? weekView() : dayView()}</div>
     ${has ? `<div class="cal-foot">
       ${v !== 'year' ? calLegend() : '<span></span>'}
@@ -68,10 +65,10 @@ function calLegend() {
   return `<div class="cal-legend" aria-label="Calendar key">
     ${classes.map(c => `<span class="cal-key"><i style="--c:${c.color}"></i>${esc(c.code || c.name)}</span>`).join('')}
     ${classes.length ? '<span class="cal-legend-sep" aria-hidden="true"></span>' : ''}
-    <span class="cal-key"><span class="bar"></span>Class</span>
-    <span class="cal-key"><span class="bar dashed"></span>Deadline</span>
-    <span class="cal-key">${icon('flag', 12, 2.2)}Exam</span>
-    <span class="cal-key">${icon('check-square', 12, 2.2)}To-do</span>
+    <span class="cal-key"><span class="dot"></span>Class</span>
+    <span class="cal-key"><span class="pill"></span>Deadline</span>
+    <span class="cal-key">${icon('flag', 12)}Exam</span>
+    <span class="cal-key">${icon('check-square', 12)}To-do</span>
   </div>`;
 }
 // Before the first class or deadline is in, the grid is a wall of empty
@@ -90,7 +87,7 @@ function isBreakDate(dIso) { return state.breaks.some(b => dIso >= b.startDate &
 function breakOnDate(dIso) { return state.breaks.find(b => dIso >= b.startDate && dIso <= b.endDate); }
 function openBreaksModal() {
   openModal(`
-    <div class="modal-head"><h3>School breaks / no-class days</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>School breaks / no-class days</h3>${closeXButton()}</div>
     <div class="modal-body">
       <div class="small muted mb-8">Class meetings are hidden on these dates: Labor Day, Fall Break, Thanksgiving, Reading Day, etc.</div>
       <div id="brk-list">${state.breaks.map((b, i) => breakRow(b, i)).join('') || '<div class="small muted mb-8">No breaks added yet.</div>'}</div>
@@ -98,14 +95,14 @@ function openBreaksModal() {
         <div class="field"><label for="brk-name">Name</label><input class="input" id="brk-name" placeholder="Thanksgiving Break"></div>
         <div class="field"><label for="brk-start">First day</label><input class="input" type="date" id="brk-start"></div>
         <div class="field"><label for="brk-end">Last day</label><input class="input" type="date" id="brk-end"></div>
-        <button class="btn btn-sm" style="margin-bottom:12px" onclick="addBreak()">+ Add</button>
+        <button class="btn btn-sm" style="margin-bottom:12px" onclick="addBreak()">${icon('plus', 14)}Add</button>
       </div>
     </div>
     <div class="modal-foot"><button class="btn btn-primary" onclick="closeModal()">Done</button></div>
   `, { wide: true });
 }
 function breakRow(b, i) {
-  return `<div class="list-row"><div class="row-title">${esc(b.name)}</div><div class="row-meta">${fmtDate(b.startDate)} – ${fmtDate(b.endDate)}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove break" onclick="removeBreak(${i})">${icon('x',13,2.2)}</button></div>`;
+  return `<div class="list-row"><div class="row-title">${esc(b.name)}</div><div class="row-meta">${fmtDate(b.startDate)} – ${fmtDate(b.endDate)}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove break" data-tip="Remove" onclick="removeBreak(${i})">${icon('x', 14)}</button></div>`;
 }
 function addBreak() {
   const name = $('#brk-name').value.trim();
@@ -206,28 +203,35 @@ function itemsOnDate(dateIso) {
 }
 const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list', todo: 'check-square', group: 'users', career: 'briefcase', office: 'clock', milestone: 'folder', org: 'shield' };
 
+// The year is one sheet holding twelve small months. Each month keeps a
+// six-week grid so the rows line up, but only its own days are drawn:
+// showing Sep 28 again in October's first row read as a second today.
 function yearView() {
   const year = new Date(state.calDate + 'T00:00:00').getFullYear();
-  return `<div class="cal-year-grid">${Array.from({ length: 12 }, (_, m) => miniMonth(year, m)).join('')}</div>`;
+  return `<div class="cal-sheet cal-year"><div class="cal-year-grid">${Array.from({ length: 12 }, (_, m) => miniMonth(year, m)).join('')}</div></div>`;
 }
 function miniMonth(year, month) {
   const first = new Date(year, month, 1);
   const gridStart = new Date(first); gridStart.setDate(first.getDate() - first.getDay());
   const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); return d; });
-  const now = new Date(todayIso() + 'T00:00:00');
+  const today = todayIso();
+  const now = new Date(today + 'T00:00:00');
   const current = now.getFullYear() === year && now.getMonth() === month;
+  const pastMonth = year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth());
   return `
-    <div class="cal-mini-month ${current ? 'current' : ''}">
+    <div class="cal-mini-month ${current ? 'current' : ''} ${pastMonth ? 'past' : ''}">
       <div class="cal-mini-month-head" role="button" tabindex="0" onclick="jumpToMonth(${year},${month})" onkeydown="calKey(event,()=>jumpToMonth(${year},${month}))">${first.toLocaleDateString('en-US', { month: 'long' })}</div>
-      <div class="cal-mini-dow">${DOW_NAMES.map(d => `<span>${d[0]}</span>`).join('')}</div>
+      <div class="cal-mini-dow" aria-hidden="true">${DOW_NAMES.map(d => `<span>${d[0]}</span>`).join('')}</div>
       <div class="cal-mini-grid">
         ${cells.map(d => {
           const dIso = iso(d);
-          const muted = d.getMonth() !== month;
-          const isToday = dIso === todayIso();
-          const items = muted ? [] : itemsOnDate(dIso);
+          if (d.getMonth() !== month) return '<div class="cal-mini-cell muted" aria-hidden="true"></div>';
+          const isToday = dIso === today;
+          // A class meets every week, so it would put a dot on most days and
+          // say nothing. Dots mark deadlines and the rest; an exam gets a ring.
+          const items = itemsOnDate(dIso).filter(it => it.kind !== 'class');
           const hasExam = items.some(it => it.kind === 'exam');
-          return `<div class="cal-mini-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''}" onclick="event.stopPropagation();jumpToDay('${dIso}')" title="${esc(items.map(it => it.title).join(', '))}">
+          return `<div class="cal-mini-cell ${isToday ? 'today' : ''}" onclick="event.stopPropagation();jumpToDay('${dIso}')" title="${esc(items.map(it => it.title).join(', '))}">
             <span>${d.getDate()}</span>
             ${items.length ? `<span class="cal-mini-dot ${hasExam ? 'exam' : ''}"></span>` : ''}
           </div>`;
@@ -252,32 +256,42 @@ function calShortTime(t) {
   const [h, m] = t.split(':').map(Number);
   return `${h % 12 || 12}${m ? ':' + String(m).padStart(2, '0') : ''}${h >= 12 ? 'p' : 'a'}`;
 }
+// Month chips carry one signal per kind: a class (or a time block) is a dot
+// and quiet text, a deadline or anything else with an icon is a tinted pill
+// with that icon, and an exam is a stronger tint with the flag.
 function calEvtHtml(it, attrs = '') {
-  const ic = KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 10, 2.2)}</span>` : '';
+  const ic = KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 12)}</span>` : '';
   // 11:59 PM is "due that day", the default for most deadlines; printing it
   // on every one only takes room from the title.
   const time = it.start && it.start < '23:30' ? `<span class="cal-evt-time">${calShortTime(it.start)}</span>` : '';
-  return `<div class="cal-evt kind-${it.kind}" style="--c:${it.color}" ${attrs} title="${esc(it.title)}">${ic}${time}<span class="cal-evt-title">${esc(it.title)}</span></div>`;
+  const shape = it.kind === 'class' || it.kind === 'custom' || !ic ? 'is-dot' : 'is-pill';
+  return `<div class="cal-evt kind-${it.kind} ${shape}" style="--c:${it.color}" ${attrs} title="${esc(it.title)}">${ic}${time}<span class="cal-evt-title">${esc(it.title)}</span></div>`;
 }
 
+// Only the weeks the month touches (four to six rows), so the sheet can
+// fill the window on a desktop without a spare row of next month.
 function monthView() {
   const d0 = new Date(state.calDate + 'T00:00:00');
   const first = new Date(d0.getFullYear(), d0.getMonth(), 1);
+  const daysInMonth = new Date(d0.getFullYear(), d0.getMonth() + 1, 0).getDate();
+  const weeks = Math.ceil((first.getDay() + daysInMonth) / 7);
   const gridStart = new Date(first); gridStart.setDate(first.getDate() - first.getDay());
-  const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); return d; });
+  const cells = Array.from({ length: weeks * 7 }, (_, i) => { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); return d; });
+  const today = todayIso();
   return `
-    <div class="cal-sheet">
+    <div class="cal-sheet cal-month-sheet" style="--weeks:${weeks}">
       <div class="cal-grid" aria-hidden="true">${DOW_NAMES.map((d, i) => `<div class="cal-dow ${i === 0 || i === 6 ? 'weekend' : ''}">${d}</div>`).join('')}</div>
       <div class="cal-grid cal-month">
         ${cells.map(d => {
           const dIso = iso(d);
           const items = itemsOnDate(dIso).sort((a, b) => calRank(a) - calRank(b) || (a.start || '').localeCompare(b.start || ''));
           const muted = d.getMonth() !== d0.getMonth();
-          const isToday = dIso === todayIso();
+          const isToday = dIso === today;
+          const past = dIso < today;
           const weekend = d.getDay() === 0 || d.getDay() === 6;
           const brk = breakOnDate(dIso);
           const label = `${fmtDateLong(dIso)}${isToday ? ', today' : ''}${brk ? `, ${brk.name}` : ''}${items.length ? `, ${items.length} item${items.length === 1 ? '' : 's'}: ${items.map(it => it.title).join(', ')}` : ''}`;
-          return `<div class="cal-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''} ${weekend ? 'weekend' : ''} ${brk ? 'break' : ''}" role="button" tabindex="0" aria-label="${esc(label)}" onclick="openDayFromMonth('${dIso}')" onkeydown="calKey(event,()=>openDayFromMonth('${dIso}'))" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
+          return `<div class="cal-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''} ${past ? 'past' : ''} ${weekend ? 'weekend' : ''} ${brk ? 'break' : ''}" role="button" tabindex="0" aria-label="${esc(label)}" onclick="openDayFromMonth('${dIso}')" onkeydown="calKey(event,()=>openDayFromMonth('${dIso}'))" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
             <div class="d-num">${d.getDate()}</div>
             ${brk ? `<div class="cal-break-label">${esc(brk.name)}</div>` : ''}
             <div class="cal-dots">${items.slice(0, 3).map(it => calEvtHtml(it)).join('')}</div>
@@ -292,6 +306,19 @@ function openDayFromMonth(dIso) { setState({ calDate: dIso, calView: 'day' }); }
 
 function hourLabel(h) { return `${h % 12 || 12} ${h >= 12 ? 'PM' : 'AM'}`; }
 function hourLabels() { return `<div>${CAL_HOURS.map(h => `<div class="cal-hour-label"><span>${hourLabel(h)}</span></div>`).join('')}</div>`; }
+// "9–10:15 AM", "11 AM–12:15 PM": ':00' is dropped and AM/PM is written
+// once unless it changes, so a block's time fits on one line.
+function calClock(t) {
+  const [h, m] = t.split(':').map(Number);
+  return { t: `${h % 12 || 12}${m ? ':' + String(m).padStart(2, '0') : ''}`, mer: h >= 12 ? 'PM' : 'AM' };
+}
+function fmtRange(start, end) {
+  if (!start) return '';
+  const a = calClock(start);
+  if (!end) return `${a.t} ${a.mer}`;
+  const b = calClock(end);
+  return a.mer === b.mer ? `${a.t}–${b.t} ${b.mer}` : `${a.t} ${a.mer}–${b.t} ${b.mer}`;
+}
 
 function weekView() {
   const start = new Date(startOfWeek(state.calDate) + 'T00:00:00');
@@ -303,8 +330,8 @@ function weekView() {
         ${days.map(d => { const dIso = iso(d), wk = d.getDay() === 0 || d.getDay() === 6;
           return `<div class="cal-wd ${dIso === todayIso() ? 'today' : ''} ${wk ? 'weekend' : ''}" role="button" tabindex="0" aria-label="Open ${esc(fmtDateLong(dIso))}" onclick="jumpToDay('${dIso}')" onkeydown="calKey(event,()=>jumpToDay('${dIso}'))"><span class="cal-wd-dow">${DOW_NAMES[d.getDay()]}</span><span class="cal-wd-num">${d.getDate()}</span></div>`; }).join('')}
       </div>
-      ${allDayStrip(days.map(iso))}
-      <div class="cal-week-grid" style="position:relative">
+      ${allDayStrip(days.map(iso), '', true)}
+      <div class="cal-week-grid cal-hours">
         ${hourLabels()}
         ${days.map(d => weekDayColumn(iso(d))).join('')}
       </div>
@@ -315,10 +342,12 @@ function weekDayColumn(dIso) {
   const items = itemsOnDate(dIso).filter(it => it.start);
   const brk = breakOnDate(dIso);
   const dow = new Date(dIso + 'T00:00:00').getDay();
-  return `<div class="cal-day-col ${dow === 0 || dow === 6 ? 'weekend' : ''} ${dIso === todayIso() ? 'today' : ''}" onclick="openEventModal(null,'${dIso}')" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
+  const today = todayIso();
+  const nowMin = dIso === today ? new Date().getHours() * 60 + new Date().getMinutes() : null;
+  return `<div class="cal-day-col ${dow === 0 || dow === 6 ? 'weekend' : ''} ${dIso === today ? 'today' : ''}" onclick="openEventModal(null,'${dIso}')" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
     ${brk ? `<div class="cal-break-label" style="position:absolute;top:4px;left:6px;z-index:1">${esc(brk.name)}</div>` : ''}
     ${CAL_HOURS.map(h => `<div class="cal-hour-row" ondragover="allowDrop(event)" ondrop="event.stopPropagation();dropTimeBlockOnSlot(event,'${dIso}',${h})"></div>`).join('')}
-    ${items.map(it => positionedBlock(it, dIso)).join('')}
+    ${items.map(it => positionedBlock(it, dIso, nowMin, { past: dIso < today })).join('')}
     ${nowLine(dIso)}
   </div>`;
 }
@@ -334,17 +363,23 @@ function nowLine(dIso) {
 // whose due time was cleared, showed in Month but vanished the moment you
 // switched to Week. This is the row above the hours that holds those, the way
 // every calendar app handles all-day items.
-function allDayStrip(dates, cols = '') {
+// In Week, each day also gets a count chip: a seventh of a phone is too narrow
+// for a title, so on a phone the column shows "2" and tapping it opens the day.
+function allDayStrip(dates, cols = '', counts = false) {
   const perDay = dates.map(d => itemsOnDate(d).filter(it => !it.start));
   if (!perDay.some(list => list.length)) return '';
-  return `<div class="cal-week-grid cal-allday" ${cols ? `style="grid-template-columns:${cols}"` : ''}>
+  return `<div class="cal-week-grid cal-allday ${counts ? 'has-counts' : ''}" ${cols ? `style="grid-template-columns:${cols}"` : ''}>
     <div class="cal-allday-label">All day</div>
-    ${dates.map((d, i) => `<div class="cal-allday-col" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${d}')">
-      ${perDay[i].map(it => calEvtHtml(it, it.action ? `role="button" tabindex="0" onclick="event.stopPropagation();${it.action}" onkeydown="calKey(event,()=>{${it.action}})"` : '')).join('')}
+    ${dates.map((d, i) => `<div class="cal-allday-col" ${counts ? `onclick="calAllDayTap('${d}')"` : ''} ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${d}')">
+      ${perDay[i].map(it => calEvtHtml(it, `aria-label="${esc(it.title)}" ` + (it.action ? `role="button" tabindex="0" onclick="event.stopPropagation();${it.action}" onkeydown="calKey(event,()=>{${it.action}})"` : ''))).join('')}
+      ${counts && perDay[i].length ? `<button type="button" class="cal-allday-count" aria-label="${esc(`${perDay[i].length} all-day item${perDay[i].length === 1 ? '' : 's'} on ${fmtDateLong(d)}: ${perDay[i].map(it => it.title).join(', ')}`)}" onclick="event.stopPropagation();jumpToDay('${d}')">${perDay[i].length}</button>` : ''}
     </div>`).join('')}
   </div>`;
 }
-function positionedBlock(it, dIso, nowMin = null) {
+// The count chip only shows on a phone; there, the whole column is its tap
+// target. On a desktop the titles are shown and an empty spot does nothing.
+function calAllDayTap(dIso) { if (window.matchMedia('(max-width: 760px)').matches) jumpToDay(dIso); }
+function positionedBlock(it, dIso, nowMin = null, opts = {}) {
   const [sh, sm] = (it.start || '09:00').split(':').map(Number);
   const startMin = sh * 60 + sm;
   const top = ((startMin - CAL_HOURS[0] * 60) / 60) * 48;
@@ -355,17 +390,23 @@ function positionedBlock(it, dIso, nowMin = null) {
   // student picked, and calm enough that a busy week doesn't shout.
   const hex = /^#[0-9a-f]{6}$/i.test(it.color || '') ? it.color : '#5a6b7b';
   const where = it.location || it.where || (it.kind === 'class' ? it.course?.location : '');
-  const time = (it.end ? `${fmtTime(it.start)} – ${fmtTime(it.end)}` : fmtTime(it.start)) + (where ? ` · ${where}` : '');
-  const past = nowMin != null && endMin <= nowMin;
-  return `<div class="cal-block kind-${it.kind} ${past ? 'past' : ''}" style="top:${top}px;height:${height}px;--c:${hex}" ${clickable} title="${esc(it.kind === 'group' ? `${it.title} (${it.groupName})` : it.title)}">
-    <div class="cal-block-title">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 11, 2.2)}</span>` : ''}<span>${esc(it.title)}</span></div>
-    ${height >= 36 ? `<span class="cal-block-time">${time}</span>` : ''}
+  const past = opts.past || (nowMin != null && endMin <= nowMin);
+  // Under 48px there is no room for a second line, so the Day view puts the
+  // time beside the title; the place only gets a line of its own from 52px.
+  const short = !!opts.day && height < 48;
+  const shortName = it.course?.code || String(it.title || '').split(' ')[0].replace(/[:,.;]+$/, '');
+  return `<div class="cal-block kind-${it.kind} ${past ? 'past' : ''} ${short ? 'is-short' : ''}" style="top:${top}px;height:${height}px;--c:${hex}" ${clickable} title="${esc(it.kind === 'group' ? `${it.title} (${it.groupName})` : it.title)}">
+    <div class="cal-block-title">${KIND_ICON[it.kind] ? `<span class="cal-evt-ic">${icon(KIND_ICON[it.kind], 12)}</span>` : ''}<span>${esc(it.title)}</span></div>
+    <span class="cal-block-short">${esc(shortName)}</span>
+    ${height >= 36 || opts.day ? `<span class="cal-block-time">${fmtRange(it.start, it.end)}</span>` : ''}
+    ${where && height >= 52 ? `<span class="cal-block-where">${esc(where)}</span>` : ''}
   </div>`;
 }
 
-// The daily page: the hour timeline, and beside it the day at a glance,
-// what's due (checkable right here), the free time left, and a small month
-// to move between days. On today, the hours already gone fade back.
+// The daily page: the hour timeline, and beside it one panel with the day
+// at a glance, a small month to move between days, what's due (checkable
+// right here) and the open time left. On today, the hours already gone
+// step back. On a phone the timeline comes first and the panel follows.
 function dayView() {
   const dIso = state.calDate;
   const all = itemsOnDate(dIso);
@@ -379,35 +420,38 @@ function dayView() {
       <div class="cal-sheet cal-time">
         ${brk ? `<div class="cal-break-label" style="padding:10px 14px 0">${esc(brk.name)}, no classes</div>` : ''}
         ${allDayStrip([dIso], '58px 1fr')}
-        <div class="cal-week-grid" style="grid-template-columns:58px 1fr;position:relative;padding-top:10px">
+        <div class="cal-week-grid cal-hours" style="grid-template-columns:58px 1fr">
           ${hourLabels()}
           <div class="cal-day-col" onclick="openEventModal(null,'${dIso}')" ondragover="allowDrop(event)" ondrop="dropRescheduleOnDate(event,'${dIso}')">
             ${CAL_HOURS.map(h => `<div class="cal-hour-row" ondragover="allowDrop(event)" ondrop="event.stopPropagation();dropTimeBlockOnSlot(event,'${dIso}',${h})"></div>`).join('')}
             ${pastPx ? `<div class="cal-past" style="height:${pastPx}px" aria-hidden="true"></div>` : ''}
-            ${items.map(it => positionedBlock(it, dIso, nowMin)).join('')}
+            ${items.map(it => positionedBlock(it, dIso, nowMin, { day: true, past: dIso < todayIso() })).join('')}
             ${nowLine(dIso)}
           </div>
         </div>
       </div>
-      <aside class="cal-daypanel" aria-label="${esc(fmtDateLong(dIso))} at a glance">
+      <aside class="cal-daypanel cal-panel-card" aria-label="${esc(fmtDateLong(dIso))} at a glance">
         ${dayGlance(dIso, all)}
+        <div class="cal-panel-sec cal-daymini">${dayMiniMonth(dIso)}</div>
         ${dayDueCard(dIso)}
         ${dayFreeCard(dIso, items, nowMin)}
-        <div class="cal-panel-card cal-daymini">${dayMiniMonth(dIso)}</div>
       </aside>
     </div>
   `;
 }
+// One line instead of three big numerals: "2 classes · 2 due · 8 open
+// hours". Anything at zero is left out rather than printed as a 0.
 function dayGlance(dIso, all) {
   const classes = all.filter(it => it.kind === 'class').length;
   const due = dayDueItems(dIso).filter(x => !x.done).length;
   const free = dayFreeGaps(dIso, all.filter(it => it.start), dIso === todayIso() ? new Date().getHours() * 60 + new Date().getMinutes() : null).reduce((m, g) => m + (g.end - g.start), 0);
-  const hrs = free >= 60 ? `${Math.round(free / 30) / 2}` : '0';
-  return `<div class="cal-panel-card cal-glance">
-    <div><b>${classes}</b><span>class${classes === 1 ? '' : 'es'}</span></div>
-    <div><b>${due}</b><span>due</span></div>
-    <div><b>${hrs}</b><span>free hour${hrs === '1' ? '' : 's'}</span></div>
-  </div>`;
+  const hrs = free >= 60 ? Math.round(free / 30) / 2 : 0;
+  const parts = [
+    classes && `<span class="cal-glance-n">${classes}</span> class${classes === 1 ? '' : 'es'}`,
+    due && `<span class="cal-glance-n">${due}</span> due`,
+    hrs && `<span class="cal-glance-n">${hrs}</span> open hour${hrs === 1 ? '' : 's'}`,
+  ].filter(Boolean);
+  return `<div class="cal-panel-sec cal-glance">${parts.length ? parts.join('<span class="cal-glance-sep" aria-hidden="true"> · </span>') : 'Nothing scheduled'}</div>`;
 }
 // Everything with this day as its due date: assignments, exams and to-dos,
 // finished ones included (so a tick can be undone), unfinished first.
@@ -418,13 +462,13 @@ function dayDueItems(dIso) {
 }
 function dayDueCard(dIso) {
   const list = dayDueItems(dIso);
-  return `<div class="cal-panel-card">
+  return `<div class="cal-panel-sec">
     <h4>Due ${dIso === todayIso() ? 'today' : fmtDate(dIso, { weekday: 'long' })}</h4>
     ${list.length ? `<div class="cal-due-list">${list.map(x => `
       <div class="cal-due-row ${x.done ? 'done' : ''}" data-item-id="${x.id}">
         <button type="button" class="row-check ${x.done ? 'checked' : ''}" role="checkbox" aria-checked="${x.done}" aria-label="Mark ${esc(x.title)} as ${x.done ? 'not done' : 'done'}" onclick="event.stopPropagation();${x.toggle}">${x.done ? checkGlyph(true) : ''}</button>
         <button type="button" class="cal-due-main" onclick="${x.open}">
-          <span class="cal-due-title">${x.kind === 'exam' ? `<span class="cal-evt-ic">${icon('flag', 11, 2.2)}</span>` : ''}${esc(x.title)}</span>
+          <span class="cal-due-title">${x.kind === 'exam' ? `<span class="cal-evt-ic">${icon('flag', 12)}</span>` : ''}${esc(x.title)}</span>
           <span class="cal-due-meta">${x.course ? `<i style="--c:${x.color}"></i>${esc(x.course.code || x.course.name)}` : 'No class'}${x.time && x.time < '23:30' ? ` · ${fmtTime(x.time)}` : ''}${x.kind === 'exam' ? ' · Exam' : x.kind === 'todo' ? ' · To-do' : ''}</span>
         </button>
       </div>`).join('')}</div>` : `<p class="cal-panel-empty">Nothing due. A good day to get ahead.</p>`}
@@ -446,13 +490,13 @@ function dayFreeCard(dIso, timed, nowMin) {
   const gaps = dayFreeGaps(dIso, timed, nowMin);
   const hm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   const len = m => m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`;
-  return `<div class="cal-panel-card">
-    <h4>Free time</h4>
+  return `<div class="cal-panel-sec">
+    <h4>Open time</h4>
     ${gaps.length ? gaps.slice(0, 4).map(g => {
       const blockEnd = Math.min(g.end, g.start + 120);
       return `<div class="cal-free-row">
-        <div><span class="cal-free-time">${fmtTime(hm(g.start))} – ${fmtTime(hm(g.end))}</span><span class="cal-free-len">${len(g.end - g.start)}</span></div>
-        <button class="btn btn-sm" onclick="openEventModal(null,'${dIso}',{title:'Study session',startTime:'${hm(g.start)}',endTime:'${hm(blockEnd)}'})">Block it</button>
+        <div><span class="cal-free-time">${fmtRange(hm(g.start), hm(g.end))}</span><span class="cal-free-len">${len(g.end - g.start)}</span></div>
+        <button class="btn btn-ghost btn-sm" onclick="openEventModal(null,'${dIso}',{title:'Study session',startTime:'${hm(g.start)}',endTime:'${hm(blockEnd)}'})">${icon('plus', 14)}Block</button>
       </div>`; }).join('') : `<p class="cal-panel-empty">${nowMin != null && nowMin >= 22 * 60 ? 'The day’s done. Rest up.' : 'No hour-long gaps between 8 AM and 10 PM.'}</p>`}
   </div>`;
 }
@@ -462,9 +506,9 @@ function dayMiniMonth(dIso) {
   const first = new Date(y, m, 1), gridStart = new Date(first); gridStart.setDate(1 - first.getDay());
   const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); return d; });
   return `<div class="cal-mini-month-head" role="button" tabindex="0" onclick="jumpToMonth(${y},${m})" onkeydown="calKey(event,()=>jumpToMonth(${y},${m}))">${first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
-    <div class="cal-mini-dow">${DOW_NAMES.map(d => `<span>${d[0]}</span>`).join('')}</div>
+    <div class="cal-mini-dow" aria-hidden="true">${DOW_NAMES.map(d => `<span>${d[0]}</span>`).join('')}</div>
     <div class="cal-mini-grid">${cells.map(d => { const x = iso(d), items = d.getMonth() === m ? itemsOnDate(x) : [];
-      return `<button type="button" class="cal-mini-cell ${d.getMonth() !== m ? 'muted' : ''} ${x === todayIso() ? 'today' : ''} ${x === dIso ? 'selected' : ''}" aria-label="${esc(fmtDateLong(x))}" ${x === dIso ? 'aria-current="date"' : ''} onclick="setState({calDate:'${x}'})"><span>${d.getDate()}</span>${items.some(it => it.kind !== 'class') ? `<span class="cal-mini-dot ${items.some(it => it.kind === 'exam') ? 'exam' : ''}"></span>` : ''}</button>`; }).join('')}</div>`;
+      return `<button type="button" class="cal-mini-cell ${d.getMonth() !== m ? 'muted' : ''} ${x === todayIso() && d.getMonth() === m ? 'today' : ''} ${x === dIso ? 'selected' : ''}" aria-label="${esc(fmtDateLong(x))}" ${x === dIso ? 'aria-current="date"' : ''} onclick="setState({calDate:'${x}'})"><span>${d.getDate()}</span>${items.some(it => it.kind !== 'class') ? `<span class="cal-mini-dot ${items.some(it => it.kind === 'exam') ? 'exam' : ''}"></span>` : ''}</button>`; }).join('')}</div>`;
 }
 
 function openEventModal(id, presetDate, preset = {}) {
@@ -476,7 +520,7 @@ function renderEventModal(id) {
   const e = _eventDraft;
   const recent = state.settings.recentEventColors || [];
   openModal(`
-    <div class="modal-head"><h3>${id ? 'Edit time block' : 'New time block'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x',13,2.2)}</button></div>
+    <div class="modal-head"><h3>${id ? 'Edit time block' : 'New time block'}</h3>${closeXButton()}</div>
     <div class="modal-body">
       <div class="field"><label>Title</label><input class="input" id="ef-title" value="${esc(e.title)}" placeholder="Study session, gym, work…"></div>
       <div class="field-row">

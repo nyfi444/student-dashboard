@@ -181,7 +181,7 @@ function themeTilesHtml(afterPick = '') {
     ${THEMES.map(t => {
       const p = t.light ? (state.settings.dark ? t.dark : t.light) : (state.settings.dark ? { bg: '#0f0f0f', surface: '#1a1a1a', accent: '#f2f2f2', text: '#fff' } : { bg: '#fafafa', surface: '#ffffff', accent: '#141414', text: '#000' });
       const locked = !themeInSeason(t) && cur.id !== t.id;
-      return `<button class="theme-tile ${cur.id === t.id ? 'active' : ''} ${locked ? 'locked' : ''}" onclick="setTheme('${t.id}');${afterPick}" aria-pressed="${cur.id === t.id}" ${locked ? `aria-disabled="true" title="Returns in the ${t.season.label}"` : ''}>
+      return `<button class="theme-tile ${cur.id === t.id ? 'active' : ''} ${locked ? 'locked' : ''}" onclick="setTheme('${t.id}');${afterPick}" aria-pressed="${cur.id === t.id}" ${locked ? `aria-disabled="true" data-tip="Returns in the ${t.season.label}"` : ''}>
         <span class="theme-preview" style="background:${p.bg}"><span class="theme-card" style="background:${p.surface}"><span style="background:${p.accent}"></span><span style="background:${p.text};opacity:.18"></span></span><span class="theme-dot" style="background:${p.accent}"></span></span>
         <span class="theme-name">${esc(t.name)}</span>
         <span class="theme-note">${t.season ? (locked ? `Returns in the ${t.season.label}` : `Limited · until ${t.season.until}`) : esc(t.note)}</span>
@@ -207,7 +207,7 @@ function pageColorSwatchesHtml(afterPick = '') {
       const p = BACKGROUND_PRESETS[i];
       const on = bgMatchesPreset(current, p) || (label === 'Default' && !current?.color);
       const swatch = label === 'Default' ? 'var(--bg-default-swatch, conic-gradient(var(--surface) 0 50%, var(--surface-2) 0))' : dark ? darkBgFromPreset(p.color) : p.color;
-      return `<button type="button" class="page-color ${on ? 'active' : ''}" style="background:${swatch}" aria-pressed="${on}" aria-label="${label === 'Default' ? 'Theme default' : esc(label)}" title="${label === 'Default' ? 'Theme default' : esc(label)}" onclick="${dark ? 'setDarkBackgroundPreset' : 'setBackgroundPreset'}(${i});${afterPick}">${on ? icon('check', 12, 2.6) : ''}</button>`;
+      return `<button type="button" class="page-color ${on ? 'active' : ''}" style="background:${swatch}" aria-pressed="${on}" aria-label="${label === 'Default' ? 'Theme default' : esc(label)}" data-tip="${label === 'Default' ? 'Theme default' : esc(label)}" onclick="${dark ? 'setDarkBackgroundPreset' : 'setBackgroundPreset'}(${i});${afterPick}">${on ? icon('check', 12, 2.6) : ''}</button>`;
     }).join('')}
   </div>`;
 }
@@ -216,15 +216,15 @@ function appearanceSettingsCard() {
   const icon = state.settings.appIcon || APP_ICON_DEFAULT;
   return `
     <div class="card card-pad">
-      <h3 style="font-size:15px" class="mb-8">Appearance</h3>
+      <h3 class="sg-h3 mb-8">Appearance</h3>
       <div class="field"><label>Theme</label>${themeTilesHtml()}</div>
-      <div class="field"><label>Page color <span class="muted">(${state.settings.dark ? 'dark' : 'light'} mode)</span></label>${pageColorSwatchesHtml()}</div>
+      <div class="field"><label>Page color <span class="dim">(${state.settings.dark ? 'dark' : 'light'} mode)</span></label>${pageColorSwatchesHtml()}</div>
       <div class="checkbox-row mb-8"><input type="checkbox" id="st-dark" ${state.settings.dark ? 'checked' : ''} onchange="toggleDark(this.checked)"><label for="st-dark">Dark mode</label></div>
       <div class="checkbox-row mb-8"><input type="checkbox" id="st-sounds" ${state.settings.sounds !== false ? 'checked' : ''} onchange="state.settings.sounds=this.checked;save();if(this.checked)playUiSound('complete')"><label for="st-sounds">Sound effects</label></div>
       <div class="checkbox-row"><input type="checkbox" id="st-motion" ${state.settings.reduceMotion ? 'checked' : ''} onchange="state.settings.reduceMotion=this.checked;applyTheme();save()"><label for="st-motion">Reduce motion</label></div>
       <div class="field mt-16"><label>App icon</label>
         <div class="icon-grid">${APP_ICONS.map(i => `<button class="icon-tile ${icon === i.id ? 'active' : ''}" onclick="setAppIcon('${i.id}')" aria-pressed="${icon === i.id}" aria-label="${esc(i.name)} icon"><img src="assets/icons/${i.id}-180.png" alt="" width="52" height="52" loading="lazy"><span>${esc(i.name)}</span></button>`).join('')}</div>
-        <p class="small muted mt-8">Shows on your home screen when you install Semester HQ.</p>
+        <p class="small dim mt-8">Shows on your home screen when you install Semester HQ.</p>
       </div>
       <div class="field mt-16" style="margin-bottom:0"><label for="st-name">Display name</label><input class="input" id="st-name" value="${esc(state.settings.displayName)}" oninput="state.settings.displayName=this.value" onchange="touch()"></div>
     </div>`;

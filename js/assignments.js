@@ -32,10 +32,10 @@ function pageAssignments() {
 
   return `
     ${pageHead('Assignments', `${open.length} to do · ${weekCount} due this week${overdueCount ? ` · ${overdueCount} overdue` : ''}`, `
-      <button class="btn btn-sm" onclick="openFeedImportModal()" title="Import every due date from Canvas, Blackboard, Brightspace, or Moodle">${icon('calendar', 13, 1.8)} Import from Canvas</button>
-      ${aiButton('Quick capture', 'openQuickCapture()')}
-      <button class="btn btn-sm ${selectMode ? 'btn-primary' : ''}" onclick="toggleAssignSelectMode()">${icon('check-square', 13, 2)} ${selectMode ? 'Cancel' : 'Select'}</button>
-      <button class="btn btn-primary" onclick="openAssignmentModal(null, state._assignCourseFilter !== 'all' ? state._assignCourseFilter : null)">+ Add assignment</button>
+      <button class="btn btn-sm" onclick="openFeedImportModal()" data-tip="Every due date from Canvas, Blackboard, Brightspace, or Moodle">${icon('calendar', 14)} Import from Canvas</button>
+      <button class="btn btn-sm head-keep${selectMode ? ' is-on' : ''}" aria-pressed="${selectMode}" onclick="toggleAssignSelectMode()">${icon('check-square', 14)} ${selectMode ? 'Cancel' : 'Select'}</button>
+      ${aiButton('Quick capture', 'openQuickCapture()', '', 'head-menu')}
+      <button class="btn btn-primary" onclick="openAssignmentModal(null, state._assignCourseFilter !== 'all' ? state._assignCourseFilter : null)">${icon('plus', 14)} Add assignment</button>
     `)}
     <div class="assign-toolbar">
       <div class="chip-row" role="group" aria-label="Filter by course">
@@ -55,18 +55,18 @@ function pageAssignments() {
       <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleAssignSelectAll()"><span>Select all${visible.length ? ` (${visible.length})` : ''}</span></label>
       <div class="flex-gap" style="align-items:center">
         <span class="small muted">${selected.size} selected</span>
-        <button class="btn btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkMarkAssignmentsDone()">${icon('check', 13, 2.2)} Mark done</button>
-        <button class="btn btn-danger btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkDeleteAssignments()">${icon('trash', 13)} Delete</button>
+        <button class="btn btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkMarkAssignmentsDone()">${icon('check', 14, 2.2)} Mark done</button>
+        <button class="btn btn-danger btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkDeleteAssignments()">${icon('trash', 14)} Delete</button>
       </div>
     </div>` : ''}
 
-    ${view === 'todo' && startSoon.length ? `<div class="sg-callout mb-16"><span>${icon('flag', 14, 1.8)}</span><div class="small"><span class="sg-strong">Start soon:</span> ${startSoon.map(a => `<button class="sg-link" style="font-size:12.5px" onclick="openAssignmentModal('${a.id}')">${esc(a.title)}</button>`).join(', ')}</div></div>` : ''}
+    ${view === 'todo' && startSoon.length ? `<div class="sg-callout mb-16">${icon('flag', 16)}<div class="small"><span class="sg-strong">Start soon:</span> ${startSoon.map(a => `<button class="sg-link" onclick="openAssignmentModal('${a.id}')">${esc(a.title)}</button>`).join(', ')}</div></div>` : ''}
 
     ${view === 'todo' ? (groups.length ? groups.map(([k, label, items]) => `
       <section class="assign-group ${k === 'overdue' ? 'is-overdue' : ''}">
-        <div class="assign-group-head"><span>${label}</span><span class="assign-count">${items.length}</span></div>
+        <div class="assign-group-head">${k === 'overdue' ? icon('clock', 14) : ''}<span>${label}</span><span class="assign-count">${items.length}</span></div>
         ${expandable(`assign-${k}`, label, `<div class="card assign-list">${items.map(a => assignmentRow(a, selectMode, selected)).join('')}</div>`, { max: 420 })}
-      </section>`).join('') : emptyState(icon('cloud-sun', 26, 1.4), total ? 'All caught up' : 'No assignments yet', total ? '' : `<div class="flex-gap wrap mt-8" style="justify-content:center"><button class="btn btn-primary" onclick="openFeedImportModal()">${icon('calendar', 13, 1.8)} Import from Canvas or your LMS</button><button class="btn" onclick="openAssignmentUploadModal()">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 13, 1.6)} Upload a syllabus</button></div>`, total ? 'Nothing left to do here. Nice work.' : 'Paste your LMS calendar link and every due date lands here in one go, or upload a syllabus and Semester HQ reads the deadlines out of it.'))
+      </section>`).join('') : emptyState(icon('cloud-sun', 26, 1.4), total ? 'All caught up' : 'No assignments yet', total ? '' : `<div class="flex-gap wrap mt-8" style="justify-content:center"><button class="btn btn-primary" onclick="openFeedImportModal()">${icon('calendar', 16)} Import from Canvas or your LMS</button><button class="btn" onclick="openAssignmentUploadModal()">${icon(aiLooksUnlocked() ? 'sparkles' : 'lock', 16)} Upload a syllabus</button></div>`, total ? 'Nothing left to do here. Nice work.' : 'Paste your LMS calendar link and every due date lands here in one go, or upload a syllabus and Semester HQ reads the deadlines out of it.'))
       : expandable(`assign-${view}`, view === 'done' ? 'Done' : 'All assignments', `<div class="card assign-list">${visible.length ? visible.map(a => assignmentRow(a, selectMode, selected)).join('') : `<div class="card-pad">${emptyState(icon('clipboard-list', 26, 1.4), view === 'done' ? 'Nothing finished yet.' : 'No assignments match.')}</div>`}</div>`, { max: 420 })}
   `;
 }
@@ -82,9 +82,9 @@ function assignmentRow(a, selectMode, selected) {
       ? `<button type="button" class="row-check ${isSelected ? 'checked' : ''}" role="checkbox" aria-checked="${isSelected}" aria-label="${isSelected ? 'Deselect' : 'Select'} ${esc(a.title)}" onclick="event.stopPropagation();toggleAssignSelected('${a.id}')">${isSelected ? checkGlyph(true) : ''}</button>`
       : `<button type="button" class="row-check ${isDone ? 'checked' : ''}" role="checkbox" aria-checked="${isDone}" aria-label="Mark ${esc(a.title)} as ${isDone ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleAssignmentDone('${a.id}')">${isDone ? checkGlyph(true) : ''}</button>`}
     <div class="assign-main">
-      <div class="assign-title">${esc(a.title)}${a.attachments && a.attachments.length ? ` <span class="muted">${icon('paperclip', 12, 1.8)}</span>` : ''}${assignmentSeries(a) ? ` <span class="muted" title="Repeats">${icon('refresh-cw', 11, 2)}</span>` : ''}</div>
+      <div class="assign-title">${esc(a.title)}${a.attachments && a.attachments.length ? ` <span class="assign-title-ic" role="img" aria-label="Has files">${icon('paperclip', 12)}</span>` : ''}${assignmentSeries(a) ? ` <span class="assign-title-ic" role="img" aria-label="Repeats">${icon('refresh-cw', 12)}</span>` : ''}</div>
       <div class="assign-meta">
-        ${c ? `<span class="course-chip tinted assign-tag" style="--c:${esc(c.color || '#8a8a8a')}">${esc(c.code || c.name)}</span>` : '<span class="assign-course">No course</span>'}
+        ${c ? `<span class="assign-course"><span class="course-dot"></span>${esc(c.code || c.name)}</span>` : '<span class="assign-course">No course</span>'}
         <span class="assign-type">${esc(a.type)}</span>
         ${a.status === 'in-progress' || a.status === 'waiting' ? `<span class="assign-status">${esc(STATUS_LABELS[a.status])}</span>` : ''}
         ${(a.rubric || []).length ? `<span>${rubricDone}/${a.rubric.length} steps</span>` : ''}
@@ -337,7 +337,7 @@ function renderAssignmentModal(id) {
       <div class="field">
         <label>Steps</label>
         <div id="af-rubric">${a.rubric.map((r, i) => rubricRow(r, i)).join('')}</div>
-        <button class="btn btn-sm mt-8" onclick="addRubricRow()">+ Add a step</button>
+        <button class="btn btn-sm mt-8" onclick="addRubricRow()">${icon('plus', 14)} Add a step</button>
       </div>
       ${id && a.type === 'exam' ? `<button class="sg-callout af-link" onclick="closeModal();openExamPrep('${id}')"><span>${icon('target', 14, 1.8)}</span><div class="small"><span class="sg-strong">Exam prep</span> · topics, study sessions, and flashcards for this exam</div>${icon('chevron-right', 13, 2)}</button>` : ''}
       ${id && ['project', 'paper', 'lab'].includes(a.type) ? `<button class="sg-callout af-link" onclick="planAssignmentAsProject('${id}')"><span>${icon('folder', 14, 1.8)}</span><div class="small"><span class="sg-strong">${state.projects.some(p => p.assignmentId === id) ? 'Open its project' : 'Plan it as a project'}</span> · break it into milestones spaced out to the due date</div>${icon('chevron-right', 13, 2)}</button>` : ''}
@@ -369,7 +369,7 @@ function attachmentRow(att, i) {
     <select class="select" style="max-width:140px" onchange="_assignDraft.attachments[${i}].kind=this.value">${ATTACHMENT_KINDS.map(k => `<option value="${k}" ${k === att.kind ? 'selected' : ''}>${k[0].toUpperCase() + k.slice(1)}</option>`).join('')}</select>
     <input class="input" value="${esc(att.name)}" placeholder="Name" oninput="_assignDraft.attachments[${i}].name=this.value">
     ${att.url ? `<a href="${esc(att.url)}" target="_blank" rel="noopener" class="btn btn-sm" onclick="event.stopPropagation()">Open</a>` : ''}
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove attachment" onclick="_assignDraft.attachments.splice(${i},1);syncAssignmentAttachmentsIfExisting();renderAssignmentModal(window._assignDraft.id && state.assignments.some(a=>a.id===window._assignDraft.id) ? window._assignDraft.id : null)">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove attachment" data-tip="Remove attachment" onclick="_assignDraft.attachments.splice(${i},1);syncAssignmentAttachmentsIfExisting();renderAssignmentModal(window._assignDraft.id && state.assignments.some(a=>a.id===window._assignDraft.id) ? window._assignDraft.id : null)">${icon('x',13,2.2)}</button>
   </div>`;
 }
 // Attachments added to an assignment that already exists in state are persisted
@@ -435,7 +435,7 @@ function rubricRow(r, i) {
   return `<div class="field-row" style="align-items:center;margin-bottom:6px">
     <button type="button" class="row-check ${r.done ? 'checked' : ''}" style="flex-shrink:0" role="checkbox" aria-checked="${!!r.done}" aria-label="Mark ${esc(r.item || 'step')} as ${r.done ? 'not done' : 'done'}" onclick="syncAssignDraftFields();_assignDraft.rubric[${i}].done=!_assignDraft.rubric[${i}].done;renderAssignmentModal(assignDraftExistingId())">${r.done ? checkGlyph(true) : ''}</button>
     <input class="input" value="${esc(r.item)}" placeholder="Outline, first draft, cite sources…" aria-label="Step ${i + 1}" oninput="_assignDraft.rubric[${i}].item=this.value">
-    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove step" onclick="syncAssignDraftFields();_assignDraft.rubric.splice(${i},1);renderAssignmentModal(assignDraftExistingId())">${icon('x',13,2.2)}</button>
+    <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove step" data-tip="Remove step" onclick="syncAssignDraftFields();_assignDraft.rubric.splice(${i},1);renderAssignmentModal(assignDraftExistingId())">${icon('x',13,2.2)}</button>
   </div>`;
 }
 function assignDraftExistingId() { return state.assignments.some(a => a.id === _assignDraft.id) ? _assignDraft.id : null; }

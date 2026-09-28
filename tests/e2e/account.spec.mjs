@@ -14,7 +14,7 @@ test.beforeEach(requireEmulators);
 
 async function addCourse(page, name, code) {
   await navTo(page, 'courses');
-  await page.getByRole('button', { name: '+ Add course' }).first().click();
+  await page.getByRole('button', { name: 'Add course', exact: true }).first().click();
   await page.locator('#modal #cf-name').fill(name);
   await page.locator('#modal #cf-code').fill(code);
   await page.locator('#modal').getByRole('button', { name: 'Save course' }).click();

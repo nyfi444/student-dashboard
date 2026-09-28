@@ -200,7 +200,7 @@ function inkOnColor(hex) {
 function personAvatar(id, name, size = 26, color = '#6b6b6b') {
   const initial = esc((String(name || '?').trim()[0] || '?').toUpperCase());
   const shade = HEX_COLOR.test(color) ? color : '#6b6b6b';
-  return `<span class="avatar sg-avatar" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px;--shade:${shade};color:${inkOnColor(shade)}" title="${esc(name)}">${initial}</span>`;
+  return `<span class="avatar sg-avatar" style="width:${size}px;height:${size}px;font-size:${Math.max(11, Math.round(size * 0.42))}px;--shade:${shade};color:${inkOnColor(shade)}" title="${esc(name)}">${initial}</span>`;
 }
 function setMyGroupColor(code, color) {
   if (!PERSON_COLORS.includes(color)) return;
@@ -647,22 +647,22 @@ function pageStudyGroups() {
   }
   const groups = allGroups();
   return `
-    ${pageHead('Study Groups', 'Find a time that works, plan sessions, and split the work with classmates.', `
-      <button class="btn btn-sm" onclick="openJoinGroupModal()">${icon('user-plus', 13, 1.8)} Join with code</button>
-      <button class="btn btn-primary" onclick="openCreateGroupModal()">+ New group</button>
-    `)}
+    ${pageHead('Study Groups', 'Find a time that works, plan sessions, and split the work with classmates.', groups.length ? `
+      <button class="btn btn-sm" onclick="openJoinGroupModal()">${icon('user-plus', 14)} Join with code</button>
+      <button class="btn btn-primary" onclick="openCreateGroupModal()">${icon('plus', 14)} New group</button>
+    ` : '')}
     ${groupsAccountBanner()}
     ${groups.length ? `
       ${groupsThisWeek(groups)}
       <div class="sg-section-label">Your groups</div>
       <div class="grid grid-3">${groups.map(groupIndexCard).join('')}</div>
     ` : groupsEmptyHero()}
-    <div class="sg-pricing-note small muted">${icon('users', 13, 1.8)} Bringing a whole class, club, or team onto Semester HQ? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">See group pricing</a></div>
+    <div class="sg-pricing-note small">${icon('users', 14)} Bringing a whole class, club, or team onto Semester HQ? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">See group pricing</a></div>
   `;
 }
 function groupsAccountBanner() {
   if (!fbConfigured() || cloudGroupsEnabled()) return '';
-  return `<div class="sg-callout mb-16"><span>${icon('sparkles', 14, 1.8)}</span><div class="small">You’re trying Study Groups without an account, so groups you make here only last until you close this tab. <a href="login.html">Log in</a> to invite classmates and keep everything synced.</div></div>`;
+  return `<div class="sg-callout mb-16">${icon('info', 16)}<div class="small">You’re trying Study Groups without an account, so groups you make here only last until you close this tab. <a href="login.html">Log in</a> to invite classmates and keep everything synced.</div></div>`;
 }
 function groupsThisWeek(groups) {
   const end = addDays(todayIso(), 7);
@@ -693,13 +693,13 @@ function groupIndexCard(g) {
           <div class="sg-card-name">${esc(g.name)}</div>
           <div class="small muted">${groupColor(g) ? `<span class="sg-name-dot" style="--p:${groupColor(g)}"></span>` : ''}${[g.courseLabel ? esc(g.courseLabel) : '', g.sample ? 'Sample' : ''].filter(Boolean).join(' · ') || '&nbsp;'}</div>
         </div>
-        ${unread ? `<span class="sg-unread-dot" title="New messages"></span>` : ''}
+        ${unread ? `<span class="sg-unread-dot" role="img" aria-label="New messages"></span>` : ''}
       </div>
-      <div class="sg-card-line"><span class="sg-card-ic">${icon('calendar', 13)}</span>${next ? `<span><span class="sg-strong">${esc(next.title)}</span><br><span class="muted">${fmtSessionWhen(next)}</span></span>` : `<span class="muted">No session scheduled</span>`}</div>
-      ${g.lastMessage ? `<div class="sg-card-line"><span class="sg-card-ic">${icon('message-circle', 13)}</span><span class="sg-card-msg ${unread ? '' : 'muted'}"><span class="sg-strong">${esc(g.lastMessage.name)}:</span> ${esc(g.lastMessage.text)}</span></div>` : ''}
+      <div class="sg-card-line"><span class="sg-card-ic">${icon('calendar', 14)}</span>${next ? `<span><span class="sg-strong">${esc(next.title)}</span><br><span class="dim">${fmtSessionWhen(next)}</span></span>` : `<span class="dim">No session scheduled</span>`}</div>
+      ${g.lastMessage ? `<div class="sg-card-line"><span class="sg-card-ic">${icon('message-circle', 14)}</span><span class="sg-card-msg ${unread ? '' : 'dim'}"><span class="sg-strong">${esc(g.lastMessage.name)}:</span> ${esc(g.lastMessage.text)}</span></div>` : ''}
       <div class="sg-card-foot">
         ${avatarStack(g, 4, 24)}
-        <span class="small muted">${g.loading ? 'Loading…' : `${count} member${count === 1 ? '' : 's'}`}${myTasks ? ` · ${myTasks} task${myTasks === 1 ? '' : 's'} for you` : ''}</span>
+        <span class="small dim">${g.loading ? 'Loading…' : `${count} member${count === 1 ? '' : 's'}`}${myTasks ? ` · ${myTasks} task${myTasks === 1 ? '' : 's'} for you` : ''}</span>
       </div>
     </div>`;
 }
@@ -708,8 +708,8 @@ function groupsEmptyHero() {
     icon: 'users',
     title: 'Study better, together.',
     body: 'Start a group for a class and invite classmates with a link, then find a time everyone is free, plan sessions, split up the work, and chat in one place.',
-    actions: [{ label: '+ Start a group', onclick: 'openCreateGroupModal()' }, { label: 'Join with code', onclick: 'openJoinGroupModal()' }],
-    extra: cloudGroupsEnabled() ? '' : `<button class="btn btn-ghost btn-sm" onclick="createSampleGroup()">${icon('eye', 13, 1.8)} Explore a sample group first</button>`,
+    actions: [{ label: 'Start a group', onclick: 'openCreateGroupModal()', icon: 'plus' }, { label: 'Join with code', onclick: 'openJoinGroupModal()' }],
+    extra: cloudGroupsEnabled() ? '' : `<button class="btn btn-ghost btn-sm" onclick="createSampleGroup()">${icon('eye', 14)} Explore a sample group first</button>`,
   });
 }
 
@@ -733,7 +733,7 @@ function pageGroupDetail(g) {
         ${avatarStack(g, 5, 30)}
         ${signInHeaderButton()}
         <button class="btn btn-primary" onclick="openInviteModal('${g.code}')">${icon('user-plus', 14, 1.8)} Invite</button>
-        <button class="btn btn-icon" aria-label="Group settings" title="Group settings" onclick="openGroupSettingsModal('${g.code}')">${icon('settings', 16, 1.6)}</button>
+        <button class="btn btn-icon" aria-label="Group settings" data-tip="Group settings" onclick="openGroupSettingsModal('${g.code}')">${icon('settings', 16, 1.6)}</button>
       </div>
     </div>
     ${groupLoadNotice(g)}
@@ -781,16 +781,16 @@ function groupOverviewTab(g) {
             <div class="sg-eyebrow">Next session</div>
             <div class="sg-next-title">Nothing scheduled yet</div>
             <p class="small muted mb-16">Pick a time from everyone’s availability, or just put one on the calendar.</p>
-            <div class="flex-gap wrap"><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">+ Schedule a session</button><button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 13, 1.8)} Find a time</button></div>
+            <div class="flex-gap wrap"><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} Schedule a session</button><button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 13, 1.8)} Find a time</button></div>
           </div>`}
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Best time to meet</h3><button class="sg-link" onclick="setGroupTab('availability')">Open planner →</button></div>
+          <div class="flex-between mb-8"><h3 class="sg-h3">Best time to meet</h3><button class="sg-link" onclick="setGroupTab('availability')">Open planner ${icon('chevron-right', 12)}</button></div>
           ${best && contributors >= 2 ? bestTimeRow(g, best) : `
             <p class="small muted mb-8">${contributors === 0 ? 'No one has added their weekly availability yet.' : contributors === 1 ? `${mineAdded ? 'You’re' : '1 person is'} the only one who’s added availability so far. Once someone else does, the best overlap shows up here.` : 'No overlapping free time yet. Try adding a few more open blocks.'}</p>
             ${!mineAdded ? `<button class="btn btn-sm" onclick="setGroupTab('availability')">Add my availability</button>` : ''}`}
         </div>
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Your tasks</h3><button class="sg-link" onclick="setGroupTab('tasks')">${openTasks.length} open in group →</button></div>
+          <div class="flex-between mb-8"><h3 class="sg-h3">Your tasks</h3><button class="sg-link" onclick="setGroupTab('tasks')">${openTasks.length} open in group ${icon('chevron-right', 12)}</button></div>
           ${myTasks.length ? myTasks.map(t => groupTaskRow(g, t, { compact: true })).join('') : `<p class="small muted">Nothing assigned to you${openTasks.some(t => !t.assignee) ? ' yet. Up for grabs:' : '.'}</p>`}
           ${!myTasks.length && openTasks.some(t => !t.assignee) ? openTasks.filter(t => !t.assignee).sort(byDueThenCreated).slice(0, 3).map(t => `<div class="list-row sg-task compact"><div class="row-title"><div>${esc(t.title)}</div>${t.due ? `<div class="row-meta">Due ${fmtSessionDay(t.due)}</div>` : ''}</div><button class="btn btn-sm sg-claim" onclick="setGroupTaskAssignee('${g.code}','${t.id}','${esc(u)}')">${icon('user-plus', 12, 1.9)} I’ll take it</button></div>`).join('') : ''}
         </div>
@@ -802,7 +802,7 @@ function groupOverviewTab(g) {
           ${legacyNames.length ? `<div class="small muted mt-8">From before the update: ${legacyNames.map(esc).join(', ')}. They’ll appear here once they open the group.</div>` : ''}
         </div>
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Chat</h3><button class="sg-link" onclick="setGroupTab('chat')">Open chat →</button></div>
+          <div class="flex-between mb-8"><h3 class="sg-h3">Chat</h3><button class="sg-link" onclick="setGroupTab('chat')">Open chat ${icon('chevron-right', 12)}</button></div>
           ${msgs.length ? msgs.map(m => `<div class="sg-mini-msg">${personAvatar(m.uid, m.name, 22, personColor(g, m.uid))}<div class="small"><span class="sg-strong">${esc(m.uid === u ? 'You' : m.name)}</span> <span class="muted">${fmtRelativeTime(m.at)}</span><div class="sg-mini-text">${esc(m.text)}</div></div></div>`).join('') : `<p class="small muted">No messages yet. <button class="sg-link" onclick="setGroupTab('chat')">Say hi</button></p>`}
         </div>
         <div class="card card-pad">
@@ -923,7 +923,7 @@ function groupScheduleTab(g) {
   return `
     <div class="sg-toolbar">
       <div class="small muted">Sessions show up on every member’s Semester HQ calendar.</div>
-      <div class="flex-gap wrap">${upcoming.length > 1 ? `<button class="btn btn-sm" onclick="downloadSessionIcs('${g.code}')">${icon('download', 13, 1.8)} Add all to calendar app</button>` : ''}<button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 13, 1.8)} Find a time</button><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">+ New session</button></div>
+      <div class="flex-gap wrap">${upcoming.length > 1 ? `<button class="btn btn-sm" onclick="downloadSessionIcs('${g.code}')">${icon('download', 13, 1.8)} Add all to calendar app</button>` : ''}<button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 13, 1.8)} Find a time</button><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} New session</button></div>
     </div>
     ${upcoming.length ? upcoming.map(s => sessionCard(g, s)).join('') : emptyState(icon('calendar', 24, 1.4), 'No upcoming sessions', `<button class="btn btn-primary btn-sm mt-8" onclick="openSessionModal('${g.code}')">Schedule one</button>`, 'Not sure when? Find a time shows when everyone is free.')}
     ${past.length ? `<details class="sg-past"><summary class="small muted">Past sessions (${past.length})</summary>${past.slice(0, 30).map(s => sessionCard(g, s, { past: true })).join('')}</details>` : ''}
@@ -943,8 +943,8 @@ function sessionCard(g, s, { past = false } = {}) {
             <div class="small muted sg-meta-line"><span>${fmtSessionWhen(s)}</span>${s.where ? `<span>${icon('map-pin', 12, 1.8)} ${linkifyWhere(s.where)}</span>` : ''}</div>
           </div>
           <div class="sg-session-actions">
-            ${!past ? `<button class="btn btn-ghost btn-icon btn-sm" title="Add to your calendar app (.ics)" aria-label="Download ${esc(s.title)} as a calendar file" onclick="event.stopPropagation();downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)}</button>` : ''}
-            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit ${esc(s.title)}" onclick="event.stopPropagation();openSessionModal('${g.code}','${s.id}')">${icon('pencil', 14)}</button>
+            ${!past ? `<button class="btn btn-ghost btn-icon btn-sm" data-tip="Add to your calendar app (.ics)" aria-label="Download ${esc(s.title)} as a calendar file" onclick="event.stopPropagation();downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)}</button>` : ''}
+            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit ${esc(s.title)}" data-tip="Edit" onclick="event.stopPropagation();openSessionModal('${g.code}','${s.id}')">${icon('pencil', 14)}</button>
           </div>
         </div>
         ${s.notes ? `<div class="small sg-notes">${linkifyText(s.notes)}</div>` : ''}
@@ -1314,7 +1314,7 @@ function groupTaskRow(g, t, { compact = false } = {}) {
         <select class="select sg-assignee" aria-label="Assign ${esc(t.title)}" onchange="setGroupTaskAssignee('${g.code}','${t.id}',this.value)">
           <option value="">Unassigned</option>${groupPeople(g).map(p => `<option value="${esc(p.uid)}" ${p.uid === t.assignee ? 'selected' : ''}>${esc(p.name)}${p.uid === u ? ' (you)' : ''}</option>`).join('')}
         </select>
-        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(t.title)}" onclick="deleteGroupTask('${g.code}','${t.id}')">${icon('trash', 14)}</button>`}
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(t.title)}" data-tip="Delete" onclick="deleteGroupTask('${g.code}','${t.id}')">${icon('trash', 14)}</button>`}
     </div>`;
 }
 function addGroupTask(code) {
@@ -1349,7 +1349,7 @@ function groupResourcesTab(g) {
   return `
     <div class="sg-toolbar">
       <div class="small muted">Share notes, flashcards, files, and links. Anyone in the group can add their own copy.</div>
-      <button class="btn btn-primary btn-sm" onclick="openShareResourceModal('${g.code}')">+ Share something</button>
+      <button class="btn btn-primary btn-sm" onclick="openShareResourceModal('${g.code}')">${icon('plus', 14)} Share something</button>
     </div>
     ${items.length ? items.map(s => groupResourceRow(g, s)).join('') : emptyState(icon('layers', 24, 1.4), 'Nothing shared yet', `<button class="btn btn-sm mt-8" onclick="openShareResourceModal('${g.code}')">Share the first resource</button>`, 'You can also share straight from any note, notebook, flashcard deck, or project.')}
   `;
@@ -1373,7 +1373,7 @@ function groupResourceRow(g, s) {
       <span class="sg-res-ic">${icon(SHARE_KIND_ICON[s.kind] || 'file-text', 16)}</span>
       <div class="row-title"><div class="sg-strong">${esc(s.title)}</div><div class="row-meta">${[esc(kindLabel), esc(meta), esc(s.sharedBy || 'Someone'), fmtRelativeTime(s.sharedAt)].filter(Boolean).join(' · ')}</div></div>
       ${action}
-      ${canRemove ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(s.title)}" onclick="removeGroupResource('${g.code}','${s.id}')">${icon('trash', 14)}</button>` : ''}
+      ${canRemove ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(s.title)}" data-tip="Remove" onclick="removeGroupResource('${g.code}','${s.id}')">${icon('trash', 14)}</button>` : ''}
     </div>`;
 }
 function openShareResourceModal(code) {
@@ -1997,7 +1997,7 @@ function dashboardGroupsWidget() {
     return `
       <div class="card card-pad mb-16">
         <div class="flex-between wrap" style="gap:12px">
-          <div><h3 style="font-size:15px">Study groups</h3><div class="small muted">Find a time everyone’s free, plan sessions, and split the work with classmates.</div></div>
+          <div><h3 class="sg-h3">Study groups</h3><div class="small muted">Find a time everyone’s free, plan sessions, and split the work with classmates.</div></div>
           <button class="btn btn-sm" onclick="setState({route:'studygroups',subRoute:null})">${icon('users', 13, 1.8)} Start a group</button>
         </div>
       </div>`;
@@ -2010,7 +2010,7 @@ function dashboardGroupsWidget() {
   const unread = groups.filter(groupHasUnread);
   return `
     <div class="card card-pad mb-16">
-      <div class="flex-between mb-8"><h3 style="font-size:15px">Study groups</h3><a class="small" style="color:var(--accent);cursor:pointer" onclick="setState({route:'studygroups',subRoute:null})">View all →</a></div>
+      <div class="flex-between mb-8"><h3 class="sg-h3">Study groups</h3><button class="sg-link" onclick="setState({route:'studygroups',subRoute:null})">All groups ${icon('chevron-right', 12)}</button></div>
       ${unread.length ? `<div class="sg-dash-unread">${unread.map(g => `<button class="pill sg-unread-pill" onclick="openGroup('${g.code}','chat')"><span class="sg-unread-dot"></span>${esc(g.name)}</button>`).join('')}</div>` : ''}
       ${sessions.length ? sessions.map(({ g, s }) => `
         <div class="list-row sg-session-row" style="--course:${esc(groupColor(g) || '#6b6b6b')}" onclick="showGroupSessionModal('${g.code}','${s.id}')">
@@ -2018,7 +2018,7 @@ function dashboardGroupsWidget() {
           <div class="row-title"><div class="sg-strong">${esc(s.title)}</div><div class="row-meta">${esc(g.name)} · ${fmtSessionWhen(s)}</div></div>
           ${rsvpControl(g, s)}
         </div>`).join('') : `<p class="small muted">No group sessions in the next 7 days.</p>`}
-      ${tasks.length ? `<div class="divider"></div><div class="small dim mb-8" style="font-weight:600">Assigned to you</div>${tasks.map(({ g, t }) => `
+      ${tasks.length ? `<div class="divider"></div><div class="small dim mb-8 sg-strong">Assigned to you</div>${tasks.map(({ g, t }) => `
         <div class="list-row sg-task compact" onclick="openGroup('${g.code}','tasks')">
           <button type="button" class="row-check" role="checkbox" aria-checked="false" aria-label="Mark ${esc(t.title)} as done" onclick="event.stopPropagation();toggleGroupTask('${g.code}','${t.id}')"></button>
           <div class="row-title"><div>${esc(t.title)}</div><div class="row-meta">${esc(g.name)}${t.due ? ` · ${t.due < todayIso() ? '<span class="sg-overdue">Overdue</span>' : 'Due ' + fmtSessionDay(t.due)}` : ''}</div></div>

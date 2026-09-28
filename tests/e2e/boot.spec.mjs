@@ -37,7 +37,7 @@ test('signed out, a reload really does keep nothing', async ({ page }) => {
   // for the next one, and nothing on screen would say so.
   await openApp(page);
   await navTo(page, 'courses');
-  await page.getByRole('button', { name: '+ Add course' }).click();
+  await page.getByRole('button', { name: 'Add course', exact: true }).first().click();
   await page.locator('#modal #cf-name').fill('Kept By Mistake');
   await page.locator('#modal').getByRole('button', { name: 'Save course' }).click();
   await expect(page.locator('.course-card')).toContainText('Kept By Mistake');

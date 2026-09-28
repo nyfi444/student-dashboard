@@ -35,6 +35,7 @@ function render() {
   if (isNewView) diag.crumb('view', viewKey.replace(/\|+$/, ''));
   const demoBar = typeof demoBannerHtml === 'function' ? demoBannerHtml() : '';
   $('#content').innerHTML = `${demoBar}<div class="${isNewView ? 'fade-in' : ''}">${fn()}</div>`;
+  enhancePageHeads($('#content'));
   enhanceAccessibility($('#content'));
   enhanceAccessibility($('#sidebar'));
   applyExpandables($('#content'));
@@ -44,7 +45,7 @@ function render() {
 }
 function bellButton(cls) {
   const n = typeof attentionCount === 'function' ? attentionCount() : 0;
-  return `<button class="btn btn-icon bell-btn ${cls}" onclick="openHeadsUp()" aria-label="Heads up${n ? `, ${n} item${n === 1 ? '' : 's'} need attention` : ''}" title="Heads up">${icon('bell', 15, 1.8)}${n ? `<span class="bell-count">${n > 9 ? '9+' : n}</span>` : ''}</button>`;
+  return `<button class="btn btn-icon bell-btn ${cls}" onclick="openHeadsUp()" aria-label="Heads up${n ? `, ${n} item${n === 1 ? '' : 's'} need attention` : ''}" data-tip="Heads up">${icon('bell', 16)}${n ? `<span class="bell-count">${n > 9 ? '9+' : n}</span>` : ''}</button>`;
 }
 
 // Re-render for a change that came from somewhere else (another device, or a
@@ -103,26 +104,27 @@ function renderSidebar() {
   $('#sidebar').innerHTML = `
     <div class="sidebar-brand">
       <div><h1>Semester HQ</h1><p>${esc(activeSemesterName())}</p></div>
-      <button class="btn btn-ghost btn-icon btn-sm" onclick="toggleSidebar()" title="Hide sidebar" aria-label="Hide sidebar">${icon('panel-left', 16, 1.6)}</button>
+      <button class="btn btn-ghost btn-icon btn-sm" onclick="toggleSidebar()" aria-label="Hide sidebar" data-tip="Hide sidebar">${icon('panel-left', 16)}</button>
     </div>
     <div class="sidebar-tools">
-      <button class="sidebar-search" onclick="openCommandPalette()" aria-label="Search and commands">${searchIcon()}<span>Search</span><kbd>${isMac() ? '⌘' : 'Ctrl '}K</kbd></button>
+      <button class="sidebar-search" onclick="openCommandPalette()" aria-label="Search and commands">${searchIcon()}<span>Search</span><kbd>${modKey()}K</kbd></button>
       ${bellButton('sidebar-bell')}
     </div>
     <div class="sidebar-nav">
       ${NAV.map(([label, items]) => `
         <div class="nav-group">
           <div class="nav-group-label">${label}</div>
-          ${items.map(([id, iconName, name]) => `<button class="nav-item ${PHONE_NAV.includes(id) ? 'nav-primary' : ''} ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" data-nav="${id}" ${state.route === id ? 'aria-current="page"' : ''} ${id === 'notebook' && state.route === 'notebook' ? `aria-controls="notebook-tree-panel" aria-expanded="${typeof notebookListHidden === 'function' ? !notebookListHidden() : true}" title="Show or hide your notes list"` : ''} onclick="navTo('${id}')"><span class="ic">${icon(iconName)}</span>${name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}${id === 'orgs' && orgsUnread ? '<span class="nav-dot" aria-label="New club activity"></span>' : ''}</button>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
+          ${items.map(([id, iconName, name]) => `<button class="nav-item ${PHONE_NAV.includes(id) ? 'nav-primary' : ''} ${state.route === id && !(id === 'courses' && state.subRoute) ? 'active' : ''}" data-nav="${id}" ${state.route === id ? 'aria-current="page"' : ''} ${id === 'notebook' && state.route === 'notebook' ? `aria-controls="notebook-tree-panel" aria-expanded="${typeof notebookListHidden === 'function' ? !notebookListHidden() : true}" title="Show or hide your notes list"` : ''} onclick="navTo('${id}')"><span class="ic">${icon(iconName, 18)}</span>${id === 'todos' ? `<span class="nav-label">${name}</span><span class="nav-label-short">To-Do</span>` : name}${id === 'studygroups' && groupsUnread ? '<span class="nav-dot" aria-label="New group messages"></span>' : ''}${id === 'orgs' && orgsUnread ? '<span class="nav-dot" aria-label="New club activity"></span>' : ''}</button>${id === 'courses' ? sidebarClasses() : ''}`).join('')}
         </div>
       `).join('')}
     </div>
     <div class="sidebar-foot">
-      <button class="nav-item nav-more ${PHONE_NAV.includes(state.route) ? '' : 'active'}" aria-haspopup="dialog" onclick="openMoreNav()"><span class="ic">${icon('more-horizontal')}</span>More${groupsUnread || orgsUnread ? '<span class="nav-dot" aria-label="New activity"></span>' : ''}</button>
-      <button class="nav-item nav-settings ${state.route === 'settings' ? 'active' : ''}" ${state.route === 'settings' ? 'aria-current="page"' : ''} onclick="setState({route:'settings',subRoute:null})"><span class="ic">${icon('settings')}</span>Settings</button>
+      <button class="nav-item nav-more ${PHONE_NAV.includes(state.route) ? '' : 'active'}" aria-haspopup="dialog" onclick="openMoreNav()"><span class="ic">${icon('more-horizontal', 18)}</span>More${groupsUnread || orgsUnread ? '<span class="nav-dot" aria-label="New activity"></span>' : ''}</button>
+      <button class="nav-item nav-settings ${state.route === 'settings' ? 'active' : ''}" ${state.route === 'settings' ? 'aria-current="page"' : ''} onclick="setState({route:'settings',subRoute:null})"><span class="ic">${icon('settings', 18)}</span>Settings</button>
       <div class="user-chip" onclick="setState({route:'settings',subRoute:null})">
         <div class="avatar">${(state.settings.displayName || _fbUser?.displayName || 'S')[0].toUpperCase()}</div>
         <div>${_fbUser ? esc(_fbUser.displayName || _fbUser.email) : (fbConfigured() ? 'Not signed in' : 'Local only')}</div>
+        ${fbConfigured() && !_fbUser ? `<a class="sidebar-login" href="login.html" onclick="event.stopPropagation()">Log in</a>` : ''}
       </div>
     </div>
   `;
@@ -132,10 +134,10 @@ function openMoreNav() {
   const groupsUnread = typeof anyGroupUnread === 'function' && anyGroupUnread();
   let orgsUnread = false;
   try { orgsUnread = allOrgs().some(o => orgUnreadCount(o) > 0 || orgChatUnread(o)); } catch {}
-  const tile = (id, iconName, name, unread) => `<button class="more-tile ${state.route === id ? 'active' : ''}" ${state.route === id ? 'aria-current="page"' : ''} onclick="closeModal();navTo('${id}')"><span class="ic">${icon(iconName, 20, 1.6)}</span>${name}${unread ? '<span class="nav-dot" aria-label="New activity"></span>' : ''}</button>`;
+  const tile = (id, iconName, name, unread) => `<button class="more-tile ${state.route === id ? 'active' : ''}" ${state.route === id ? 'aria-current="page"' : ''} onclick="closeModal();navTo('${id}')"><span class="ic">${icon(iconName, 20)}</span>${name}${unread ? '<span class="nav-dot" aria-label="New activity"></span>' : ''}</button>`;
   const groups = NAV.map(([label, items]) => [label, items.filter(([id]) => !PHONE_NAV.includes(id))]).filter(([, items]) => items.length);
   openModal(`
-    <div class="modal-head"><h3>More</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>More</h3>${closeXButton()}</div>
     <div class="modal-body more-nav">
       ${groups.map(([label, items]) => `<div class="more-nav-label">${label}</div>${items.map(([id, iconName, name]) => tile(id, iconName, name, (id === 'studygroups' && groupsUnread) || (id === 'orgs' && orgsUnread))).join('')}`).join('')}
       <div class="more-nav-label">You</div>${tile('settings', 'settings', 'Settings')}
@@ -163,7 +165,9 @@ function initApp() {
   if (typeof initInstallPrompt === 'function') initInstallPrompt();
   if (typeof handleSharedContent === 'function') handleSharedContent();
   if (new URLSearchParams(location.search).has('capture')) { history.replaceState({}, '', location.pathname); setTimeout(() => whenAccountChecked(() => openQuickCapture()), 300); }
-  $('.sidebar-expand-fab').innerHTML = icon('panel-left', 16, 1.6);
+  const fab = $('.sidebar-expand-fab');
+  if (fab) { fab.innerHTML = icon('panel-left', 16); fab.removeAttribute('title'); fab.setAttribute('data-tip', 'Show sidebar'); }
+  wireTooltips();
   render();
 }
 initApp();

@@ -42,10 +42,10 @@ function pageExams() {
   const next = upcoming.find(e => e.dueDate);
   const soon = upcoming.filter(e => e.dueDate && daysBetween(e.dueDate) <= 14).length;
   return `
-    ${pageHead('Exams', upcoming.length ? `${upcoming.length} coming up${soon ? ` · ${soon} in the next 2 weeks` : ''}` : 'Countdowns and a prep plan for each one', `<button class="btn btn-primary" onclick="openAssignmentModal(null, null, 'exam')">+ Add exam</button>`)}
+    ${pageHead('Exams', upcoming.length ? `${upcoming.length} coming up${soon ? ` · ${soon} in the next 2 weeks` : ''}` : 'Countdowns and a prep plan for each one', `<button class="btn btn-primary" onclick="openAssignmentModal(null, null, 'exam')">${icon('plus', 14)} Add exam</button>`)}
     ${next ? examHero(next) : ''}
     ${upcoming.filter(e => e !== next).length ? `<div class="sg-section-label">Also coming up</div>${expandable('exams-upcoming', 'Also coming up', `<div class="grid grid-3 mb-16 exam-grid">${upcoming.filter(e => e !== next).map(examCard).join('')}</div>`, { max: 460, count: upcoming.filter(e => e !== next).length })}` : ''}
-    ${!upcoming.length ? `<div class="card">${emptyState(icon('flag', 26, 1.4), 'No exams on the horizon', `<button class="btn btn-primary" onclick="openAssignmentModal(null, null, 'exam')">+ Add exam</button>`, 'Upload a syllabus and every exam date lands here with a countdown.')}</div>` : ''}
+    ${!upcoming.length ? `<div class="card">${emptyState(icon('flag', 26, 1.4), 'No exams on the horizon', `<button class="btn btn-primary" onclick="openAssignmentModal(null, null, 'exam')">${icon('plus', 14)} Add exam</button>`, 'Upload a syllabus and every exam date lands here with a countdown.')}</div>` : ''}
     ${past.length ? `<details class="todo-done mt-16"><summary><span>Past exams</span><span class="assign-count">${past.length}</span></summary>${expandable('exams-past', 'Past exams', `<div class="card assign-list">${past.map(e => {
       const c = getCourse(e.courseId);
       return `<div class="assign-row" style="--course:${esc(c?.color || '#8a8a8a')}" onclick="openExamPrep('${e.id}')"><span class="row-check checked" aria-hidden="true">${checkGlyph(true)}</span><div class="assign-main"><div class="assign-title">${esc(e.title)}</div><div class="assign-meta"><span class="assign-course"><span class="course-dot"></span>${esc(c ? (c.code || c.name) : '')}</span></div></div><div class="assign-due">${esc(fmtDate(e.dueDate))}</div></div>`;
@@ -65,9 +65,9 @@ function examHero(a) {
       <div class="exam-hero-body">
         <div class="sg-eyebrow"><span class="course-dot"></span>${esc(c ? (c.code || c.name) : '')} · Next exam</div>
         <button class="exam-hero-title" onclick="openExamPrep('${a.id}')">${esc(a.title)}</button>
-        <div class="small muted sg-meta-line">
-          <span>${icon('calendar', 12, 1.8)} ${esc(fmtDateLong(a.dueDate))}${a.dueTime ? ` · ${fmtTime(a.dueTime)}` : ''}</span>
-          ${a.exam?.location ? `<span>${icon('map-pin', 12, 1.8)} ${esc(a.exam.location)}</span>` : ''}
+        <div class="small dim sg-meta-line">
+          <span>${icon('calendar', 12)} ${esc(fmtDateLong(a.dueDate))}${a.dueTime ? ` · ${fmtTime(a.dueTime)}` : ''}</span>
+          ${a.exam?.location ? `<span>${icon('map-pin', 12)} ${esc(a.exam.location)}</span>` : ''}
           ${a.exam?.format ? `<span>${esc(a.exam.format)}</span>` : ''}
         </div>
         <div class="exam-prep-line">
@@ -75,9 +75,9 @@ function examHero(a) {
           <span class="small">${prep == null ? 'No topics added yet' : `${prep}% prepped · ${topics.filter(t => t.conf === 2).length} of ${topics.length} topics down`}</span>
         </div>
         <div class="flex-gap wrap mt-8">
-          <button class="btn btn-primary btn-sm" onclick="openExamPrep('${a.id}')">${icon('target', 13, 1.8)} ${topics.length ? 'Open prep' : 'Start prepping'}</button>
-          ${due ? `<button class="btn btn-sm" onclick="openReview(${JSON.stringify(state.decks.filter(d => d.courseId === a.courseId).map(d => d.id)).replace(/"/g, '&quot;')})">${icon('layers', 13, 1.8)} Review ${due} card${due === 1 ? '' : 's'}</button>` : ''}
-          ${blocks.length ? `<span class="small muted">${blocks.length} study session${blocks.length === 1 ? '' : 's'} planned</span>` : `<button class="btn btn-sm" onclick="openStudyPlanModal('${a.id}')">${icon('calendar', 12, 1.8)} Plan study sessions</button>`}
+          <button class="btn btn-primary btn-sm" onclick="openExamPrep('${a.id}')">${icon('target', 14)} ${topics.length ? 'Open prep' : 'Start prepping'}</button>
+          ${due ? `<button class="btn btn-sm" onclick="openReview(${JSON.stringify(state.decks.filter(d => d.courseId === a.courseId).map(d => d.id)).replace(/"/g, '&quot;')})">${icon('layers', 14)} Review ${due} card${due === 1 ? '' : 's'}</button>` : ''}
+          ${blocks.length ? `<span class="small dim">${blocks.length} study session${blocks.length === 1 ? '' : 's'} planned</span>` : `<button class="btn btn-sm" onclick="openStudyPlanModal('${a.id}')">${icon('calendar', 14)} Plan study sessions</button>`}
         </div>
       </div>
     </div>`;
@@ -89,12 +89,12 @@ function examCard(a) {
   const d = a.dueDate ? daysBetween(a.dueDate) : null;
   return `
     <div class="card exam-card" style="--course:${esc(c?.color || '#5a6b7b')}" onclick="openExamPrep('${a.id}')">
-      <div class="flex-between"><div class="sg-eyebrow"><span class="course-dot"></span>${esc(c ? (c.code || c.name) : '')}</div>${d != null && d <= 3 ? '<span class="proj-days soon">Soon</span>' : ''}</div>
+      <div class="flex-between"><div class="sg-eyebrow"><span class="course-dot"></span>${esc(c ? (c.code || c.name) : '')}</div>${d != null && d <= 3 ? `<span class="proj-days soon">${icon('clock', 12)}Soon</span>` : ''}</div>
       <div class="exam-card-title">${esc(a.title)}</div>
-      <div class="small muted">${a.dueDate ? `${esc(fmtDate(a.dueDate, { weekday: 'short', month: 'short', day: 'numeric' }))}${a.dueTime ? ` · ${fmtTime(a.dueTime)}` : ''}` : 'No date yet'}</div>
+      <div class="small dim">${a.dueDate ? `${esc(fmtDate(a.dueDate, { weekday: 'short', month: 'short', day: 'numeric' }))}${a.dueTime ? ` · ${fmtTime(a.dueTime)}` : ''}` : 'No date yet'}</div>
       <div class="exam-card-foot">
         <div class="exam-card-count"><strong>${esc(String(cd.n))}</strong><span>${esc(cd.unit)}</span></div>
-        <div class="exam-card-prep">${prep == null ? '<span class="small muted">No topics yet</span>' : `<div class="progress"><div style="width:${prep}%"></div></div><span class="small muted">${prep}% prepped</span>`}</div>
+        <div class="exam-card-prep">${prep == null ? '<span class="small dim">No topics yet</span>' : `<div class="progress"><div style="width:${prep}%"></div></div><span class="small dim">${prep}% prepped</span>`}</div>
       </div>
     </div>`;
 }
@@ -115,7 +115,7 @@ function pageExamPrep(a) {
   const counts = CONFIDENCE.map(([, v]) => topics.filter(t => (Number(t.conf) || 0) === v).length);
   return `
     <div style="--course:${esc(c?.color || '#5a6b7b')}">
-    <button class="btn btn-ghost btn-sm sg-back" onclick="setState({subRoute:null})">${icon('arrow-left', 14, 1.9)} All exams</button>
+    <button class="btn btn-ghost btn-sm sg-back" onclick="setState({subRoute:null})">${icon('arrow-left', 14)} All exams</button>
     <div class="sg-head">
       <div style="min-width:0">
         <div class="sg-eyebrow"><span class="course-dot"></span>${[c ? esc(c.code || c.name) : '', a.dueDate ? esc(fmtDateLong(a.dueDate)) : 'No date', a.dueTime ? fmtTime(a.dueTime) : ''].filter(Boolean).join(' · ')}</div>
@@ -123,8 +123,8 @@ function pageExamPrep(a) {
       </div>
       <div class="sg-head-actions">
         ${signInHeaderButton()}
-        ${a.courseId ? `<button class="btn btn-sm" onclick="startCourseFocus('${a.courseId}')">${icon('play', 11, 1.5)} Focus session</button>` : ''}
-        <button class="btn btn-icon" aria-label="Edit exam" title="Edit exam" onclick="openAssignmentModal('${a.id}')">${icon('pencil', 15, 1.7)}</button>
+        ${a.courseId ? `<button class="btn btn-sm" onclick="startCourseFocus('${a.courseId}')">${icon('play', 14)} Focus session</button>` : ''}
+        <button class="btn btn-icon" aria-label="Edit exam" data-tip="Edit exam" onclick="openAssignmentModal('${a.id}')">${icon('pencil', 16)}</button>
       </div>
     </div>
 
@@ -152,7 +152,7 @@ function pageExamPrep(a) {
               <div class="exam-topic conf-row-${Number(t.conf) || 0}" data-item-id="${t.id}">
                 <span class="exam-topic-title">${esc(t.title)}</span>
                 <div class="segmented exam-conf" role="group" aria-label="How confident are you on ${esc(t.title)}?">${CONFIDENCE.map(([label, v]) => `<button class="conf-${v} ${(Number(t.conf) || 0) === v ? 'active' : ''}" aria-pressed="${(Number(t.conf) || 0) === v}" onclick="setTopicConfidence('${a.id}','${t.id}',${v})">${label}</button>`).join('')}</div>
-                <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(t.title)}" onclick="removeTopic('${a.id}','${t.id}')">${icon('x', 12, 2.2)}</button>
+                <button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(t.title)}" data-tip="Remove" onclick="removeTopic('${a.id}','${t.id}')">${icon('x', 14)}</button>
               </div>`).join('')}</div>` : `<p class="small muted mb-8">List what the exam covers: chapters, lectures, problem types. Rate each one as you study and focus on what’s shaky.</p>`}
           <div class="proj-inline-add mt-8">
             <textarea class="input ex-topic-input" id="ex-topic" rows="1" maxlength="4000" placeholder="${topics.length ? 'Add a topic' : 'Chapter 7: Stereochemistry'}" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();addTopic('${a.id}')}"></textarea>
@@ -173,13 +173,13 @@ function pageExamPrep(a) {
 
         ${!past ? `
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Study plan</h3><button class="sg-link" onclick="openStudyPlanModal('${a.id}')">${upcomingBlocks.length ? '+ More sessions' : 'Plan sessions'}</button></div>
-          ${upcomingBlocks.length ? upcomingBlocks.map(e => `<div class="sg-person hub-link" onclick="setState({route:'calendar',calView:'day',calDate:'${e.date}',subRoute:null})"><span class="hub-day">${esc(fmtDate(e.date, { weekday: 'short' }))}</span><div class="row-title small">${esc(fmtDate(e.date))} · ${fmtTime(e.startTime)}–${fmtTime(e.endTime)}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove session on ${esc(fmtDate(e.date))}" onclick="event.stopPropagation();removeStudyBlock('${e.id}')">${icon('x', 12, 2.2)}</button></div>`).join('') : `<p class="small muted">Put a few study sessions on your calendar before the exam, so it’s not all the night before.</p>`}
+          <div class="flex-between mb-8"><h3 class="sg-h3">Study plan</h3><button class="sg-link" onclick="openStudyPlanModal('${a.id}')">${upcomingBlocks.length ? `${icon('plus', 12)} More sessions` : 'Plan sessions'}</button></div>
+          ${upcomingBlocks.length ? upcomingBlocks.map(e => `<div class="sg-person hub-link" onclick="setState({route:'calendar',calView:'day',calDate:'${e.date}',subRoute:null})"><span class="hub-day">${esc(fmtDate(e.date, { weekday: 'short' }))}</span><div class="row-title small">${esc(fmtDate(e.date))} · ${fmtTime(e.startTime)}–${fmtTime(e.endTime)}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove session on ${esc(fmtDate(e.date))}" data-tip="Remove" onclick="event.stopPropagation();removeStudyBlock('${e.id}')">${icon('x', 14)}</button></div>`).join('') : `<p class="small muted">Put a few study sessions on your calendar before the exam, so it’s not all the night before.</p>`}
         </div>` : ''}
 
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Flashcards</h3><button class="sg-link" onclick="setState({route:'studytools',subRoute:null});openDeckModal(null,'${a.courseId}')">+ New deck</button></div>
-          ${decks.length ? decks.map(d => { const due = srsDueCount(d); return `<div class="sg-person"><span class="sg-activity-ic">${icon('layers', 13, 1.8)}</span><div class="row-title small">${esc(d.name)} <span class="muted">· ${due ? `${due} to review` : `${d.cards.length} cards`}</span></div><button class="btn btn-sm ${due ? 'btn-primary' : ''}" onclick="openReview(['${d.id}'])" ${d.cards.length ? '' : 'disabled'}>${due ? 'Review' : 'Study'}</button></div>`; }).join('') : `<p class="small muted">No decks for ${esc(c ? (c.code || c.name) : 'this class')} yet. Cards you review a little each day stick far better than cramming.</p>`}
+          <div class="flex-between mb-8"><h3 class="sg-h3">Flashcards</h3><button class="sg-link" onclick="setState({route:'studytools',subRoute:null});openDeckModal(null,'${a.courseId}')">${icon('plus', 12)} New deck</button></div>
+          ${decks.length ? decks.map(d => { const due = srsDueCount(d); return `<div class="sg-person"><span class="sg-activity-ic">${icon('layers', 14)}</span><div class="row-title small">${esc(d.name)} <span class="dim">· ${due ? `${due} to review` : `${d.cards.length} cards`}</span></div><button class="btn btn-sm" onclick="openReview(['${d.id}'])" ${d.cards.length ? '' : 'disabled'}>${due ? 'Review' : 'Study'}</button></div>`; }).join('') : `<p class="small muted">No decks for ${esc(c ? (c.code || c.name) : 'this class')} yet. Cards you review a little each day stick far better than cramming.</p>`}
         </div>
       </div>
     </div>
