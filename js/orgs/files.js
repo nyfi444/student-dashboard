@@ -12,35 +12,41 @@ function orgFileUrl(o, f) {
   if (isHttpUrl(url)) return url;
   return o.local && url.startsWith('data:') ? url : '';
 }
-function orgFileRow(o, f, { compact = false } = {}) {
-  const url = orgFileUrl(o, f);
-  const isFile = f.kind === 'file';
-  const meta = isFile ? [fileTypeLabel(f.fileName || f.title), fmtFileSize(f.size)] : ['Link', hostOf(url)];
-  if (!compact) meta.push(f.name, fmtRelativeTime(f.at));
-  const open = !url ? '' : isFile
-    ? `<a class="btn btn-sm" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(f.fileName || f.title)}">${icon('download', 14)} Open</a>`
-    : `<a class="btn btn-sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${icon('link', 14)} Open</a>`;
-  return `
-    <div class="list-row sg-resource org-file">
-      <span class="sg-res-ic">${icon(isFile ? 'paperclip' : 'link', 16)}</span>
-      <div class="row-title"><div class="sg-strong">${esc(f.title)}</div><div class="row-meta">${meta.filter(Boolean).map(esc).join(' · ')}</div></div>
-      ${open}
-      ${!compact && isOrgOfficer(o) ? `<button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove ${esc(f.title)}" data-tip="Remove" onclick="removeOrgFile('${o.code}','${f.id}')">${icon('trash', 14)}</button>` : ''}
-    </div>`;
+// The library's item model (see js/spaces/files.js) for a club file.
+function orgLibItem(o, f) {
+  return { id: f.id, kind: f.kind, title: f.title, by: f.name, at: Number(f.at) || 0, url: orgFileUrl(o, f), fileName: typeof f.fileName === 'string' ? f.fileName : '', size: f.size, pinned: false };
 }
-function orgFilesTab(o) {
-  const files = orgFileList(o);
-  const officer = isOrgOfficer(o);
-  return `
-    <div class="sg-toolbar">
-      <div class="small muted">${officer ? 'Share forms, schedules, rosters, and links with everyone.' : 'Forms, schedules, and links from your officers.'}</div>
-      ${officer ? `<button class="btn btn-primary btn-sm" onclick="openOrgFileModal('${o.code}')">${icon('plus', 14)} Share a file or link</button>` : ''}
-    </div>
-    ${files.length ? `<div class="card card-pad">${files.map(f => orgFileRow(o, f)).join('')}</div>`
-      : emptyState(icon('paperclip', 24), 'No files yet', officer ? `<button class="btn btn-sm mt-8" onclick="openOrgFileModal('${o.code}')">Share the first file</button>` : '', officer ? 'A dues form, the practice schedule, your constitution, a link to the photo drive.' : 'When officers share something, it shows up here.')}
-  `;
+function orgLibItems(o) { return orgFileList(o).map(f => orgLibItem(o, f)); }
+// The Overview rail keeps a compact row (compact is the only form now; the
+// Files tab is the gallery). Tapping the title opens the detail sheet.
+function orgFileRow(o, f) {
+  const it = orgLibItem(o, f);
+  return libRow('club', o.code, it, orgLibPrimary(o, it, false));
 }
-function openOrgFileModal(code) {
+function orgLibPrimary(o, it, sheet) {
+  if (!it.url) return '';
+  const cls = `btn${sheet ? ' btn-primary' : ' btn-sm'}`;
+  const is = sheet ? 16 : 14;
+  return it.kind === 'file'
+    ? `<a class="${cls}" href="${esc(it.url)}" target="_blank" rel="noopener" download="${esc(it.fileName || it.title)}">${icon('download', is)}Open</a>`
+    : `<a class="${cls}" href="${esc(it.url)}" target="_blank" rel="noopener noreferrer">${icon('arrow-up-right', is)}Open</a>`;
+}
+function orgLibMore(o, it) {
+  return isOrgOfficer(o) ? [{ label: 'Remove for everyone', icon: 'trash', js: `removeOrgFile('${o.code}','${it.id}')`, danger: true }] : [];
+}
+function orgLibEmpty(o) {
+  if (!isOrgOfficer(o)) return { icon: 'paperclip', title: 'No files yet', body: 'When officers share something, it shows up here.' };
+  return {
+    icon: 'paperclip', title: 'No files yet', body: 'Your constitution, the dues form, the photo drive link.',
+    actions: [
+      { label: 'Upload a file', icon: 'upload', onclick: `openOrgFileModal('${o.code}')`, primary: true },
+      { label: 'Add a link', icon: 'link', onclick: `openOrgFileModal('${o.code}','link')`, primary: false },
+    ],
+  };
+}
+function orgFilesTab(o) { return spaceLibrary('club', o); }
+// kind (optional): 'link' opens with the link field showing.
+function openOrgFileModal(code, kind) {
   const o = findOrg(code);
   if (!o || !isOrgOfficer(o)) return;
   window._orgFile = { code, kind: 'file', file: null };
@@ -64,7 +70,7 @@ function openOrgFileModal(code) {
       <div class="field mt-16" style="margin-bottom:0"><label for="ofl-title">Title <span class="muted">(optional)</span></label><input class="input" id="ofl-title" maxlength="120" placeholder="Dues form, Practice schedule, Photo drive…"></div>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ofl-share" onclick="saveOrgFile()">Share</button></div>
-  `);
+  `);  if (kind === 'link') setOrgFileKind('link');
 }
 function setOrgFileKind(kind) {
   window._orgFile.kind = kind;
@@ -153,3 +159,34 @@ function removeOrgFile(code, id, { silent = false } = {}) {
   confirmDialog(`Remove “${f.title}” for everyone?`, remove, 'Remove');
 }
 
+/* ── Sample clubs (local only): a fuller Files tab ──
+   Returns more files for the sample's files map, shared by `by` (an
+   officer's sample key). ctx: { idOf, nameOf, now, color }. Called from
+   createSampleOrg; never written to a cloud club. */
+function sampleOrgLibraryFiles(key, by, { idOf, nameOf, now, color }) {
+  const H = 3600000;
+  const out = {};
+  const add = (f, hours) => { const id = uid(); out[id] = { id, uid: idOf(by), name: nameOf(by), at: now - hours * H, ...f }; };
+  const pdf = (title, lines) => { const d = libSamplePdf(title, lines); return { kind: 'file', title, fileName: `${title}.pdf`, size: d.size, url: d.dataUrl }; };
+  if (key === 'club') {
+    add(pdf('Club constitution', ['Article I. Name: Women in Business.', 'Article II. Purpose: career panels, networking and community.', 'Article III. Officers: President, Treasurer, Social chair.', 'Article IV. Dues: set each semester by a vote of members.']), 520);
+    const flyer = libSampleImage(400, 176, (c, w, h) => {
+      c.fillStyle = color || '#6E2E3A'; c.fillRect(0, 0, w, h);
+      c.strokeStyle = 'rgba(255,255,255,.14)'; c.lineWidth = 1;
+      for (let x = -h; x < w; x += 16) { c.beginPath(); c.moveTo(x, h); c.lineTo(x + h, 0); c.stroke(); }
+      c.fillStyle = '#ffffff';
+      c.font = '600 12px "General Sans", system-ui, sans-serif';
+      c.fillText('WOMEN IN BUSINESS', 28, 46);
+      c.font = '44px "Instrument Serif", Georgia, serif';
+      c.fillText('Networking night', 28, 100);
+      c.font = '500 14px "General Sans", system-ui, sans-serif';
+      c.fillText('Business School atrium, 6:30', 28, 134);
+    });
+    if (flyer) add({ kind: 'file', title: 'Networking night flyer', fileName: 'Networking night flyer.jpg', size: flyer.size, url: flyer.dataUrl }, 30);
+    add({ kind: 'link', title: 'Photo drive', url: 'https://drive.google.com/drive/folders/wib-photos' }, 140);
+    return out;
+  }
+  const title = { chapter: 'Recruitment schedule', team: 'Away game packing list', honor: 'Service hours guide' }[key];
+  if (title) add(pdf(title, ['Sample file for the demo.', 'Your officers share real forms, schedules and rosters here.']), 200);
+  return out;
+}

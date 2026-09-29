@@ -412,17 +412,20 @@ function ensureGroupDetailListeners(code) {
     renderRemote();
   }, e => diag.error('studygroups', 'Group items listener failed', e)));
   _detailSubs.unsubs.push(ref.collection('messages').orderBy('at').limitToLast(200).onSnapshot(snap => {
-    _groupMessages[code] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+    // Merged, not replaced, so pages from "Load earlier" survive the window sliding.
+    _groupMessages[code] = chatMergeWindow('group', code, snap.docs.map(d => ({ ...d.data(), id: d.id })));
     renderRemote();
   }, e => diag.error('studygroups', 'Group chat listener failed', e)));
 }
 function closeGroupDetailListeners() {
+  if (_detailSubs.code) chatDropStore('group', _detailSubs.code);
   _detailSubs.unsubs.forEach(u => u());
   _detailSubs = { code: null, unsubs: [] };
 }
 function afterGroupPageRender() {
   const code = state.route === 'studygroups' ? state.subRoute : null;
   if (!code || !groupEntry(code)) {
+    chatForget('group');
     if (_detailSubs.code) closeGroupDetailListeners();
     // Clubs run it from afterOrgPageRender; the groups index drops the sticky-row watcher here.
     if (state.route === 'studygroups' && typeof afterSpaceRender === 'function') afterSpaceRender();
@@ -432,8 +435,9 @@ function afterGroupPageRender() {
   if (typeof afterSpaceRender === 'function') afterSpaceRender();
   ensureGroupDetailListeners(code);
   bindAvailabilityPainting();
-  const log = document.getElementById('sg-chat-log');
-  if (log) { log.scrollTop = log.scrollHeight; markChatSeen(code); }
+  // Scroll, the "new" line, composer height and the seen marker: js/spaces/chat.js.
+  if (document.getElementById('sg-chat-log')) chatAfterRender('group', code);
+  else chatForget('group', state.groupTab);
 }
 
 /* ── Invite links: ?join=CODE survives login, checkout, and paywall ─ */
@@ -441,11 +445,15 @@ function captureJoinParam() {
   const params = new URLSearchParams(location.search);
   const code = normalizeCode(params.get('join'));
   if (!params.has('join')) return;
+  // &session=ID comes from a session shared to chat: open it once you're in.
+  const session = params.get('session') || '';
   params.delete('join');
+  params.delete('session');
   history.replaceState({}, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
   if (code.length !== 6 || isEmbedded()) return;
-  try { localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify({ code, at: Date.now() })); } catch {}
+  try { localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify({ code, at: Date.now(), ...(safeId(session) ? { session } : {}) })); } catch {}
 }
+function pendingJoinSession() { try { const p = JSON.parse(localStorage.getItem(PENDING_JOIN_KEY) || 'null'); return p?.session && safeId(p.session) ? p.session : ''; } catch { return ''; } }
 function pendingJoinCode() {
   try {
     const p = JSON.parse(localStorage.getItem(PENDING_JOIN_KEY) || 'null');
@@ -472,7 +480,12 @@ async function handlePendingJoin() {
     return;
   }
   if (!window._licensed) return; // the paywall shows the invite instead, see pendingInviteBanner()
-  if (groupEntry(code)?.cloud) { clearPendingJoin(); openGroup(code); return; }
+  if (groupEntry(code)?.cloud) {
+    const sid = pendingJoinSession();
+    clearPendingJoin();
+    if (sid && findGroup(code)?.sessions?.[sid]) openGroupSession(code, sid); else openGroup(code);
+    return;
+  }
   try {
     const snap = await _fbDb.collection('studyGroups').doc(code).get();
     if (!snap.exists) { clearPendingJoin(); toast('That invite link doesn’t match a group anymore. Ask for a new one.', 'error', 5000); return; }

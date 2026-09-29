@@ -23,8 +23,9 @@
    Split across files (see index.html): js/orgs/sync.js holds the data,
    writes, sync and ?org= links; js/orgs/events.js the event rows, the
    hero, the agenda and the event sheets; this one the pages,
-   announcements, chat, joining and the sample clubs; js/orgs/admin.js
-   the officer tools; js/orgs/files.js the Files tab. Every name stays a
+   announcements, joining and the sample clubs; js/orgs/admin.js
+   the officer tools; js/orgs/files.js the Files tab; js/orgs/chat.js the
+   chat listener, the Chat tab and its writes. Every name stays a
    global, so inline onclick strings keep working.
 ──────────────────────────────────────────────────────────────── */
 const ORG_KINDS = [['club', 'Club', 'flag'], ['team', 'Team', 'trophy'], ['chapter', 'Sorority or fraternity', 'shield'], ['org', 'Organization', 'users'], ['other', 'Other', 'star']];
@@ -509,126 +510,6 @@ async function postAnnouncement(code) {
 function pinAnnouncement(code, id, pinned) { if (safeId(id)) orgWrite(code, { [`announcements.${id}.pinned`]: !!pinned }); }
 function deleteAnnouncement(code, id) { if (safeId(id)) confirmDialog('Delete this announcement for everyone?', () => orgWrite(code, { [`announcements.${id}`]: GW_DELETE })); }
 
-/* ── Chat ─────────────────────────────────────────────────────────
-   Everyone in the club can post. Messages live in orgs/CODE/messages and
-   only load while the Chat tab is open; lastMessage on the club doc drives
-   the unread dots everywhere else. Officers can delete any message. */
-const _orgMessages = {};
-const _orgChatFailed = {};
-let _orgChatSub = { code: null, unsub: null };
-function orgMessages(o) {
-  const list = o.local ? (orgEntry(o.code)?.messages || []) : (_orgMessages[o.code] || []);
-  return list.filter(m => m && safeId(m.id) && typeof m.text === 'string' && typeof m.at === 'number');
-}
-function closeOrgChatListener() { if (_orgChatSub.unsub) _orgChatSub.unsub(); _orgChatSub = { code: null, unsub: null }; }
-function ensureOrgChatListener(code) {
-  const entry = orgEntry(code);
-  if (!entry?.cloud || !cloudGroupsEnabled() || _orgChatFailed[code]) { closeOrgChatListener(); return; }
-  if (_orgChatSub.code === code) return;
-  closeOrgChatListener();
-  _orgChatSub.code = code;
-  _orgChatSub.unsub = _fbDb.collection('orgs').doc(code).collection('messages').orderBy('at').limitToLast(200).onSnapshot(snap => {
-    _orgMessages[code] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-    renderRemote();
-  }, err => {
-    diag.error('clubs', 'Club chat listener failed', err);
-    _orgChatFailed[code] = true; // not retried until the tab is opened again, so a failure can't loop
-    _orgChatSub = { code: null, unsub: null };
-    renderRemote();
-  });
-}
-// Runs after every render (see render() in app.js).
-function afterOrgPageRender() {
-  const code = state.route === 'orgs' ? state.subRoute : null;
-  if (code && typeof centerActiveSgTab === 'function') centerActiveSgTab();
-  if (code && state.orgTab === 'admin' && typeof orgAttEdges === 'function') orgAttEdges();
-  // The group page runs it from afterGroupPageRender; everywhere else this
-  // one does, which also drops the sticky-row watcher on pages without one.
-  if (state.route !== 'studygroups' && typeof afterSpaceRender === 'function') afterSpaceRender();
-  if (!code || state.orgTab !== 'chat' || !orgEntry(code)) {
-    if (_orgChatSub.code) closeOrgChatListener();
-    Object.keys(_orgChatFailed).forEach(k => delete _orgChatFailed[k]);
-    return;
-  }
-  ensureOrgChatListener(code);
-  const log = document.getElementById('org-chat-log');
-  if (log) { log.scrollTop = log.scrollHeight; markOrgChatSeen(code); }
-}
-function orgChatTab(o) {
-  const msgs = orgMessages(o);
-  const me = myOrgUid(o);
-  const officer = isOrgOfficer(o);
-  const byUid = Object.fromEntries(orgPeople(o).map(p => [p.uid, p]));
-  const loading = !o.local && !_orgMessages[o.code] && !_orgChatFailed[o.code];
-  let lastDay = '', lastUid = '', lastAt = 0;
-  const rows = msgs.map(m => {
-    const day = iso(new Date(m.at));
-    const sep = day !== lastDay ? `<div class="sg-chat-day">${fmtSessionDay(day)}</div>` : '';
-    const grouped = !sep && lastUid === m.uid && m.at - lastAt < 5 * 60000;
-    lastDay = day; lastUid = m.uid; lastAt = m.at;
-    const mine = m.uid === me;
-    const p = byUid[m.uid];
-    const who = p ? p.name : cleanStr(m.name, 60) || 'Former member';
-    return `${sep}
-      <div class="sg-msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''}">
-        ${mine ? '' : grouped ? '<span class="sg-msg-spacer"></span>' : personAvatar(m.uid, who, 28, p?.officer ? orgColor(o) : '#6b6b6b')}
-        <div class="sg-msg-body">
-          ${!mine && !grouped ? `<div class="sg-msg-name">${esc(who)}${p ? ` <span class="org-msg-role">${esc(orgRoleLabel(o, p))}</span>` : ''} <span class="muted">${new Date(m.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></div>` : ''}
-          <div class="sg-bubble" title="${esc(new Date(m.at).toLocaleString())}">${linkifyText(m.text)}</div>
-        </div>
-        ${mine || officer ? `<button class="sg-msg-del" aria-label="Delete message" data-tip="Delete" onclick="deleteOrgMessage('${o.code}','${m.id}')">${icon('x', 11)}</button>` : ''}
-      </div>`;
-  }).join('');
-  return `
-    <div class="card sg-chat">
-      <div class="sg-chat-log" id="org-chat-log" data-keep-scroll="bottom">
-        ${_orgChatFailed[o.code] ? emptyState(icon('message-circle', 24), 'Chat didn’t load', `<button class="btn btn-sm mt-8" onclick="delete _orgChatFailed['${o.code}'];render()">Try again</button>`, 'Check your connection, then try again.')
-          : loading ? '<div class="small muted" style="padding:18px;text-align:center">Loading messages…</div>'
-          : msgs.length ? rows : emptyState(icon('message-circle', 24), 'No messages yet', '', `Say hi to ${o.name}. Everyone in the ${o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club'} sees this chat.`)}
-      </div>
-      <div class="sg-chat-compose">
-        <input class="input" id="org-chat-input" maxlength="${GROUP_MESSAGE_MAX}" autocomplete="off" placeholder="Message ${esc(o.name)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendOrgMessage('${o.code}')}">
-        <button class="btn btn-primary" aria-label="Send message" data-tip="Send" onclick="sendOrgMessage('${o.code}')">${icon('send', 14)}</button>
-      </div>
-    </div>`;
-}
-async function sendOrgMessage(code) {
-  const input = $('#org-chat-input');
-  const text = input?.value.trim();
-  const entry = orgEntry(code);
-  const o = findOrg(code);
-  if (!text || !entry || !o) return;
-  const msg = { id: uid(), uid: myOrgUid(o), name: myGroupName(), text: text.slice(0, GROUP_MESSAGE_MAX), at: Date.now() };
-  const lastMessage = { uid: msg.uid, name: msg.name, text: msg.text.slice(0, 140), at: msg.at };
-  input.value = '';
-  if (entry.local) {
-    entry.messages = [...(entry.messages || []), msg].slice(-200);
-    entry.lastMessage = lastMessage;
-    orgChatSeen()[code] = msg.at;
-    touch();
-    $('#org-chat-input')?.focus();
-    return;
-  }
-  if (!cloudGroupsEnabled()) { input.value = text; toast('Log in to chat with your club.', 'error'); return; }
-  try {
-    const ref = _fbDb.collection('orgs').doc(code);
-    await ref.collection('messages').doc(msg.id).set(msg);
-    ref.update({ lastMessage, updatedAt: Date.now() }).catch(e => diag.warn('clubs', 'Club lastMessage update failed', e));
-    markOrgChatSeen(code, msg.at);
-    playUiSound('send');
-  } catch (e) {
-    diag.error('clubs', 'Club message failed', e);
-    if (input.isConnected && !input.value) input.value = text;
-    toast('Message didn’t send. Check your connection and try again.', 'error');
-  }
-}
-function deleteOrgMessage(code, id) {
-  const entry = orgEntry(code);
-  if (!entry || !safeId(id)) return;
-  if (entry.local) { entry.messages = (entry.messages || []).filter(m => m.id !== id); touch(); return; }
-  _fbDb.collection('orgs').doc(code).collection('messages').doc(id).delete().catch(() => toast('Couldn’t delete that message.', 'error'));
-}
-
 /* ── Create, join, invite, settings ────────────────────────────── */
 function openCreateOrgModal() {
   window._orgDraft = { kind: 'club', color: ORG_COLORS[0] };
@@ -890,7 +771,7 @@ function sampleOrgTemplate(kind) {
       { title: 'Food bank volunteering', category: 'service', date: addDays(t, 12), start: '10:00', end: '13:00', location: 'Downtown food bank' },
     ],
     announcements: [['Dues are coming up. $40 for the semester, Venmo @noah-treasurer with your name in the note.', 'noah', 20, true], ['Huge thank you to everyone who came to the resume workshop! Slides are in the drive: https://example.com/slides', 'ava', 72]],
-    messages: [['lena', 'Is the networking night business casual or business formal?', 27], ['ava', 'Business casual! Bring a few copies of your resume.', 26.5], ['jade', 'I can drive 3 people to the food bank on Saturday.', 5], ['noah', 'Reminder that dues are coming up. The details are in Files.', 2]],
+    messages: [['lena', 'Is the networking night business casual or business formal?', 27], ['ava', 'Business casual! Bring a few copies of your resume.', 26.5], ['jade', 'I can drive 3 people to the food bank on Saturday.', 5], ['lena', '@Jade can I grab one of those seats?\nI can meet you at the student center.', 4.8], ['noah', 'Reminder that dues are coming up. The details are in Files.', 2]],
     files: [{ kind: 'file', title: 'Spring dues', text: 'Spring dues\n\n$40 for the semester.\nVenmo @noah-treasurer and put your name in the note.\nQuestions? Ask Noah in chat.\n', by: 'noah', hours: 20 }, { kind: 'link', title: 'Resume workshop slides', url: 'https://example.com/slides', by: 'ava', hours: 72 }],
     links: [['GroupMe', 'https://groupme.com/'], ['Instagram', 'https://instagram.com/'], ['Venmo for dues', 'https://venmo.com/']],
   };
@@ -940,6 +821,17 @@ function createSampleOrg(kind = 'club') {
   });
   const nameOf = (k) => people[idOf(k)].name;
   const messages = tpl.messages.map(([k, text, hours]) => ({ id: uid(), uid: idOf(k), name: nameOf(k), text, at: now - hours * H }));
+  // An officer shares the next non-dues event to chat, so the chat shows an
+  // event card with the RSVP inline (local sample only).
+  const nextEv = Object.values(events).filter(e => !orgIsDuesEvent(e) && !orgEventPast(e)).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))[0];
+  if (nextEv) {
+    const sharer = officers[0] || owner;
+    const sharerKey = sharer.replace(/^sample-/, '');
+    messages.push({ id: uid(), uid: sharer, name: nameOf(sharerKey), text: `Tap Going so we know how many to plan for ${orgInviteLink(code)}&event=${nextEv.id}`, at: now - 3.5 * H });
+    messages.sort((a, b) => a.at - b.at);
+  }
+  // "New since you were last here" sits above the last half day.
+  orgChatSeen()[code] = now - 12 * H;
   const last = messages[messages.length - 1];
   const files = Object.fromEntries(tpl.files.map((f, i) => {
     const id = uid() + i, base = { id, kind: f.kind, title: f.title, uid: idOf(f.by), name: nameOf(f.by), at: now - f.hours * H };
@@ -947,6 +839,8 @@ function createSampleOrg(kind = 'club') {
       ? { ...base, fileName: `${f.title}.txt`, size: f.text.length, url: 'data:text/plain;base64,' + btoa(f.text) }
       : { ...base, url: f.url }];
   }));
+  // A PDF, an image and a drive link, so Files shows the library (js/orgs/files.js).
+  Object.assign(files, sampleOrgLibraryFiles(key, officers[0] ? officers[0].replace(/^sample-/, '') : tpl.people[0][0], { idOf, nameOf, now, color: tpl.color }));
   const entry = {
     ...newOrgDoc({ code, name: tpl.name, kind: tpl.kind, school: state.settings.school || '', color: tpl.color, description: tpl.description, ownerUid: owner }),
     local: true, sample: key,

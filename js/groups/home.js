@@ -257,7 +257,7 @@ function groupHomeChat(g, u) {
   return `
     <div class="card card-pad sg-home-chat">
       <div class="sg-home-head"><h3 class="sg-h3">Chat${unread ? ` <span class="sg-home-unread" aria-label="${unread} new">${unread}</span>` : ''}</h3><button class="sg-link" onclick="setGroupTab('chat')">Open chat ${icon('chevron-right', 12)}</button></div>
-      ${msgs.length ? msgs.map(m => `<div class="sg-mini-msg">${personAvatar(m.uid, m.name, 22, personColor(g, m.uid))}<div class="small"><span class="sg-strong">${esc(m.uid === u ? 'You' : m.name)}</span> <span class="muted">${fmtRelativeTime(m.at)}</span><div class="sg-mini-text">${esc(m.text)}</div></div></div>`).join('') : `<p class="sg-home-empty">No messages yet.</p>`}
+      ${msgs.length ? msgs.map(m => `<div class="sg-mini-msg">${personAvatar(m.uid, m.name, 22, personColor(g, m.uid))}<div class="small"><span class="sg-strong">${esc(m.uid === u ? 'You' : m.name)}</span> <span class="muted">${fmtRelativeTime(m.at)}</span><div class="sg-mini-text">${esc(chatPreviewText(m.text, 'group', g.code))}</div></div></div>`).join('') : `<p class="sg-home-empty">No messages yet.</p>`}
       <div class="sg-home-reply">
         <input class="input" id="sg-chat-input" maxlength="${GROUP_MESSAGE_MAX}" autocomplete="off" aria-label="Reply to ${esc(g.name)}" placeholder="${msgs.length ? 'Reply to the group' : 'Say hi to the group'}" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendGroupMessage('${g.code}')}">
         <button class="btn btn-icon btn-sm" aria-label="Send reply" data-tip="Send" onclick="sendGroupMessage('${g.code}')">${icon('send', 14)}</button>

@@ -241,11 +241,15 @@ function captureOrgParam() {
   // co-officer (see orgAdminLink); a member who opens it just lands on the
   // club, since the Admin tab only exists for officers.
   const tab = params.get('tab') || '';
+  // &event=ID comes from an event shared to chat: open it once you're in.
+  const event = params.get('event') || '';
   params.delete('org');
   params.delete('tab');
+  params.delete('event');
   history.replaceState({}, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
-  if (code.length === 6 && !isEmbedded()) try { localStorage.setItem(PENDING_ORG_KEY, JSON.stringify({ code, at: Date.now(), tab })); } catch {}
+  if (code.length === 6 && !isEmbedded()) try { localStorage.setItem(PENDING_ORG_KEY, JSON.stringify({ code, at: Date.now(), tab, ...(safeId(event) ? { event } : {}) })); } catch {}
 }
+function pendingOrgEvent() { try { const p = JSON.parse(localStorage.getItem(PENDING_ORG_KEY) || 'null'); return p?.event && safeId(p.event) ? p.event : ''; } catch { return ''; } }
 function pendingOrgCode() { try { const p = JSON.parse(localStorage.getItem(PENDING_ORG_KEY) || 'null'); return p?.code && Date.now() - p.at < 14 * 86400000 ? p.code : null; } catch { return null; } }
 function pendingOrgTab() { try { const p = JSON.parse(localStorage.getItem(PENDING_ORG_KEY) || 'null'); return p?.tab || ''; } catch { return ''; } }
 function clearPendingOrg() { try { localStorage.removeItem(PENDING_ORG_KEY); } catch {} }
@@ -266,7 +270,10 @@ async function handlePendingOrg() {
   if (!window._licensed) return;
   if (orgEntry(code)?.cloud) {
     const tab = pendingOrgTab();
+    const eventId = pendingOrgEvent();
     clearPendingOrg();
+    const o = findOrg(code);
+    if (eventId && o && orgEventList(o).some(e => e.id === eventId)) { openOrgEvent(code, eventId); return; }
     // Already a member: honor the tab the link asked for, when it's one this
     // person can actually see.
     openOrg(code, tab && orgTabsFor(findOrg(code) || {}).some(([k]) => k === tab) ? tab : undefined);

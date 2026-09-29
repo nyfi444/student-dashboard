@@ -145,7 +145,7 @@ function groupIndexCard(g) {
     nextHtml: next
       ? `${spaceCountdownChip(next.date, next.start, next.end)}<span class="space-card-when">${[esc(spaceWhen(next.date, next.start)), next.where ? esc(groupWhereShort(next.where)) : ''].filter(Boolean).join(' · ') || esc(next.title)}</span>`
       : '<span class="space-card-when">No session scheduled</span>',
-    lineHtml: g.lastMessage ? `<div class="space-card-msg ${unread ? 'is-unread' : ''}"><span class="em">${esc(g.lastMessage.name)}:</span> ${esc(g.lastMessage.text)}</div>` : '',
+    lineHtml: g.lastMessage ? `<div class="space-card-msg ${unread ? 'is-unread' : ''}"><span class="em">${esc(g.lastMessage.name)}:</span> ${esc(chatPreviewText(g.lastMessage.text, 'group', g.code))}</div>` : '',
     unread,
     unreadLabel: 'New messages',
     footHtml: `${avatarStack(g, 4, 24)}<span>${g.loading ? 'Loading…' : `${count} member${count === 1 ? '' : 's'}`}</span>`,
@@ -310,56 +310,46 @@ async function setGroupTaskAssignee(code, id, assignee) {
 function deleteGroupTask(code, id) { groupWrite(code, { [`taskItems.${id}`]: GW_DELETE }); }
 
 /* ── Chat ──────────────────────────────────────────────────────── */
+// Drawn by chatView (js/spaces/chat.js); the data and writes stay here.
 function groupChatTab(g) {
-  const msgs = groupMessages(g);
   const u = myUidFor(g);
   const isOwner = g.createdBy === u;
-  let lastDay = '', lastUid = '', lastAt = 0;
-  const rows = msgs.map(m => {
-    const day = iso(new Date(m.at));
-    const sep = day !== lastDay ? `<div class="sg-chat-day">${fmtSessionDay(day)}</div>` : '';
-    const grouped = !sep && lastUid === m.uid && m.at - lastAt < 5 * 60000;
-    lastDay = day; lastUid = m.uid; lastAt = m.at;
-    const mine = m.uid === u;
-    return `${sep}
-      <div class="sg-msg ${mine ? 'mine' : ''} ${grouped ? 'grouped' : ''}">
-        ${mine ? '' : grouped ? '<span class="sg-msg-spacer"></span>' : personAvatar(m.uid, m.name, 28, personColor(g, m.uid))}
-        <div class="sg-msg-body">
-          ${!mine && !grouped ? `<div class="sg-msg-name">${esc(m.name)} <span class="muted">${new Date(m.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span></div>` : ''}
-          <div class="sg-bubble" title="${esc(new Date(m.at).toLocaleString())}">${linkifyText(m.text)}</div>
-        </div>
-        ${mine || isOwner ? `<button class="sg-msg-del" aria-label="Delete message" data-tip="Delete" onclick="deleteGroupMessage('${g.code}','${m.id}')">${icon('x', 11)}</button>` : ''}
-      </div>`;
-  }).join('');
-  return `
-    <div class="card sg-chat">
-      <div class="sg-chat-log" id="sg-chat-log" data-keep-scroll="bottom">
-        ${msgs.length ? rows : emptyState(icon('message-circle', 24), 'No messages yet', '', 'Say hi, or post what you’re stuck on.')}
-      </div>
-      <div class="sg-chat-compose">
-        <input class="input" id="sg-chat-input" maxlength="${GROUP_MESSAGE_MAX}" autocomplete="off" placeholder="Message ${esc(g.name)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendGroupMessage('${g.code}')}">
-        <button class="btn btn-primary" aria-label="Send message" data-tip="Send" onclick="sendGroupMessage('${g.code}')">${icon('send', 14)}</button>
-      </div>
-    </div>`;
+  const n = (g.memberUids || []).length;
+  return chatView({
+    kind: 'group', code: g.code, messages: groupMessages(g), me: u,
+    people: groupPeople(g),
+    who: (m) => (m.uid === u ? myGroupName() : g.people?.[m.uid]?.name || m.name || 'Former member'),
+    avatarColor: (m) => personColor(g, m.uid),
+    canDelete: (m) => m.uid === u || isOwner,
+    deleteJs: (m) => `deleteGroupMessage('${g.code}','${esc(m.id)}')`,
+    sendJs: `sendGroupMessage('${g.code}')`,
+    placeholder: `Message ${g.name}`,
+    stateHtml: emptyState(icon('message-circle', 24), 'No messages yet', '', 'Say hi, or post what you’re stuck on.'),
+    crest: groupCrest(g), title: g.name, sub: `${n} member${n === 1 ? '' : 's'}`,
+  });
 }
-async function sendGroupMessage(code) {
+// text: a preset message (Share to chat) instead of what's in the box.
+async function sendGroupMessage(code, preset) {
   const input = $('#sg-chat-input');
-  const text = input?.value.trim();
+  const fromBox = typeof preset !== 'string';
+  const text = (fromBox ? input?.value || '' : preset).trim();
   if (!text) return;
   const entry = groupEntry(code);
+  if (!entry) return;
   const g = groupView(entry);
   const msg = { id: uid(), uid: myUidFor(g), name: myGroupName(), text: text.slice(0, GROUP_MESSAGE_MAX), at: Date.now() };
   const lastMessage = { uid: msg.uid, name: msg.name, text: msg.text.slice(0, 140), at: msg.at };
-  input.value = '';
+  if (fromBox && input) { input.value = ''; chatGrow(input); }
+  chatPinBottom('group', code);
   if (entry.local) {
     entry.messages = [...(entry.messages || []), msg];
     entry.lastMessage = lastMessage;
     groupChatSeen()[code] = msg.at;
     touch();
-    $('#sg-chat-input')?.focus();
+    if (fromBox) $('#sg-chat-input')?.focus();
     return;
   }
-  if (!cloudGroupsEnabled()) { toast('Log in to chat with this group.', 'error'); return; }
+  if (!cloudGroupsEnabled()) { if (fromBox && input) input.value = text; toast('Log in to chat with this group.', 'error'); return; }
   try {
     await _fbDb.collection('studyGroups').doc(code).collection('messages').doc(msg.id).set(msg);
     groupWrite(code, { lastMessage });
@@ -367,14 +357,37 @@ async function sendGroupMessage(code) {
     playUiSound('send');
   } catch (e) {
     diag.error('studygroups', 'Message failed', e);
-    if (input.isConnected && !input.value) input.value = text;
+    const box = $('#sg-chat-input');
+    if (fromBox && box && !box.value) { box.value = text; chatGrow(box); }
     toast('Message didn’t send. Check your connection and try again.', 'error');
   }
 }
 function deleteGroupMessage(code, id) {
+  if (!groupEntry(code) || !safeId(id)) return;
+  confirmDialog('It’s removed for everyone in the group.', () => removeGroupMessage(code, id), 'Delete', 'Delete this message?');
+}
+// If it was the newest message, the preview on the group goes back one
+// (any member may rewrite lastMessage).
+async function removeGroupMessage(code, id) {
   const entry = groupEntry(code);
-  if (entry.local) { entry.messages = (entry.messages || []).filter(m => m.id !== id); touch(); return; }
-  _fbDb.collection('studyGroups').doc(code).collection('messages').doc(id).delete().catch(e => toast('Couldn’t delete that message: ' + e.message, 'error'));
+  if (!entry) return;
+  const g = groupView(entry);
+  const list = groupMessages(g);
+  const gone = list.find(m => m.id === id);
+  const wasLatest = !!gone && !!g.lastMessage && g.lastMessage.at === gone.at;
+  const prev = chatPreviewAfterDelete(list, id);
+  if (entry.local) {
+    entry.messages = (entry.messages || []).filter(m => m.id !== id);
+    if (wasLatest) entry.lastMessage = prev;
+    touch();
+    return;
+  }
+  try {
+    await _fbDb.collection('studyGroups').doc(code).collection('messages').doc(id).delete();
+    chatRemoveLocal('group', code, id);
+    if (wasLatest) groupWrite(code, { lastMessage: prev });
+    renderRemote();
+  } catch (e) { toast('Couldn’t delete that message: ' + e.message, 'error'); }
 }
 function markChatSeen(code, at) {
   const g = findGroup(code);
@@ -764,6 +777,8 @@ function createSampleGroup() {
       { id: uid(), uid: jordan, name: 'Jordan', text: 'Can we start at 6 instead? I have lab until 5:45', at: now - 25.5 * H },
       { id: uid(), uid: priya, name: 'Priya', text: '6 works for me, I might be a few minutes late though', at: now - 25 * H },
       { id: uid(), uid: hana, name: 'Hana', text: 'Same. Also the cell signaling flashcards in Files are so good, thank you Maya', at: now - 20 * H },
+      { id: uid(), uid: hana, name: 'Hana', text: 'This chapter helped me with signal transduction https://openstax.org/books/biology-2e/pages/9-introduction', at: now - 20 * H + 60000 },
+      { id: uid(), uid: jordan, name: 'Jordan', text: '@Maya can you bring the practice problems from chapter 8?\nI lost my copy', at: now - 6 * H },
       { id: uid(), uid: maya, name: 'Maya', text: 'Moved it to 6! Can everyone add availability for next week so we can lock in the practice exam swap?', at: now - 3 * H },
     ],
     items: [
@@ -776,8 +791,15 @@ function createSampleGroup() {
       ] },
       { id: uid(), kind: 'note', title: 'Lecture 14 summary', sharedBy: 'Priya', sharedByUid: priya, sharedAt: now - 30 * H, content: '<h2>Lecture 14: Cell communication</h2><ul><li>Three stages: reception, transduction, response</li><li>GPCRs are the largest family of receptors</li><li>Amplification: one ligand can trigger thousands of responses</li></ul>' },
       { id: uid(), kind: 'note', title: `Recap: Chapter 7 problem set, ${fmtDate(addDays(t, -6), { month: 'short', day: 'numeric' })}`, sharedBy: 'Priya', sharedByUid: priya, sharedAt: now - 5 * D - 12 * H, content: '<p>We got through 7.1 to 7.14. The Hill coefficient ones tripped everyone up, so Maya walked us through cooperativity with the oxygen curve.<br>Next time: chapter 8 vocab, then the practice exam.</p>' },
+      // More in Files, so the library has every kind (js/groups/resources.js).
+      ...sampleGroupLibraryItems({ maya, priya, jordan, hana, diego }, now),
     ],
   };
+  // Priya shares tomorrow's review to chat, so it shows as an event card,
+  // and "New since you were last here" sits above the last day.
+  const review = Object.values(entry.sessions).find(x => x.title === 'Midterm 2 review');
+  if (review) entry.messages.splice(-1, 0, { id: uid(), uid: priya, name: 'Priya', text: `Tap Going so Maya knows how many worksheets to print ${groupInviteLink(code)}&session=${review.id}`, at: now - 4 * H });
+  groupChatSeen()[code] = now - 22 * H;
   const last = entry.messages[entry.messages.length - 1];
   entry.lastMessage = { uid: last.uid, name: last.name, text: last.text.slice(0, 140), at: last.at };
   groupEntries().push(entry);

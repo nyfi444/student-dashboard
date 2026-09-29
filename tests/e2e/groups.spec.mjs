@@ -158,7 +158,8 @@ test('a student starts a study group, a classmate joins with the code, and they 
 
   /* Files (the resources tab): Alice shares a link, Bob sees it. */
   await tab(a, 'Files');
-  await a.getByRole('button', { name: /Share (something|the first resource)/ }).first().click();
+  // A new group's Files tab is the library's empty state: Upload a file, Add a link.
+  await a.getByRole('button', { name: /^(Add a link|Share)$/ }).first().click();
   await a.locator('#modal #sr-kind').selectOption('link');
   await a.locator('#modal #sr-link-url').fill('https://example.com/bio201-practice-exam');
   await a.locator('#modal #sr-link-title').fill('Practice exam');

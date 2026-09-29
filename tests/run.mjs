@@ -471,6 +471,48 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
     spaceFaceCaption([{ uid: 'a', name: 'Maya Lee' }], 'me', 'said'),
     spaceFaceCaption([{ uid: 'me' }, { uid: 'a', name: 'Maya' }, { uid: 'b', name: 'Jo' }, { uid: 'c', name: 'Al' }], 'me', 'said'),
   ]`), ['You said you’d go', 'Maya said they’d go', 'You, Maya and 2 others said they’d go']);
+  // Tier A item 15: chat (js/spaces/chat.js).
+  check('chat: URLs and @mentions are tokenized once from the raw text; an email is not a mention', run(`(() => {
+    const names = chatNameIndex([{ uid: 'm', name: 'Maya Chen' }, { uid: 'j', name: 'Jo' }]);
+    return chatTokens('@maya chen and @Jo, see https://a.com/x?y=1&z=@q). mail jo@x.com @Joe', names).map(t => t.t + ':' + t.v + (t.uids ? '>' + t.uids.join(',') : ''));
+  })()`), ['mention:@maya chen>m', 'text: and ', 'mention:@Jo>j', 'text:, see ', 'url:https://a.com/x?y=1&z=@q', 'text:). mail jo@x.com @Joe']);
+  check('chat: a live snapshot merges into loaded history; deletions inside the window drop, older pages stay', run(`(() => {
+    const m = (id, at) => ({ id, uid: 'u', name: 'U', text: id, at });
+    chatMergeWindow('group', 'TST', [m('b', 2), m('c', 3), m('d', 4)]);
+    _chatStore('group', 'TST').byId.set('a', m('a', 1));       // a page from "Load earlier"
+    const afterDelete = chatMergeWindow('group', 'TST', [m('b', 2), m('d', 4)]).map(x => x.id);   // c deleted
+    const afterSlide = chatMergeWindow('group', 'TST', [m('d', 4), m('e', 5)]).map(x => x.id);    // b slid out of the window
+    chatDropStore('group', 'TST');
+    return [afterDelete, afterSlide];
+  })()`), [['a', 'b', 'd'], ['a', 'b', 'd', 'e']]);
+  check('chat: links to this app’s sessions and events parse; other hosts and bad ids do not', run(`[
+    chatParseSpaceLink('https://app.semester-hq.com/?join=ab2cd3&session=s_1'),
+    chatParseSpaceLink('https://app.semester-hq.com/?org=QWERTY&event=e1'),
+    chatParseSpaceLink('https://evil.example/?org=QWERTY&event=e1'),
+    chatParseSpaceLink('https://app.semester-hq.com/?org=QWERTY&event=bad%20id'),
+  ]`), [{ kind: 'group', code: 'AB2CD3', id: 's_1' }, { kind: 'club', code: 'QWERTY', id: 'e1' }, null, null]);
+  check('chat: deleting the newest message previews the one before it, or nothing', run(`[
+    chatPreviewAfterDelete([{ id: 'a', uid: 'u1', name: 'A', text: 'hi', at: 1 }, { id: 'b', uid: 'u2', name: 'B', text: 'yo', at: 2 }], 'b'),
+    chatPreviewAfterDelete([{ id: 'a', uid: 'u1', name: 'A', text: 'hi', at: 1 }], 'a'),
+  ]`), [{ uid: 'u1', name: 'A', text: 'hi', at: 1 }, null]);
+
+  // Tier A item 16: the Files library (js/spaces/files.js).
+  check('files: chips, search words and sort (pinned first) pick and order cards', run(`(() => {
+    const it = (id, kind, title, at, pinned) => ({ id, kind, title, at, by: 'Priya', url: kind === 'link' ? 'https://openstax.org/x' : '', pinned });
+    const items = [it('a', 'note', 'Lecture 14', 3), it('b', 'deck', 'Cell terms', 5), it('c', 'link', 'Chapter 9', 1), it('d', 'file', 'Zeta.pdf', 2, true)];
+    const pick = (st) => items.filter(x => libMatch(LIB_CHIP_OF[x.kind], libHaystack(x), st)).map(x => x.id);
+    const order = (sort) => items.map(x => ({ id: x.id, k: libSortKey(x) })).sort((p, q) => libCompare(sort)(p.k, q.k)).map(x => x.id);
+    return [pick({ chip: 'all', q: '' }), pick({ chip: 'notes', q: '' }), pick({ chip: 'all', q: 'openstax' }), pick({ chip: 'all', q: 'priya cell' }), order('new'), order('az'), order('kind')];
+  })()`), [['a', 'b', 'c', 'd'], ['a'], ['c'], ['b'], ['d', 'b', 'a', 'c'], ['d', 'b', 'c', 'a'], ['d', 'a', 'b', 'c']]);
+  check('files: type and size labels, counts, and the title key "In your Flashcards" compares', run(`[
+    libFileMeta({ kind: 'file', fileName: 'notes.txt', size: 1024 }), libFileMeta({ kind: 'file', fileName: 'scan', size: 0 }), libFileMeta({ kind: 'link', url: 'https://www.example.com/a' }),
+    libCountLabel({ kind: 'deck', cards: [{}] }), libCountLabel({ kind: 'note-bundle', notes: [{}, {}] }),
+    libTitleKey('  Cell Signaling  ') === libTitleKey('cell signaling'), libIsImage({ kind: 'file', fileName: 'a.JPG', url: 'data:x' }), libIsImage({ kind: 'file', fileName: 'a.pdf', url: 'data:x' }),
+  ]`), ['TXT · 1 KB', 'File', 'example.com', '1 card', '2 notes', true, true, false]);
+  check('files: a note preview is escaped plain text, never the member’s HTML', run(`(() => {
+    const html = libPreview({ id: 'n1', kind: 'note', title: 't', html: '<p>Hi <b>there</b></p><img src=x onerror=alert(1)><p>&lt;script&gt;</p>' });
+    return [/<img|<b>|onerror/.test(html), html.includes('&lt;script&gt;'), html.includes('Hi there')];
+  })()`), [false, true, true]);
 
   /* ── 8. What needs you (js/spaces/needs.js), on the loaded scripts ──
      One list feeds the strip, the index and dashboard counts, Heads up

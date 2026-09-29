@@ -93,7 +93,7 @@ function showGroupSessionModal(code, sid) {
     rsvpHtml: past ? '' : rsvpControl(g, s, { size: 'hero', stillComing: true, clearable: true }),
     facesHtml: groupFacePile(g, s, { size: 24, past }),
     recapHtml: sessionRecapBlock(g, s, { back: true }),
-    actionsHtml: past ? '' : `${joinLinkButton(s.where)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`,
+    actionsHtml: past ? '' : `${joinLinkButton(s.where)}${chatShareButton('group', g.code, s.id)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`,
     listsHtml: spaceRsvpLists({ key: spaceRsvpKey('group', g.code, s.id), lists }),
     footHtml: `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteSession('${g.code}','${s.id}')">Delete</button><button class="btn" onclick="openSessionModal('${g.code}','${s.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button>`,
   }), { onClose: () => { window._groupSessionModal = null; } });

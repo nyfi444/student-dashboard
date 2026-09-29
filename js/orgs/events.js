@@ -222,7 +222,7 @@ function showOrgEventModal(code, eventId) {
     rsvpHtml: past ? '' : orgRsvpControl(o, e, myOrgRsvp(o, e.id), { size: 'hero', stillComing: true, clearable: true }),
     facesHtml: dues ? '' : orgFacePile(o, e, { size: 24, past }),
     recapHtml: dues ? '' : orgRecapButton(o, e),
-    actionsHtml: past ? '' : `${joinLinkButton(e.location)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button>`,
+    actionsHtml: past ? '' : `${joinLinkButton(e.location)}${chatShareButton('club', o.code, e.id)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button>`,
     listsHtml: dues && !(officer && anyAnswers) ? '' : orgAttendanceLists(o, e),
     footHtml: officer ? `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteOrgEvent('${o.code}','${e.id}')">Delete</button><button class="btn" onclick="openOrgEventModal('${o.code}','${e.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button>` : '',
   }), { onClose: () => { window._orgEventModal = null; } });
