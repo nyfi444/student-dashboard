@@ -65,6 +65,19 @@ export function watchConsole(page) {
     expectClean() {
       expect(problems, `the browser console should be clean:\n${problems.join('\n')}`).toEqual([]);
     },
+    // An explicit decision for the signed-in tests on the emulators (see
+    // openSignedIn in signedin.mjs, which uses this as its expectClean): the
+    // Firestore SDK closes and reopens its listen and write streams as a
+    // page's listeners and writes come and go (switching tabs, a member
+    // joining, an idle stream), and the browser reports the long poll it
+    // drops as an aborted request. Nothing is lost and nothing reaches the
+    // console. Only those exact requests to the emulator are let through;
+    // anything else, any other failed request included, still fails.
+    expectCleanApartFromStreamRestarts() {
+      const STREAM_RESTART = /^request failed: http:\/\/127\.0\.0\.1:8080\/google\.firestore\.v1\.Firestore\/(Listen|Write)\/channel\?\S* — net::ERR_ABORTED$/;
+      const rest = problems.filter(p => !STREAM_RESTART.test(p));
+      expect(rest, `the browser console should be clean:\n${rest.join('\n')}`).toEqual([]);
+    },
   };
 }
 

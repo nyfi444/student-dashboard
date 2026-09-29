@@ -63,8 +63,15 @@ const diag = (() => {
     const keys = [...new URLSearchParams(location.search).keys()];
     return location.pathname + (keys.length ? `?${keys.join('&')}` : '');
   };
-  const featureFromStack = (stack) => (String(stack || '').match(/\/js\/([\w-]+)\.js/) || [])[1]
-    || (location.pathname.endsWith('login.html') ? 'login' : 'app');
+  // A feature split into a folder reports under its old name, so the Error
+  // Viewer keeps grouping it the same way: js/groups/* is studygroups,
+  // js/orgs/* is orgs, js/spaces/* (shared by both) is spaces.
+  const FEATURE_FOLDERS = { groups: 'studygroups', orgs: 'orgs', spaces: 'spaces' };
+  const featureFromStack = (stack) => {
+    const m = String(stack || '').match(/\/js\/(?:([\w-]+)\/)?([\w-]+)\.js/);
+    if (m) return m[1] ? (FEATURE_FOLDERS[m[1]] || m[1]) : m[2];
+    return location.pathname.endsWith('login.html') ? 'login' : 'app';
+  };
 
   function context() {
     const c = {

@@ -1,0 +1,121 @@
+/* ── Study groups ───────────────────────────────────────────────
+   Rules only the study group pages use (js/studygroups.js,
+   js/groups/*). Loaded right after styles.css, which keeps everything
+   groups share with clubs and the rest of the app. Section names below
+   are the ones these rules sat under in styles.css.
+   A rule that a later generic rule in styles.css must keep beating
+   stays there instead (.sg-assignee, see the note beside it).
+──────────────────────────────────────────────────────────────── */
+/* ── Study Groups ──────────────────────────────────────────────── */
+.sg-tag { background: var(--surface-2); color: var(--text-dim); text-transform: none; letter-spacing: 0; font-weight: 600; vertical-align: 1px; }
+.sg-card-msg { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sg-session .sg-date-tile { align-self: flex-start; }
+.sg-going { display: inline-flex; align-items: center; gap: 6px; }
+.sg-ics { margin-left: auto; }
+.sg-best { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--hairline); }
+.sg-best:first-of-type { border-top: none; padding-top: 2px; }
+.sg-best-when { flex: 1; min-width: 0; }
+.sg-mini-msg { display: flex; gap: 9px; padding: 7px 0; align-items: flex-start; }
+.sg-mini-text { color: var(--text-dim); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 1px; }
+.sg-activity { display: flex; gap: 10px; padding: 6px 0; align-items: flex-start; }
+.sg-activity .small { padding-top: 3px; line-height: 1.4; }
+.sg-session { display: flex; gap: 14px; padding: 16px; margin-bottom: 12px; }
+.sg-session.past { box-shadow: none; }
+.sg-session-body { flex: 1; min-width: 0; }
+.sg-session-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.sg-session-actions { display: flex; gap: 2px; flex-shrink: 0; margin: -4px -6px 0 0; }
+.sg-session-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+/* availability */
+.sg-avail-wrap .flex-between { min-height: 30px; }
+.sg-avail-head { display: flex; justify-content: space-between; align-items: center; gap: 4px 12px; flex-wrap: wrap; min-height: 30px; }
+.sg-avail-actions { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
+.sg-avail-wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.sg-grid-scroll { overflow-x: auto; }
+.sg-grid-mine { touch-action: none; cursor: crosshair; }
+.sg-grid-day { text-align: center; font: 600 var(--fs-xs)/1.2 var(--font); color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; padding-bottom: 6px; }
+.sg-grid-time { font-size: var(--fs-xs); color: var(--text-faint); text-align: right; padding-right: 6px; line-height: 1; transform: translateY(-4px); height: 13px; }
+.sg-cell { height: 13px; background: var(--surface-2); border-left: 1px solid var(--surface); border-bottom: 1px dashed color-mix(in srgb, var(--border) 55%, transparent); }
+.sg-cell.hr { border-top: 1px solid var(--border); }
+.sg-grid-mine .sg-cell:hover { background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); }
+.sg-grid-mine .sg-cell.on { background: var(--me-color, var(--accent)); border-top-color: transparent; border-bottom-color: transparent; }
+.sg-grid-mine .sg-cell.on.run-start { border-top-left-radius: var(--r-tight-active); border-top-right-radius: var(--r-tight-active); }
+.sg-grid-mine .sg-cell.on.run-end { border-bottom-left-radius: var(--r-tight-active); border-bottom-right-radius: var(--r-tight-active); }
+.sg-grid-heat .sg-cell { background: color-mix(in srgb, var(--accent) var(--heat, 0%), var(--surface-2)); border-bottom-color: transparent; }
+.sg-legend { display: flex; align-items: center; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+.sg-legend-bar { width: 90px; height: 8px; border-radius: var(--r-mark); background: linear-gradient(90deg, var(--surface-2), var(--accent)); border: 1px solid var(--border); }
+/* tasks */
+.sg-task-add { display: grid; grid-template-columns: 1fr 150px 160px auto; gap: 8px; }
+.sg-task-progress { display: flex; align-items: center; gap: 10px; }
+.sg-task-progress .progress { width: 120px; height: 6px; }
+@media (max-width: 900px) {
+  .sg-avail-wrap { grid-template-columns: 1fr; }
+  .sg-task-add { grid-template-columns: 1fr 1fr; }
+  .sg-task-add .input:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+  .sg-ics { margin-left: 0; }
+}
+
+/* study group member colors */
+.sg-swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.sg-swatch { position: relative; width: 22px; height: 22px; border-radius: 50%; border: none; padding: 0; transition: box-shadow var(--dur-1) var(--ease-out); }
+.sg-swatch:hover { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--control-border); }
+.sg-swatch.active { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text); }
+@media (pointer: coarse) {
+  .sg-swatches { gap: 16px; } /* 22px swatch + 16px = 38px pitch, so the 38px hit areas meet without overlapping */
+  .sg-swatch::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
+}
+.sg-swatch-taken { position: absolute; right: -1px; bottom: -1px; width: 8px; height: 8px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2px currentColor; color: var(--text-faint); }
+.sg-mycolor { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.sg-view-toggle { padding: 2px; }
+.sg-view-toggle button { padding: 4px 10px; font-size: var(--fs-sm); }
+.sg-legend-people { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.sg-legend-person { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 7px; border-radius: var(--r-pill); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; transition: opacity .12s; }
+.sg-legend-person:hover { background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
+.sg-legend-person.active { border-color: var(--p); box-shadow: inset 0 0 0 1px var(--p); }
+.sg-legend-person.dim { color: var(--text-faint); border-style: dashed; }
+.sg-legend-person.dim .sg-legend-dot { opacity: .4; }
+/* Touch: a 44px-tall hit area around each 26px chip (the inset is measured
+   from inside the 1px border); wrapped rows get 18px between them so the
+   invisible areas meet instead of overlapping. */
+@media (pointer: coarse) {
+  .sg-legend-people { row-gap: 18px; margin-top: 9px; margin-bottom: 19px; }
+  .sg-legend-person { position: relative; }
+  .sg-legend-person::after { content: ''; position: absolute; inset: -10px -4px; }
+}
+.sg-legend-dot, .sg-name-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--p); flex-shrink: 0; }
+.sg-name-dot { width: 7px; height: 7px; margin-right: 4px; vertical-align: 1px; }
+/* No borders on people cells: painted stripes run the full height, so a
+   person's free block reads as one bar; hour lines sit behind the stripes. */
+.sg-grid-people .sg-cell-people { display: flex; gap: 1px; padding: 0 1px; height: 14px; background: var(--surface-2); border-top: 0; border-bottom: 0; }
+.sg-grid-people .sg-cell-people.hr { background: linear-gradient(var(--border), var(--border)) top / 100% 1px no-repeat, var(--surface-2); }
+.sg-grid-people .sg-cell-people i.rs { border-top-left-radius: var(--r-tight-active); border-top-right-radius: var(--r-tight-active); }
+.sg-grid-people .sg-cell-people i.re { border-bottom-left-radius: var(--r-tight-active); border-bottom-right-radius: var(--r-tight-active); }
+.sg-grid-people .sg-cell-people i { flex: 1; min-width: 0; }
+.sg-grid-people .sg-cell-people.all { box-shadow: inset 1px 0 0 var(--text), inset -1px 0 0 var(--text); }
+.sg-grid-people .sg-cell-people.all.all-start { box-shadow: inset 1px 0 0 var(--text), inset -1px 0 0 var(--text), inset 0 1px 0 var(--text); }
+.sg-grid-people .sg-cell-people.all.all-end { box-shadow: inset 1px 0 0 var(--text), inset -1px 0 0 var(--text), inset 0 -1px 0 var(--text); }
+.sg-grid-people .sg-cell-people.all.all-start.all-end { box-shadow: inset 0 0 0 1px var(--text); }
+
+/* ══════════════════════════════════════════════════════════════════
+   Study groups + clubs, round two (appended block): the session popup,
+   weekly series, join buttons, schedule-drafted availability, club
+   quick links, member search, and the officers' attendance grid.
+   ══════════════════════════════════════════════════════════════════ */
+/* A group wearing its class's color: the next-session date block and the
+   sidebar tint follow --sg, set on the detail wrapper when there is one. */
+.sg-tinted .sg-next:not(.sg-next-empty) .sg-next-date { background: var(--sg-fill, var(--sg)); color: var(--on-sg, var(--accent-text)); }
+.sg-series-tag { display: inline-block; font: 600 var(--fs-sm)/1.3 var(--font); padding: 0 6px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-dim); vertical-align: 1px; margin-left: 2px; }
+.sg-title-btn { background: none; border: none; padding: 0; text-align: left; color: inherit; cursor: pointer; display: block; width: 100%; }
+.sg-title-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.sg-session { cursor: pointer; }
+.sg-session .sg-rsvp, .sg-session .sg-session-actions, .sg-session .sg-join-btn, .sg-session a { cursor: default; }
+.sg-session .sg-rsvp button, .sg-session .sg-session-actions button, .sg-session .sg-join-btn { cursor: pointer; }
+.sg-going { color: var(--text-dim); }
+.sg-going .sg-stack { margin-right: 2px; }
+.sg-claim { flex-shrink: 0; white-space: nowrap; }
+.sg-task.compact .sg-claim { margin-left: auto; }
+.sg-color-auto { position: relative; background: var(--surface-2); color: var(--text-dim); display: inline-flex; align-items: center; justify-content: center; }
+@media (max-width: 760px) {
+  .sg-task .sg-claim { order: 3; }
+}

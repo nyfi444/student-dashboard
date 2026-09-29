@@ -12,12 +12,13 @@
 importScripts('./js/version.js');
 const VERSION = 'shq-' + self.APP_VERSION;
 const APP_SHELL = [
-  './', 'index.html', 'login.html', 'group-admin.html', 'manifest.json', 'css/styles.css', 'css/calendar.css', 'css/notebook.css',
+  './', 'index.html', 'login.html', 'group-admin.html', 'manifest.json', 'css/styles.css', 'css/groups.css', 'css/clubs.css', 'css/spaces.css', 'css/calendar.css', 'css/notebook.css',
   'assets/favicon.png', 'assets/apple-touch-icon.png', 'assets/icon-192.png', 'assets/icon-512.png',
   'js/version.js', 'js/config.js', 'js/diagnostics.js', 'js/utils.js', 'js/sanitize.js', 'js/icons.js', 'js/colorwheel.js', 'js/state.js', 'js/firebase.js', 'js/ai.js', 'js/uploads.js',
   'js/authemail.js', 'js/checkout.js', 'js/setupcounts.js', 'js/groupplans.js', 'js/group-admin.js', 'js/ui.js', 'js/dashboard.js', 'js/courses.js', 'js/semestersetup.js', 'js/calendar.js', 'js/todos.js',
   'js/assignments.js', 'js/notebook-templates.js', 'js/notebook.js', 'js/timer.js', 'js/exams.js', 'js/projects.js', 'js/studytools.js',
-  'js/studygroups.js', 'js/career.js', 'js/capture.js', 'js/wrapped.js', 'js/classes.js', 'js/quickparse.js', 'js/syllabus.js', 'js/lmsfeed.js', 'js/orgs.js', 'js/appearance.js', 'js/reminders.js', 'js/settings.js', 'js/palette.js', 'js/install.js', 'js/offline.js', 'js/app.js',
+  'js/spaces/core.js', 'js/spaces/tokens.js', 'js/spaces/header.js', 'js/spaces/rsvp.js', 'js/spaces/eventcard.js', 'js/spaces/needs.js', 'js/spaces/chat.js', 'js/spaces/files.js', 'js/spaces/invite.js',
+  'js/groups/sync.js', 'js/groups/availability.js', 'js/groups/resources.js', 'js/studygroups.js', 'js/career.js', 'js/capture.js', 'js/wrapped.js', 'js/classes.js', 'js/quickparse.js', 'js/syllabus.js', 'js/lmsfeed.js', 'js/orgs.js', 'js/orgs/admin.js', 'js/orgs/files.js', 'js/appearance.js', 'js/reminders.js', 'js/settings.js', 'js/palette.js', 'js/install.js', 'js/offline.js', 'js/app.js',
 ];
 const CDN_HOSTS = ['www.gstatic.com', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'fonts.gstatic.com', 'api.fontshare.com', 'cdn.fontshare.com'];
 

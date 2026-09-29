@@ -89,6 +89,47 @@ test('every page renders', async ({ page }) => {
   console_.expectClean();
 });
 
+/* Study groups and clubs are split across several files (js/spaces/,
+   js/groups/, js/orgs/), each loaded in its place in index.html. The
+   route pages above only draw the index; this opens the sample group and
+   the sample club and every one of their tabs, which is where a missing
+   or misordered file would throw. */
+// The sample opens itself if it already exists, so a click lost to a
+// redraw on a slow phone run is safe to repeat.
+async function openSample(page, label, tabs) {
+  await expect(async () => {
+    const btn = page.getByRole('button', { name: label });
+    if (await btn.isVisible()) await btn.click();
+    await expect(tabs.first()).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 20_000 });
+}
+test('the sample study group and sample club open on every tab', async ({ page }) => {
+  const console_ = await openApp(page);
+  await navTo(page, 'studygroups');
+  const groupTabs = page.locator('#content [role="tab"]');
+  await openSample(page, 'Explore a sample group first', groupTabs);
+  const gCount = await groupTabs.count();
+  expect(gCount, 'the sample group shows its tabs').toBeGreaterThanOrEqual(6);
+  for (let i = 0; i < gCount; i++) {
+    await groupTabs.nth(i).click();
+    await expect(groupTabs.nth(i)).toHaveAttribute('aria-selected', 'true');
+    const text = (await page.locator('#content').innerText()).trim();
+    expect(text.length, `group tab ${i} rendered no text`).toBeGreaterThan(40);
+  }
+  await navTo(page, 'orgs');
+  const clubTabs = page.locator('#content [role="tab"]');
+  await openSample(page, 'Explore a sample club first', clubTabs);
+  const cCount = await clubTabs.count();
+  expect(cCount, 'the sample club shows its tabs').toBeGreaterThanOrEqual(5);
+  for (let i = 0; i < cCount; i++) {
+    await clubTabs.nth(i).click();
+    await expect(clubTabs.nth(i)).toHaveAttribute('aria-selected', 'true');
+    const text = (await page.locator('#content').innerText()).trim();
+    expect(text.length, `club tab ${i} rendered no text`).toBeGreaterThan(40);
+  }
+  console_.expectClean();
+});
+
 test('on a phone, More opens every section the bottom bar leaves out', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'phone', 'the bottom bar is phone only');
   const console_ = await openApp(page);

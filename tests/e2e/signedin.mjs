@@ -40,7 +40,9 @@ let counter = 0;
    document the way the Worker's webhook would — the only way one is ever
    created, since the rules let no client write it. */
 export async function newAccount(name, { paid = true } = {}) {
-  const email = `${name}.${Date.now().toString(36)}${(counter++).toString(36)}@school.test`;
+  // Test files run in parallel worker processes, each with its own counter,
+  // so the pid keeps two workers from minting the same address in the same ms.
+  const email = `${name}.${Date.now().toString(36)}${process.pid.toString(36)}${(counter++).toString(36)}@school.test`;
   const res = await fetch(`${AUTH}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=emulator`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, password: PASSWORD, displayName: name, returnSecureToken: true }),
@@ -117,6 +119,11 @@ export async function openSignedIn(page, account) {
   }
   await expect.poll(() => page.evaluate(() => !!window._licenseChecked && !!(typeof _fbUser !== 'undefined' && _fbUser)),
     { message: `${account.name} never finished signing in`, timeout: 15_000 }).toBe(true);
+  // Signed in, the page holds Firestore's listen and write streams open,
+  // and the SDK restarts them as it needs to; with the whole suite running
+  // a restart shows up as an aborted request (it failed account, clubs and
+  // groups tests at random). Only those exact requests are let through.
+  console_.expectClean = console_.expectCleanApartFromStreamRestarts;
   return console_;
 }
 

@@ -341,5 +341,62 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
   check('network: it names what was affected', dropped[0]?.message, 'Connection dropped (auth, feeds, group-plans, license)');
 }
 
+/* ── 6. Every script index.html loads, together, in order ───────────
+   The classic scripts share one global scope. A name declared at the top
+   of two files (a `const` left behind after a move, say) is a
+   SyntaxError that stops the second file from running at all, and a
+   file whose top-level code reads a `const` from a file that loads later
+   (orgs.js reads GROUP_COLORS from js/spaces/core.js) throws on load.
+   Either one is a dead Study Groups or Clubs page. So: the whole list,
+   concatenated, has to parse, and then every file, run one after another
+   in a single context exactly the way the browser runs them, has to load
+   without throwing, boot included. The DOM and the CDN scripts are a
+   stand-in that accepts anything; only the app's own names are real. */
+{
+  const scripts = [...indexHtml.matchAll(/<script[^>]+src="((?!https?:)[^"]+)"/g)].map(m => m[1]);
+  let parsed = true;
+  try { new vm.Script(scripts.map(f => read(f)).join('\n;\n'), { filename: 'index-bundle.js' }); }
+  catch (e) { parsed = false; console.error('  index.html scripts do not parse together:', e.message); }
+  ok('index.html: every local script, concatenated in order, parses (no name declared twice)', parsed);
+
+  // Anything: every property is another anything, calling or constructing
+  // one returns one, and it is never a thenable, so awaits settle.
+  const any = new Proxy(function () {}, {
+    get: (t, k) => k === Symbol.toPrimitive ? () => '' : k === 'then' ? undefined : k === Symbol.iterator ? function* () {} : k === 'length' ? 0 : any,
+    set: () => true, has: () => true, deleteProperty: () => true,
+    apply: () => any, construct: () => any,
+  });
+  const mem = {};
+  const store = { getItem: (k) => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = String(v); }, removeItem: (k) => { delete mem[k]; }, key: () => null, get length() { return 0; }, clear() {} };
+  const box = {
+    console: { ...console, log() {}, info() {}, debug() {} },
+    document: any, localStorage: store, sessionStorage: store, indexedDB: any,
+    navigator: { onLine: true, userAgent: 'node', language: 'en-US', languages: ['en-US'], clipboard: any, storage: any },
+    location: { pathname: '/index.html', search: '', hash: '', href: 'http://localhost/index.html', origin: 'http://localhost', hostname: 'localhost', host: 'localhost', protocol: 'http:', reload() {}, replace() {}, assign() {} },
+    history: { replaceState() {}, pushState() {}, back() {}, state: null },
+    fetch: () => Promise.reject(new Error('no network in tests')),
+    addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; },
+    setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
+    requestAnimationFrame: () => 0, cancelAnimationFrame() {}, requestIdleCallback: () => 0, queueMicrotask,
+    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }),
+    getComputedStyle: () => any, getSelection: () => any, scrollTo() {}, scrollBy() {}, open: () => null, alert() {}, confirm: () => false, prompt: () => null,
+    innerWidth: 1440, innerHeight: 900, devicePixelRatio: 1, screen: { width: 1440, height: 900 }, visualViewport: any,
+    crypto, performance, URL, URLSearchParams, TextEncoder, TextDecoder, AbortController, Blob, structuredClone, atob, btoa,
+    firebase: any, Event: any, CustomEvent: any, Image: any, FileReader: any, FormData: any, Notification: any, BroadcastChannel: any,
+    MutationObserver: any, ResizeObserver: any, IntersectionObserver: any, DOMParser: any, HTMLElement: any, Element: any, Node: any, CSS: any,
+  };
+  box.window = box; box.self = box; box.globalThis = box; box.top = box; box.parent = box;
+  vm.createContext(box);
+  let failedAt = null;
+  for (const f of scripts) {
+    try { vm.runInContext(read(f), box, { filename: f }); }
+    catch (e) { failedAt = `${f}: ${e.message}`; break; }
+  }
+  if (failedAt) console.error('  load failed at', failedAt);
+  check('index.html: every local script loads in order in one context, app boot included', failedAt, null);
+  const loaded = (names) => names.filter(n => { try { return vm.runInContext(`typeof ${n}`, box) === 'undefined'; } catch { return true; } });
+  check('study groups and clubs: their entry points exist after load', loaded(['pageStudyGroups', 'pageGroupDetail', 'groupWrite', 'groupAvailabilityTab', 'groupResourcesTab', 'pageOrgs', 'pageOrgDetail', 'orgWrite', 'orgAdminTab', 'orgFilesTab', 'copyText', 'SAFE_ID', 'GROUP_COLORS', 'ORG_COLORS', 'downloadCsv']), []);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -31,6 +31,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/groups.css">
+<link rel="stylesheet" href="css/clubs.css">
+<link rel="stylesheet" href="css/spaces.css">
 <link rel="stylesheet" href="css/calendar.css">
 <link rel="stylesheet" href="css/notebook.css">
 
@@ -73,7 +76,12 @@
        3. js/app.js comes LAST. It boots the app and calls into every file
           above it.
      Everything between rule 2 and rule 3 is a feature and is order-free;
-     add new ones there, not at either end. -->
+     add new ones there, not at either end. One exception, study groups
+     and clubs: js/spaces/core.js, then the other js/spaces/ files, then
+     js/groups/sync.js (its constants are read at load), the other group
+     files and js/studygroups.js; js/orgs.js before js/orgs/*. orgs.js
+     reads GROUP_COLORS from core.js at load. tests/run.mjs loads the
+     whole list in order and fails on a clash or a load-order slip. -->
 <script defer src="js/version.js"></script>
 <script defer src="js/config.js"></script>
 <script defer src="js/diagnostics.js"></script>
@@ -101,6 +109,18 @@
 <script defer src="js/exams.js"></script>
 <script defer src="js/projects.js"></script>
 <script defer src="js/studytools.js"></script>
+<script defer src="js/spaces/core.js"></script>
+<script defer src="js/spaces/tokens.js"></script>
+<script defer src="js/spaces/header.js"></script>
+<script defer src="js/spaces/rsvp.js"></script>
+<script defer src="js/spaces/eventcard.js"></script>
+<script defer src="js/spaces/needs.js"></script>
+<script defer src="js/spaces/chat.js"></script>
+<script defer src="js/spaces/files.js"></script>
+<script defer src="js/spaces/invite.js"></script>
+<script defer src="js/groups/sync.js"></script>
+<script defer src="js/groups/availability.js"></script>
+<script defer src="js/groups/resources.js"></script>
 <script defer src="js/studygroups.js"></script>
 <script defer src="js/career.js"></script>
 <script defer src="js/capture.js"></script>
@@ -110,6 +130,8 @@
 <script defer src="js/syllabus.js"></script>
 <script defer src="js/lmsfeed.js"></script>
 <script defer src="js/orgs.js"></script>
+<script defer src="js/orgs/admin.js"></script>
+<script defer src="js/orgs/files.js"></script>
 <script defer src="js/appearance.js"></script>
 <script defer src="js/reminders.js"></script>
 <script defer src="js/settings.js"></script>
