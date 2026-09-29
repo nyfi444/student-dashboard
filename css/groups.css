@@ -8,7 +8,6 @@
 ──────────────────────────────────────────────────────────────── */
 /* ── Study Groups ──────────────────────────────────────────────── */
 .sg-tag { background: var(--surface-2); color: var(--text-dim); text-transform: none; letter-spacing: 0; font-weight: 600; vertical-align: 1px; }
-.sg-card-msg { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sg-session .sg-date-tile { align-self: flex-start; }
 .sg-going { display: inline-flex; align-items: center; gap: 6px; }
 .sg-ics { margin-left: auto; }

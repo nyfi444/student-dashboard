@@ -33,7 +33,7 @@ const GROUP_MESSAGE_MAX = 2000;
 const PENDING_JOIN_KEY = 'shq_pending_join';
 const GROUP_CACHE_KEY = storeKey + '.groups';
 const GROUP_PRICING_URL = 'https://semester-hq.com/group-pricing.html';
-const GROUP_TABS = [['overview', 'Overview'], ['schedule', 'Sessions'], ['availability', 'Find a time'], ['tasks', 'Tasks'], ['resources', 'Resources'], ['chat', 'Chat']];
+const GROUP_TABS = [['overview', 'Overview'], ['schedule', 'Sessions'], ['availability', 'Find a time'], ['tasks', 'Tasks'], ['resources', 'Files'], ['chat', 'Chat']];
 const SESSION_REPEAT_WEEKS = [2, 4, 6, 8, 10, 12, 15];
 /* ── Identity ──────────────────────────────────────────────────── */
 function cloudGroupsEnabled() { return fbConfigured() && !!_fbUser && !!_fbDb && !!window._licensed; }
@@ -427,8 +427,14 @@ function closeGroupDetailListeners() {
 }
 function afterGroupPageRender() {
   const code = state.route === 'studygroups' ? state.subRoute : null;
-  if (!code || !groupEntry(code)) { if (_detailSubs.code) closeGroupDetailListeners(); return; }
+  if (!code || !groupEntry(code)) {
+    if (_detailSubs.code) closeGroupDetailListeners();
+    // Clubs run it from afterOrgPageRender; the groups index drops the sticky-row watcher here.
+    if (state.route === 'studygroups' && typeof afterSpaceRender === 'function') afterSpaceRender();
+    return;
+  }
   centerActiveSgTab();
+  if (typeof afterSpaceRender === 'function') afterSpaceRender();
   ensureGroupDetailListeners(code);
   bindAvailabilityPainting();
   const log = document.getElementById('sg-chat-log');

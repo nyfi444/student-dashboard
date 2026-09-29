@@ -1,9 +1,11 @@
 /* ── App shell: nav, router, boot ────────────────────────────────── */
 const NAV = [
   ['Overview', [['dashboard', 'home', 'Dashboard'], ['calendar', 'calendar', 'Calendar'], ['todos', 'check-square', 'To-Do List']]],
+  // Groups sits near the top so the shared spaces are in view without scrolling.
+  ['Groups', [['studygroups', 'users', 'Study Groups'], ['orgs', 'shield', 'Clubs & Teams']]],
   ['Coursework', [['courses', 'graduation-cap', 'Courses'], ['assignments', 'clipboard-list', 'Assignments'], ['exams', 'flag', 'Exams'], ['projects', 'folder', 'Projects']]],
-  ['Study', [['notebook', 'book-open', 'Notebook'], ['timer', 'timer', 'Study Timer'], ['studytools', 'layers', 'Flashcards'], ['studygroups', 'users', 'Study Groups']]],
-  ['Campus', [['orgs', 'shield', 'Clubs & Teams'], ['career', 'briefcase', 'Applications']]],
+  ['Study', [['notebook', 'book-open', 'Notebook'], ['timer', 'timer', 'Study Timer'], ['studytools', 'layers', 'Flashcards']]],
+  ['Campus', [['career', 'briefcase', 'Applications']]],
 ];
 // On a phone the bottom bar holds these four and a More button; More opens
 // everything else (and Settings) in a panel, so nothing hides off the edge.

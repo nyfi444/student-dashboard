@@ -32,7 +32,7 @@ function orgCatHtml(e) { const c = orgCat(e); return `<span class="org-cat">${ic
 const ORG_COLORS = GROUP_COLORS; // shared with study groups, see js/spaces/core.js
 const ORG_LINKS_MAX = 6;
 const ORG_LINK_SUGGESTIONS = ['GroupMe', 'Instagram', 'Website', 'Venmo', 'Google Drive', 'Discord'];
-const ORG_TABS = [['overview', 'Overview'], ['events', 'Calendar'], ['announcements', 'Announcements'], ['chat', 'Chat'], ['files', 'Files'], ['members', 'Members']];
+const ORG_TABS = [['overview', 'Overview'], ['events', 'Calendar'], ['announcements', 'Announcements'], ['files', 'Files'], ['members', 'Members'], ['chat', 'Chat']];
 // Officers get one more: everything that comes with running the club, which
 // was otherwise spread across a settings gear, an invite popup, the members
 // list, and a link buried in the invite modal (see orgAdminTab).
@@ -118,10 +118,16 @@ function orgLinkList(o) {
   return (Array.isArray(o?.links) ? o.links : []).filter(l => l && safeId(l.id) && isHttpUrl(l.url))
     .map(l => ({ id: l.id, label: cleanStr(l.label, 30) || hostOf(l.url) || 'Link', url: String(l.url).trim() })).slice(0, ORG_LINKS_MAX);
 }
+// A small glyph for the service a link goes to, and "Pay dues" for the first
+// link that goes to a payment app, so members find it without reading labels.
+const ORG_LINK_GLYPHS = [[/instagram|tiktok/i, 'camera'], [/groupme|discord|slack|whatsapp|messenger|telegram/i, 'message-circle'], [/drive\.google|docs\.google|dropbox|onedrive|notion/i, 'folder'], [/calendar/i, 'calendar']];
+const ORG_DUES_LINK = /venmo|paypal|cash\.app|cashapp|zelle|\bdues\b/i;
 function orgLinksHtml(o, { editable = false } = {}) {
   const links = orgLinkList(o);
   if (!links.length && !editable) return '';
-  return `<div class="org-links">${links.map(l => `<a class="org-link-pill" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${icon('link', 11)} ${esc(l.label)}</a>`).join('')}${editable ? `<button class="org-link-pill is-edit" onclick="openOrgLinksModal('${o.code}')">${icon('pencil', 11)} ${links.length ? 'Edit links' : 'Add links'}</button>` : ''}</div>`;
+  const duesId = links.find(l => ORG_DUES_LINK.test(`${l.url} ${l.label}`))?.id;
+  const glyph = (l) => (ORG_LINK_GLYPHS.find(([re]) => re.test(`${l.url} ${l.label}`)) || [0, 'link'])[1];
+  return `<div class="org-links">${links.map(l => `<a class="org-link-pill" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"${l.id === duesId ? ` title="${esc(l.label)}"` : ''}>${icon(l.id === duesId ? 'check-square' : glyph(l), 12)} ${l.id === duesId ? 'Pay dues' : esc(l.label)}</a>`).join('')}${editable ? `<button class="org-link-pill is-edit" onclick="openOrgLinksModal('${o.code}')">${icon('pencil', 11)} ${links.length ? 'Edit links' : 'Add links'}</button>` : ''}</div>`;
 }
 function orgAnnouncementList(o) {
   return Object.values(o.announcements || {}).filter(a => a && safeId(a.id) && typeof a.text === 'string' && a.text.trim())
@@ -295,12 +301,26 @@ function pageOrgs() {
     ` : '')}
     ${!fbConfigured() || cloudGroupsEnabled() || demoBarShowing() ? '' : `<div class="sg-callout mb-16">${icon('info', 16)}<div class="small">You’re looking around without an account, so anything you make here disappears when you close the tab. <a href="login.html">Log in</a> to invite members.</div></div>`}
     ${orgs.length ? `
-      ${orgUpcomingForMe(7).length ? `<div class="card card-pad mb-16"><h3 class="sg-h3 mb-8">This week</h3>${orgUpcomingForMe(7).slice(0, 6).map(({ o, e }) => orgEventRow(o, e, { showOrg: true })).join('')}</div>` : ''}
+      ${orgsThisWeek()}
       <div class="sg-section-label">Yours</div>
-      <div class="grid grid-3">${orgs.map(orgIndexCard).join('')}</div>
+      <div class="space-grid">${orgs.map(orgIndexCard).join('')}</div>
     ` : orgsEmptyHero()}
     <div class="sg-pricing-note small">${icon('users', 14)} Bringing your whole team or chapter? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Group pricing</a> covers every member at a lower rate.</div>
   `;
+}
+function orgsThisWeek() {
+  return spaceWeekCard({
+    title: 'This week',
+    rows: orgUpcomingForMe(7).map(({ o, e }) => ({
+      date: e.date,
+      html: `
+        <div class="list-row space-week-item space" style="${spaceVars(orgColor(o))}" onclick="showOrgEventModal('${o.code}','${e.id}')">
+          ${spaceCrest({ text: orgMonogram(o) }, 'xs')}
+          <div class="row-title"><div class="sg-strong">${esc(e.title)}${e.required ? ' <span class="org-required">Required</span>' : ''}</div><div class="row-meta">${[e.start ? `${fmtTime(e.start)}${e.end ? ` to ${fmtTime(e.end)}` : ''}` : '', esc(o.name), e.location ? esc(e.location) : ''].filter(Boolean).join(' · ')}</div></div>
+          ${orgRsvpControl(o, e)}
+        </div>`,
+    })),
+  });
 }
 function orgsEmptyHero() {
   return emptyStateHtml({
@@ -308,29 +328,41 @@ function orgsEmptyHero() {
     title: 'Your org’s calendar, in everyone’s planner.',
     body: 'For clubs, teams, and chapters: officers post a meeting or practice once, and it shows up for every member next to their classes and deadlines.',
     actions: [{ label: 'Start a club or team', onclick: 'openCreateOrgModal()', icon: 'plus' }, { label: 'Join with code', onclick: 'openJoinOrgModal()' }],
-    extra: cloudGroupsEnabled() ? '' : `<button class="btn btn-ghost btn-sm" onclick="createSampleOrg()">${icon('eye', 14)} Explore a sample club first</button>`,
+    extra: cloudGroupsEnabled() ? '' : sampleOrgChipsHtml(),
   });
 }
+// Faces in a club's colors: officers in the club color, everyone else in
+// lighter steps of it, so a stack never reads as a row of grey dots.
+function orgFaceColors(o) {
+  const color = orgColor(o), map = {};
+  orgPeople(o).forEach((p, i) => { map[p.uid] = p.officer ? color : spaceTint(color, (i % 3) + 1); });
+  return map;
+}
+// What a club needs from you: required upcoming events you haven't answered.
+function orgIndexNeedCount(o) { return upcomingOrgEvents(o).filter(e => e.required && !myOrgRsvp(o, e.id)).length; }
 function orgIndexCard(o) {
   const next = upcomingOrgEvents(o)[0];
   const unread = orgUnreadCount(o);
   const chatUnread = orgChatUnread(o);
   const kind = orgKind(o);
-  return `
-    <div class="card sg-card org-card" style="${colorVars('org', orgColor(o))}" role="button" tabindex="0" onclick="openOrg('${o.code}')" onkeydown="if(event.key==='Enter')openOrg('${o.code}')">
-      <div class="sg-card-top">
-        <div class="org-card-id">
-          <span class="org-crest" aria-hidden="true">${orgMonogram(o)}</span>
-          <div style="min-width:0">
-            <div class="sg-card-name">${esc(o.name)}</div>
-            <div class="small dim">${[kind[1], o.school ? esc(o.school) : '', o.sample ? 'Sample' : ''].filter(Boolean).join(' · ')}</div>
-          </div>
-        </div>
-        ${unread || chatUnread ? `<span class="sg-unread-dot" role="img" aria-label="${[unread ? `${unread} new announcement${unread === 1 ? '' : 's'}` : '', chatUnread ? 'New messages' : ''].filter(Boolean).join(', ')}"></span>` : ''}
-      </div>
-      <div class="sg-card-line"><span class="sg-card-ic">${icon('calendar', 14)}</span>${next ? `<span><span class="sg-strong">${esc(next.title)}</span><br><span class="dim">${fmtSessionDay(next.date)}${next.start ? ` · ${fmtTime(next.start)}` : ''}</span></span>` : '<span class="dim">Nothing scheduled</span>'}</div>
-      <div class="sg-card-foot"><span class="small dim">${o.loading ? 'Loading…' : `${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'}`}${isOrgOfficer(o) ? ' · You’re an officer' : ''}</span></div>
-    </div>`;
+  const faces = orgFaceColors(o);
+  const count = o.memberUids.length;
+  return spaceCard({
+    code: o.code,
+    color: orgColor(o),
+    crest: { text: orgMonogram(o) },
+    eyebrow: [kind[1], o.school ? esc(o.school) : '', o.sample ? 'Sample' : ''].filter(Boolean).join(' · '),
+    name: o.name,
+    onclick: `openOrg('${o.code}')`,
+    style: colorVars('org', orgColor(o)),
+    nextHtml: next
+      ? `${spaceCountdownChip(next.date, next.start, next.end)}<span class="space-card-when"><span class="em">${esc(next.title)}</span>${spaceWhen(next.date, next.start) ? ` · ${esc(spaceWhen(next.date, next.start))}` : ''}</span>`
+      : '<span class="space-card-when">Nothing scheduled</span>',
+    unread: !!(unread || chatUnread),
+    unreadLabel: [unread ? `${unread} new announcement${unread === 1 ? '' : 's'}` : '', chatUnread ? 'New messages' : ''].filter(Boolean).join(', '),
+    footHtml: `${avatarStackHtml(orgPeople(o), 4, 24, (uid) => faces[uid])}<span>${o.loading ? 'Loading…' : `${count} member${count === 1 ? '' : 's'}`}</span>${isOrgOfficer(o) ? `<span class="space-officer">${icon('shield', 12)} Officer</span>` : ''}`,
+    needCount: o.loading ? 0 : orgIndexNeedCount(o),
+  });
 }
 function orgEventRow(o, e, { showOrg = false } = {}) {
   const mine = myOrgRsvp(o, e.id);
@@ -394,31 +426,58 @@ function pageOrgDetail(o) {
   if (tab === 'announcements' && unread) setTimeout(() => markOrgSeen(o.code), 0);
   const kind = orgKind(o);
   const chatUnread = orgChatUnread(o);
+  const officer = isOrgOfficer(o);
   const body = { overview: orgOverviewTab, events: orgEventsTab, announcements: orgAnnouncementsTab, chat: orgChatTab, files: orgFilesTab, members: orgMembersTab, admin: orgAdminTab }[tab];
-  return `
-    <div style="${colorVars('org', orgColor(o))}">
-    <button class="btn btn-ghost btn-sm sg-back" onclick="setState({subRoute:null})">${icon('arrow-left', 14)} Clubs & teams</button>
-    <div class="org-head">
-      <span class="org-crest large" aria-hidden="true">${orgMonogram(o)}</span>
-      <div class="org-head-name">
-        <div class="sg-eyebrow">${[kind[1], o.school ? esc(o.school) : '', `${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'}`, o.sample ? 'Sample' : ''].filter(Boolean).join(' · ')}</div>
-        <h2 class="sg-title">${esc(o.name)}</h2>
-      </div>
-      ${o.description ? `<p class="small muted sg-desc org-head-desc">${esc(o.description)}</p>` : ''}
-      <div class="sg-head-actions">
-        ${signInHeaderButton()}
-        ${isOrgOfficer(o) ? `<button class="btn btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Event</button><button class="btn btn-sm" onclick="openAnnouncementModal('${o.code}')">${icon('megaphone', 14)} Announce</button>` : ''}
-        <button class="btn btn-sm ${tab === 'overview' && !orgIsBrandNew(o) ? 'btn-primary' : ''}" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 14)} Invite</button>
-        <button class="btn btn-ghost btn-icon" aria-label="${isOrgOfficer(o) ? `Admin for ${esc(o.name)}` : 'Club settings'}" data-tip="${isOrgOfficer(o) ? 'Admin' : 'Club settings'}" onclick="${isOrgOfficer(o) ? `setState({orgTab:'admin'})` : `openOrgSettingsModal('${o.code}')`}">${icon(isOrgOfficer(o) ? 'shield' : 'settings', 16)}</button>
-      </div>
-    </div>
-    ${orgLinksHtml(o, { editable: isOrgOfficer(o) && !o.local })}
-    ${orgLoadNotice(o)}
-    <div class="sg-tabs" role="tablist">
-      ${orgTabsFor(o).map(([k, label]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}" onclick="setState({orgTab:'${k}'})">${k === 'admin' ? `${icon('shield', 12)} ` : ''}${label}${(k === 'announcements' && unread || k === 'chat' && chatUnread) && tab !== k ? '<span class="sg-tab-dot" aria-label="new"></span>' : ''}</button>`).join('')}
-    </div>
-    <div class="sg-tab-body">${tab === 'overview' && orgIsBrandNew(o) ? orgFirstStepsHtml(o) : body(o)}</div>
-    </div>`;
+  const crest = { text: orgMonogram(o) };
+  const faces = orgFaceColors(o);
+  // Invite is the band's primary on the overview; the other tabs lead with their own action.
+  const invite = { onclick: `openOrgInviteModal('${o.code}')`, primary: tab === 'overview' && !orgIsBrandNew(o) };
+  return spaceShell({
+    kind: 'club',
+    code: o.code,
+    color: orgColor(o),
+    // --org is what the tab bodies read the club color from.
+    rootStyle: colorVars('org', orgColor(o)),
+    band: {
+      code: o.code,
+      crest,
+      eyebrow: [kind[1], o.school ? esc(o.school) : '', `${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'}`, o.sample ? 'Sample' : ''].filter(Boolean).join(' · '),
+      title: o.name,
+      desc: o.description || '',
+      back: { label: 'Clubs & teams', onclick: 'setState({subRoute:null})' },
+      linksHtml: orgLinksHtml(o, { editable: officer && !o.local }),
+      stackHtml: avatarStackHtml(orgPeople(o), 5, 28, (uid) => faces[uid]),
+      // Officers keep these two in view on a desktop; a phone lists them in the ··· sheet.
+      actionsHtml: officer ? `<button class="btn btn-sm space-phone-sheet" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Event</button><button class="btn btn-sm space-phone-sheet" onclick="openAnnouncementModal('${o.code}')">${icon('megaphone', 14)} Announce</button>` : '',
+      invite,
+      menuLabel: `${kind[0] === 'team' ? 'Team' : 'Club'} options`,
+      menu: [
+        officer
+          ? { label: 'Admin', icon: 'shield', onclick: `setState({orgTab:'admin'})` }
+          : { label: `${kind[0] === 'team' ? 'Team' : 'Club'} settings`, icon: 'settings', onclick: `openOrgSettingsModal('${o.code}')` },
+        { label: 'Show on my calendar', icon: 'calendar', onclick: `setOrgOnCalendar('${o.code}',${!!o.hideCalendar})`, checked: !o.hideCalendar },
+        { label: o.sample ? 'Remove sample' : kind[0] === 'team' ? 'Leave team' : kind[0] === 'club' ? 'Leave club' : 'Leave', icon: 'log-out', onclick: `confirmLeaveOrg('${o.code}')`, danger: true },
+      ],
+    },
+    sample: orgSampleStrip(o),
+    notice: orgLoadNotice(o),
+    tabs: {
+      tabs: orgTabsFor(o).map(([k, label]) => ({
+        key: k, label,
+        iconHtml: k === 'admin' ? icon('shield', 14) : '',
+        count: k === 'announcements' ? unread : 0,
+        dot: k === 'chat' && chatUnread,
+        phoneHidden: k === 'chat',
+      })),
+      active: tab,
+      onTab: (k) => `setState({orgTab:'${k}'})`,
+      crest,
+      title: o.name,
+      invite,
+    },
+    body: tab === 'overview' && orgIsBrandNew(o) ? orgFirstStepsHtml(o) : body(o),
+    fab: tab === 'chat' ? null : { onclick: `spaceGoToTab('club','chat')`, dot: chatUnread, label: `Open ${kind[0] === 'team' ? 'team' : 'club'} chat` },
+  });
 }
 // One member, no events, no announcements, no files: the overview would be
 // a stack of "nothing yet" cards, so the page leads with the two things
@@ -543,7 +602,7 @@ function orgMembersTab(o) {
         <div class="sg-person org-member" data-search="${esc((p.name + ' ' + orgRoleLabel(o, p)).toLowerCase())}">
           ${personAvatar(p.uid, p.name, 30, p.officer ? orgColor(o) : '#6b6b6b')}
           <div class="row-title"><div class="small sg-strong">${esc(p.name)}${p.uid === me && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div><div class="small muted">${esc(orgRoleLabel(o, p))}${p.officer && p.title ? ` · <span class="org-officer-tag">${icon('shield', 11)} ${p.owner ? 'Founder' : 'Officer'}</span>` : ''}</div></div>
-          ${officer && !o.local ? `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>` : p.uid === me ? `<button class="btn btn-ghost btn-sm" onclick="openMyOrgTitleModal('${o.code}')">Edit title</button>` : ''}
+          ${officer && (!o.local || o.sample) ? `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>` : p.uid === me ? `<button class="btn btn-ghost btn-sm" onclick="openMyOrgTitleModal('${o.code}')">Edit title</button>` : ''}
         </div>`;
   const officers = people.filter(p => p.officer), general = people.filter(p => !p.officer);
   return `
@@ -771,6 +830,9 @@ function ensureOrgChatListener(code) {
 function afterOrgPageRender() {
   const code = state.route === 'orgs' ? state.subRoute : null;
   if (code && typeof centerActiveSgTab === 'function') centerActiveSgTab();
+  // The group page runs it from afterGroupPageRender; everywhere else this
+  // one does, which also drops the sticky-row watcher on pages without one.
+  if (state.route !== 'studygroups' && typeof afterSpaceRender === 'function') afterSpaceRender();
   if (!code || state.orgTab !== 'chat' || !orgEntry(code)) {
     if (_orgChatSub.code) closeOrgChatListener();
     Object.keys(_orgChatFailed).forEach(k => delete _orgChatFailed[k]);
@@ -919,7 +981,7 @@ function openOrgInviteModal(code, { justCreated = false } = {}) {
   openModal(`
     <div class="modal-head"><h3>${justCreated ? `${esc(o.name)} is ready` : `Invite to ${esc(o.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
-      ${o.local ? `<div class="sg-callout small mb-16"><div>${o.sample ? 'This is a sample club, so the code is just for show.' : 'You’re not logged in, so no one can join yet. <a href="login.html">Log in</a> to invite members.'}</div></div>` : ''}
+      ${o.local ? `<div class="sg-callout small mb-16"><div>${o.sample ? 'This is a sample, so the code is just for show.' : 'You’re not logged in, so no one can join yet. <a href="login.html">Log in</a> to invite members.'}</div></div>` : ''}
       <p class="small muted" style="text-align:center">Members join with this code:</p>
       <div class="sg-invite-code" aria-label="Code ${code.split('').join(' ')}">${code.split('').map(ch => `<span>${ch}</span>`).join('')}</div>
       <div class="field mt-16"><label for="org-invite-link">Or share a link in your group chat</label>
@@ -929,7 +991,7 @@ function openOrgInviteModal(code, { justCreated = false } = {}) {
       <div class="sg-pricing-inline small mt-16">
         <span class="sg-feature-ic">${icon('shield', 16)}</span>
         <div><span class="sg-strong">Getting the whole ${o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club'} on?</span><div class="muted">Each member needs Semester HQ. ${isOrgOfficer(o) && typeof orgGroupPlanUrl === 'function'
-          ? `A <a href="${orgGroupPlanUrl(o)}">group plan</a> covers every member for $5.99 each a month, and can come out of your budget or dues. Members join from one link.`
+          ? `A <a href="${o.sample ? GROUP_PRICING_URL : orgGroupPlanUrl(o)}"${o.sample ? ' target="_blank" rel="noopener"' : ''}>group plan</a> covers every member for $5.99 each a month, and can come out of your budget or dues. Members join from one link.`
           : `<a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Group pricing</a> covers everyone for less, and can come out of your budget or dues.`}</div></div>
       </div>
     </div>
@@ -1059,54 +1121,197 @@ async function handlePendingOrg() {
   try { const snap = await _fbDb.collection('orgs').doc(code).get(); if (snap.exists) showOrgPreview(code, snap.data()); else clearPendingOrg(); } catch {}
 }
 
-/* ── Sample club for looking around ────────────────────────────── */
-function createSampleOrg() {
-  const existing = orgEntries().find(e => e.sample);
-  if (existing) { openOrg(existing.code); return; }
-  const now = Date.now(), D = 86400000, t = todayIso();
-  const me = LOCAL_UID, ava = 'sample-ava', noah = 'sample-noah', lena = 'sample-lena', sam = 'sample-sam', jade = 'sample-jade';
-  const code = genGroupCode();
+/* ── Sample clubs for looking around ───────────────────────────── */
+// Four made-up spaces, one for each kind of group that buys a plan. They
+// live only in this tab (local: true, so orgWrite applies every change
+// locally and nothing reaches Firestore), and the viewer starts as an
+// officer, because the officer is the one deciding. The names are invented
+// on purpose: none of them should match a real national organization, so
+// no Greek letters. [key, label for the chips, icon, the viewer's title]
+const SAMPLE_ORG_KINDS = [
+  ['club', 'Club', 'flag', 'VP of Events'],
+  ['chapter', 'Chapter', 'shield', 'Social chair'],
+  ['team', 'Sports team', 'trophy', 'Travel coordinator'],
+  ['honor', 'Honor society', 'star', 'VP of Service'],
+];
+// Which sample an entry is. The first sample ever made stored sample: true.
+function sampleOrgKind(o) { return !o?.sample ? '' : o.sample === true ? 'club' : String(o.sample); }
+function sampleOrgMeta(kind) { return SAMPLE_ORG_KINDS.find(k => k[0] === kind) || SAMPLE_ORG_KINDS[0]; }
+
+// The content of each sample. Dates are relative to today, so there are
+// always a few past events with answers (the Admin attendance grid shows
+// the last six) and a few coming up, one of them required and not yet
+// answered by everyone.
+function sampleOrgTemplate(kind) {
+  const t = todayIso();
   const nextDow = (dow) => addDays(t, ((dow - new Date().getDay() + 7) % 7) || 7);
-  const ev = (title, category, date, start, end, location, extra = {}) => { const id = uid(); return [id, { id, title, category, date, start, end, location, notes: '', required: false, createdBy: ava, createdAt: now - 5 * D, ...extra }]; };
-  const events = Object.fromEntries([
-    ev('General meeting', 'meeting', nextDow(2), '19:00', '20:00', 'Student Union 210', { required: true, notes: 'Voting on the spring trip. Bring ideas for the networking night.', seriesId: 'sample-gm' }),
-    ev('Networking night with alumni', 'social', addDays(t, 9), '18:30', '20:30', 'Business School atrium', { notes: 'Business casual. Bring a few copies of your resume.' }),
-    ev('Dues deadline', 'deadline', addDays(t, 5), '', '', '', { required: true, notes: '$40 for the semester. Venmo the treasurer.' }),
-    ev('Food bank volunteering', 'service', addDays(t, 12), '10:00', '13:00', 'Downtown food bank'),
-    ev('General meeting', 'meeting', addDays(nextDow(2), 7), '19:00', '20:00', 'Student Union 210', { required: true, seriesId: 'sample-gm' }),
-    ev('General meeting', 'meeting', addDays(nextDow(2), -7), '19:00', '20:00', 'Student Union 210', { required: true, seriesId: 'sample-gm', createdAt: now - 20 * D }),
-    ev('Resume workshop', 'social', addDays(t, -4), '18:00', '19:30', 'Business School 114', { createdAt: now - 12 * D }),
-  ]);
-  const ids = Object.keys(events);
-  const H = 3600000;
-  const fileId = uid(), linkId = uid();
-  const dues = 'Spring dues\n\n$40 for the semester, due Friday.\nVenmo @noah-treasurer and put your name in the note.\nQuestions? Ask Noah in chat.\n';
-  const messages = [
-    { uid: lena, name: 'Lena', text: 'Is the networking night business casual or business formal?', at: now - 27 * H },
-    { uid: ava, name: 'Ava', text: 'Business casual! Bring a few copies of your resume.', at: now - 26.5 * H },
-    { uid: jade, name: 'Jade', text: 'I can drive 3 people to the food bank on Saturday.', at: now - 5 * H },
-    { uid: noah, name: 'Noah', text: 'Reminder that dues are due Friday. The details are in Files.', at: now - 2 * H },
-  ].map(m => ({ id: uid(), ...m }));
+  // Weekly dates on one weekday: weeks -3..-1 are past, 0 is the next one.
+  const weekly = (dow, from, to) => { const out = []; for (let w = from; w <= to; w++) out.push(addDays(nextDow(dow), 7 * w)); return out; };
+  if (kind === 'chapter') return {
+    name: 'Kestrel House', kind: 'chapter', color: ORG_COLORS[5],
+    description: 'Weekly chapter meetings, a service project every month, and Sunday family dinners.',
+    // [key, name, title, officer, joined days ago, how often they say yes]
+    people: [['olivia', 'Olivia', 'President', true, 500, 96], ['grace', 'Grace', 'Treasurer', true, 420, 92], ['harper', 'Harper', 'VP of Membership', true, 380, 90],
+      ['zoe', 'Zoe', '', false, 360, 82], ['aaliyah', 'Aaliyah', '', false, 300, 74], ['chloe', 'Chloe', '', false, 260, 66], ['mei', 'Mei', 'Philanthropy chair', false, 240, 88],
+      ['sofia', 'Sofia', '', false, 200, 58], ['nora', 'Nora', '', false, 150, 70], ['leah', 'Leah', '', false, 120, 48], ['camila', 'Camila', '', false, 60, 78],
+      ['riley', 'Riley', '', false, 40, 62], ['tessa', 'Tessa', '', false, 14, 72]],
+    events: [
+      { title: 'Chapter meeting', category: 'meeting', dates: weekly(0, -4, 1), start: '18:00', end: '19:00', location: 'Chapter room, Kestrel House', required: true, series: 'chapter', notes: 'Business first, then family dinner at 7. Phones away during votes.' },
+      { title: 'Sisterhood movie night', category: 'social', date: addDays(t, -13), start: '20:00', end: '22:30', location: 'Kestrel House living room' },
+      { title: 'River park cleanup', category: 'service', date: addDays(t, -9), start: '09:00', end: '12:00', location: 'Riverfront park, north lot', notes: 'Gloves and bags provided. Counts toward service hours.' },
+      { title: 'Spring dues', category: 'deadline', date: addDays(t, 6), start: '', end: '', location: '', required: true, notes: '$180 for the semester. Use the dues link at the top of the page, or talk to Grace about a payment plan.' },
+      { title: 'Blood drive table shifts', category: 'service', date: addDays(t, 10), start: '10:00', end: '15:00', location: 'Student Union lobby', notes: 'Sign up for one hour. Two people per shift.' },
+      { title: 'Formal dress fitting', category: 'social', date: addDays(t, 13), start: '17:00', end: '19:00', location: 'Kestrel House' },
+    ],
+    announcements: [['Dues are due next week. Payment plans are fine, just message Grace before the deadline.', 'grace', 20, true], ['Thank you to everyone who came to the river cleanup! That’s 33 more service hours for the chapter.', 'mei', 70]],
+    messages: [['camila', 'Does anyone have a ride to the blood drive?', 30], ['zoe', 'I can take two people, I’m leaving at 9:45', 29], ['olivia', 'Reminder that chapter is at 6 on Sunday. Dinner right after!', 4]],
+    files: [{ kind: 'link', title: 'Chapter bylaws', url: 'https://example.com/bylaws', by: 'olivia', hours: 400 }, { kind: 'link', title: 'Service hours log', url: 'https://example.com/service-log', by: 'mei', hours: 60 }],
+    links: [['GroupMe', 'https://groupme.com/'], ['Dues portal', 'https://example.com/dues'], ['Instagram', 'https://instagram.com/']],
+  };
+  if (kind === 'team') return {
+    name: 'Club Volleyball', kind: 'team', color: ORG_COLORS[4],
+    description: 'Co-ed club volleyball. Practice Monday and Wednesday nights, and a tournament most months.',
+    people: [['marcus', 'Marcus', 'Captain', true, 480, 97], ['dani', 'Dani', 'Co-captain', true, 400, 94], ['luis', 'Luis', '', false, 330, 84],
+      ['brooke', 'Brooke', '', false, 300, 76], ['ethan', 'Ethan', '', false, 260, 68], ['jasmine', 'Jasmine', '', false, 220, 88], ['owen', 'Owen', '', false, 180, 52],
+      ['kiara', 'Kiara', '', false, 120, 80], ['sean', 'Sean', '', false, 90, 60], ['talia', 'Talia', 'Treasurer', false, 70, 86], ['yuki', 'Yuki', '', false, 20, 74]],
+    events: [
+      { title: 'Practice', category: 'practice', dates: weekly(1, -2, 0), start: '20:00', end: '22:00', location: 'Rec center, court 3', series: 'mon', notes: 'Serving and passing drills, then scrimmage.' },
+      { title: 'Practice', category: 'practice', dates: weekly(3, -2, 0), start: '20:00', end: '22:00', location: 'Rec center, court 3', series: 'wed' },
+      { title: 'Home match vs. Harwick State', category: 'game', date: addDays(t, -5), start: '13:00', end: '16:00', location: 'Rec center, main gym', required: true },
+      { title: 'Tournament fee', category: 'deadline', date: addDays(t, 4), start: '', end: '', location: '', required: true, notes: '$25 covers the entry and the van. Venmo Talia.' },
+      { title: 'Travel tournament at Harwick State', category: 'game', date: addDays(t, 11), start: '07:00', end: '18:00', location: 'Van leaves the rec center', required: true, notes: 'Bring both jerseys, knee pads, and lunch money. We’re back around 6.' },
+    ],
+    announcements: [['Tournament roster is up in Files. If you can’t travel, tell Marcus by Friday so we can bring a sub.', 'marcus', 16, true], ['Great win at the home match! Film is in Files if you want to see your serves.', 'dani', 110]],
+    messages: [['owen', 'Is practice still on if it’s raining?', 26], ['dani', 'Yep, it’s indoors!', 25.5], ['yuki', 'Can I borrow someone’s spare knee pads for Wednesday?', 6], ['jasmine', 'I have an extra pair, I’ll bring them', 5]],
+    files: [{ kind: 'link', title: 'Tournament roster', url: 'https://example.com/roster', by: 'marcus', hours: 16 }, { kind: 'link', title: 'Match film', url: 'https://example.com/film', by: 'dani', hours: 110 }],
+    links: [['Instagram', 'https://instagram.com/'], ['Venmo for fees', 'https://venmo.com/']],
+  };
+  if (kind === 'honor') return {
+    name: 'Brightfield Honor Society', kind: 'org', color: ORG_COLORS[2],
+    description: 'Scholarship and service. Members log 10 service hours a semester and meet once a month.',
+    people: [['rachel', 'Rachel', 'President', true, 520, 95], ['omar', 'Omar', 'Secretary', true, 400, 90], ['hannah', 'Hannah', '', false, 300, 80],
+      ['julian', 'Julian', '', false, 280, 64], ['amara', 'Amara', '', false, 210, 86], ['ben', 'Ben', '', false, 160, 56], ['lucy', 'Lucy', 'Tutoring lead', false, 130, 92],
+      ['sana', 'Sana', '', false, 45, 72]],
+    events: [
+      { title: 'Tutoring at the community center', category: 'service', dates: weekly(2, -3, 1), start: '15:30', end: '17:00', location: 'Eastside community center', series: 'tutor', notes: 'Homework help for kids 8 to 12. Sign in at the front desk.' },
+      { title: 'Library book sort', category: 'service', date: addDays(t, -8), start: '10:00', end: '12:00', location: 'Public library, lower level' },
+      { title: 'Monthly meeting', category: 'meeting', date: addDays(t, -26), start: '19:00', end: '20:00', location: 'Honors college lounge', required: true },
+      { title: 'Monthly meeting', category: 'meeting', date: addDays(t, 3), start: '19:00', end: '20:00', location: 'Honors college lounge', required: true, notes: 'Voting on the spring service project. Bring one idea.' },
+      { title: 'Induction ceremony', category: 'other', date: addDays(t, 14), start: '18:00', end: '19:30', location: 'Alumni Hall', required: true, notes: 'Business formal. Family is welcome.' },
+      { title: 'Service hours due', category: 'deadline', date: addDays(t, 20), start: '', end: '', location: '', notes: 'Log them with the form at the top of the page.' },
+    ],
+    announcements: [['Induction is in two weeks. New members, please send Omar the name you want on your certificate.', 'omar', 30, true], ['We’re at 212 service hours this semester. Thank you, everyone!', 'rachel', 140]],
+    messages: [['sana', 'Is tutoring still on this week?', 50], ['lucy', 'Yes! Same time, 3:30 to 5', 49], ['hannah', 'The kids at tutoring made us a thank-you card today', 3]],
+    files: [{ kind: 'link', title: 'Service hours form', url: 'https://example.com/hours', by: 'omar', hours: 300 }, { kind: 'link', title: 'Induction program', url: 'https://example.com/program', by: 'rachel', hours: 30 }],
+    links: [['Service hours form', 'https://forms.google.com/'], ['Instagram', 'https://instagram.com/']],
+  };
+  return {
+    name: 'Women in Business', kind: 'club', color: ORG_COLORS[3],
+    description: 'Career panels, networking, and a community of students going into business.',
+    people: [['ava', 'Ava', 'President', true, 400, 96], ['noah', 'Noah', 'Treasurer', true, 380, 90], ['jade', 'Jade', 'Social chair', false, 200, 84],
+      ['lena', 'Lena', '', false, 150, 70], ['sam', 'Sam', '', false, 120, 54], ['maria', 'Maria', '', false, 100, 78], ['kofi', 'Kofi', '', false, 90, 62],
+      ['emma', 'Emma', '', false, 60, 46], ['ines', 'Ines', '', false, 40, 68], ['dev', 'Dev', '', false, 18, 60]],
+    events: [
+      { title: 'General meeting', category: 'meeting', dates: weekly(2, -4, 1), start: '19:00', end: '20:00', location: 'Student Union 210', required: true, series: 'gm', notes: 'Voting on the spring trip. Bring ideas for the networking night.' },
+      { title: 'Coffee chat with alumni', category: 'social', date: addDays(t, -18), start: '16:00', end: '17:00', location: 'Business School café' },
+      { title: 'Mock interview night', category: 'social', date: addDays(t, -11), start: '18:00', end: '20:00', location: 'Career center' },
+      { title: 'Resume workshop', category: 'social', date: addDays(t, -4), start: '18:00', end: '19:30', location: 'Business School 114' },
+      { title: 'Dues deadline', category: 'deadline', date: addDays(t, 5), start: '', end: '', location: '', required: true, notes: '$40 for the semester. Venmo the treasurer.' },
+      { title: 'Networking night with alumni', category: 'social', date: addDays(t, 9), start: '18:30', end: '20:30', location: 'Business School atrium', notes: 'Business casual. Bring a few copies of your resume.' },
+      { title: 'Food bank volunteering', category: 'service', date: addDays(t, 12), start: '10:00', end: '13:00', location: 'Downtown food bank' },
+    ],
+    announcements: [['Dues are coming up. $40 for the semester, Venmo @noah-treasurer with your name in the note.', 'noah', 20, true], ['Huge thank you to everyone who came to the resume workshop! Slides are in the drive: https://example.com/slides', 'ava', 72]],
+    messages: [['lena', 'Is the networking night business casual or business formal?', 27], ['ava', 'Business casual! Bring a few copies of your resume.', 26.5], ['jade', 'I can drive 3 people to the food bank on Saturday.', 5], ['noah', 'Reminder that dues are coming up. The details are in Files.', 2]],
+    files: [{ kind: 'file', title: 'Spring dues', text: 'Spring dues\n\n$40 for the semester.\nVenmo @noah-treasurer and put your name in the note.\nQuestions? Ask Noah in chat.\n', by: 'noah', hours: 20 }, { kind: 'link', title: 'Resume workshop slides', url: 'https://example.com/slides', by: 'ava', hours: 72 }],
+    links: [['GroupMe', 'https://groupme.com/'], ['Instagram', 'https://instagram.com/'], ['Venmo for dues', 'https://venmo.com/']],
+  };
+}
+
+function createSampleOrg(kind = 'club') {
+  const [key, , , myTitle] = sampleOrgMeta(kind);
+  const existing = orgEntries().find(e => sampleOrgKind(e) === key);
+  if (existing) { openOrg(existing.code); return; }
+  const tpl = sampleOrgTemplate(key);
+  const now = Date.now(), H = 3600000, D = 24 * H, t = todayIso();
+  const me = LOCAL_UID, idOf = (k) => `sample-${k}`;
+  const code = genGroupCode();
+  const owner = idOf(tpl.people[0][0]);
+  const people = { [me]: { name: myGroupName(), joinedAt: now - 30 * D, title: myTitle, reviewed: true } };
+  const rel = { [me]: 82 };
+  tpl.people.forEach(([k, name, title, , days, r]) => { people[idOf(k)] = { name, joinedAt: now - days * D, title, ...(title ? { reviewed: true } : {}) }; rel[idOf(k)] = r; });
+  const memberUids = [...tpl.people.map(p => idOf(p[0])), me];
+  const officerUids = [...tpl.people.filter(p => p[3]).map(p => idOf(p[0])), me];
+  const officers = officerUids.filter(u => u !== me);
+  // Events, then answers that look like a real club's: the regulars say
+  // yes almost every time, a few people never answer, past events are
+  // mostly answered and upcoming ones only partly.
+  // A 0..99 roll per person and event that stays the same run to run.
+  const roll = (str) => { let h = spaceHash(str); h = Math.imul(h ^ (h >>> 16), 0x85ebca6b); h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) % 100; };
+  const events = {}, rsvp = {};
+  let firstRequiredAhead = true;
+  tpl.events.flatMap(e => (e.dates || [e.date]).map(date => ({ ...e, date }))).sort((a, b) => a.date.localeCompare(b.date)).forEach((e, i) => {
+    const id = uid() + i;
+    const past = e.date < t;
+    events[id] = { id, title: e.title, category: e.category, date: e.date, start: e.start, end: e.end, location: e.location, notes: e.notes || '', required: !!e.required, createdBy: officers[i % officers.length], createdAt: now - (past ? 40 : 6) * D, ...(e.series ? { seriesId: `sample-${key}-${e.series}` } : {}) };
+    memberUids.forEach(u => {
+      let v;
+      if (u === me) {
+        // You answer your past events, and one required event ahead is
+        // left for you to answer, so the "needs your answer" card shows.
+        if (!past && e.required && firstRequiredAhead) { firstRequiredAhead = false; return; }
+        v = roll(`${u}|${e.title}|${e.date}`) < (past ? 82 : 70) ? 'yes' : past ? 'no' : '';
+      } else {
+        const r = roll(`${u}|${e.title}|${e.date}`);
+        const soon = daysBetween(e.date) <= 3;
+        const yes = past ? rel[u] : Math.round(rel[u] * (soon ? 0.85 : e.required ? 0.62 : 0.5));
+        v = r < yes ? 'yes' : r < yes + (past ? 14 : 9) ? 'no' : '';
+      }
+      if (v) (rsvp[u] = rsvp[u] || {})[id] = v;
+    });
+  });
+  const nameOf = (k) => people[idOf(k)].name;
+  const messages = tpl.messages.map(([k, text, hours]) => ({ id: uid(), uid: idOf(k), name: nameOf(k), text, at: now - hours * H }));
+  const last = messages[messages.length - 1];
+  const files = Object.fromEntries(tpl.files.map((f, i) => {
+    const id = uid() + i, base = { id, kind: f.kind, title: f.title, uid: idOf(f.by), name: nameOf(f.by), at: now - f.hours * H };
+    return [id, f.kind === 'file'
+      ? { ...base, fileName: `${f.title}.txt`, size: f.text.length, url: 'data:text/plain;base64,' + btoa(f.text) }
+      : { ...base, url: f.url }];
+  }));
   const entry = {
-    ...newOrgDoc({ code, name: 'Women in Business', kind: 'club', school: state.settings.school || '', color: ORG_COLORS[3], description: 'Career panels, networking, and a community of students going into business.', ownerUid: ava }),
-    local: true, sample: true,
-    memberUids: [ava, noah, lena, sam, jade, me], officerUids: [ava, noah],
-    people: { [ava]: { name: 'Ava', joinedAt: now - 60 * D, title: 'President' }, [noah]: { name: 'Noah', joinedAt: now - 50 * D, title: 'Treasurer' }, [lena]: { name: 'Lena', joinedAt: now - 30 * D, title: '' }, [sam]: { name: 'Sam', joinedAt: now - 20 * D, title: '' }, [jade]: { name: 'Jade', joinedAt: now - 9 * D, title: 'Social chair', reviewed: true }, [me]: { name: myGroupName(), joinedAt: now - 2 * D, title: '' } },
-    files: {
-      [fileId]: { id: fileId, kind: 'file', title: 'Spring dues', fileName: 'Spring dues.txt', size: dues.length, url: 'data:text/plain;base64,' + btoa(dues), uid: noah, name: 'Noah', at: now - 20 * H },
-      [linkId]: { id: linkId, kind: 'link', title: 'Resume workshop slides', url: 'https://example.com/slides', uid: ava, name: 'Ava', at: now - 3 * D },
-    },
-    messages,
-    lastMessage: { uid: noah, name: 'Noah', text: messages[3].text, at: messages[3].at },
-    events,
-    rsvp: { [ava]: { [ids[0]]: 'yes', [ids[1]]: 'yes', [ids[5]]: 'yes', [ids[6]]: 'yes' }, [noah]: { [ids[0]]: 'yes', [ids[3]]: 'yes', [ids[5]]: 'yes', [ids[6]]: 'yes' }, [lena]: { [ids[0]]: 'no', [ids[1]]: 'yes', [ids[5]]: 'yes', [ids[6]]: 'no' }, [sam]: { [ids[1]]: 'yes', [ids[6]]: 'yes' }, [jade]: { [ids[5]]: 'yes' } },
-    links: [{ id: 'sample-groupme', label: 'GroupMe', url: 'https://groupme.com/' }, { id: 'sample-ig', label: 'Instagram', url: 'https://instagram.com/' }, { id: 'sample-venmo', label: 'Venmo for dues', url: 'https://venmo.com/' }],
-    announcements: Object.fromEntries([
-      { text: 'Dues are due this Friday. $40 for the semester, Venmo @noah-treasurer with your name in the note.', uid: noah, name: 'Noah', at: now - 20 * 3600000, pinned: true },
-      { text: 'Huge thank you to everyone who came to the resume workshop! Slides are in the drive: https://example.com/slides', uid: ava, name: 'Ava', at: now - 3 * D },
-    ].map(a => { const id = uid(); return [id, { id, ...a }]; })),
+    ...newOrgDoc({ code, name: tpl.name, kind: tpl.kind, school: state.settings.school || '', color: tpl.color, description: tpl.description, ownerUid: owner }),
+    local: true, sample: key,
+    createdAt: now - 400 * D,
+    memberUids, officerUids, people,
+    files, messages, events, rsvp,
+    lastMessage: { uid: last.uid, name: last.name, text: last.text, at: last.at },
+    links: tpl.links.map(([label, url], i) => ({ id: `sample-link-${i}`, label, url })),
+    announcements: Object.fromEntries(tpl.announcements.map(([text, k, hours, pinned]) => { const id = uid(); return [id, { id, text, uid: idOf(k), name: nameOf(k), at: now - hours * H, ...(pinned ? { pinned: true } : {}) }]; })),
   };
   orgEntries().push(entry);
   openOrg(code);
-  toast('This is a sample club. Try RSVPing, see who’s going, or say hi in Chat.', 'info', 4500);
+  toast(`You’re previewing ${tpl.name} as an officer. Switch to Member anytime to see what everyone else sees.`, 'info', 4500);
+}
+// The sample strip's "Previewing as: Officer | Member". Only ever changes
+// a local sample: your officer seat and your title, through orgWrite, which
+// applies both in this tab.
+function setSampleOrgRole(code, asOfficer) {
+  const o = findOrg(code);
+  if (!o || !o.sample || !o.local || isOrgOfficer(o) === asOfficer) return;
+  if (!asOfficer && state.orgTab === 'admin') state.orgTab = 'overview';
+  orgWrite(code, { officerUids: asOfficer ? gwUnion(LOCAL_UID) : gwRemove(LOCAL_UID), [`people.${LOCAL_UID}.title`]: asOfficer ? sampleOrgMeta(sampleOrgKind(o))[3] : '' });
+}
+// What spaceShell's sample strip needs for a sample club.
+function orgSampleStrip(o) {
+  if (!o.sample) return null;
+  const mine = sampleOrgKind(o);
+  return {
+    note: 'This is a sample, so codes and links are just for show.',
+    view: { officer: isOrgOfficer(o), onOfficer: `setSampleOrgRole('${o.code}',true)`, onMember: `setSampleOrgRole('${o.code}',false)` },
+    others: cloudGroupsEnabled() ? [] : SAMPLE_ORG_KINDS.filter(k => k[0] !== mine).map(([k, label, ic]) => ({ label, icon: ic, onclick: `createSampleOrg('${k}')` })),
+  };
+}
+// The four samples as chips, for the empty state.
+function sampleOrgChipsHtml() {
+  return `<div class="space-sample-pick"><div class="space-sample-label">Or look around a sample first</div><div class="chip-row">${SAMPLE_ORG_KINDS.map(([k, label, ic]) => `<button type="button" class="chip" onclick="createSampleOrg('${k}')">${icon(ic, 13)}${esc(label)}</button>`).join('')}</div></div>`;
 }

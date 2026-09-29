@@ -96,9 +96,11 @@ test('every page renders', async ({ page }) => {
    or misordered file would throw. */
 // The sample opens itself if it already exists, so a click lost to a
 // redraw on a slow phone run is safe to repeat.
+// label is the button's name; the four sample clubs are chips named
+// exactly 'Club', 'Chapter', 'Sports team' and 'Honor society'.
 async function openSample(page, label, tabs) {
   await expect(async () => {
-    const btn = page.getByRole('button', { name: label });
+    const btn = page.locator('#content').getByRole('button', { name: label, exact: true });
     if (await btn.isVisible()) await btn.click();
     await expect(tabs.first()).toBeVisible({ timeout: 3_000 });
   }).toPass({ timeout: 20_000 });
@@ -106,10 +108,12 @@ async function openSample(page, label, tabs) {
 test('the sample study group and sample club open on every tab', async ({ page }) => {
   const console_ = await openApp(page);
   await navTo(page, 'studygroups');
-  const groupTabs = page.locator('#content [role="tab"]');
+  // :visible because a phone moves Chat out of the tab row into the
+  // floating chat button (tested on its own below).
+  const groupTabs = page.locator('#content [role="tab"]:visible');
   await openSample(page, 'Explore a sample group first', groupTabs);
   const gCount = await groupTabs.count();
-  expect(gCount, 'the sample group shows its tabs').toBeGreaterThanOrEqual(6);
+  expect(gCount, 'the sample group shows its tabs').toBeGreaterThanOrEqual(5);
   for (let i = 0; i < gCount; i++) {
     await groupTabs.nth(i).click();
     await expect(groupTabs.nth(i)).toHaveAttribute('aria-selected', 'true');
@@ -117,8 +121,8 @@ test('the sample study group and sample club open on every tab', async ({ page }
     expect(text.length, `group tab ${i} rendered no text`).toBeGreaterThan(40);
   }
   await navTo(page, 'orgs');
-  const clubTabs = page.locator('#content [role="tab"]');
-  await openSample(page, 'Explore a sample club first', clubTabs);
+  const clubTabs = page.locator('#content [role="tab"]:visible');
+  await openSample(page, 'Club', clubTabs);
   const cCount = await clubTabs.count();
   expect(cCount, 'the sample club shows its tabs').toBeGreaterThanOrEqual(5);
   for (let i = 0; i < cCount; i++) {
@@ -126,6 +130,51 @@ test('the sample study group and sample club open on every tab', async ({ page }
     await expect(clubTabs.nth(i)).toHaveAttribute('aria-selected', 'true');
     const text = (await page.locator('#content').innerText()).trim();
     expect(text.length, `club tab ${i} rendered no text`).toBeGreaterThan(40);
+  }
+  console_.expectClean();
+});
+
+/* The sample clubs open as an officer, with a strip that switches the
+   preview to Member and back and opens the other samples. All of it is
+   local to the tab. */
+test('every sample club opens, and Previewing as switches officer and member', async ({ page }) => {
+  const console_ = await openApp(page);
+  await navTo(page, 'orgs');
+  const tabs = page.locator('#content [role="tab"]:visible');
+  await openSample(page, 'Chapter', tabs);
+  await expect(page.locator('#content .space-title')).toHaveText('Kestrel House');
+  const strip = page.locator('#content .space-sample');
+  const admin = page.locator('#content [role="tab"]', { hasText: 'Admin' });
+  await expect(admin).toHaveCount(1);
+  await strip.getByRole('button', { name: 'Member', exact: true }).click();
+  await expect(admin).toHaveCount(0);
+  await expect(strip.getByRole('button', { name: 'Member', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await strip.getByRole('button', { name: 'Officer', exact: true }).click();
+  await expect(admin).toHaveCount(1);
+  await admin.click();
+  await expect(page.locator('#content #org-attendance tbody tr')).not.toHaveCount(0);
+  for (const [chip, name] of [['Sports team', 'Club Volleyball'], ['Honor society', 'Brightfield Honor Society'], ['Club', 'Women in Business']]) {
+    await strip.getByRole('button', { name: chip, exact: true }).click();
+    await expect(page.locator('#content .space-title')).toHaveText(name);
+  }
+  expect(await page.evaluate(() => state.orgs.filter(e => e.sample && e.local).length)).toBe(4);
+  console_.expectClean();
+});
+
+test('on a phone, a group or club page fits the screen and its chat button opens chat', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'phone', 'the floating chat button is phone only');
+  const console_ = await openApp(page);
+  const noSideways = async () => expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), 'no sideways scroll').toBeLessThanOrEqual(0);
+  for (const [route, label] of [['studygroups', 'Explore a sample group first'], ['orgs', 'Club']]) {
+    await navTo(page, route);
+    const fab = page.locator('#content .space-chat-fab');
+    await openSample(page, label, fab);
+    await noSideways();
+    await expect(page.locator('#content [role="tab"]:visible', { hasText: /^Chat/ })).toHaveCount(0);
+    await fab.click();
+    await expect(page.locator('#content [role="tab"][aria-selected="true"]')).toHaveText(/^Chat/);
+    await expect(fab).toHaveCount(0);
+    await noSideways();
   }
   console_.expectClean();
 });

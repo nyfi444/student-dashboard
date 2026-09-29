@@ -197,8 +197,17 @@ function orgGroupPlan(o) {
    used, the one link members join with, and a way into the plan's own admin
    page. Officers who haven't started a plan get the pitch and the price. */
 function orgPlanAdminCard(o, plan) {
-  if (!checkoutEnabled()) return '';
   const kindWord = o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club';
+  // A sample club is made up, so it only ever explains the plan. It never
+  // links to a checkout prefilled with a club that doesn't exist.
+  if (o.sample) {
+    return `<div class="card card-pad">
+      <h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} Covering your members</h3>
+      <p class="small muted mb-8">In your own ${esc(kindWord)}, a group plan covers every member's Semester HQ for ${GROUP_SEAT_PRICE} each a month, in one bill you can put through your budget or dues. Members claim their own seat from a single link.</p>
+      <a class="btn btn-primary btn-sm" href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">How group pricing works</a>
+    </div>`;
+  }
+  if (!checkoutEnabled()) return '';
   if (!_fbUser) {
     return `<div class="card card-pad">
       <h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} Covering your members</h3>

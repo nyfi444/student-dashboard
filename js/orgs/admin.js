@@ -97,7 +97,7 @@ function orgAdminTab(o) {
 
       <div class="card card-pad">
         <h3 class="sg-h3 mb-8">${icon('user-plus', 14)} Getting people in</h3>
-        <p class="small muted mb-8">One link, one code. Members who join see every event on their own calendar.</p>
+        <p class="small muted mb-8">One link, one code. Members who join see every event on their own calendar.${o.sample ? ' This is a sample, so these links are just for show.' : ''}</p>
         <div class="field"><label for="oa-invite">Invite link</label>
           <div class="sg-invite-row"><input class="input" id="oa-invite" value="${esc(orgInviteLink(o.code))}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyText(orgInviteMessage('${o.code}'),'Invite copied')">${icon('copy', 14)} Copy</button></div>
         </div>
@@ -113,7 +113,7 @@ function orgAdminTab(o) {
         ${officers.map(p => `<div class="sg-person">
           ${personAvatar(p.uid, p.name, 26, orgColor(o))}
           <div class="row-title small"><span class="sg-strong">${esc(p.name)}</span>${p.uid === myOrgUid(o) && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''} <span class="muted">· ${esc(orgRoleLabel(o, p))}</span></div>
-          ${o.local ? '' : `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>`}
+          ${o.local && !o.sample ? '' : `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>`}
         </div>`).join('')}
         <div class="flex-gap wrap mt-8">
           <button class="btn btn-sm" onclick="setState({orgTab:'members'})">All ${people.length} member${people.length === 1 ? '' : 's'}</button>

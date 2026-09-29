@@ -156,8 +156,8 @@ test('a student starts a study group, a classmate joins with the code, and they 
   await tab(a, 'Chat');
   await expect(a.locator('#sg-chat-log')).toContainText('See you Thursday', { timeout: 30_000 });
 
-  /* Resources: Alice shares a link, Bob sees it. */
-  await tab(a, 'Resources');
+  /* Files (the resources tab): Alice shares a link, Bob sees it. */
+  await tab(a, 'Files');
   await a.getByRole('button', { name: /Share (something|the first resource)/ }).first().click();
   await a.locator('#modal #sr-kind').selectOption('link');
   await a.locator('#modal #sr-link-url').fill('https://example.com/bio201-practice-exam');
@@ -165,7 +165,7 @@ test('a student starts a study group, a classmate joins with the code, and they 
   await a.locator('#modal #sr-share-btn').click();
   await expect(a.locator('#modal')).toBeHidden();
   await expect(a.locator('#content')).toContainText('Practice exam');
-  await tab(b, 'Resources');
+  await tab(b, 'Files');
   await expect(b.locator('#content')).toContainText('Practice exam', { timeout: 30_000 });
   const items = await firestoreAdmin('GET', `studyGroups/${code}/items`);
   expect((items.documents || []).map(d => plain({ mapValue: { fields: d.fields } })).map(i => [i.kind, i.title])).toEqual([['link', 'Practice exam']]);

@@ -95,7 +95,7 @@ function pageStudyGroups() {
     ${groups.length ? `
       ${groupsThisWeek(groups)}
       <div class="sg-section-label">Your groups</div>
-      <div class="grid grid-3">${groups.map(groupIndexCard).join('')}</div>
+      <div class="space-grid">${groups.map(groupIndexCard).join('')}</div>
     ` : groupsEmptyHero()}
     <div class="sg-pricing-note small">${icon('users', 14)} Bringing a whole class, club, or team onto Semester HQ? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">See group pricing</a></div>
   `;
@@ -107,44 +107,51 @@ function groupsAccountBanner() {
   if (!fbConfigured() || cloudGroupsEnabled() || demoBarShowing()) return '';
   return `<div class="sg-callout mb-16">${icon('info', 16)}<div class="small">You’re trying Study Groups without an account, so groups you make here only last until you close this tab. <a href="login.html">Log in</a> to invite classmates and keep everything synced.</div></div>`;
 }
+// The group's crest as spaceCrest wants it: course letters over the number.
+function groupCrest(g) { const c = spaceGroupCrest(g); return { text: esc(c.main), sub: esc(c.sub) }; }
 function groupsThisWeek(groups) {
   const end = addDays(todayIso(), 7);
   const rows = groups.flatMap(g => upcomingSessions(g).filter(s => s.date <= end).map(s => ({ g, s })))
-    .sort((a, b) => (a.s.date + (a.s.start || '')).localeCompare(b.s.date + (b.s.start || ''))).slice(0, 5);
-  if (!rows.length) return '';
-  return `
-    <div class="card card-pad mb-16">
-      <h3 class="sg-h3 mb-8">Coming up this week</h3>
-      ${rows.map(({ g, s }) => `
-        <div class="list-row sg-session-row" style="--course:${esc(groupColor(g) || '#6b6b6b')}" onclick="showGroupSessionModal('${g.code}','${s.id}')">
-          ${dateTile(s.date)}
-          <div class="row-title"><div class="sg-strong">${esc(s.title)}${s.seriesId ? ' <span class="sg-series-tag">Weekly</span>' : ''}</div><div class="row-meta">${esc(g.name)} · ${fmtSessionWhen(s)}${s.where ? ' · ' + linkifyWhere(s.where) : ''}</div></div>
+    .sort((a, b) => (a.s.date + (a.s.start || '')).localeCompare(b.s.date + (b.s.start || '')));
+  return spaceWeekCard({
+    title: 'This week',
+    rows: rows.map(({ g, s }) => ({
+      date: s.date,
+      html: `
+        <div class="list-row space-week-item space" style="${spaceVars(groupColor(g))}" onclick="showGroupSessionModal('${g.code}','${s.id}')">
+          ${spaceCrest(groupCrest(g), 'xs')}
+          <div class="row-title"><div class="sg-strong">${esc(s.title)}${s.seriesId ? ' <span class="sg-series-tag">Weekly</span>' : ''}</div><div class="row-meta">${[s.start ? `${fmtTime(s.start)}${s.end ? ` to ${fmtTime(s.end)}` : ''}` : '', esc(g.name), s.where ? linkifyWhere(s.where) : ''].filter(Boolean).join(' · ')}</div></div>
           ${rsvpControl(g, s)}
-        </div>`).join('')}
-    </div>`;
+        </div>`,
+    })),
+  });
+}
+// What a group needs from you: your open tasks, plus upcoming sessions you
+// haven't answered yet.
+function groupIndexNeedCount(g) {
+  const u = myUidFor(g);
+  return taskList(g).filter(t => !t.done && t.assignee === u).length + upcomingSessions(g).filter(s => !s.rsvp?.[u]).length;
 }
 function groupIndexCard(g) {
   const next = upcomingSessions(g)[0];
-  const u = myUidFor(g);
-  const myTasks = taskList(g).filter(t => !t.done && t.assignee === u).length;
   const unread = groupHasUnread(g);
   const count = groupPeople(g).length;
-  return `
-    <div class="card sg-card" role="button" tabindex="0" onclick="openGroup('${g.code}')" onkeydown="if(event.key==='Enter')openGroup('${g.code}')">
-      <div class="sg-card-top">
-        <div style="min-width:0">
-          <div class="sg-card-name">${esc(g.name)}</div>
-          <div class="small muted">${groupColor(g) ? `<span class="sg-name-dot" style="--p:${groupColor(g)}"></span>` : ''}${[g.courseLabel ? esc(g.courseLabel) : '', g.sample ? 'Sample' : ''].filter(Boolean).join(' · ') || '&nbsp;'}</div>
-        </div>
-        ${unread ? `<span class="sg-unread-dot" role="img" aria-label="New messages"></span>` : ''}
-      </div>
-      <div class="sg-card-line"><span class="sg-card-ic">${icon('calendar', 14)}</span>${next ? `<span><span class="sg-strong">${esc(next.title)}</span><br><span class="dim">${fmtSessionWhen(next)}</span></span>` : `<span class="dim">No session scheduled</span>`}</div>
-      ${g.lastMessage ? `<div class="sg-card-line"><span class="sg-card-ic">${icon('message-circle', 14)}</span><span class="sg-card-msg ${unread ? '' : 'dim'}"><span class="sg-strong">${esc(g.lastMessage.name)}:</span> ${esc(g.lastMessage.text)}</span></div>` : ''}
-      <div class="sg-card-foot">
-        ${avatarStack(g, 4, 24)}
-        <span class="small dim">${g.loading ? 'Loading…' : `${count} member${count === 1 ? '' : 's'}`}${myTasks ? ` · ${myTasks} task${myTasks === 1 ? '' : 's'} for you` : ''}</span>
-      </div>
-    </div>`;
+  return spaceCard({
+    code: g.code,
+    color: groupColor(g),
+    crest: groupCrest(g),
+    eyebrow: [g.courseLabel ? esc(g.courseLabel) : 'Study group', g.sample ? 'Sample' : ''].filter(Boolean).join(' · '),
+    name: g.name,
+    onclick: `openGroup('${g.code}')`,
+    nextHtml: next
+      ? `${spaceCountdownChip(next.date, next.start, next.end)}<span class="space-card-when">${[esc(spaceWhen(next.date, next.start)), next.where ? esc(next.where) : ''].filter(Boolean).join(' · ') || esc(next.title)}</span>`
+      : '<span class="space-card-when">No session scheduled</span>',
+    lineHtml: g.lastMessage ? `<div class="space-card-msg ${unread ? 'is-unread' : ''}"><span class="em">${esc(g.lastMessage.name)}:</span> ${esc(g.lastMessage.text)}</div>` : '',
+    unread,
+    unreadLabel: 'New messages',
+    footHtml: `${avatarStack(g, 4, 24)}<span>${g.loading ? 'Loading…' : `${count} member${count === 1 ? '' : 's'}`}</span>`,
+    needCount: g.loading ? 0 : groupIndexNeedCount(g),
+  });
 }
 function groupsEmptyHero() {
   return emptyStateHtml({
@@ -163,29 +170,52 @@ function pageGroupDetail(g) {
   const unread = tab !== 'chat' && groupHasUnread(g);
   const body = { overview: groupOverviewTab, schedule: groupScheduleTab, availability: groupAvailabilityTab, tasks: groupTasksTab, resources: groupResourcesTab, chat: groupChatTab }[tab];
   const color = groupColor(g);
-  return `
-    <div ${color ? `style="${colorVars('sg', color)}" class="sg-tinted"` : ''}>
-    <button class="btn btn-ghost btn-sm sg-back" onclick="closeGroup()">${icon('arrow-left', 14)} All groups</button>
-    <div class="sg-head">
-      <div style="min-width:0">
-        <div class="sg-eyebrow">${[g.courseLabel ? esc(g.courseLabel) : '', `${count} member${count === 1 ? '' : 's'}`, g.sample ? 'Sample group' : ''].filter(Boolean).join(' · ')}</div>
-        <h2 class="sg-title">${esc(g.name)}</h2>
-        ${g.description ? `<p class="small muted sg-desc">${esc(g.description)}</p>` : ''}
-      </div>
-      <div class="sg-head-actions">
-        ${avatarStack(g, 5, 30)}
-        ${signInHeaderButton()}
-        <button class="btn ${tab === 'overview' && !groupIsBrandNew(g) ? 'btn-primary' : ''}" onclick="openInviteModal('${g.code}')">${icon('user-plus', 14)} Invite</button>
-        <button class="btn btn-ghost btn-icon" aria-label="Group settings" data-tip="Group settings" onclick="openGroupSettingsModal('${g.code}')">${icon('settings', 16)}</button>
-      </div>
-    </div>
-    ${groupLoadNotice(g)}
-    <div class="sg-tabs" role="tablist">
-      ${GROUP_TABS.map(([k, label]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}" onclick="setGroupTab('${k}')">${label}${k === 'chat' && unread ? '<span class="sg-tab-dot" aria-label="unread"></span>' : ''}</button>`).join('')}
-    </div>
-    <div class="sg-tab-body">${tab === 'overview' && groupIsBrandNew(g) ? groupFirstStepsHtml(g) : body(g)}</div>
-    </div>
-  `;
+  const crest = groupCrest(g);
+  // The band's Invite is the page's one primary on the overview; on the
+  // other tabs (and a brand-new group, whose empty state invites) the tab's own action is.
+  const invite = { onclick: `openInviteModal('${g.code}')`, primary: tab === 'overview' && !groupIsBrandNew(g) };
+  return spaceShell({
+    kind: 'group',
+    code: g.code,
+    color,
+    // --sg and .sg-tinted are what the tab bodies read the group color from.
+    className: color ? 'sg-tinted' : '',
+    rootStyle: color ? colorVars('sg', color) : '',
+    band: {
+      code: g.code,
+      crest,
+      eyebrow: [g.courseLabel ? esc(g.courseLabel) : '', `${count} member${count === 1 ? '' : 's'}`, g.sample ? 'Sample group' : ''].filter(Boolean).join(' · '),
+      title: g.name,
+      desc: g.description || '',
+      back: { label: 'All groups', onclick: 'closeGroup()' },
+      stackHtml: avatarStack(g, 5, 28),
+      invite,
+      menuLabel: 'Group options',
+      menu: [
+        { label: 'Group settings', icon: 'settings', onclick: `openGroupSettingsModal('${g.code}')` },
+        { label: g.sample ? 'Remove sample' : 'Leave group', icon: 'log-out', onclick: `confirmLeaveGroup('${g.code}')`, danger: true },
+      ],
+    },
+    notice: groupLoadNotice(g),
+    tabs: {
+      tabs: GROUP_TABS.map(([k, label]) => ({ key: k, label, dot: k === 'chat' && unread, phoneHidden: k === 'chat' })),
+      active: tab,
+      onTab: (k) => `setGroupTab('${k}')`,
+      crest,
+      title: g.name,
+      invite,
+    },
+    body: tab === 'overview' && groupIsBrandNew(g) ? groupFirstStepsHtml(g) : body(g),
+    fab: tab === 'chat' ? null : { onclick: `spaceGoToTab('group','chat')`, count: groupUnreadCount(g), dot: unread, label: 'Open group chat' },
+  });
+}
+// New messages since you last opened the chat. The group's message listener
+// runs on every tab, so this is a real count; before it has loaded, the
+// last-message check still gives a dot.
+function groupUnreadCount(g) {
+  if (!groupHasUnread(g)) return 0;
+  const me = myUidFor(g), seen = groupChatSeen()[g.code] || 0;
+  return groupMessages(g).filter(m => m.uid !== me && typeof m.at === 'number' && m.at > seen).length;
 }
 // A group with one person in it and nothing scheduled, assigned, shared, or
 // said yet: the overview would be five cards each saying "nothing yet". The
@@ -982,47 +1012,67 @@ function dashboardGroupsWidget() {
 }
 
 /* ── Sample group: lets people without an account see a group in use ─ */
+// An SI-style review cohort: a student who aced the class last year runs a
+// weekly session, and the group adds its own reviews around the exams.
+// Local only (local: true), like every sample.
 function createSampleGroup() {
   const existing = groupEntries().find(e => e.sample);
   if (existing) { openGroup(existing.code); return; }
   const now = Date.now(), H = 3600000, D = 24 * H, t = todayIso();
-  const me = LOCAL_UID, maya = 'sample-maya', jordan = 'sample-jordan', priya = 'sample-priya';
+  const me = LOCAL_UID, maya = 'sample-maya', jordan = 'sample-jordan', priya = 'sample-priya', diego = 'sample-diego', hana = 'sample-hana', theo = 'sample-theo';
   const code = genGroupCode();
   const ranges = (list) => availFromRanges(list.flatMap(([days, start, end]) => days.map(day => ({ day, start, end }))));
   const nextDow = (dow) => addDays(t, ((dow - new Date().getDay() + 7) % 7) || 7);
-  const reviewId = uid(), swapId = uid(), pastId = uid();
+  const session = (title, date, start, end, where, notes, by, rsvp, extra = {}) => { const id = uid(); return [id, { id, title, date, start, end, where, notes, createdBy: by, createdByName: by === maya ? 'Maya' : by === priya ? 'Priya' : 'Jordan', createdAt: now - 9 * D, rsvp, ...extra }]; };
+  const si = { seriesId: 'sample-si' };
+  const siWhere = 'Science library, room 120';
   const entry = {
     v: 2, code, local: true, sample: true,
-    name: 'BIO 201 Group', courseLabel: 'BIO 201', description: 'Weekly review before exams. Usually Wednesdays in the library.',
-    createdBy: maya, createdAt: now - 20 * D, updatedAt: now,
-    memberUids: [maya, jordan, priya, me],
+    name: 'BIO 201 Review', courseLabel: 'BIO 201', color: '#1F5F6B',
+    description: 'Supplemental instruction for BIO 201. Maya aced it last spring and runs a review every Monday, plus extra sessions before each exam.',
+    createdBy: maya, createdAt: now - 34 * D, updatedAt: now,
+    memberUids: [maya, jordan, priya, diego, hana, theo, me],
     people: {
-      [maya]: { name: 'Maya', role: 'owner', joinedAt: now - 20 * D, color: '#c0503f' },
-      [jordan]: { name: 'Jordan', role: 'member', joinedAt: now - 19 * D, color: '#3f8a55' },
-      [priya]: { name: 'Priya', role: 'member', joinedAt: now - 12 * D, color: '#8a5cc2' },
-      [me]: { name: myGroupName(), role: 'member', joinedAt: now - 2 * D },
+      [maya]: { name: 'Maya', role: 'owner', joinedAt: now - 34 * D, color: '#c0503f' },
+      [jordan]: { name: 'Jordan', role: 'member', joinedAt: now - 33 * D, color: '#3f8a55' },
+      [priya]: { name: 'Priya', role: 'member', joinedAt: now - 30 * D, color: '#8a5cc2' },
+      [diego]: { name: 'Diego', role: 'member', joinedAt: now - 28 * D, color: '#d08a1e' },
+      [hana]: { name: 'Hana', role: 'member', joinedAt: now - 21 * D, color: '#2a9396' },
+      [theo]: { name: 'Theo', role: 'member', joinedAt: now - 12 * D, color: '#5a6b7b' },
+      [me]: { name: myGroupName(), role: 'member', joinedAt: now - 9 * D },
     },
-    members: ['Maya', 'Jordan', 'Priya', myGroupName()], events: [],
-    sessions: {
-      [reviewId]: { id: reviewId, title: 'Midterm 2 review', date: addDays(t, 1), start: '18:00', end: '19:30', where: 'Main library, room 204', notes: 'Bring your practice problems from chapters 7–9. Maya is bringing the Quizlet.', createdBy: maya, createdByName: 'Maya', createdAt: now - 3 * D, rsvp: { [maya]: 'yes', [jordan]: 'yes', [priya]: 'maybe' } },
-      [swapId]: { id: swapId, title: 'Practice exam swap', date: nextDow(4), start: '17:30', end: '19:00', where: 'https://zoom.us/j/0000000000', notes: 'Everyone writes 5 questions, then we swap and check answers.', createdBy: priya, createdByName: 'Priya', createdAt: now - 1 * D, rsvp: { [priya]: 'yes' } },
-      [pastId]: { id: pastId, title: 'Chapter 7 problem set', date: addDays(t, -6), start: '18:00', end: '19:00', where: 'Main library, room 204', notes: '', createdBy: maya, createdByName: 'Maya', createdAt: now - 9 * D, rsvp: { [maya]: 'yes', [jordan]: 'yes', [priya]: 'yes' } },
-    },
+    members: ['Maya', 'Jordan', 'Priya', 'Diego', 'Hana', 'Theo', myGroupName()], events: [],
+    sessions: Object.fromEntries([
+      session('SI review: cell signaling', addDays(nextDow(1), -14), '17:00', '18:00', siWhere, '', maya, { [maya]: 'yes', [jordan]: 'yes', [priya]: 'yes', [diego]: 'yes', [hana]: 'no' }, si),
+      session('SI review: enzymes and metabolism', addDays(nextDow(1), -7), '17:00', '18:00', siWhere, '', maya, { [maya]: 'yes', [jordan]: 'yes', [priya]: 'yes', [hana]: 'yes', [theo]: 'yes', [me]: 'yes' }, si),
+      session('Chapter 7 problem set', addDays(t, -6), '18:00', '19:00', 'Main library, room 204', '', maya, { [maya]: 'yes', [jordan]: 'yes', [priya]: 'yes', [diego]: 'maybe' }),
+      session('Midterm 2 review', addDays(t, 1), '18:00', '19:30', 'Main library, room 204', 'Bring your practice problems from chapters 7 to 9. Maya is bringing the Quizlet.', maya, { [maya]: 'yes', [jordan]: 'yes', [priya]: 'maybe', [diego]: 'yes', [hana]: 'yes', [me]: 'yes' }),
+      session('SI review: gene expression', nextDow(1), '17:00', '18:00', siWhere, 'Transcription and translation. Maya has a worksheet, no prep needed.', maya, { [maya]: 'yes', [jordan]: 'yes', [hana]: 'yes', [theo]: 'maybe' }, si),
+      session('Practice exam swap', nextDow(4), '17:30', '19:00', 'https://zoom.us/j/0000000000', 'Everyone writes 5 questions, then we swap and check answers.', priya, { [priya]: 'yes', [diego]: 'yes' }),
+      session('SI review: DNA replication', addDays(nextDow(1), 7), '17:00', '18:00', siWhere, '', maya, { [maya]: 'yes', [me]: 'yes' }, si),
+      session('Lab practical walkthrough', addDays(t, 9), '16:00', '17:30', 'Biology building, lab 3', 'We’ll go station by station. Bring your lab manual.', jordan, { [jordan]: 'yes', [maya]: 'yes', [theo]: 'yes', [me]: 'maybe' }),
+    ]),
     taskItems: Object.fromEntries([
       { title: 'Make a Quizlet for chapter 8 vocab', due: addDays(t, 1), assignee: maya },
-      { title: 'Outline answers for review questions 1–10', due: addDays(t, 2), assignee: me },
+      { title: 'Outline answers for review questions 1 to 10', due: addDays(t, 2), assignee: me },
+      { title: 'Write 5 questions for the practice exam swap', due: addDays(nextDow(4), -1), assignee: me },
       { title: 'Book a study room for next week', due: null, assignee: jordan, done: true, doneBy: jordan, doneAt: now - 5 * H },
+      { title: 'Post the chapter 9 worksheet answers', due: null, assignee: maya, done: true, doneBy: maya, doneAt: now - 30 * H },
       { title: 'Summarize lecture 14 notes', due: addDays(t, 4), assignee: null },
-    ].map((x, i) => { const id = uid() + i; return [id, { id, label: '', done: false, doneBy: null, doneAt: null, createdBy: maya, createdAt: now - (4 - i) * D, ...x }]; })),
+      { title: 'Draw the lab practical station map', due: addDays(t, 7), assignee: diego },
+    ].map((x, i) => { const id = uid() + i; return [id, { id, label: '', done: false, doneBy: null, doneAt: null, createdBy: maya, createdAt: now - (7 - i) * D, ...x }]; })),
     avail: {
       [maya]: { name: 'Maya', updatedAt: now - 2 * D, ...ranges([[[1, 3], '15:00', '20:00'], [[2, 4], '18:00', '21:00'], [[0], '13:00', '17:00']]) },
       [jordan]: { name: 'Jordan', updatedAt: now - 2 * D, ...ranges([[[1, 2, 3, 4], '17:00', '19:30'], [[6], '10:00', '14:00']]) },
       [priya]: { name: 'Priya', updatedAt: now - D, ...ranges([[[3, 4], '16:00', '20:00'], [[1], '18:00', '22:00'], [[0], '14:00', '16:00']]) },
+      [diego]: { name: 'Diego', updatedAt: now - 3 * D, ...ranges([[[1, 3], '16:30', '21:00'], [[5], '12:00', '15:00']]) },
+      [hana]: { name: 'Hana', updatedAt: now - D, ...ranges([[[2, 3, 4], '17:00', '20:00'], [[0], '12:00', '16:00']]) },
     },
     messages: [
       { id: uid(), uid: maya, name: 'Maya', text: 'Booked room 204 for tomorrow.', at: now - 26 * H },
       { id: uid(), uid: jordan, name: 'Jordan', text: 'Can we start at 6 instead? I have lab until 5:45', at: now - 25.5 * H },
       { id: uid(), uid: priya, name: 'Priya', text: '6 works for me, I might be a few minutes late though', at: now - 25 * H },
+      { id: uid(), uid: hana, name: 'Hana', text: 'Same. Also the cell signaling flashcards in Files are so good, thank you Maya', at: now - 20 * H },
       { id: uid(), uid: maya, name: 'Maya', text: 'Moved it to 6! Can everyone add availability for next week so we can lock in the practice exam swap?', at: now - 3 * H },
     ],
     items: [
@@ -1036,7 +1086,8 @@ function createSampleGroup() {
       { id: uid(), kind: 'note', title: 'Lecture 14 summary', sharedBy: 'Priya', sharedByUid: priya, sharedAt: now - 30 * H, content: '<h2>Lecture 14: Cell communication</h2><ul><li>Three stages: reception, transduction, response</li><li>GPCRs are the largest family of receptors</li><li>Amplification: one ligand can trigger thousands of responses</li></ul>' },
     ],
   };
-  entry.lastMessage = { uid: maya, name: 'Maya', text: entry.messages[3].text.slice(0, 140), at: entry.messages[3].at };
+  const last = entry.messages[entry.messages.length - 1];
+  entry.lastMessage = { uid: last.uid, name: last.name, text: last.text.slice(0, 140), at: last.at };
   groupEntries().push(entry);
   openGroup(code);
   toast('This is a sample group. Try RSVPing or painting your availability.', 'info', 4200);

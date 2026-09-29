@@ -195,7 +195,8 @@ function headItemLabel(el) {
 }
 function openHeadMore(btn) {
   // The row-1 copy of the ··· (.head-more-top) reads its own header's row 2.
-  const row = btn.closest('.head-actions') || btn.closest('.page-head')?.querySelector(':scope > .head-actions');
+  // A group or club page's cover band (.space-band) has its own action row.
+  const row = btn.closest('.head-actions, .space-actions') || btn.closest('.page-head')?.querySelector(':scope > .head-actions');
   if (!row) return;
   if (window.matchMedia('(min-width: 761px)').matches) {
     const items = [...row.querySelectorAll(':scope > .head-menu')];
@@ -204,7 +205,7 @@ function openHeadMore(btn) {
       c.removeAttribute('id');
       [...c.classList].forEach(k => { if (k === 'btn' || k.startsWith('btn-') || k === 'head-menu' || k === 'is-on') c.classList.remove(k); });
       c.classList.add('menu-item');
-      c.setAttribute('role', 'menuitem');
+      if (c.getAttribute('role') !== 'menuitemcheckbox') c.setAttribute('role', 'menuitem');
       c.removeAttribute('title'); c.removeAttribute('data-tip');
       if (el.matches('.btn-danger')) c.classList.add('is-danger');
       if (!(el.textContent || '').trim()) c.insertAdjacentHTML('beforeend', `<span>${esc(headItemLabel(el))}</span>`);
@@ -213,7 +214,7 @@ function openHeadMore(btn) {
     if (html) openMenu(btn, html, { align: 'end' });
     return;
   }
-  const title = btn.closest('.page-head')?.querySelector('h2')?.textContent || 'More';
+  const title = btn.closest('.page-head, .space-band')?.querySelector('h2')?.textContent || 'More';
   const items = headMoreItems(row);
   const html = items.map(el => {
     const c = el.cloneNode(true);
