@@ -21,7 +21,10 @@ export default defineConfig({
   // Pinned to this folder so the output lands in one place whichever
   // directory the run was started from (npm scripts start it from tests/).
   outputDir: join(here, 'test-results'),
-  reporter: process.env.CI ? [['list'], ['html', { open: 'never', outputFolder: join(here, 'playwright-report') }]] : [['list']],
+  // On CI the github reporter puts each failure on the run's summary page,
+  // with the message and the line, so a red run can be read without
+  // downloading anything.
+  reporter: process.env.CI ? [['list'], ['github'], ['html', { open: 'never', outputFolder: join(here, 'playwright-report') }]] : [['list']],
   timeout: 30_000,
   expect: { timeout: 7_000 },
   use: {
