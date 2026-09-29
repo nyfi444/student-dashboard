@@ -127,6 +127,25 @@ export async function openSignedIn(page, account) {
   return console_;
 }
 
+/* Opens one of the standalone pages (form.html) on the emulators, signed
+   out, with the same three guarantees as openSignedIn. signInHere then
+   signs in through that page's own Firebase connection. */
+export async function openStandalone(page, path) {
+  await stubExternals(page);
+  const console_ = watchConsole(page);
+  await isolate(page, console_.problems);
+  await page.addInitScript(() => {
+    localStorage.setItem('shq_firebase_emulators', '1');
+    localStorage.setItem('shq_age_tos_confirmed', '1');
+  });
+  await page.goto(path);
+  console_.expectClean = console_.expectCleanApartFromStreamRestarts;
+  return console_;
+}
+export async function signInHere(page, account) {
+  await page.evaluate(({ email, password }) => firebase.auth().signInWithEmailAndPassword(email, password), { email: account.email, password: PASSWORD });
+}
+
 /* Waits until what the app shows has reached the account's planner
    document in Firestore — the thing another device will load. */
 export async function expectSavedToAccount(account, text) {

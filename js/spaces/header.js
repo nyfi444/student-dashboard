@@ -310,6 +310,8 @@ function spaceActiveTabIntoView(tabs) {
 // dropped and re-attached to the new nodes.
 let _spaceStickyObs = null;
 function afterSpaceRender() {
+  // Forms are listened to only while their space's page is open (js/spaces/forms.js).
+  if (typeof formsAfterRender === 'function') formsAfterRender();
   if (_spaceStickyObs) { _spaceStickyObs.disconnect(); _spaceStickyObs = null; }
   const bar = document.querySelector('#content .space-tabbar');
   const sentinel = document.querySelector('#content .space-tabs-sentinel');

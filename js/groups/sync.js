@@ -33,7 +33,7 @@ const GROUP_MESSAGE_MAX = 2000;
 const PENDING_JOIN_KEY = 'shq_pending_join';
 const GROUP_CACHE_KEY = storeKey + '.groups';
 const GROUP_PRICING_URL = 'https://semester-hq.com/group-pricing.html';
-const GROUP_TABS = [['overview', 'Overview'], ['schedule', 'Sessions'], ['availability', 'Find a time'], ['tasks', 'Tasks'], ['resources', 'Files'], ['chat', 'Chat']];
+const GROUP_TABS = [['overview', 'Overview'], ['schedule', 'Sessions'], ['availability', 'Find a time'], ['tasks', 'Tasks'], ['resources', 'Files'], ['forms', 'Forms'], ['chat', 'Chat']];
 const SESSION_REPEAT_WEEKS = [2, 4, 6, 8, 10, 12, 15];
 /* ── Identity ──────────────────────────────────────────────────── */
 function cloudGroupsEnabled() { return fbConfigured() && !!_fbUser && !!_fbDb && !!window._licensed; }

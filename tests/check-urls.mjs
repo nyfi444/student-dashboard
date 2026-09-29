@@ -175,7 +175,7 @@ for (const which of ['site', 'app']) {
   }
 }
 ['/', '/robots.txt', '/sitemap.xml', '/llms.txt', '/404.html'].forEach(p => add('site', p, 'must work'));
-['/', '/login.html', '/group-admin.html', '/manifest.json', '/sw.js', '/js/version.js'].forEach(p => add('app', p, 'must work'));
+['/', '/login.html', '/group-admin.html', '/form.html', '/manifest.json', '/sw.js', '/js/version.js'].forEach(p => add('app', p, 'must work'));
 
 const sitemap = await get(`${REF.site}/sitemap.xml`);
 const locs = [...sitemap.body.toString().matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map(m => m[1]);

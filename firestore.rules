@@ -13,6 +13,45 @@ service cloud.firestore {
       match /notes/{noteId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
+
+      // The person's own list of the forms they have answered, one entry
+      // per form. It exists so "delete my account" can find every answer
+      // they ever sent, including to clubs they never joined: the form
+      // rules below refuse an answer that doesn't arrive with its entry.
+      match /formAnswers/{key} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Forms (clubs and study groups both have them; see js/spaces/formcore.js).
+    // What any stored form has to look like, whoever is allowed to write it.
+    function validForm(d, formId) {
+      return d.id == formId
+        && d.title is string && d.title.size() > 0 && d.title.size() <= 120
+        && d.questions is list && d.questions.size() <= 40
+        && d.status in ['draft', 'open', 'closed']
+        && d.audience in ['members', 'link']
+        && d.collectEmail is bool
+        && d.allowEdit is bool
+        && (d.closesAt == null || d.closesAt is number)
+        && d.createdBy is string;
+    }
+    function formIsOpen(form) {
+      return form.status == 'open' && (form.closesAt == null || request.time.toMillis() < form.closesAt);
+    }
+    // One answer. It is filed under the sender's own uid, carries the email
+    // address they signed in with (never one they typed) and only when the
+    // form asks for it, and says truthfully whether they are a member.
+    function validFormAnswer(d, uid, form, isMember) {
+      return d.keys().hasOnly(['uid', 'name', 'email', 'member', 'answers', 'at', 'updatedAt'])
+        && d.uid == uid
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 80
+        && d.member == isMember
+        && d.answers is map && d.answers.size() <= 40
+        && d.at is number && d.updatedAt is number
+        && (form.collectEmail == true
+            ? ('email' in request.auth.token && d.email == request.auth.token.email)
+            : !('email' in d));
     }
 
     // Study groups. The 6-character code is the doc id and doubles as the
@@ -77,6 +116,51 @@ service cloud.firestore {
         allow delete: if isMember(groupData())
           && (resource.data.uid == request.auth.uid || groupData().createdBy == request.auth.uid);
         allow update: if false;
+      }
+
+      // Forms. Any member can make one. Whoever made it, and the group's
+      // owner, run it: edit, close, delete, read the answers. Members see
+      // the group's forms; someone outside the group can open one only
+      // while it is open and set to "anyone with the link".
+      match /forms/{formId} {
+        function runsForm(form) {
+          return isMember(groupData())
+            && (form.createdBy == request.auth.uid || groupData().createdBy == request.auth.uid);
+        }
+        allow get: if isMember(groupData())
+          || (signedIn() && resource.data.audience == 'link' && resource.data.status == 'open');
+        allow list: if isMember(groupData());
+        allow create: if isMember(groupData())
+          && validForm(request.resource.data, formId)
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update: if runsForm(resource.data)
+          && validForm(request.resource.data, formId)
+          && request.resource.data.createdBy == resource.data.createdBy;
+        allow delete: if runsForm(resource.data);
+
+        // Answers: one per person, filed under their uid. Only the sender
+        // and whoever runs the form can read one.
+        match /responses/{uid} {
+          function theForm() { return get(/databases/$(database)/documents/studyGroups/$(code)/forms/$(formId)).data; }
+          function mine() { return signedIn() && request.auth.uid == uid; }
+          function mayAnswer() {
+            return mine() && formIsOpen(theForm())
+              && (theForm().audience == 'link' || isMember(groupData()));
+          }
+          function recorded() {
+            return existsAfter(/databases/$(database)/documents/planners/$(uid)/formAnswers/$('studyGroups_' + code + '_' + formId));
+          }
+          allow get: if mine() || runsForm(theForm());
+          allow list: if runsForm(theForm());
+          allow create: if mayAnswer()
+            && validFormAnswer(request.resource.data, uid, theForm(), isMember(groupData()))
+            && recorded();
+          allow update: if mayAnswer()
+            && theForm().allowEdit == true
+            && validFormAnswer(request.resource.data, uid, theForm(), isMember(groupData()))
+            && request.resource.data.at == resource.data.at;
+          allow delete: if mine() || runsForm(theForm());
+        }
       }
     }
 
@@ -175,6 +259,50 @@ service cloud.firestore {
         allow delete: if request.auth != null && request.auth.uid in orgDoc().memberUids
           && (resource.data.uid == request.auth.uid || request.auth.uid in orgDoc().officerUids);
         allow update: if false;
+      }
+
+      // Forms. Officers write and run them. Members see the club's forms;
+      // someone outside the club can open one only while it is open and
+      // set to "anyone with the link" (an interest form, an application).
+      match /forms/{formId} {
+        function formOrg() { return get(/databases/$(database)/documents/orgs/$(code)).data; }
+        function formMember() { return request.auth != null && request.auth.uid in formOrg().memberUids; }
+        function formOfficer() { return request.auth != null && request.auth.uid in formOrg().officerUids; }
+
+        allow get: if formMember()
+          || (request.auth != null && resource.data.audience == 'link' && resource.data.status == 'open');
+        allow list: if formMember();
+        allow create: if formOfficer()
+          && validForm(request.resource.data, formId)
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update: if formOfficer()
+          && validForm(request.resource.data, formId)
+          && request.resource.data.createdBy == resource.data.createdBy;
+        allow delete: if formOfficer();
+
+        // Answers: one per person, filed under their uid. Only the sender
+        // and the club's officers can read one; other members cannot.
+        match /responses/{uid} {
+          function theForm() { return get(/databases/$(database)/documents/orgs/$(code)/forms/$(formId)).data; }
+          function mine() { return request.auth != null && request.auth.uid == uid; }
+          function mayAnswer() {
+            return mine() && formIsOpen(theForm())
+              && (theForm().audience == 'link' || formMember());
+          }
+          function recorded() {
+            return existsAfter(/databases/$(database)/documents/planners/$(uid)/formAnswers/$('orgs_' + code + '_' + formId));
+          }
+          allow get: if mine() || formOfficer();
+          allow list: if formOfficer();
+          allow create: if mayAnswer()
+            && validFormAnswer(request.resource.data, uid, theForm(), formMember())
+            && recorded();
+          allow update: if mayAnswer()
+            && theForm().allowEdit == true
+            && validFormAnswer(request.resource.data, uid, theForm(), formMember())
+            && request.resource.data.at == resource.data.at;
+          allow delete: if mine() || formOfficer();
+        }
       }
     }
 

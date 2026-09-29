@@ -691,6 +691,111 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
   })()`), [7, 14, 7, 14, 'Every other week']);
   check('club calendar: month cells are whole weeks', run(`(() => { const m = calMonthCells('2026-10-17'); return [m.month, m.weeks, m.cells.length, m.cells[0], m.cells[m.cells.length - 1]]; })()`), ['2026-10-01', 5, 35, '2026-09-27', '2026-10-31']);
   check('club writes: a refused write says why', denied, ['Only the founder can change who’s an officer.', 'Only officers can change that.', 'Fallback', 'You’re no longer in this club.', 'This club was deleted.']);
+
+  /* ── 11. Forms (js/spaces/formcore.js) ──────────────────────────
+     A form and its answers are typed by students and read back by
+     officers, so what is stored is cleaned on the way in and on the way
+     out. The quiet failures: an answer that isn't one of the choices is
+     counted, a closed form still reads open, a required question is
+     skipped, or a cell in the spreadsheet runs as a formula. */
+  run(`
+    globalThis.__form = (extra = {}) => formClean({
+      id: 'f1', title: '  Interest   form ', status: 'open', audience: 'link', collectEmail: true, allowEdit: true, closesAt: null, createdBy: 'alice',
+      questions: [
+        { id: 'q1', type: 'short', label: 'Major?', required: true },
+        { id: 'q2', type: 'choice', label: 'Year', options: ['First year', 'Senior', 'senior', '', 'Grad'] },
+        { id: 'q3', type: 'checks', label: 'Interests', options: ['Events', 'Service'] },
+        { id: 'q4', type: 'scale', label: 'How excited?' },
+        { id: 'q5', type: 'date', label: 'Free day' },
+        { id: 'q6', type: 'long', label: 'Anything else?' },
+        { id: 'q1', type: 'short', label: 'Same id twice' },
+        { id: 'bad id', type: 'short', label: 'Unsafe id' },
+        { id: 'q7', type: 'made-up', label: 'Unknown type' },
+      ],
+      ...extra,
+    });
+  `);
+  check('forms: a stored form is cleaned (title, duplicate and unsafe ids, blank and repeated choices, unknown type)', run(`(() => { const f = __form(); return [f.title, f.questions.map(q => q.id), f.questions[1].options, f.questions[6].type, f.questions[0].options]; })()`),
+    ['Interest form', ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7'], ['First year', 'Senior', 'Grad'], 'short', []]);
+  check('forms: more than 40 questions and 20 choices are cut off', run(`(() => { const f = formClean({ id: 'f', title: 't', questions: Array.from({ length: 60 }, (_, i) => ({ id: 'q' + i, type: 'choice', label: 'x', options: Array.from({ length: 30 }, (_, j) => 'o' + j) })) }); return [f.questions.length, f.questions[0].options.length]; })()`), [40, 20]);
+  check('forms: a made-up status or audience falls back to the private one', run(`(() => { const f = formClean({ id: 'f', title: 't', status: 'secret', audience: 'everyone', collectEmail: 'yes', allowEdit: 1 }); return [f.status, f.audience, f.collectEmail, f.allowEdit]; })()`), ['draft', 'members', false, false]);
+  check('forms: open, closed, and past its closing time', run(`[formPhase(__form()), formPhase(__form({ status: 'closed' })), formPhase(__form({ status: 'draft' })), formPhase(__form({ closesAt: 1000 }), 2000), formPhase(__form({ closesAt: 3000 }), 2000), formIsOpen(null)]`), ['open', 'closed', 'draft', 'closed', 'open', false]);
+  check('forms: a closing day lasts through the end of that day', run(`(() => { const t = formClosesAtFromDate('2026-10-03'); const d = new Date(t); return [d.getDate(), d.getHours(), d.getMinutes(), formClosesDate({ closesAt: t }), formClosesAtFromDate('soon')]; })()`), [3, 23, 59, '2026-10-03', null]);
+  check('forms: what stops a form from opening', run(`[
+    formPublishProblem({ id: 'f', title: '', questions: [] }),
+    formPublishProblem({ id: 'f', title: 'T', questions: [] }),
+    formPublishProblem({ id: 'f', title: 'T', questions: [{ id: 'a', type: 'short', label: 'ok' }, { id: 'b', type: 'short', label: ' ' }] }),
+    formPublishProblem({ id: 'f', title: 'T', questions: [{ id: 'a', type: 'choice', label: 'pick', options: ['only one'] }] }),
+    formPublishProblem(__form()),
+  ]`), ['Give the form a title.', 'Add at least one question.', 'Question 2 needs its question written.', 'Question 1 needs at least two choices.', '']);
+  check('forms: good answers are kept as typed and cleaned', run(`formCheckAnswers(__form(), { q1: '  Cell   biology ', q2: 'Senior', q3: ['Service', 'Events', 'Service'], q4: 4, q5: '2026-10-03', q6: 'Line one\\r\\n\\r\\n\\r\\n\\r\\nLine two  ' })`),
+    { ok: true, answers: { q1: 'Cell biology', q2: 'Senior', q3: ['Service', 'Events'], q4: 4, q5: '2026-10-03', q6: 'Line one\n\nLine two' }, errors: {}, first: '' });
+  check('forms: a required question left blank stops the send, and says which', run(`(() => { const r = formCheckAnswers(__form(), { q1: '   ', q2: '' }); return [r.ok, r.first, r.errors]; })()`), [false, 'q1', { q1: 'This one needs an answer.' }]);
+  check('forms: an answer that is not one of the choices is refused, never stored', run(`(() => { const r = formCheckAnswers(__form(), { q1: 'x', q2: 'Alumni', q3: ['Events', 'Parties'], q4: 9, q5: '10/3/2026' }); return [r.ok, r.answers, Object.keys(r.errors)]; })()`), [false, { q1: 'x', q3: ['Events'] }, ['q2', 'q4', 'q5']]);
+  check('forms: long answers are capped', run(`(() => { const r = formCheckAnswers(__form(), { q1: 'a'.repeat(900), q6: 'b'.repeat(9000) }); return [r.answers.q1.length, r.answers.q6.length]; })()`), [300, 2000]);
+  check('forms: a stored answer is read as untrusted data', run(`(() => {
+    const f = __form();
+    return [
+      formCleanResponse(f, { uid: 'u1', name: '  Jada  ', email: 'not an email', member: 'yes', answers: { q1: 'Bio', q2: 'Alumni', zz: 'extra' }, at: '12' }, 'u1'),
+      formCleanResponse(f, { answers: {} }, 'bad id'),
+      formCleanResponse(f, null, 'u1'),
+    ];
+  })()`), [{ uid: 'u1', name: 'Jada', email: '', member: false, answers: { q1: 'Bio' }, at: 12, updatedAt: 0 }, null, null]);
+  check('forms: results count each choice, of the people who answered that question', run(`(() => {
+    const f = __form();
+    const r = (uid, answers) => formCleanResponse(f, { uid, name: uid, answers, at: 1 }, uid);
+    const s = formSummary(f, [r('a', { q1: 'Bio', q2: 'Senior', q3: ['Events', 'Service'], q4: 5 }), r('b', { q1: 'Chem', q2: 'Senior', q3: ['Events'], q4: 2 }), r('c', { q1: 'Art', q2: 'Grad' }), r('d', { q1: 'None' })]);
+    return [s[1].answered, s[1].rows.map(x => [x.label, x.count, x.pct]), s[2].rows.map(x => x.count), s[3].kind, s[3].avg, s[3].rows.map(x => x.count), s[0].kind, s[0].answers.length];
+  })()`), [3, [['First year', 0, 0], ['Senior', 2, 67], ['Grad', 1, 33]], [2, 1], 'scale', 3.5, [0, 1, 0, 0, 1], 'text', 4]);
+  check('forms: results for a form nobody answered are all zeroes, not NaN', run(`formSummary(__form(), []).map(s => [s.answered, s.kind === 'scale' ? s.avg : 0, (s.rows || []).map(r => r.pct)])`), [[0, 0, []], [0, 0, [0, 0, 0]], [0, 0, [0, 0]], [0, 0, [0, 0, 0, 0, 0]], [0, 0, []], [0, 0, []], [0, 0, []]]);
+  check('forms: the spreadsheet never starts a cell with a formula', run(`(() => {
+    const f = formClean({ id: 'f', title: 't', collectEmail: true, questions: [{ id: 'q1', type: 'short', label: '=Question' }, { id: 'q2', type: 'checks', label: 'Pick', options: ['+one', 'two'] }] });
+    const rows = formCsvRows(f, [formCleanResponse(f, { uid: 'u', name: '=HYPERLINK("http://x","y")', email: 'a@b.co', member: true, answers: { q1: '@SUM(1)', q2: ['+one', 'two'] }, at: 0 }, 'u')]);
+    return [rows[0], rows[1]];
+  })()`), [['Name', 'Email', 'Member', 'Sent', "'=Question", 'Pick'], ["'=HYPERLINK(\"http://x\",\"y\")", 'a@b.co', 'Yes', '', "'@SUM(1)", "'+one; two"]]);
+  check('forms: a link names the space and the form, and nothing else parses', run(`[
+    formToken('club', 'ABC123', 'f1'), formToken('group', 'ABC123', 'f1'),
+    formParseToken('c.ABC123.f1'), formParseToken('g.ABC123.f-1_x'),
+    formParseToken('c.abc123.f1'), formParseToken('x.ABC123.f1'), formParseToken('c.ABC123.f1/../x'), formParseToken('c.ABC123.'), formParseToken(null),
+    formAnswerKey('club', 'ABC123', 'f1'), formAnswerKey('group', 'ABC123', 'f1'),
+  ]`), ['c.ABC123.f1', 'g.ABC123.f1', { kind: 'club', collection: 'orgs', code: 'ABC123', id: 'f1' }, { kind: 'group', collection: 'studyGroups', code: 'ABC123', id: 'f-1_x' }, null, null, null, null, null, 'orgs_ABC123_f1', 'studyGroups_ABC123_f1']);
+  check('forms: every starting point opens as it is, except the blank one', run(`FORM_TEMPLATES.map(t => [t.key, formPublishProblem(formFromTemplate(t.key))]).filter(([, p]) => p)`), [['blank', 'Give the form a title.']]);
+  check('forms: clubs and study groups each get their own starting points', run(`[formTemplatesFor('club').map(t => t.key), formTemplatesFor('group').map(t => t.key)]`), [['blank', 'interest', 'application', 'signup', 'order', 'feedback'], ['blank', 'signup', 'feedback', 'study']]);
+  check('forms: the sample club and group get forms whose answers all fit their questions', run(`(() => {
+    const out = [];
+    for (const kind of ['club', 'group']) {
+      const s = sampleForms(kind, { name: 'Sample', color: '#1F5F6B', people: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(u => ({ uid: 'sample-' + u, name: u.toUpperCase() })), by: 'sample-a', byName: 'A', now: 1790000000000 });
+      for (const f of Object.values(s.forms)) {
+        const list = Object.entries(s.formResponses[f.id]).map(([u, r]) => formCleanResponse(f, r, u));
+        out.push([kind, formPublishProblem(f), list.length > 0, list.every(r => r && f.questions.filter(q => q.required).every(q => !formAnswerEmpty(r.answers[q.id]))), list.some(r => r.uid === LOCAL_UID)]);
+      }
+    }
+    return out;
+  })()`), [['club', '', true, true, false], ['club', '', true, true, false], ['group', '', true, true, false]]);
+  check('forms: the tabs exist for clubs and study groups, and their entry points loaded', [run(`[ORG_TABS.some(t => t[0] === 'forms'), GROUP_TABS.some(t => t[0] === 'forms')]`), loaded(['formsTab', 'formsWaiting', 'formsAfterRender', 'openFormFill', 'submitFormFill', 'openFormShare', 'openFormResults', 'downloadFormCsv', 'openFormPicker', 'openFormBuilder', 'fbSave', 'formFillHtml', 'formFillRead'])], [[true, true], []]);
+
+  /* The fill-out page loads its own short list of scripts. The same two
+     quiet failures apply to it: a name declared twice, or a file that
+     throws on load. */
+  {
+    const formHtml = read('form.html');
+    const pageScripts = [...formHtml.matchAll(/<script[^>]+src="((?!https?:)[^"]+)"/g)].map(m => m[1]);
+    let parses = true;
+    try { new vm.Script(pageScripts.map(f => read(f)).join('\n;\n'), { filename: 'form-bundle.js' }); }
+    catch (e) { parses = false; console.error('  form.html scripts do not parse together:', e.message); }
+    ok('form.html: every local script, concatenated in order, parses (no name declared twice)', parses);
+    const seen = new Map(), dupes = [];
+    for (const f of pageScripts) {
+      for (const m of read(f).matchAll(/^(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)|^var\s+([A-Za-z_$][\w$]*)/gm)) {
+        const name = m[1] || m[2];
+        if (seen.has(name) && seen.get(name) !== f) dupes.push(`${name} (${seen.get(name)} and ${f})`);
+        else if (!seen.has(name)) seen.set(name, f);
+      }
+    }
+    check('form.html: no top-level function or var is declared in two scripts', dupes, []);
+    check('form.html: it loads the shared form files the app loads, and never the planner itself', [['js/spaces/formcore.js', 'js/spaces/formfill.js', 'js/form-page.js'].filter(f => !pageScripts.includes(f)), pageScripts.filter(f => /state\.js|firebase\.js|app\.js/.test(f))], [[], []]);
+    check('form.html: upload inputs and remote QR services are not used', [/<input[^>]+type="file"/.test(formHtml), /api\.qrserver|chart\.googleapis/.test(formHtml + read('js/spaces/forms.js'))], [false, false]);
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -168,7 +168,7 @@ function pageGroupDetail(g) {
   const tab = GROUP_TABS.some(([k]) => k === state.groupTab) ? state.groupTab : 'overview';
   const count = groupPeople(g).length;
   const unread = tab !== 'chat' && groupHasUnread(g);
-  const body = { overview: groupOverviewTab, schedule: groupScheduleTab, availability: groupAvailabilityTab, tasks: groupTasksTab, resources: groupResourcesTab, chat: groupChatTab }[tab];
+  const body = { overview: groupOverviewTab, schedule: groupScheduleTab, availability: groupAvailabilityTab, tasks: groupTasksTab, resources: groupResourcesTab, forms: (s) => formsTab('group', s), chat: groupChatTab }[tab];
   const color = groupColor(g);
   const crest = groupCrest(g);
   // The band's Invite is the page's one primary on the overview; on the
@@ -198,7 +198,7 @@ function pageGroupDetail(g) {
     },
     notice: groupLoadNotice(g),
     tabs: {
-      tabs: GROUP_TABS.map(([k, label]) => ({ key: k, label, dot: k === 'chat' && unread, phoneHidden: k === 'chat' })),
+      tabs: GROUP_TABS.map(([k, label]) => ({ key: k, label, count: k === 'forms' ? formsWaiting('group', g) : 0, dot: k === 'chat' && unread, phoneHidden: k === 'chat' })),
       active: tab,
       onTab: (k) => `setGroupTab('${k}')`,
       crest,
@@ -702,6 +702,8 @@ function createSampleGroup() {
       [diego]: { name: 'Diego', updatedAt: now - 3 * D, ...ranges([[[1, 3], '16:30', '21:00'], [[5], '12:00', '15:00']]) },
       [hana]: { name: 'Hana', updatedAt: now - D, ...ranges([[[2, 3, 4], '17:00', '20:00'], [[0], '12:00', '16:00']]) },
     },
+    // A check-in from Maya that three people have answered and you haven't (js/spaces/forms.js).
+    ...sampleForms('group', { name: 'BIO 201 Review', color: '#1F5F6B', people: [{ uid: jordan, name: 'Jordan' }, { uid: priya, name: 'Priya' }, { uid: hana, name: 'Hana' }], by: maya, byName: 'Maya', now }),
     messages: [
       { id: uid(), uid: maya, name: 'Maya', text: 'Booked room 204 for tomorrow.', at: now - 26 * H },
       { id: uid(), uid: jordan, name: 'Jordan', text: 'Can we start at 6 instead? I have lab until 5:45', at: now - 25.5 * H },

@@ -36,7 +36,7 @@ function orgCatHtml(e) { const c = orgCat(e); return `<span class="org-cat">${ic
 const ORG_COLORS = GROUP_COLORS; // shared with study groups, see js/spaces/core.js
 const ORG_LINKS_MAX = 6;
 const ORG_LINK_SUGGESTIONS = ['GroupMe', 'Instagram', 'Website', 'Venmo', 'Google Drive', 'Discord'];
-const ORG_TABS = [['overview', 'Overview'], ['events', 'Calendar'], ['announcements', 'Announcements'], ['files', 'Files'], ['members', 'Members'], ['chat', 'Chat']];
+const ORG_TABS = [['overview', 'Overview'], ['events', 'Calendar'], ['announcements', 'Announcements'], ['files', 'Files'], ['forms', 'Forms'], ['members', 'Members'], ['chat', 'Chat']];
 // Officers get one more: everything that comes with running the club, which
 // was otherwise spread across a settings gear, an invite popup, the members
 // list, and a link buried in the invite modal (see orgAdminTab).
@@ -205,7 +205,7 @@ function pageOrgDetail(o) {
   const kind = orgKind(o);
   const chatUnread = orgChatUnread(o);
   const officer = isOrgOfficer(o);
-  const body = { overview: orgOverviewTab, events: orgEventsTab, announcements: orgAnnouncementsTab, chat: orgChatTab, files: orgFilesTab, members: orgMembersTab, admin: orgAdminTab }[tab];
+  const body = { overview: orgOverviewTab, events: orgEventsTab, announcements: orgAnnouncementsTab, chat: orgChatTab, files: orgFilesTab, forms: (c) => formsTab('club', c), members: orgMembersTab, admin: orgAdminTab }[tab];
   const crest = { text: orgMonogram(o) };
   const faces = orgFaceColors(o);
   // Invite is the band's primary on the overview; the other tabs lead with their own action.
@@ -243,7 +243,7 @@ function pageOrgDetail(o) {
       tabs: orgTabsFor(o).map(([k, label]) => ({
         key: k, label,
         iconHtml: k === 'admin' ? icon('shield', 14) : '',
-        count: k === 'announcements' ? unread : 0,
+        count: k === 'announcements' ? unread : k === 'forms' ? formsWaiting('club', o) : 0,
         dot: k === 'chat' && chatUnread,
         phoneHidden: k === 'chat',
       })),
@@ -804,6 +804,9 @@ function createSampleOrg(kind = 'club') {
     lastMessage: { uid: last.uid, name: last.name, text: last.text, at: last.at },
     links: tpl.links.map(([label, url], i) => ({ id: `sample-link-${i}`, label, url })),
     announcements: Object.fromEntries(tpl.announcements.map(([text, k, hours, pinned]) => { const id = uid(); return [id, { id, text, uid: idOf(k), name: nameOf(k), at: now - hours * H, ...(pinned ? { pinned: true } : {}) }]; })),
+    // An interest form with answers from people who aren't members, and a
+    // sign-up still waiting for you (js/spaces/forms.js).
+    ...sampleForms('club', { name: tpl.name, color: tpl.color, people: memberUids.filter(u => u !== me).map(u => ({ uid: u, name: people[u].name })), by: officers[0] || owner, byName: people[officers[0] || owner].name, now }),
   };
   orgEntries().push(entry);
   openOrg(code);

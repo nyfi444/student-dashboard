@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'">
+<!-- Cloudflare Turnstile, for the emailed sign-in link (js/authemail.js). -->
+<meta name="turnstile-sitekey" content="0x4AAAAAAE-MikzYTD2NWIO8">
+<title>Form – Semester HQ</title>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<meta name="theme-color" content="#F8F6F2">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="same-origin">
+<script>
+  // Same boot as index.html: the look applyTheme() last saved on this device
+  // (dark, theme vars) so this page matches the app. No saved look means the
+  // default Bone & Ink theme in light mode.
+  try {
+    var b = JSON.parse(localStorage.getItem('shq_boot_look') || 'null');
+    if (b) {
+      if (b.dark) document.documentElement.classList.add('dark');
+      if (b.vars) for (var k in b.vars) document.documentElement.style.setProperty(k, b.vars[k]);
+      var tc = document.querySelector('meta[name="theme-color"]');
+      if (tc) tc.setAttribute('content', (b.vars && b.vars['--bg']) || (b.dark ? '#0f0f0f' : '#F8F6F2'));
+    }
+  } catch (e) {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/spaces.css">
+<link rel="stylesheet" href="css/forms.css">
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" integrity="sha384-ZaR6mWzmJtrRibZ1Vm7SoHFr8OXjyAuGAXalGDKqbxFT18oi/z+oZLIRFkpeNor1" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" integrity="sha384-I1LYojsZ5RM1cOda44Z2h42Qa6YfsQ1XkXxREnhp4ueYBR/4d1pG1K+NZM537Vsj" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js" integrity="sha384-Ke0FJhH7LyRqDxZ0wt+/OXV38yfQVu7g9VPEEGjYmB4RVOY/ta04uecRhsMwT7V3" crossorigin="anonymous"></script>
+</head>
+<body class="fp-body">
+<div class="fp-page">
+  <div class="fp-top">
+    <a class="fp-brand" href="index.html">Semester HQ<i aria-hidden="true">✦</i></a>
+    <div id="fp-account" class="fp-account"></div>
+  </div>
+  <main id="fp-root"><div class="card fp-card"><div class="fp-state"><p>Opening the form…</p></div></div></main>
+  <div class="fp-foot">
+    Forms are made by student clubs and study groups, not by Semester HQ.<br>
+    <a href="https://semester-hq.com/privacy.html">Privacy</a> ·
+    <a href="https://semester-hq.com/terms.html">Terms</a> ·
+    <a href="mailto:hello@semester-hq.com">Report a form</a>
+  </div>
+</div>
+<div class="overlay" id="overlay" onclick="closeModal()"></div>
+<div class="modal-wrap" id="modal-wrap"><div class="modal" id="modal" role="dialog" aria-modal="true" tabindex="-1"></div></div>
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+<script src="js/version.js"></script>
+<script src="js/config.js"></script>
+<script src="js/diagnostics.js"></script>
+<script src="js/authemail.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/spaces/core.js"></script>
+<script src="js/spaces/tokens.js"></script>
+<script src="js/spaces/formcore.js"></script>
+<script src="js/spaces/formfill.js"></script>
+<script src="js/form-page.js"></script>
+</body>
+</html>
