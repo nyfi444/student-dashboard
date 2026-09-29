@@ -1,1 +1,85 @@
-/* css/space-welcome.css: part 3, welcome. Tokens come from css/styles.css and spaceVars (js/spaces/tokens.js). One corner shape. */
+/* css/space-welcome.css: part 3, welcome. Classes are spw-* (the sign-up page already owns .welcome-*). Tokens come from css/styles.css and spaceVars (js/spaces/tokens.js). One corner shape. */
+
+/* ── The sheet: 640px on a desktop, the whole screen on a phone ── */
+.modal.is-welcome { padding: 0; }
+.modal.is-welcome::before { display: none; }
+.spw-sheet { display: flex; flex-direction: column; min-height: 100%; }
+.spw-cover {
+  position: relative; display: flex; align-items: flex-end; height: 160px; padding: 0 28px 20px;
+  background: var(--space-wash); flex-shrink: 0;
+}
+.spw-cover .space-crest.is-xl { width: 72px; height: 72px; font-size: var(--fs-title); }
+.spw-close { position: absolute; top: 12px; right: 12px; background: var(--surface); color: var(--text-dim); }
+.spw-close:hover { background: var(--surface); color: var(--text); }
+.spw-body { padding: 20px 28px 8px; display: flex; flex-direction: column; gap: 24px; }
+.spw-body > .sg-eyebrow { margin-bottom: -18px; }
+.spw-title { font: 400 var(--fs-display)/1.1 var(--font-serif); letter-spacing: -.015em; color: var(--text); text-wrap: balance; margin: 0; }
+.spw-meta { margin: -18px 0 0; }
+.spw-desc { margin: -12px 0 0; font: 400 var(--fs-lg)/1.55 var(--font); color: var(--text-dim); text-wrap: pretty; }
+.spw-sec { display: flex; flex-direction: column; gap: 10px; }
+.spw-sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.spw-foot { position: sticky; bottom: 0; z-index: 2; padding: 16px 28px calc(16px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--hairline); margin-top: 16px; }
+.spw-go { width: 100%; min-height: 44px; }
+
+/* Faces */
+.spw-faces { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px 8px; }
+.spw-face { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; min-width: 0; }
+.spw-face .sg-avatar { width: 48px !important; height: 48px !important; font-size: var(--fs-xl) !important; }
+.spw-face-name { font: 600 var(--fs-md)/1.3 var(--font); color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spw-face-role { font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: -4px; }
+
+/* Start here: the pinned post as a quote card */
+.spw-quote { margin: 0; padding: 14px 16px; border: 1px solid var(--space-line); border-radius: var(--r-mid); background: var(--space-wash); }
+.spw-quote p { margin: 0 0 8px; font: 400 var(--fs-lg)/1.55 var(--font); color: var(--text); text-wrap: pretty; overflow-wrap: anywhere; }
+.spw-quote footer { margin: 0; }
+
+/* Next up: a compact hero with the RSVP */
+.spw-next { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "tile text" "rsvp rsvp"; gap: 12px; align-items: center; padding: 14px 16px; border: 1px solid var(--card-edge); border-radius: var(--r-mid); background: var(--surface); }
+.spw-next .sg-date-tile { grid-area: tile; }
+.spw-next-text { grid-area: text; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.spw-next-title { font: 600 var(--fs-lg)/1.3 var(--font); color: var(--text); overflow-wrap: anywhere; }
+.spw-next .space-rsvp { grid-area: rsvp; }
+@media (min-width: 520px) {
+  .spw-next { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "tile text rsvp"; }
+}
+
+/* Study groups: the availability lead */
+.spw-lead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-radius: var(--r-mid); background: var(--space-wash); border: 1px solid var(--space-line); }
+.spw-lead-text { font: 400 var(--fs-md)/1.5 var(--font); color: var(--text-dim); flex: 1 1 220px; min-width: 0; }
+.spw-lead-text strong { font-weight: 600; color: var(--text); }
+
+/* ── Steps: 22px checks, shared by the sheet and the card ── */
+.spw-steps { display: flex; flex-direction: column; }
+.spw-step { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 8px 4px; border: 0; background: none; text-align: left; color: var(--text); border-radius: var(--r-tight); transition: background var(--dur-1); cursor: pointer; }
+.spw-step + .spw-step { border-top: 1px solid var(--hairline); }
+.spw-step:hover { background: var(--fill-hover); }
+.spw-check { width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border: 1.5px solid var(--border); border-radius: var(--r-tight-active); background: var(--surface); color: var(--em-ink); transition: border-color var(--dur-1), background var(--dur-1); }
+.spw-step.is-done .spw-check { border-color: var(--em-ink); }
+.spw-step-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.spw-step-label { font: 500 var(--fs-lg)/1.3 var(--font); color: var(--text); }
+.spw-step.is-done .spw-step-label { color: var(--text-dim); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text) 30%, transparent); }
+.spw-step-sub { font: 400 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); }
+.spw-step-done { font: 500 var(--fs-sm)/1 var(--font); color: var(--em-ink); flex-shrink: 0; }
+.spw-step > .i:last-child { color: var(--text-faint); flex-shrink: 0; }
+
+/* ── The Overview card ── */
+.spw-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.spw-card-text { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.spw-card-x { flex-shrink: 0; align-self: flex-start; margin: -6px -8px 0 0; }
+.spw-ring { flex-shrink: 0; transform: rotate(-90deg); }
+.spw-ring-track { fill: none; stroke: var(--track); stroke-width: 3; }
+.spw-ring-fill { fill: none; stroke: var(--space-fill, var(--accent)); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset var(--dur-3) var(--ease-out); }
+.spw-ring.is-done .spw-ring-fill { stroke: var(--em-ink); }
+.spw-ring text { transform: rotate(90deg); transform-origin: 18px 18px; font: 600 var(--fs-sm) var(--font); fill: var(--text); }
+.spw-ring.is-done text { fill: var(--em-ink); }
+.spw-card .spw-step { padding: 6px 4px; min-height: 40px; }
+.spw-again { margin-top: 10px; }
+
+@media (max-width: 760px) {
+  .modal.is-welcome, .modal.is-welcome.wide { max-height: 100vh; max-height: 100dvh; height: 100dvh; border-radius: 0; border-width: 0; padding-bottom: 0; }
+  .spw-cover { height: 148px; padding: 0 20px 16px; }
+  .spw-close { top: calc(10px + env(safe-area-inset-top)); }
+  .spw-body { padding: 18px 20px 8px; gap: 20px; }
+  .spw-title { font-size: 32px; }
+  .spw-foot { padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); }
+}

@@ -279,6 +279,7 @@ function onGroupSnapshot(code, doc) {
     if (Object.keys(ops).length) groupWrite(code, ops);
   }
   renderRemote();
+  if (typeof welcomeOnSnapshot === 'function') welcomeOnSnapshot('group', code); // js/spaces/welcome.js
 }
 function dropGroupEntry(code, message) {
   const entry = groupEntry(code);
@@ -505,6 +506,7 @@ async function handlePendingJoin() {
   if (!_fbUser) {
     if (_inviteLoginShown) return;
     _inviteLoginShown = true;
+    if (typeof inviteSignedOutHtml === 'function') { openModal(inviteSignedOutHtml('group', code)); return; } // js/spaces/invite.js
     openModal(`
       <div class="modal-head"><h3>You’re invited to a study group</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
       <div class="modal-body">

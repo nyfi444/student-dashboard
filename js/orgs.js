@@ -384,6 +384,7 @@ function orgOverviewTab(o) {
         </div>` : ''}
       </div>
       <div class="sg-col">
+        ${typeof welcomeChecklistCard === 'function' ? welcomeChecklistCard('club', o) : ''}
         ${orgOfficerMiniCard(o)}
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Announcements</h3>${officer ? `<button class="sg-link" onclick="openAnnouncementModal('${o.code}')">${icon('plus', 12)} Post</button>` : `<button class="sg-link" onclick="setState({orgTab:'announcements'})">All ${icon('chevron-right', 12)}</button>`}</div>
@@ -518,6 +519,7 @@ function orgInviteMessage(code) { const o = findOrg(code); return `Join ${o?.nam
 function openOrgInviteModal(code, { justCreated = false } = {}) {
   const o = findOrg(code);
   if (!o) return;
+  if (typeof openSpaceInvite === 'function') return openSpaceInvite(o, 'club', { justCreated }); // js/spaces/invite.js
   openModal(`
     <div class="modal-head"><h3>${justCreated ? `${esc(o.name)} is ready` : `Invite to ${esc(o.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
@@ -570,6 +572,7 @@ async function lookupOrgCode() {
   } catch { setBtnLoading(btn, false, 'Find'); toast('Couldn’t look that up. Check your connection.', 'error'); }
 }
 function showOrgPreview(code, data) {
+  if (typeof inviteJoinPreview === 'function') return inviteJoinPreview('club', code, data); // js/spaces/invite.js
   const o = orgView({ ...data, code, local: false });
   const kind = orgKind(o);
   const next = upcomingOrgEvents(o)[0];
@@ -610,6 +613,7 @@ async function confirmJoinOrg(code) {
     reconcileOrgSubscriptions();
     if (typeof countSetupStep === 'function') countSetupStep('setup_group_joined', 'club');
     closeModal();
+    if (typeof welcomeExpect === 'function') welcomeExpect('club', code); // the welcome sheet opens on the first snapshot (js/spaces/welcome.js)
     openOrg(code);
     playUiSound('success');
     toast(`You joined ${name}. Its events are on your calendar now.`, 'success', 4500);

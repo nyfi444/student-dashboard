@@ -12,7 +12,7 @@
 importScripts('./js/version.js');
 const VERSION = 'shq-' + self.APP_VERSION;
 const APP_SHELL = [
-  './', 'index.html', 'login.html', 'group-admin.html', 'manifest.json', 'css/styles.css', 'css/groups.css', 'css/clubs.css', 'css/spaces.css', 'css/spaces-media.css', 'css/space-welcome.css', 'css/space-invite.css', 'css/space-wrapped.css', 'css/calendar.css', 'css/notebook.css',
+  './', 'index.html', 'login.html', 'group-admin.html', 'manifest.json', 'css/styles.css', 'css/group-admin.css', 'css/groups.css', 'css/clubs.css', 'css/spaces.css', 'css/spaces-media.css', 'css/space-welcome.css', 'css/space-invite.css', 'css/space-wrapped.css', 'css/calendar.css', 'css/notebook.css',
   'assets/favicon.png', 'assets/apple-touch-icon.png', 'assets/icon-192.png', 'assets/icon-512.png',
   'js/version.js', 'js/config.js', 'js/diagnostics.js', 'js/utils.js', 'js/sanitize.js', 'js/icons.js', 'js/colorwheel.js', 'js/state.js', 'js/firebase.js', 'js/ai.js', 'js/uploads.js',
   'js/authemail.js', 'js/checkout.js', 'js/setupcounts.js', 'js/groupplans.js', 'js/group-admin.js', 'js/ui.js', 'js/dashboard.js', 'js/courses.js', 'js/semestersetup.js', 'js/calendar.js', 'js/todos.js',

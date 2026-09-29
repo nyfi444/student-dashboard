@@ -53,6 +53,10 @@ test('an officer starts a club, a classmate joins with the code, and each sees t
 
   // He's in, and sees what Alice posted.
   await expect(b.locator('#content')).toContainText('Chess Club');
+  // The welcome sheet greets him first (js/spaces/welcome.js); he closes it.
+  await expect(b.locator('#modal')).toContainText('Welcome to Chess Club');
+  await b.locator('#modal .spw-go').click();
+  await expect(b.locator('#modal')).toBeHidden();
   await b.getByRole('tab', { name: /Announcements/ }).click();
   await expect(b.locator('#content')).toContainText('First meeting Tuesday at 7 in the Union.');
   // A member who isn't an officer gets no Announce button and no Admin tab.

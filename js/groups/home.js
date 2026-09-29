@@ -47,11 +47,13 @@ function groupOverviewTab(g) {
       <div class="sg-col">
         ${next ? nextSessionHero(g, next) : bestReady ? groupBestHero(g, best) : groupHomeEmptyHero(g)}
         ${groupRecapPrompt(g)}
+        ${typeof wrappedSpaceBanner === 'function' ? wrappedSpaceBanner('group', g) : ''}
         ${next && bestReady ? groupHomeBest(g, best) : ''}
         ${rest.length ? groupHomeComing(g, upcoming, rest, day, u) : ''}
         ${groupHomeTasks(g, u, stripTaskIds, needs.items, { contrib: !rest.length })}
       </div>
       <div class="sg-col sg-home-rail">
+        ${typeof welcomeChecklistCard === 'function' ? welcomeChecklistCard('group', g) : ''}
         ${groupHomeExam(g)}
         ${groupHomeWho(g, u)}
         ${groupHomeChat(g, u)}

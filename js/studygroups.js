@@ -417,6 +417,7 @@ async function lookupJoinCode() {
   }
 }
 function showJoinPreview(code, data) {
+  if (typeof inviteJoinPreview === 'function') return inviteJoinPreview('group', code, data); // js/spaces/invite.js
   const g = normalizeGroup({ ...data, code });
   const people = data.v === 2 ? groupPeople(g) : [];
   const count = data.v === 2 ? people.length : (data.members || []).length;
@@ -445,6 +446,7 @@ async function confirmJoinGroup(code) {
     reconcileGroupSubscriptions();
     if (typeof countSetupStep === 'function') countSetupStep('setup_group_joined', 'study-group');
     closeModal();
+    if (typeof welcomeExpect === 'function') welcomeExpect('group', code); // the welcome sheet opens on the first snapshot (js/spaces/welcome.js)
     openGroup(code);
     toast(`You joined ${name}`);
   } catch (e) {
@@ -459,6 +461,7 @@ function groupInviteLink(code) {
 function openInviteModal(code, { justCreated = false } = {}) {
   const g = findGroup(code);
   if (!g) return;
+  if (typeof openSpaceInvite === 'function') return openSpaceInvite(g, 'group', { justCreated }); // js/spaces/invite.js
   const link = groupInviteLink(code);
   openModal(`
     <div class="modal-head"><h3>${justCreated ? 'Your group is ready' : `Invite to ${esc(g.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>

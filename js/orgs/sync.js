@@ -187,6 +187,7 @@ function onOrgSnapshot(code, doc) {
     if (fresh.length && !(state.route === 'orgs' && state.subRoute === code)) toast(`${o.name}: ${fresh[0].text.slice(0, 90)}${fresh[0].text.length > 90 ? '…' : ''}`, 'info', 6000, { label: 'Open', run: () => openOrg(code, 'announcements') });
   }
   renderRemote();
+  if (typeof welcomeOnSnapshot === 'function') welcomeOnSnapshot('club', code); // js/spaces/welcome.js
 }
 function dropOrgEntry(code, message) {
   if (_orgDocUnsubs[code]) { _orgDocUnsubs[code](); delete _orgDocUnsubs[code]; }
@@ -260,6 +261,7 @@ async function handlePendingOrg() {
   if (!_fbUser) {
     if (_orgInviteShown) return;
     _orgInviteShown = true;
+    if (typeof inviteSignedOutHtml === 'function') { openModal(inviteSignedOutHtml('club', code)); return; } // js/spaces/invite.js
     openModal(`
       <div class="modal-head"><h3>You’re invited to join a club</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
       <div class="modal-body"><div class="sg-invite-code small-code">${code.split('').map(ch => `<span>${ch}</span>`).join('')}</div><p class="small muted mt-16">Log in or create your Semester HQ account to join. Its events go straight onto your calendar.</p></div>

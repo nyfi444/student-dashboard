@@ -320,6 +320,7 @@ function orgAdminTab(o) {
 
         <div class="org-admin-col">
           ${pitch ? '' : orgPlanAdminCard(o, plan)}
+          ${typeof wrappedOrgAdminCard === 'function' ? wrappedOrgAdminCard(o) : ''}
 
           <div class="card card-pad">
             <div class="flex-between mb-8"><h3 class="sg-h3">${icon('users', 16)} Who’s who</h3><button class="sg-link" onclick="setState({orgTab:'members'})">All ${people.length} ${icon('chevron-right', 12)}</button></div>
