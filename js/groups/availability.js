@@ -17,9 +17,11 @@
    - window._availFillAnim the group code whose next render plays the fill
    - _availOpen[code]     "See the details" opened on a phone
    - _availAdd[code]      the Add a time row's day, from and to picks
+   - _availListOpen[code] "Your times as a list" opened or closed by hand
 
-   Without a pointer: "Add a time" (a day and two half-hour selects) and
-   the list of your saved times under Your week write the same d0..d6
+   Without a pointer: "Your times as a list", a disclosure under both
+   grids, holds "Add a time" (a day and two half-hour selects) and one
+   line per saved stretch with its own Remove. Both write the same d0..d6
    strings the painter does, and a per-day text summary follows the
    Everyone grid for screen readers (the grids themselves are role=img).
    Painted runs are drawn as one element each (.sg-run, .sg-prun) placed
@@ -37,6 +39,7 @@ const AVAIL_STALE_DAYS = 21;       // older than this, a person's grid says "upd
 const AVAIL_SCHEDULE_SLOTS = 4;    // "Schedule it" pre-fills up to 2 hours
 const _availOpen = {};
 const _availAdd = {};
+const _availListOpen = {};
 
 /* ── Availability grid encoding: one '0'/'1' string per weekday ─── */
 function emptyDayStr() { return '0'.repeat(AVAIL_SLOTS); }
@@ -194,9 +197,12 @@ function groupAvailabilityTab(g) {
       ${availAnswerCard(g, ctx)}
       <div class="sg-details ${open ? 'is-open' : ''}">
         <button type="button" class="sg-details-toggle" aria-expanded="${open}" aria-controls="sg-details-body" onclick="availToggleDetails('${g.code}')"><span class="sg-details-label">See the details</span><span class="sg-details-sub">Your week, everyone’s, and your times as a list</span></button>
-        <div class="sg-avail-wrap" id="sg-details-body">
-          ${availMyWeekCard(g, ctx)}
-          ${availEveryoneCard(g, ctx, contributors)}
+        <div class="sg-details-body" id="sg-details-body">
+          <div class="sg-avail-wrap">
+            ${availMyWeekCard(g, ctx)}
+            ${availEveryoneCard(g, ctx, contributors)}
+          </div>
+          ${availMyTimesDisclosure(g, ctx)}
         </div>
       </div>
     </div>
@@ -308,8 +314,8 @@ function availAnswerCard(g, ctx) {
     </section>`;
 }
 // 3. Your week: the grid first (so its hours line up with Everyone's),
-// then fill from your schedule, and the keyboard route: Add a time and
-// your saved times as a list.
+// then fill from your schedule. The keyboard route sits under both grids
+// in "Your times as a list", so the two cards stay the same height.
 function availMyWeekCard(g, ctx) {
   const { u, mineAdded, busy, editing, added } = ctx;
   const color = personColor(g, u);
@@ -331,8 +337,6 @@ function availMyWeekCard(g, ctx) {
         </div>
         <p class="sg-avail-hint"><span class="sg-hint-mouse">Drag to paint the times you’re free.</span><span class="sg-hint-touch">${editing ? 'Tap or drag to paint the times you’re free.' : 'Scrolling is safe. Tap Edit my times to paint.'}</span> The group sees free or busy, never your classes.</p>
       </div>
-      ${availAddTimeRow(g)}
-      ${availMyTimesList(g, u)}
     </section>`;
 }
 // Add a time: a day and a half-hour range, merged into the same d0..d6
@@ -363,22 +367,38 @@ function availAddTimeRow(g) {
       </div>
     </div>`;
 }
-// Your saved times as text, one line per day, each stretch with its own
-// Remove. "Remove Wednesday 5:00 to 7:30 PM" is the button's name.
-function availMyTimesList(g, u) {
-  const mine = g.avail?.[u];
-  const rows = availDayOrder().map(d => {
-    const runs = availRuns(availDay(mine, d));
-    if (!runs.length) return '';
-    const chips = runs.map(([s, e]) => `
-      <li class="sg-mytime"><span>${esc(availRange(s, e))}</span><button type="button" class="sg-mytime-x" data-fk="avrm:${d}:${s}" aria-label="Remove ${esc(`${AVAIL_DAYS_LONG[d]} ${availRange(s, e)}`)}" onclick="availRemoveRange('${g.code}',${d},${s},${e},this)">${icon('x', 12, 2.2)}</button></li>`).join('');
-    return `<div class="sg-mytimes-day"><span class="sg-mytimes-d">${AVAIL_DAYS[d]}</span><ul class="sg-mytimes-runs" aria-label="${AVAIL_DAYS_LONG[d]}">${chips}</ul></div>`;
-  }).join('');
+// "9 AM", "7:30 PM": a slot's clock time with the :00 dropped.
+function availClock(slot) { return fmtTime(slotTime(slot)).replace(':00 ', ' '); }
+// "9 AM to 9 PM", or "5 to 7:30 PM" when both ends share AM or PM.
+function availRangeShort(s, e) {
+  const a = availClock(s), b = availClock(e);
+  return a.slice(-2) === b.slice(-2) ? `${a.slice(0, -3)} to ${b}` : `${a} to ${b}`;
+}
+// 5. Your times as a list: under both grids, full width. Add a time, then
+// every saved stretch as one line ("Sun 9 AM to 9 PM") with one Remove,
+// named "Remove Sunday 9:00 AM to 9:00 PM". Open by default when you have
+// no times yet or the main pointer isn't a fine one (a phone or tablet).
+// After you open or close it, it stays that way for this visit.
+function availListDefaultOpen(mineAdded) {
+  if (!mineAdded) return true;
+  try { return !window.matchMedia('(pointer: fine)').matches; } catch { return true; }
+}
+function availMyTimesDisclosure(g, ctx) {
+  const code = g.code;
+  const mine = g.avail?.[ctx.u];
+  const runs = [];
+  availDayOrder().forEach(d => availRuns(availDay(mine, d)).forEach(([s, e]) => runs.push([d, s, e])));
+  const open = code in _availListOpen ? _availListOpen[code] : availListDefaultOpen(ctx.mineAdded);
+  const lines = runs.map(([d, s, e]) => `
+      <li class="sg-mytime"><span class="sg-mytime-d">${AVAIL_DAYS[d]}</span><span class="sg-mytime-t">${esc(availRangeShort(s, e))}</span><button type="button" class="sg-mytime-x" data-fk="avrm:${d}:${s}" aria-label="Remove ${esc(`${AVAIL_DAYS_LONG[d]} ${availRange(s, e)}`)}" onclick="availRemoveRange('${code}',${d},${s},${e},this)">${icon('x', 14, 2)}</button></li>`).join('');
   return `
-    <div class="sg-mytimes">
-      <h4 class="sg-mytimes-h">Your times</h4>
-      ${rows || '<p class="sg-mytimes-none">None yet. Paint the grid or add a time above.</p>'}
-    </div>`;
+    <details class="space-disclosure sg-mytimes-disc" ${open ? 'open' : ''} ontoggle="_availListOpen['${code}']=this.open">
+      <summary>Your times as a list <span class="space-disclosure-n">· ${runs.length}</span></summary>
+      <div class="card sg-mytimes">
+        ${availAddTimeRow(g)}
+        ${runs.length ? `<ul class="sg-mytimes-list" aria-label="Your times">${lines}</ul>` : '<p class="sg-mytimes-none">None yet. Paint your week or add a time above.</p>'}
+      </div>
+    </details>`;
 }
 // 4. Everyone: the heatmap (or one stripe per person), with who's free on
 // hover or tap, and the same answer as text for screen readers.
@@ -541,7 +561,7 @@ function availGrid(g, days, mode, focus = null, { editing = false } = {}) {
   // To assistive tech each grid is one image with a name: yours points to
   // Add a time, Everyone's to the text summary right after it.
   const attrs = mode === 'mine'
-    ? `id="sg-avail-mine" data-code="${g.code}" role="img" aria-label="Your week as a grid, painted with a mouse or finger. To add or remove times with the keyboard, use Add a time and Your times below."`
+    ? `id="sg-avail-mine" data-code="${g.code}" role="img" aria-label="Your week as a grid, painted with a mouse or finger. To add or remove times with the keyboard, use Your times as a list below."`
     : `role="img" aria-label="Everyone’s availability as a ${mode === 'people' ? 'grid with one color per person' : 'heatmap'}. The same times are listed by day right after it."`;
   const cls = mode === 'mine' ? `sg-grid-mine${editing ? ' is-editing' : ''}${filling ? ' is-filling' : ''}` : `sg-grid-view ${mode === 'people' ? 'sg-grid-people' : 'sg-grid-heat'}`;
   return `<div class="sg-grid-scroll"><div class="sg-grid ${cls}" ${attrs} style="--sg-cols:${days.length}">${rows.join('')}${runs}</div></div>`;
@@ -681,6 +701,7 @@ function availAddRange(code) {
   if (!g) return;
   availAddChange(code);
   const { day, from, to } = availAddPick(code);
+  _availListOpen[code] = true;
   const when = `${AVAIL_DAYS_LONG[day]} ${availRange(from, Math.max(to, from + 1))}`;
   if (to <= from) { toast('The end time needs to be after the start time.', 'error'); $('#sg-at-to')?.focus(); return; }
   const days = availMineDays(g);
@@ -693,6 +714,7 @@ function availAddRange(code) {
 function availRemoveRange(code, day, start, end, btn) {
   const g = findGroup(code);
   if (!g || !(day >= 0 && day <= 6)) return;
+  _availListOpen[code] = true;
   // Focus goes to the next Remove (or the one before), else Add a time's day.
   const all = [...document.querySelectorAll('.sg-mytime-x')];
   const i = all.indexOf(btn);

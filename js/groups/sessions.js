@@ -93,11 +93,12 @@ function showGroupSessionModal(code, sid) {
     rsvpHtml: past ? '' : rsvpControl(g, s, { size: 'hero', stillComing: true, clearable: true }),
     facesHtml: groupFacePile(g, s, { size: 24, past }),
     recapHtml: sessionRecapBlock(g, s, { back: true }),
-    // Join and Share to chat stay out; Add to calendar app and Edit go in
-    // the sheet's ··· menu (spaceEventSheet), off the Sessions rows.
-    actionsHtml: `${past ? '' : `${joinLinkButton(s.where)}${chatShareButton('group', g.code, s.id)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`}<button class="btn btn-ghost btn-sm" onclick="openSessionModal('${g.code}','${s.id}')">${icon('pencil', 14)} Edit</button>`,
+    // Join and Share to chat stay out; Add to calendar app goes in the
+    // sheet's ··· menu (spaceEventSheet). Edit sits in the footer, between
+    // Delete and Done, the same as a club event sheet.
+    actionsHtml: past ? '' : `${joinLinkButton(s.where)}${chatShareButton('group', g.code, s.id)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`,
     listsHtml: spaceRsvpLists({ key: spaceRsvpKey('group', g.code, s.id), lists }),
-    footHtml: `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteSession('${g.code}','${s.id}')">Delete</button><button class="btn btn-primary" onclick="closeModal()">Done</button>`,
+    footHtml: `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteSession('${g.code}','${s.id}')">Delete</button><button class="btn" onclick="openSessionModal('${g.code}','${s.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button>`,
   }), { onClose: () => { window._groupSessionModal = null; } });
 }
 function copyRsvpNudge(code, sid) {
@@ -106,14 +107,14 @@ function copyRsvpNudge(code, sid) {
   if (!s) return;
   copyText(`Can everyone RSVP for “${s.title}” (${fmtSessionWhen(s)}) in Semester HQ? Open “${g.name}” → Sessions and tap Going, Maybe, or Can’t. ${groupInviteLink(code)}`, 'Reminder copied. Paste it in your group chat.');
 }
-// need: the session is one the needs strip would ask about; the home leaves
-// it out of the strip and badges it here instead.
-function nextSessionHero(g, s, { need = false } = {}) {
+// The home's hero. An unanswered RSVP control is the ask on its own: no
+// "Needs your answer" badge, the same as club rows.
+function nextSessionHero(g, s) {
   // The countdown chip (or the Happening now strip) carries the when.
   return spaceEventHero({
     date: s.date, start: s.start, end: s.end, where: s.where, notes: s.notes,
     eyebrow: eventTimeState(s).phase === 'now' ? 'In session' : 'Next session',
-    tags: `${need ? spaceTag('need', 'Needs your answer') : ''}${s.seriesId ? spaceTag('weekly', 'Weekly') : ''}`,
+    tags: s.seriesId ? spaceTag('weekly', 'Weekly') : '',
     title: s.title,
     onOpen: `showGroupSessionModal('${g.code}','${s.id}')`,
     rsvpHtml: rsvpControl(g, s, { size: 'hero', stillComing: true }),
@@ -129,12 +130,12 @@ function nextSessionHero(g, s, { need = false } = {}) {
    stick below the tab row ("This week", "Next week", "Oct 12 to 18"),
    each week one flat card of rows, like the club Calendar. Past runs
    newest first, and each row shows its recap or "Add a recap".
-   At 1100px and up a sticky 380px panel beside the list shows the picked
+   At 1240px and up a sticky 380px panel beside the list shows the picked
    session as a hero (the next one, or the latest past one, by default);
    a row then picks instead of opening the sheet, and the panel's title
    opens the sheet. Per visit, in memory only (no settings key):
    _sgSched = { code, view: 'upcoming' | 'past', pick: session id }. */
-const SG_SCHED_WIDE = '(min-width: 1100px)';
+const SG_SCHED_WIDE = '(min-width: 1240px)';
 const SG_SCHED_PAST_MAX = 40;
 let _sgSched = { code: '', view: 'upcoming', pick: '' };
 function sgSchedState(code) {
@@ -199,16 +200,13 @@ function groupScheduleTab(g) {
   const list = past ? pastAll.slice(0, SG_SCHED_PAST_MAX) : upcoming;
   if (!list.some(s => s.id === st.pick)) st.pick = list[0]?.id || '';
   const picked = list.find(s => s.id === st.pick);
-  // The sessions that count toward the home's "need you" number get the
-  // same "Needs your answer" tag here.
-  const needIds = new Set(spaceNeeds('group', g).items.filter(i => i.type === 'session').map(i => i.id));
   const views = [['upcoming', 'Upcoming', upcoming.length], ['past', 'Past', pastAll.length]].map(([k, label, n]) =>
     `<button type="button" aria-pressed="${st.view === k}" onclick="setGroupSchedView('${g.code}','${k}')">${label}${n ? `<span class="sg-sched-n">${n}</span>` : ''}</button>`).join('');
   const body = list.length
     ? sgSessionWeeks(list).map(w => `
       <section class="sg-sched-week" aria-labelledby="sg-wk-${w.key}">
         <h3 class="sg-sched-weekh" id="sg-wk-${w.key}">${esc(sgWeekLabel(w.key))}</h3>
-        <div class="card sg-sessions">${w.items.map(s => sessionCard(g, s, { past, needIds, picked: s.id === st.pick })).join('')}</div>
+        <div class="card sg-sessions">${w.items.map(s => sessionCard(g, s, { past, picked: s.id === st.pick })).join('')}</div>
       </section>`).join('')
     : past
       ? `<div class="card card-pad sg-sched-none"><p>No past sessions yet. After each one, its recap lives here.</p></div>`
@@ -224,19 +222,19 @@ function groupScheduleTab(g) {
       </div>
       <div class="sg-sched-body${picked ? ' has-panel' : ''}">
         <div class="sg-sched-list">${body}</div>
-        ${picked ? `<aside class="sg-sched-panel" aria-label="${esc(`Picked session: ${picked.title}`)}">${sessionPanelHero(g, picked, { next: !past && picked.id === upcoming[0]?.id, need: needIds.has(picked.id) })}</aside>` : ''}
+        ${picked ? `<aside class="sg-sched-panel" aria-label="${esc(`Picked session: ${picked.title}`)}">${sessionPanelHero(g, picked, { next: !past && picked.id === upcoming[0]?.id})}</aside>` : ''}
       </div>
       <p class="sg-sched-foot">Sessions show up on every member’s Semester HQ calendar.</p>
     </div>`;
 }
 // The panel: the event hero for the picked session.
-function sessionPanelHero(g, s, { next = false, need = false } = {}) {
+function sessionPanelHero(g, s, { next = false } = {}) {
   const phase = eventTimeState(s).phase;
   const past = phase === 'after';
   return spaceEventHero({
     date: s.date, start: s.start, end: s.end, where: s.where, notes: s.notes,
     eyebrow: phase === 'now' ? 'In session' : past ? 'Past session' : next ? 'Next session' : 'Session',
-    tags: `${need ? spaceTag('need', 'Needs your answer') : ''}${s.seriesId ? spaceTag('weekly', 'Weekly') : ''}`,
+    tags: s.seriesId ? spaceTag('weekly', 'Weekly') : '',
     title: s.title,
     onOpen: `showGroupSessionModal('${g.code}','${s.id}')`,
     rsvpHtml: past ? '' : rsvpControl(g, s, { size: 'hero', stillComing: true }),
@@ -252,7 +250,7 @@ function sessionPanelHero(g, s, { next = false, need = false } = {}) {
 // click, as in spaceAgendaRow. Edit and Add to calendar app live in the
 // session sheet's ··· menu.
 let _sgSessionRowSeq = 0;
-function sessionCard(g, s, { past = false, needIds = null, picked = false } = {}) {
+function sessionCard(g, s, { past = false, picked = false } = {}) {
   const id = `sg-sess-${++_sgSessionRowSeq}`;
   const open = `pickGroupSession('${g.code}','${s.id}')`;
   const going = sessionRsvpPeople(g, s).yes.length;
@@ -265,7 +263,6 @@ function sessionCard(g, s, { past = false, needIds = null, picked = false } = {}
   ].filter(Boolean).join(' · ');
   const tags = past ? (s.seriesId ? spaceTag('weekly', 'Weekly') : '') : [
     spaceWhenChip(s),
-    needIds?.has(s.id) ? spaceTag('need', 'Needs your answer') : '',
     s.seriesId ? spaceTag('weekly', 'Weekly') : '',
     going ? groupFacePile(g, s, { size: 20 }) : '',
   ].join('');

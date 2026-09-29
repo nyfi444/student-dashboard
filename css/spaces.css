@@ -244,12 +244,12 @@ html.dark .space-card-cover { --pattern-alpha: calc(var(--pattern-alpha-dark, .2
 .space-card-foot > .space-need-pill { gap: 5px; padding: 2px 7px; }
 .space-card.sg-card { container-type: inline-size; }
 /* A narrow card with a need pill keeps the officer mark as its shield alone. */
-@container (max-width: 340px) { .space-card-foot:has(> .space-need-pill) .space-officer { font-size: 0; gap: 0; } }
+@container (max-width: 380px) { .space-card-foot:has(> .space-need-pill) .space-officer { font-size: 0; gap: 0; } }
 .space-card-foot > span { white-space: nowrap; }
-.space-card-foot > span:not(.sg-stack):not(.space-need-pill) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.space-card-foot > span:not(.sg-stack):not(.space-need-pill):not(.space-officer) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .space-card-foot > .sg-stack { flex: none; }
 @media (max-width: 420px) { .space-card-foot { flex-wrap: wrap; gap: 8px 6px; } }
-.space-card-foot .space-officer { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 500; }
+.space-card-foot .space-officer { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--text); font-weight: 500; }
 .space-card-foot .space-officer .i { width: 12px; height: 12px; }
 .space-chip {
   display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 2px 8px; border-radius: var(--r-pill);
@@ -460,9 +460,9 @@ button.space-rsvp-pill:hover { box-shadow: 0 0 0 2px var(--space-line, var(--lin
 button.space-facepile { cursor: pointer; border-radius: var(--r-tight); }
 button.space-facepile:hover .space-facepile-text { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .space-facepile .sg-stack { flex-shrink: 0; }
-.space-facepile-text { min-width: 0; }
+.space-facepile-text { min-width: 0; text-wrap: pretty; }
 .space-facepile-text.is-zero { color: var(--text-faint); }
-.space-facepile-detail { color: var(--text-dim); }
+.space-facepile-detail { color: var(--text-dim); white-space: nowrap; }
 
 /* ── Date blocks (spaceDateBlock) ── */
 .space-date-block {

@@ -176,23 +176,25 @@ function groupTaskRow(g, t, { compact = false } = {}) {
   const u = myUidFor(g);
   const owner = taskOwner(g, t);
   const code = g.code;
-  const chips = [
+  const chipList = [
     taskDueChip(t),
     t.label ? `<span class="sg-tchip is-label">${esc(t.label)}</span>` : '',
     t.done ? `<span class="sg-tchip">Done by ${esc(t.doneBy ? taskFirstName(g, t.doneBy) : (t.doneByName || 'someone'))}</span>` : '',
     !t.done && !owner ? `<span class="sg-tchip is-grabs">Up for grabs</span>` : '',
-  ].filter(Boolean).join('');
+  ].filter(Boolean);
+  const chips = chipList.join('');
   const ownerName = owner ? (owner === u ? 'you' : personName(g, owner)) : '';
-  // The edit button's name is its own words ("Edit Write 5 questions,
-  // Tomorrow, Maya"), so the due chip, Overdue, the label, Up for grabs
-  // and Done by are all heard; the commas are for screen readers only.
-  const sep = '<span class="sr-only">, </span>';
-  const ownerWords = owner && !t.done ? `${sep}<span class="sr-only">${esc(owner === u ? 'Yours' : taskFirstName(g, owner))}</span>` : '';
+  // The edit button's name is one sr-only sentence ("Edit Write 5
+  // questions, Tomorrow, Maya"), so the due chip, Overdue, the label, Up
+  // for grabs, Done by and the owner are all heard, with no stray space
+  // before a comma. The visible title, chips and owner are aria-hidden.
+  // The chip words are already escaped, so only their tags come off.
+  const words = [esc(t.title), ...chipList.map(c => c.replace(/<[^>]*>/g, '').trim()), owner && !t.done ? esc(owner === u ? 'Yours' : taskFirstName(g, owner)) : ''].filter(Boolean);
   return `
     <div class="sg-trow${t.done ? ' is-done' : ''}${_taskJustAdded === t.id ? ' is-new' : ''}" data-task="${esc(t.id)}">
       <button type="button" class="row-check sg-tcheck ${t.done ? 'checked' : ''}" data-fk="tcheck:${esc(t.id)}:${t.done ? 'done' : 'open'}" role="checkbox" aria-checked="${!!t.done}" aria-label="Mark ${esc(t.title)} as ${t.done ? 'not done' : 'done'}" onclick="checkGroupTask('${code}','${t.id}',this)">${t.done ? checkGlyph(true, 14) : ''}</button>
       <button type="button" class="sg-tmain" onclick="openGroupTaskSheet('${code}','${t.id}')">
-        <span class="sg-ttitle"><span class="sr-only">Edit </span>${esc(t.title)}</span>${chips ? `<span class="sg-tmeta">${sep}${chips.split('</span><span class="sg-tchip').join(`</span>${sep}<span class="sg-tchip`)}</span>` : ''}${ownerWords}
+        <span class="sr-only">Edit ${words.join(', ')}</span><span class="sg-ttitle" aria-hidden="true">${esc(t.title)}</span>${chips ? `<span class="sg-tmeta" aria-hidden="true">${chips}</span>` : ''}
       </button>
       <div class="sg-tactions">
         ${!t.done && !owner ? `<button type="button" class="btn btn-sm sg-claim" data-fk="tclaim:${esc(t.id)}" onclick="taskFocusAfter('${t.id}','claim');setGroupTaskAssignee('${code}','${t.id}','${esc(u)}')">I’ll take it</button>` : ''}

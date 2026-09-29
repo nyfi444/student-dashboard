@@ -10,7 +10,8 @@
    holds your exam for this class, who's in, the chat and recent activity.
    Every session renders once. The hero and the Coming up rows carry their
    own RSVP, so the needs strip here leaves out the sessions they show; the
-   ask moves onto that session as a "Needs your answer" badge instead. */
+   unanswered RSVP control on that session is the ask, with no extra badge
+   (the same as club rows). */
 const GROUP_HOME_AGENDA_MAX = 5;
 // The day picked in the week strip lives on the window, not in state: it
 // is a view filter, and it only applies to the group it was picked in.
@@ -33,7 +34,6 @@ function groupOverviewTab(g) {
   const rest = upcoming.slice(1);
   const day = groupHomeAgendaDay(g);
   const needs = spaceNeeds('group', g);
-  const needIds = new Set(needs.items.filter(it => it.type === 'session').map(it => it.id));
   // Sessions the page already shows with their own RSVP stay out of the strip.
   const shown = new Set([next?.id, ...rest.slice(0, GROUP_HOME_AGENDA_MAX).map(s => s.id)].filter(Boolean));
   const stripItems = needs.items.filter(it => !(it.type === 'session' && shown.has(it.id)));
@@ -45,10 +45,10 @@ function groupOverviewTab(g) {
     ${spaceNeedsStrip('group', g, { needs: { ...needs, items: stripItems } })}
     <div class="sg-overview sg-home">
       <div class="sg-col">
-        ${next ? nextSessionHero(g, next, { need: needIds.has(next.id) }) : bestReady ? groupBestHero(g, best) : groupHomeEmptyHero(g)}
+        ${next ? nextSessionHero(g, next) : bestReady ? groupBestHero(g, best) : groupHomeEmptyHero(g)}
         ${groupRecapPrompt(g)}
         ${next && bestReady ? groupHomeBest(g, best) : ''}
-        ${rest.length ? groupHomeComing(g, upcoming, rest, day, needIds, u) : ''}
+        ${rest.length ? groupHomeComing(g, upcoming, rest, day, u) : ''}
         ${groupHomeTasks(g, u, stripTaskIds, needs.items, { contrib: !rest.length })}
       </div>
       <div class="sg-col sg-home-rail">
@@ -111,14 +111,13 @@ function groupWhereShort(where) {
   if (!(typeof isHttpUrl === 'function' ? isHttpUrl(w) : /^https?:\/\//i.test(w))) return w;
   return SPACE_VIDEO_HOSTS.test(w) ? 'Video call' : (hostOf(w) || 'Link');
 }
-// A session as a flat row: time and place, Weekly and Needs your answer
-// badges, who's going, and the compact RSVP.
-function groupAgendaRow(g, s, need) {
+// A session as a flat row: time and place, a Weekly badge, who's going,
+// and the compact RSVP (unanswered, it is the ask; no badge).
+function groupAgendaRow(g, s) {
   const range = s.start ? `${fmtTime(s.start)}${s.end ? ` to ${fmtTime(s.end)}` : ''}` : 'Any time';
   const going = sessionRsvpPeople(g, s).yes.length;
   const tags = [
     spaceWhenChip(s),
-    need ? spaceTag('need', 'Needs your answer') : '',
     s.seriesId ? spaceTag('weekly', 'Weekly') : '',
     going ? groupFacePile(g, s, { size: 20 }) : '',
   ].join('');
@@ -133,7 +132,7 @@ function groupAgendaRow(g, s, need) {
 }
 // The club's order: the week strip, then one card with Coming up as its
 // own header, the rows, and who has finished which tasks as its footer.
-function groupHomeComing(g, upcoming, rest, day, needIds, u) {
+function groupHomeComing(g, upcoming, rest, day, u) {
   const t = todayIso(), end = addDays(t, 6);
   const counts = {};
   upcoming.forEach(s => { if (s.date <= end) counts[s.date] = (counts[s.date] || 0) + 1; });
@@ -152,7 +151,7 @@ function groupHomeComing(g, upcoming, rest, day, needIds, u) {
       ${hasWeek ? spaceWeekStrip({ start: t, selected: day, counts, label: 'Pick a day to see its sessions', onPick: (d) => `pickGroupAgendaDay('${g.code}','${d}')` }) : ''}
       <div class="card sg-home-agenda">
         <div class="sg-home-head"><h3 class="sg-h3">${day ? esc(dayName) : 'Coming up'}</h3>${link}</div>
-        <div class="sg-home-agenda-rows">${list.length ? list.map(s => groupAgendaRow(g, s, needIds.has(s.id))).join('') : empty}</div>
+        <div class="sg-home-agenda-rows">${list.length ? list.map(s => groupAgendaRow(g, s)).join('') : empty}</div>
         ${groupHomeContrib(g, u, taskList(g))}
       </div>
     </section>`;

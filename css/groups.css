@@ -248,7 +248,7 @@
 .sg-sched-none-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .sg-sched-foot { margin: 24px 0 0; font: 400 var(--fs-sm)/1.4 var(--font); color: var(--bg-text-dim); }
 .sg-sched-panel { display: none; }
-@media (min-width: 1100px) {
+@media (min-width: 1240px) {
   .sg-sched-body.has-panel { grid-template-columns: minmax(0, 1fr) 380px; }
   .sg-sched-panel { display: block; position: sticky; top: calc(60px + env(safe-area-inset-top, 0px)); margin-top: 48px; min-width: 0; }
   /* The hero at 380px: the phone hero's layout. */
@@ -335,7 +335,7 @@
    agree about what is shown. */
 .sg-details-toggle { display: none; }
 @media (max-width: 760px) {
-  .sg-details:not(.is-open) > .sg-avail-wrap { display: none; }
+  .sg-details:not(.is-open) > .sg-details-body { display: none; }
 }
 
 /* 3 and 4. The week cards */
@@ -352,7 +352,7 @@
 @media (any-pointer: coarse) { .sg-edit-times { display: inline-flex; } }
 .sg-avail-count, .sg-avail-none { font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
 /* Your week: the grid right under the head, so its hours line up with
-   Everyone's, then the buttons and hint, Add a time and your times. On
+   Everyone's, then the buttons and hint. On
    phones the buttons and hint come back above the grid, where "Edit my
    times" is needed first. */
 .sg-week-card .sg-avail-head { min-height: 32px; }
@@ -364,9 +364,17 @@
   .sg-week-mine > .sg-avail-head { order: -2; }
   .sg-week-mine > .sg-week-tools { order: -1; margin: 0 0 12px; }
 }
+/* 5. Your times as a list: a full-width disclosure under both grids.
+   Add a time on top, then one line per saved stretch, in columns on wide
+   screens. */
+.sg-details-body { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.sg-mytimes-disc.space-disclosure > summary { color: var(--bg-text); }
+.sg-mytimes-disc.space-disclosure > summary::before { background: var(--bg-text-dim); }
+.sg-mytimes-disc.space-disclosure > summary:hover { background: color-mix(in srgb, var(--bg-text) 6%, transparent); }
+.sg-mytimes-disc .space-disclosure-n { color: var(--bg-text-dim); }
+.sg-mytimes-disc > .card.sg-mytimes { margin-top: 8px; padding: 20px; }
 /* Add a time: a day, From and To in half hours, Add. */
-.sg-addtime { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--hairline); }
-.sg-addtime-h, .sg-mytimes-h { margin: 0 0 8px; font: 600 var(--fs-md)/1.3 var(--font); color: var(--text); }
+.sg-addtime-h { margin: 0 0 8px; font: 600 var(--fs-md)/1.3 var(--font); color: var(--text); }
 .sg-addtime-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .sg-addtime-row .select { width: auto; font-size: var(--fs-md); }
 .sg-at-day { min-width: 128px; }
@@ -374,22 +382,25 @@
 .sg-at-time { min-width: 112px; }
 .sg-addtime-to { font: 400 var(--fs-md)/1 var(--font); color: var(--text-dim); }
 .sg-addtime-add { min-height: 36px; }
-/* Your times: one line per day, each stretch a pill with its own Remove. */
-.sg-mytimes { margin-top: 16px; }
-.sg-mytimes-day { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: start; column-gap: 8px; padding: 8px 0; border-top: 1px solid var(--hairline); }
-.sg-mytimes-h + .sg-mytimes-day { border-top: 0; padding-top: 0; }
-.sg-mytimes-d { padding-top: 6px; font: 600 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
-.sg-mytimes-runs { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; margin: 0; padding: 0; list-style: none; }
-.sg-mytime { display: inline-flex; align-items: center; gap: 2px; min-height: 28px; padding: 0 2px 0 10px; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--surface); font: 500 var(--fs-sm)/1.2 var(--font); color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.sg-mytime-x { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-dim); cursor: pointer; transition: background var(--dur-1), color var(--dur-1); }
-.sg-mytime-x:hover { background: var(--fill-hover); color: var(--text); }
+/* Your times: "Sun  9 AM to 9 PM  x", one line each. */
+/* Columns fill top to bottom, so the days read down each one in order. */
+.sg-mytimes-list { columns: 232px; column-gap: 32px; margin: 16px 0 0; padding: 0; list-style: none; }
+.sg-mytime { break-inside: avoid; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; min-height: 40px; border-top: 1px solid var(--hairline); font: 400 var(--fs-md)/1.3 var(--font); color: var(--text); font-variant-numeric: tabular-nums; }
+.sg-mytime-d { font: 500 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.sg-mytime-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-mytime-x { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: var(--r-tight); background: none; color: var(--text-dim); cursor: pointer; transition: background var(--dur-1), color var(--dur-1), border-color var(--dur-1); }
+.sg-mytime-x:hover { background: var(--fill-hover); border-color: var(--border); color: var(--text); }
 .sg-mytime-x:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.sg-mytimes-none { margin: 0; font: 400 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); }
+.sg-mytimes-none { margin: 16px 0 0; font: 400 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); }
 @media (pointer: coarse) {
-  .sg-mytimes-runs { gap: 12px 8px; }
-  .sg-mytime-x::before { content: ''; position: absolute; inset: -10px; }
+  .sg-mytime { min-height: 48px; }
+  .sg-mytime-x { width: 44px; height: 44px; margin-right: -6px; }
 }
 @media (max-width: 760px) {
+  .sg-details-body { gap: 16px; }
+  .sg-mytimes-disc > .card.sg-mytimes { padding: 16px; }
+  .sg-mytime { font-size: var(--fs-xl); }
+  .sg-mytime-d { font-size: var(--fs-lg); }
   .sg-addtime-row { display: grid; grid-template-columns: minmax(0, 1fr); }
   .sg-addtime-row .select { width: 100%; min-width: 0; min-height: 44px; font-size: var(--fs-xl); }
   .sg-addtime-range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }

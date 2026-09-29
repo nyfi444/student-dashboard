@@ -193,7 +193,7 @@ function orgIndexCard(o) {
       : '<span class="space-card-when">Nothing scheduled</span>',
     unread: !!(unread || chatUnread),
     unreadLabel: [unread ? `${unread} new announcement${unread === 1 ? '' : 's'}` : '', chatUnread ? 'new messages' : ''].filter(Boolean).join(' · '),
-    footHtml: `${avatarStackHtml(orgPeople(o), 4, 24, (uid) => faces[uid])}<span>${o.loading ? 'Loading…' : `${count} member${count === 1 ? '' : 's'}`}</span>${isOrgOfficer(o) ? `<span class="space-officer">${icon('shield', 12)} Officer</span>` : ''}`,
+    footHtml: `${avatarStackHtml(orgPeople(o), 3, 24, (uid) => faces[uid])}<span>${o.loading ? 'Loading…' : `${count} member${count === 1 ? '' : 's'}`}</span>${isOrgOfficer(o) ? `<span class="space-officer">${icon('shield', 12)} Officer</span>` : ''}`,
     needCount: o.loading ? 0 : orgIndexNeedCount(o),
   });
 }
