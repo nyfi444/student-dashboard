@@ -488,7 +488,8 @@ function captureJoinParam() {
   params.delete('session');
   history.replaceState({}, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
   if (code.length !== 6 || isEmbedded()) return;
-  try { localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify({ code, at: Date.now(), ...(safeId(session) ? { session } : {}) })); } catch {}
+  // The link in the current URL wins over any older stored club invite.
+  try { localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify({ code, at: Date.now(), ...(safeId(session) ? { session } : {}) })); localStorage.removeItem('shq_pending_org'); } catch {}
 }
 function pendingJoinSession() { try { const p = JSON.parse(localStorage.getItem(PENDING_JOIN_KEY) || 'null'); return p?.session && safeId(p.session) ? p.session : ''; } catch { return ''; } }
 function pendingJoinCode() {

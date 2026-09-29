@@ -84,6 +84,10 @@ test('a student starts a study group, a classmate joins with the code, and they 
   await b.locator('#modal #jf-confirm').click();
   await expect(b.locator('#content')).toContainText('Bio 201 Study Group');
   await expect.poll(async () => ((await groupDoc(code))?.memberUids || []).sort(), POLL).toEqual([alice.uid, bob.uid].sort());
+  // The welcome sheet greets him first (js/spaces/welcome.js); he closes it.
+  await expect(b.locator('#modal')).toContainText('Welcome to Bio 201 Study Group');
+  await b.locator('#modal .spw-go').click();
+  await expect(b.locator('#modal')).toBeHidden();
 
   /* RSVPs: Bob says maybe, Alice says she's going. */
   await tab(b, 'Sessions');
