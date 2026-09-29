@@ -34,9 +34,11 @@
      spaceWhereHtml(where) are trusted HTML. onOpen is onclick JS for the
      title (usually the event sheet).
    spaceAgendaRow({ date, title, metaHtml, tags, trailingHtml, onclick,
-                    past, className, style, label })
+                    past, className, style })
      One 64px row: date tile, title and meta over a tag row, and whatever
-     trails it (a compact RSVP, a Pay dues button). title is plain text.
+     trails it (a compact RSVP, a Pay dues button). title is plain text and,
+     with onclick, a real button described by the date, meta and tags.
+     (label is no longer used: the visible words are the name.)
    spaceWeekStrip({ start, selected, counts, onPick, label })
      Seven day buttons from `start` (ISO date). counts: { iso: n } draws up
      to three dots; onPick(iso) returns onclick JS; selected is an ISO date.
@@ -111,12 +113,14 @@ function spaceWhereHtml(where) {
 }
 
 /* ── Dates ─────────────────────────────────────────────────────── */
-function spaceDateBlock(date, { size = 'hero', today } = {}) {
+function spaceDateBlock(date, { size = 'hero', today, id } = {}) {
   const d = new Date(`${date}T00:00:00`);
   if (Number.isNaN(d.getTime())) return '';
   const isToday = today ?? date === _evIso(new Date());
   if (size === 'tile') {
-    return `<div class="sg-date-tile space-date-tile${isToday ? ' is-today' : ''}"><span>${d.toLocaleDateString('en-US', { month: 'short' })}</span><strong>${d.getDate()}</strong></div>`;
+    // Read as "Tuesday, September 29" (", today"), not "Sep29".
+    const long = `${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}${isToday ? ', today' : ''}`;
+    return `<div class="sg-date-tile space-date-tile${isToday ? ' is-today' : ''}"${id ? ` id="${esc(id)}"` : ''}><span aria-hidden="true">${d.toLocaleDateString('en-US', { month: 'short' })}</span><strong aria-hidden="true">${d.getDate()}</strong><span class="sr-only">${esc(long)}</span></div>`;
   }
   return `<div class="space-date-block${isToday ? ' is-today' : ''}" aria-hidden="true"><span class="eyebrow">${d.toLocaleDateString('en-US', { weekday: 'short' })}</span><strong>${d.getDate()}</strong><span class="eyebrow">${d.toLocaleDateString('en-US', { month: 'short' })}</span></div>`;
 }
@@ -144,10 +148,11 @@ function spaceEventHero(o) {
         ${spaceDateBlock(o.date)}
         <div class="space-hero-head">
           <div class="space-hero-top">
-            <div class="space-hero-eyebrow"><span class="eyebrow">${esc(o.eyebrow || '')}</span>${o.tags || ''}</div>
+            <div class="space-hero-eyebrow"><span class="eyebrow">${esc(o.eyebrow || '')}</span>${o.tags ? `<span class="space-hero-eyetags">${o.tags}</span>` : ''}</div>
             ${chip}
           </div>
           ${o.onOpen ? `<button class="space-hero-title" onclick="${o.onOpen}">${esc(o.title)}</button>` : `<div class="space-hero-title">${esc(o.title)}</div>`}
+          ${o.tags ? `<div class="space-hero-tags">${o.tags}</div>` : ''}
           <div class="space-hero-meta">
             <span>${icon('calendar', 13)} ${esc(fmtDate(o.date, { weekday: 'long', month: 'short', day: 'numeric' }))}</span>
             ${range ? `<span>${icon('clock', 13)} ${esc(range)}</span>` : ''}
@@ -169,15 +174,26 @@ function spaceEventHero(o) {
 }
 
 /* ── Agenda row ────────────────────────────────────────────────── */
+// The title is the row's one button (it opens the sheet) and is described
+// by the date, the meta line and the tags, so every visible word is read.
+// The RSVP, face pile and Pay controls are its siblings, never inside it.
+// A click anywhere else on the row still opens the sheet, for the mouse
+// only (data-row-click, tabindex -1: not a second tab stop).
+let _spaceRowSeq = 0;
 function spaceAgendaRow(o) {
-  const tags = o.tags ? `<div class="space-agenda-tags">${o.tags}</div>` : '';
-  const click = o.onclick ? ` role="button" tabindex="0" onclick="${o.onclick}" onkeydown="if(event.key==='Enter'&&event.target===this){${o.onclick}}"` : '';
+  const id = `space-row-${++_spaceRowSeq}`;
+  const tags = o.tags ? `<div class="space-agenda-tags" id="${id}-t">${o.tags}</div>` : '';
+  const describedBy = [`${id}-d`, o.metaHtml ? `${id}-m` : '', o.tags ? `${id}-t` : ''].filter(Boolean).join(' ');
+  const click = o.onclick ? ` data-row-click tabindex="-1" onclick="${o.onclick}"` : '';
+  const title = o.onclick
+    ? `<button type="button" class="space-agenda-title" onclick="event.stopPropagation();${o.onclick}" aria-describedby="${describedBy}">${esc(o.title)}</button>`
+    : `<div class="space-agenda-title">${esc(o.title)}</div>`;
   return `
-    <div class="space-agenda-row${o.past ? ' is-past' : ''}${o.className ? ' ' + o.className : ''}"${o.style ? ` style="${o.style}"` : ''}${click}${o.label ? ` aria-label="${esc(o.label)}"` : ''}>
-      ${spaceDateBlock(o.date, { size: 'tile' })}
+    <div class="space-agenda-row${o.past ? ' is-past' : ''}${o.className ? ' ' + o.className : ''}"${o.style ? ` style="${o.style}"` : ''}${click}>
+      ${spaceDateBlock(o.date, { size: 'tile', id: `${id}-d` })}
       <div class="space-agenda-main">
-        <div class="space-agenda-title">${esc(o.title)}</div>
-        ${o.metaHtml ? `<div class="space-agenda-meta">${o.metaHtml}</div>` : ''}
+        ${title}
+        ${o.metaHtml ? `<div class="space-agenda-meta" id="${id}-m">${o.metaHtml}</div>` : ''}
         ${tags}
       </div>
       ${o.trailingHtml ? `<div class="space-agenda-end" onclick="event.stopPropagation()">${o.trailingHtml}</div>` : ''}
@@ -194,7 +210,7 @@ function spaceWeekStrip(o) {
         const d = new Date(`${iso}T00:00:00`);
         const n = Math.min(3, (o.counts || {})[iso] || 0);
         const name = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-        return `<button class="space-week-daybtn${iso === today ? ' is-today' : ''}" aria-pressed="${iso === o.selected}" aria-label="${esc(name)}${n ? `, ${(o.counts || {})[iso]} event${(o.counts || {})[iso] === 1 ? '' : 's'}` : ''}" onclick="${o.onPick ? o.onPick(iso) : ''}">
+        return `<button class="space-week-daybtn${iso === today ? ' is-today' : ''}" aria-pressed="${iso === o.selected}" aria-label="${esc(name)}${iso === today ? ', today' : ''}${n ? `, ${(o.counts || {})[iso]} event${(o.counts || {})[iso] === 1 ? '' : 's'}` : ''}" onclick="${o.onPick ? o.onPick(iso) : ''}">
           <span class="eyebrow">${d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
           <strong>${d.getDate()}</strong>
           <span class="space-week-dots">${'<i></i>'.repeat(n)}</span>
@@ -236,7 +252,10 @@ function spaceFacePile(o) {
   const stack = ordered.length ? avatarStackHtml(ordered, o.max || 5, size, o.colorOf || (() => '#6b6b6b')) : '';
   const inner = `${stack}<span class="space-facepile-text${people.length ? '' : ' is-zero'}">${esc(caption)}${o.detail ? `<span class="space-facepile-detail"> · ${esc(o.detail)}</span>` : ''}</span>`;
   const cls = `space-facepile${size <= 22 ? ' is-small' : ''}`;
+  // The name starts with the words you can see, then says what it opens.
+  const name = [caption, o.detail ? ` · ${o.detail}` : ''].join('');
+  const aria = o.label ? (name ? `${name}. ${o.label}` : o.label) : '';
   return o.onclick
-    ? `<button type="button" class="${cls}" onclick="event.stopPropagation();${o.onclick}"${o.label ? ` aria-label="${esc(o.label)}"` : ''}>${inner}</button>`
+    ? `<button type="button" class="${cls}" onclick="event.stopPropagation();${o.onclick}"${aria ? ` aria-label="${esc(aria)}"` : ''}>${inner}</button>`
     : `<span class="${cls}">${inner}</span>`;
 }

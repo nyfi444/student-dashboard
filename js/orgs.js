@@ -20,9 +20,12 @@
    body" or adds their position, and the founder is asked whether that
    person should get officer access.
 
-   Split across files (see index.html): this one holds the data, sync,
-   pages, events, announcements, chat, joining and the sample club;
-   js/orgs/admin.js the officer tools; js/orgs/files.js the Files tab.
+   Split across files (see index.html): js/orgs/sync.js holds the data,
+   writes, sync and ?org= links; js/orgs/events.js the event rows, the
+   hero, the agenda and the event sheets; this one the pages,
+   announcements, chat, joining and the sample clubs; js/orgs/admin.js
+   the officer tools; js/orgs/files.js the Files tab. Every name stays a
+   global, so inline onclick strings keep working.
 ──────────────────────────────────────────────────────────────── */
 const ORG_KINDS = [['club', 'Club', 'flag'], ['team', 'Team', 'trophy'], ['chapter', 'Sorority or fraternity', 'shield'], ['org', 'Organization', 'users'], ['other', 'Other', 'star']];
 // [key, label, icon]: the icon is what makes a list of twelve events scannable.
@@ -38,98 +41,14 @@ const ORG_TABS = [['overview', 'Overview'], ['events', 'Calendar'], ['announceme
 // list, and a link buried in the invite modal (see orgAdminTab).
 const ORG_ADMIN_TAB = ['admin', 'Admin'];
 function orgTabsFor(o) { return isOrgOfficer(o) ? [...ORG_TABS, ORG_ADMIN_TAB] : ORG_TABS; }
-const ORG_CACHE_KEY = storeKey + '.orgs';
-const PENDING_ORG_KEY = 'shq_pending_org';
 const ORG_ANNOUNCEMENT_MAX = 1200;
 const ORG_FILES_MAX = 100;
 const ORG_TITLE_MAX = 40;
 const ORG_TITLE_SUGGESTIONS = ['President', 'Vice President', 'Captain', 'Treasurer', 'Secretary', 'Social chair'];
 
-let _liveOrgs = {};
-try { _liveOrgs = JSON.parse(dataStore.getItem(ORG_CACHE_KEY) || '{}') || {}; } catch { _liveOrgs = {}; }
-const persistOrgCache = debounce(() => { try { dataStore.setItem(ORG_CACHE_KEY, JSON.stringify(_liveOrgs)); } catch {} }, 800);
-const _orgDocUnsubs = {};
-
-function orgEntries() { return state.orgs || (state.orgs = []); }
-function orgEntry(code) { return orgEntries().find(e => e.code === code); }
-function orgView(entry) {
-  if (!entry) return null;
-  const raw = entry.local ? entry : (_liveOrgs[entry.code] ? { ..._liveOrgs[entry.code], code: entry.code } : { code: entry.code, name: entry.name || 'Club', loading: true });
-  return {
-    ...raw, local: !!entry.local, hideCalendar: !!entry.hideCalendar,
-    people: raw.people || {}, memberUids: raw.memberUids || [], officerUids: raw.officerUids || [],
-    events: raw.events || {}, announcements: raw.announcements || {}, rsvp: raw.rsvp || {}, titles: raw.titles || {},
-    files: raw.files || {}, lastMessage: raw.lastMessage || null,
-  };
-}
-function allOrgs() { return orgEntries().filter(e => e && SAFE_ID.test(e.code || '')).map(orgView).filter(Boolean); }
-function findOrg(code) { return orgView(orgEntry(code)); }
-function myOrgUid(o) { return o?.local ? LOCAL_UID : (_fbUser?.uid || LOCAL_UID); }
-function isOrgOfficer(o) { return !!o && o.officerUids.includes(myOrgUid(o)); }
-function isOrgOwner(o) { return !!o && o.createdBy === myOrgUid(o); }
-function orgKind(o) { return ORG_KINDS.find(k => k[0] === o.kind) || ORG_KINDS[0]; }
-// Monogram for the crest: "Women in Business" → "WB", "Club Soccer" → "CS".
-function orgMonogram(o) {
-  const words = String(o?.name || '').split(/\s+/).filter(w => /^[A-Za-z0-9]/.test(w) && !/^(of|the|and|in|for|at|a|an|&)$/i.test(w));
-  return esc((words.length > 1 ? words[0][0] + words[1][0] : (words[0] || '?').slice(0, 2)).toUpperCase());
-}
-function orgColor(o) { return HEX_COLOR.test(o?.color || '') ? o.color : ORG_COLORS[0]; }
-function orgPeople(o) {
-  return o.memberUids.filter(safeId).map(u => ({ uid: u, name: cleanStr(o.people[u]?.name, 60) || 'Member', joinedAt: o.people[u]?.joinedAt || 0, officer: o.officerUids.includes(u), owner: o.createdBy === u, title: orgTitleOf(o, u), reviewed: !!o.people[u]?.reviewed }))
-    .sort((a, b) => Number(b.owner) - Number(a.owner) || Number(b.officer) - Number(a.officer) || a.name.localeCompare(b.name));
-}
-// people[uid].title is the one source going forward (members set their own,
-// officers anyone's); titles[uid] is where officers' titles lived before.
-function orgTitleOf(o, uid) { const p = o.people?.[uid]; return p && typeof p.title === 'string' ? cleanStr(p.title, ORG_TITLE_MAX) : cleanStr(o.titles?.[uid], ORG_TITLE_MAX); }
-function orgGeneralLabel(o) { return o.kind === 'team' ? 'Team member' : 'General body'; }
-// What shows next to someone's name: their title, or their role without one.
-function orgRoleLabel(o, p) { return p.title || (p.owner ? 'Founder' : p.officer ? 'Officer' : orgGeneralLabel(o)); }
-function orgPersonByUid(o, uid) { return orgPeople(o).find(p => p.uid === uid); }
-function orgChatSeen() { return state.settings.orgChatSeen || (state.settings.orgChatSeen = {}); }
-function orgChatUnread(o) { const m = o.lastMessage; return !!m && typeof m.at === 'number' && m.uid !== myOrgUid(o) && m.at > (orgChatSeen()[o.code] || 0); }
-function markOrgChatSeen(code, at) {
-  const o = findOrg(code);
-  const latest = at || o?.lastMessage?.at || 0;
-  if (!latest || (orgChatSeen()[code] || 0) >= latest) return;
-  orgChatSeen()[code] = latest;
-  save();
-  renderSidebar();
-}
-function orgEventList(o) {
-  return Object.values(o.events || {}).filter(e => e && safeId(e.id) && typeof e.title === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date || ''))
-    .map(e => ({ ...e, title: cleanStr(e.title, 120), start: /^\d{2}:\d{2}$/.test(e.start || '') ? e.start : '', end: /^\d{2}:\d{2}$/.test(e.end || '') ? e.end : '', location: cleanStr(e.location, 120), notes: cleanStr(e.notes, 1000), category: ORG_EVENT_CATEGORIES.some(c => c[0] === e.category) ? e.category : 'other' }))
-    .sort((a, b) => (a.date + (a.start || '')).localeCompare(b.date + (b.start || '')));
-}
-function orgEventPast(e) {
-  const t = todayIso();
-  if (e.date !== t) return e.date < t;
-  return !!(e.end || e.start) && toMin(e.end || e.start) < nowMinutes();
-}
-function upcomingOrgEvents(o) { return orgEventList(o).filter(e => !orgEventPast(e)); }
-function myOrgRsvp(o, eventId) { const v = o.rsvp?.[myOrgUid(o)]?.[eventId]; return v === 'yes' || v === 'no' ? v : ''; }
-function orgRsvpCounts(o, eventId) {
-  let yes = 0, no = 0;
-  o.memberUids.forEach(u => { const v = o.rsvp?.[u]?.[eventId]; if (v === 'yes') yes++; else if (v === 'no') no++; });
-  return { yes, no, none: Math.max(0, o.memberUids.length - yes - no) };
-}
-// Officer-set links every member keeps needing: the GroupMe, the Instagram,
-// the Venmo dues go to. Shown under the club's name on every tab.
-function orgLinkList(o) {
-  return (Array.isArray(o?.links) ? o.links : []).filter(l => l && safeId(l.id) && isHttpUrl(l.url))
-    .map(l => ({ id: l.id, label: cleanStr(l.label, 30) || hostOf(l.url) || 'Link', url: String(l.url).trim() })).slice(0, ORG_LINKS_MAX);
-}
 // A small glyph for the service a link goes to, and "Pay dues" for the first
 // link that goes to a payment app, so members find it without reading labels.
 const ORG_LINK_GLYPHS = [[/instagram|tiktok/i, 'camera'], [/groupme|discord|slack|whatsapp|messenger|telegram/i, 'message-circle'], [/drive\.google|docs\.google|dropbox|onedrive|notion/i, 'folder'], [/calendar/i, 'calendar']];
-// Matched against the link's host and label, never its path or query, so a
-// random URL with "pay" in it doesn't become the dues button.
-const ORG_DUES_LINK = /venmo|paypal|cash\.app|cashapp|zelle|\bdues\b|\bpay\b/i;
-function orgDuesLink(o) { return orgLinkList(o).find(l => ORG_DUES_LINK.test(`${hostOf(l.url)} ${l.label}`)) || null; }
-// "Deadline or dues" events aren't something you attend, so they never ask
-// Going or Can't. They leave the needs-your-answer lists, the RSVPs
-// grid and the RSVP reminders; answers already given stay in the data and
-// in the roster CSV (downloadOrgRosterCsv), untouched.
-function orgIsDuesEvent(e) { return e?.category === 'deadline'; }
 // What a dues event shows instead of RSVP buttons: the club's pay link when
 // the event is about paying, "Add a dues link" for an officer without one.
 function orgDuesAction(o, e, { size = 'row' } = {}) {
@@ -149,172 +68,18 @@ function orgLinksHtml(o, { editable = false } = {}) {
   const glyph = (l) => (ORG_LINK_GLYPHS.find(([re]) => re.test(`${l.url} ${l.label}`)) || [0, 'link'])[1];
   return `<div class="org-links">${links.map(l => `<a class="org-link-pill" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"${l.id === duesId ? ` title="${esc(l.label)}"` : ''}>${icon(l.id === duesId ? 'check-square' : glyph(l), 12)} ${l.id === duesId ? 'Pay dues' : esc(l.label)}</a>`).join('')}${editable ? `<button class="org-link-pill is-edit" onclick="openOrgLinksModal('${o.code}')">${icon('pencil', 11)} ${links.length ? 'Edit links' : 'Add links'}</button>` : ''}</div>`;
 }
-function orgAnnouncementList(o) {
-  return Object.values(o.announcements || {}).filter(a => a && safeId(a.id) && typeof a.text === 'string' && a.text.trim())
-    .map(a => ({ ...a, text: a.text.slice(0, ORG_ANNOUNCEMENT_MAX), name: cleanStr(a.name, 60) || 'An officer' }))
-    .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (b.at || 0) - (a.at || 0));
-}
-function orgSeen() { return state.settings.orgSeen || (state.settings.orgSeen = {}); }
-function orgUnreadCount(o) { const seen = orgSeen()[o.code] || 0; return orgAnnouncementList(o).filter(a => (a.at || 0) > seen && a.uid !== myOrgUid(o)).length; }
-function markOrgSeen(code) { const o = findOrg(code); if (!o) return; const latest = Math.max(0, ...orgAnnouncementList(o).map(a => a.at || 0)); if (latest > (orgSeen()[code] || 0)) { orgSeen()[code] = latest; save(); } }
-
-/* ── Writes ────────────────────────────────────────────────────── */
-// Firestore only says "permission-denied", so the toast works out the
-// likely reason from what was written and who you are in the club.
-function orgWriteDeniedMessage(code, ops, fallback) {
-  const o = findOrg(code);
-  if (!o) return 'This club was deleted.';
-  const me = myOrgUid(o);
-  if (!o.memberUids.includes(me)) return 'You’re no longer in this club.';
-  const roles = ops.officerUids;
-  const rolesChange = 'createdBy' in ops || (roles && (roles.__op === 'union' || (roles.v || []).some(u => u !== me && o.officerUids.includes(u))));
-  if (rolesChange && !isOrgOwner(o)) return 'Only the founder can change who’s an officer.';
-  const ownOnly = Object.keys(ops).every(k => k.startsWith(`rsvp.${me}`) || k.startsWith(`people.${me}.`) || (k === 'officerUids' || k === 'memberUids'));
-  if (!isOrgOfficer(o) && !ownOnly) return 'Only officers can change that.';
-  return fallback || 'That change wasn’t allowed. Reload the page and try again.';
-}
-// opts.denied: what to say when the rules refuse it and nothing more
-// specific applies.
-async function orgWrite(code, ops, opts = {}) {
-  const entry = orgEntry(code);
-  if (!entry) return false;
-  if (entry.local) {
-    Object.entries(ops).forEach(([path, val]) => applyLocalOp(entry, path.split('.'), val));
-    entry.updatedAt = Date.now();
-    touch();
-    return true;
-  }
-  if (!cloudGroupsEnabled()) { toast('Log in to make changes.', 'error'); return false; }
-  const FV = firebase.firestore.FieldValue;
-  const payload = { updatedAt: Date.now() };
-  Object.entries(ops).forEach(([path, val]) => {
-    payload[path] = val === GW_DELETE ? FV.delete() : val?.__op === 'union' ? FV.arrayUnion(...val.v) : val?.__op === 'remove' ? FV.arrayRemove(...val.v) : val;
-  });
-  try {
-    await _fbDb.collection('orgs').doc(code).update(payload);
-    return true;
-  } catch (e) {
-    diag.error('clubs', 'Club write failed', e);
-    const msg = e.code === 'permission-denied' ? orgWriteDeniedMessage(code, ops, opts.denied)
-      : e.code === 'not-found' ? 'This club was deleted.'
-      : 'Couldn’t save that. Check your connection and try again.';
-    toast(msg, 'error', 4500);
-    return false;
-  }
-}
-
-/* ── Sync ──────────────────────────────────────────────────────── */
-// code -> the error its listener died with. Cleared by the next good snapshot.
-const _orgLoadErrors = {};
-function startOrgSync() {
-  if (!cloudGroupsEnabled()) return;
-  if (orgEntries().some(e => e.sample)) { state.orgs = orgEntries().filter(e => !e.sample); save(); }
-  const codes = new Set(orgEntries().map(e => e.code));
-  Object.keys(_liveOrgs).forEach(c => { if (!codes.has(c)) delete _liveOrgs[c]; });
-  reconcileOrgSubscriptions();
-  handlePendingOrg();
-}
-function stopOrgSync() { Object.keys(_orgDocUnsubs).forEach(code => { _orgDocUnsubs[code](); delete _orgDocUnsubs[code]; }); }
-function reconcileOrgSubscriptions() {
-  if (!cloudGroupsEnabled()) return;
-  const want = new Set(orgEntries().filter(e => e.cloud).map(e => e.code));
-  Object.keys(_orgDocUnsubs).forEach(code => { if (!want.has(code)) { _orgDocUnsubs[code](); delete _orgDocUnsubs[code]; } });
-  want.forEach(code => {
-    if (_orgDocUnsubs[code]) return;
-    _orgDocUnsubs[code] = _fbDb.collection('orgs').doc(code).onSnapshot(doc => onOrgSnapshot(code, doc), err => { _orgLoadErrors[code] = err; diag.error('clubs', 'Club listener failed', err); renderRemote(); });
-  });
-}
-function onOrgSnapshot(code, doc) {
-  delete _orgLoadErrors[code];
-  const entry = orgEntry(code);
-  if (!entry?.cloud || !_fbUser) return;
-  const data = doc.exists ? doc.data() : null;
-  if (!data || !(data.memberUids || []).includes(_fbUser.uid)) {
-    if (doc.metadata.fromCache || doc.metadata.hasPendingWrites) return;
-    dropOrgEntry(code, !data ? `“${entry.name || 'A club'}” was deleted.` : `You’re no longer a member of “${entry.name || 'a club'}”.`);
-    return;
-  }
-  const before = _liveOrgs[code];
-  _liveOrgs[code] = data;
-  persistOrgCache();
-  if (entry.name !== data.name) { entry.name = data.name; save(); }
-  if (!doc.metadata.hasPendingWrites && data.people?.[_fbUser.uid] && data.people[_fbUser.uid].name !== myGroupName()) orgWrite(code, { [`people.${_fbUser.uid}.name`]: myGroupName() });
-  // A new announcement while the app is open.
-  if (before) {
-    const o = findOrg(code);
-    const fresh = orgAnnouncementList(o).filter(a => a.uid !== _fbUser.uid && !Object.values(before.announcements || {}).some(b => b.id === a.id));
-    if (fresh.length && !(state.route === 'orgs' && state.subRoute === code)) toast(`${o.name}: ${fresh[0].text.slice(0, 90)}${fresh[0].text.length > 90 ? '…' : ''}`, 'info', 6000, { label: 'Open', run: () => openOrg(code, 'announcements') });
-  }
-  renderRemote();
-}
-function dropOrgEntry(code, message) {
-  if (_orgDocUnsubs[code]) { _orgDocUnsubs[code](); delete _orgDocUnsubs[code]; }
-  delete _liveOrgs[code]; persistOrgCache();
-  state.orgs = orgEntries().filter(e => e.code !== code);
-  if (state.route === 'orgs' && state.subRoute === code) state.subRoute = null;
-  touch();
-  if (message) toast(message, 'info', 4500);
-}
-// Same shape as retryGroupLoad / groupLoadNotice in js/groups/sync.js: a failed
-// listener never comes back on its own, so the page says so and offers a
-// retry instead of a permanent "Loading…".
-function retryOrgLoad(code) {
-  delete _orgLoadErrors[code];
-  if (_orgDocUnsubs[code]) { try { _orgDocUnsubs[code](); } catch {} delete _orgDocUnsubs[code]; }
-  reconcileOrgSubscriptions();
-  render();
-}
-function orgLoadNotice(o) {
-  const err = _orgLoadErrors[o.code];
-  if (!err) return o.loading ? '<div class="small muted mb-16">Loading…</div>' : '';
-  const denied = err.code === 'permission-denied';
-  return `<div class="mb-16">${inlineErrorHtml(
-    denied ? 'You don’t have access to this club anymore. It may have been deleted, or you were removed.' : 'This club didn’t load. Check your connection and try again.',
-    `retryOrgLoad('${o.code}')`,
-    { extra: denied ? `<button class="btn btn-sm btn-ghost" onclick="dropOrgEntry('${o.code}')">Remove it from my list</button>` : '' },
-  )}</div>`;
-}
-async function unusedOrgCode() {
-  for (let i = 0; i < 6; i++) {
-    const code = genGroupCode();
-    try { const snap = await _fbDb.collection('orgs').doc(code).get(); if (!snap.exists) return code; } catch { return code; }
-  }
-  return genGroupCode();
-}
-function newOrgDoc({ code, name, kind, school, color, description, ownerUid, ownerTitle = '' }) {
-  const now = Date.now();
-  return {
-    v: 1, code, name, kind, school, schoolKey: normKey(school), color, description,
-    createdBy: ownerUid, createdAt: now, updatedAt: now,
-    memberUids: [ownerUid], officerUids: [ownerUid], people: { [ownerUid]: { name: myGroupName(), joinedAt: now, title: cleanStr(ownerTitle, ORG_TITLE_MAX) } },
-    titles: {}, events: {}, announcements: {}, rsvp: {}, files: {},
-  };
-}
-
-/* ── Calendar, dashboard, Heads up ─────────────────────────────── */
-// Events that belong on your own calendar: anything you haven't said no to.
-function orgEventsOnDate(dateIso) {
-  if (typeof allOrgs !== 'function') return [];
-  return allOrgs().filter(o => !o.hideCalendar).flatMap(o => orgEventList(o).filter(e => e.date === dateIso && myOrgRsvp(o, e.id) !== 'no').map(e => ({
-    id: e.id, code: o.code, title: e.title, start: e.start || null, end: e.end || null, color: orgColor(o), kind: 'org', orgName: o.name, required: !!e.required, category: e.category,
-    action: `openOrgEvent('${o.code}','${e.id}')`, date: e.date, mine: orgIsDuesEvent(e) ? '' : myOrgRsvp(o, e.id), rsvpKind: 'club',
-  })));
-}
-function orgUpcomingForMe(days = 7) {
-  const end = addDays(todayIso(), days);
-  return allOrgs().flatMap(o => upcomingOrgEvents(o).filter(e => e.date <= end && myOrgRsvp(o, e.id) !== 'no').map(e => ({ o, e })))
-    .sort((a, b) => (a.e.date + (a.e.start || '')).localeCompare(b.e.date + (b.e.start || '')));
-}
 function dashboardOrgsWidget() {
   const orgs = allOrgs();
   if (!orgs.length) return '';
   const rows = orgUpcomingForMe(10).slice(0, 4);
-  const unread = orgs.map(o => [o, orgUnreadCount(o)]).filter(([, n]) => n);
+  // New announcements ride on each club's one pill ("2 new"); new chat
+  // messages with no new announcements say "new messages".
+  const unread = {};
+  orgs.forEach(o => { const n = orgUnreadCount(o); if (n) unread[o.code] = n; else if (orgChatUnread(o)) unread[o.code] = true; });
   return `
     <div class="card card-pad">
       <div class="flex-between mb-8"><h3 class="sg-h3">Clubs & teams</h3><button class="sg-link" onclick="setState({route:'orgs',subRoute:null})">All ${icon('chevron-right', 12)}</button></div>
-      ${spaceNeedsPills('club', orgs)}
-      ${unread.length ? `<div class="sg-dash-unread">${unread.map(([o, n]) => `<button class="pill sg-unread-pill" onclick="openOrg('${o.code}','announcements')"><span class="sg-unread-dot"></span>${esc(o.name)} · ${n} new</button>`).join('')}</div>` : ''}
+      ${spaceNeedsPills('club', orgs, { unread })}
       ${rows.length ? rows.map(({ o, e }) => `
         <div class="list-row sg-session-row space" style="--course:${esc(orgColor(o))};${spaceVars(orgColor(o))}" onclick="openOrgEvent('${o.code}','${e.id}')">
           ${spaceDateBlock(e.date, { size: 'tile' })}
@@ -349,9 +114,14 @@ function pageOrgs() {
     <div class="sg-pricing-note small">${icon('users', 14)} Bringing your whole team or chapter? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Group pricing</a> covers every member at a lower rate.</div>
   `;
 }
+// On a phone the first three rows show, so your clubs aren't two screens
+// down; See all opens the rest in place and stays open across redraws.
+let _orgWeekOpen = false;
 function orgsThisWeek() {
-  return spaceWeekCard({
+  const phone = window.matchMedia?.('(max-width: 760px)').matches;
+  const card = spaceWeekCard({
     title: 'This week',
+    max: phone && !_orgWeekOpen ? 3 : _orgWeekOpen ? 99 : 6,
     rows: orgUpcomingForMe(7).map(({ o, e }) => ({
       date: e.date,
       html: `
@@ -362,6 +132,7 @@ function orgsThisWeek() {
         </div>`,
     })),
   });
+  return card ? `<div class="org-week" onclick="if(event.target.closest('.space-week-all'))_orgWeekOpen=true">${card}</div>` : '';
 }
 function orgsEmptyHero() {
   return emptyStateHtml({
@@ -393,7 +164,7 @@ function orgIndexCard(o) {
     code: o.code,
     color: orgColor(o),
     crest: { text: orgMonogram(o) },
-    eyebrow: [kind[1], o.school ? esc(o.school) : '', o.sample ? 'Sample' : ''].filter(Boolean).join(' · '),
+    eyebrow: [esc(orgKindLabel(o)), o.school ? esc(o.school) : '', o.sample ? 'Sample' : ''].filter(Boolean).join(' · '),
     name: o.name,
     onclick: `openOrg('${o.code}')`,
     style: colorVars('org', orgColor(o)),
@@ -406,107 +177,6 @@ function orgIndexCard(o) {
     needCount: o.loading ? 0 : orgIndexNeedCount(o),
   });
 }
-function orgEventRow(o, e, { showOrg = false } = {}) {
-  const counts = orgRsvpCounts(o, e.id);
-  const past = orgEventPast(e);
-  const dues = orgIsDuesEvent(e);
-  // Count text only (no faces in rows). Members never see "0 going".
-  const count = dues ? '' : past ? `${counts.yes} said they’d go` : counts.yes || isOrgOfficer(o) ? `${counts.yes} going` : '';
-  const trailing = past ? '' : dues ? orgDuesAction(o, e) : orgRsvpControl(o, e);
-  return `
-    <div class="list-row sg-session-row org-event-row ${past ? 'is-past' : ''}" style="--course:${esc(orgColor(o))}" onclick="showOrgEventModal('${o.code}','${e.id}')">
-      ${spaceDateBlock(e.date, { size: 'tile' })}
-      <div class="row-title">
-        <div class="sg-strong">${esc(e.title)}${e.required && !dues ? ' <span class="org-required">Required</span>' : ''}</div>
-        <div class="row-meta">${[showOrg ? esc(o.name) : '', orgCatHtml(e), e.start ? `${fmtTime(e.start)}${e.end ? `–${fmtTime(e.end)}` : ''}` : '', e.location ? esc(e.location) : '', count ? `<span class="org-row-going">${count}</span>` : ''].filter(Boolean).join(' · ')}</div>
-      </div>
-      ${trailing}
-    </div>`;
-}
-// Who gave which answer, current members only.
-function orgRsvpPeople(o, e) {
-  const out = { yes: [], no: [], none: [] };
-  orgPeople(o).forEach(p => { const v = o.rsvp?.[p.uid]?.[e.id]; out[v === 'yes' || v === 'no' ? v : 'none'].push(p); });
-  return out;
-}
-// "You, Maya and 3 others are going". Officers, who count heads, see the
-// real numbers; members at zero see an invitation instead of "0 going".
-function orgFacePile(o, e, { size = 26 } = {}) {
-  const who = orgRsvpPeople(o, e);
-  const faces = orgFaceColors(o);
-  const officer = isOrgOfficer(o);
-  return spaceFacePile({
-    people: who.yes, meUid: myOrgUid(o), size, colorOf: (uid) => faces[uid] || orgColor(o),
-    zeroText: officer ? '0 going' : 'Be the first to say you’re going',
-    detail: officer && who.none.length ? `${who.none.length} haven’t answered` : '',
-    onclick: `showOrgEventModal('${o.code}','${e.id}')`,
-    label: `See who’s going to ${e.title}`,
-  });
-}
-// The sheet's lists: Going, Can't, and (officers only, since they follow
-// up) Haven't answered. Members get a one-line count instead.
-function orgAttendanceLists(o, e) {
-  const past = orgEventPast(e);
-  const who = orgRsvpPeople(o, e);
-  const faces = orgFaceColors(o);
-  const colorOf = (uid) => faces[uid] || orgColor(o);
-  const u = myOrgUid(o);
-  const row = (p) => ({ uid: p.uid, name: p.uid === u && p.name !== 'You' ? `${p.name} (you)` : p.name, sub: orgRoleLabel(o, p) });
-  const officer = isOrgOfficer(o);
-  const lists = [
-    { key: 'yes', label: past ? 'Said they’d go' : 'Going', short: past ? 'Went' : 'Going', people: who.yes.map(row), colorOf, empty: past ? 'No one said they’d go.' : 'No one yet. Be the first.' },
-    { key: 'no', label: 'Can’t make it', short: 'Can’t', people: who.no.map(row), colorOf,
-      footHtml: !officer && who.none.length ? `<div class="small muted mt-8">${who.none.length} ${who.none.length === 1 ? 'person hasn’t' : 'people haven’t'} answered yet.</div>` : '' },
-  ];
-  if (officer) lists.push({ key: 'none', label: 'Haven’t answered', short: 'No answer', people: who.none.map(row), colorOf, empty: 'Everyone has answered.',
-    footHtml: who.none.length && !past && !orgIsDuesEvent(e) ? `<button class="btn btn-sm mt-8" onclick="remindToRsvp('${o.code}','${e.id}')">${icon('megaphone', 14)} Remind them to RSVP</button>` : '' });
-  return spaceRsvpLists({ key: spaceRsvpKey('club', o.code, e.id), lists });
-}
-function remindToRsvp(code, eventId) {
-  const o = findOrg(code);
-  const e = o && orgEventList(o).find(x => x.id === eventId);
-  if (!e || orgIsDuesEvent(e)) return;
-  openAnnouncementModal(code, `Please RSVP for ${e.title} on ${fmtDate(e.date, { weekday: 'long', month: 'short', day: 'numeric' })}${e.start ? ` at ${fmtTime(e.start)}` : ''}. Open Clubs & Teams in Semester HQ and tap Going or Can’t.`);
-}
-// The shared control (js/spaces/rsvp.js) with a club's answers: Going and
-// Can't. A dues event gets its pay button instead.
-function orgRsvpControl(o, e, mine = myOrgRsvp(o, e.id), { size = 'row', stillComing = false, clearable = false } = {}) {
-  if (orgIsDuesEvent(e)) return orgDuesAction(o, e, { size });
-  return spaceRsvp({ kind: 'club', code: o.code, id: e.id, title: e.title, mine, size, clearable,
-    stillComing: stillComing && spaceStillComingDue('club', o.code, e.id, e, mine) });
-}
-// toggle (default true) clears your answer when you tap the one you already
-// gave; the shared control always passes false.
-async function setOrgRsvp(code, eventId, val, toggle = true) {
-  const o = findOrg(code);
-  if (!o || !safeId(eventId) || !['yes', 'no'].includes(val)) return false;
-  const u = myOrgUid(o);
-  const current = myOrgRsvp(o, eventId);
-  const next = spaceRsvpNextValue(current, val, toggle);
-  if (next === 'yes' && current !== 'yes') playUiSound('tap');
-  const ok = await orgWrite(code, { [`rsvp.${u}.${eventId}`]: next === null ? GW_DELETE : next });
-  // Answering from inside the event's sheet: refresh it so you show up in the right list.
-  const open = window._orgEventModal;
-  if (ok && open?.code === code && open.eventId === eventId && $('#modal .space-sheet')) showOrgEventModal(code, eventId);
-  return ok;
-}
-// The club's next event as the Overview hero.
-function orgNextHero(o, e) {
-  const dues = orgIsDuesEvent(e);
-  // The countdown chip (or the Happening now strip) carries the when.
-  return spaceEventHero({
-    date: e.date, start: e.start, end: e.end, where: e.location, notes: e.notes,
-    eyebrow: dues ? 'Next up · Due' : 'Next up',
-    tags: orgEventTags(o, e),
-    title: e.title,
-    onOpen: `showOrgEventModal('${o.code}','${e.id}')`,
-    rsvpHtml: orgRsvpControl(o, e, myOrgRsvp(o, e.id), { size: 'hero', stillComing: true }),
-    facesHtml: dues ? '' : orgFacePile(o, e),
-    actionsHtml: `<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button>`,
-    className: 'org-next-hero',
-  });
-}
-
 /* ── Org page ──────────────────────────────────────────────────── */
 function pageOrgDetail(o) {
   const tab = orgTabsFor(o).some(([k]) => k === state.orgTab) ? state.orgTab : 'overview';
@@ -529,7 +199,7 @@ function pageOrgDetail(o) {
     band: {
       code: o.code,
       crest,
-      eyebrow: [kind[1], o.school ? esc(o.school) : '', `${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'}`, o.sample ? 'Sample' : ''].filter(Boolean).join(' · '),
+      eyebrow: orgBandEyebrow(o),
       title: o.name,
       desc: o.description || '',
       back: { label: 'Clubs & teams', onclick: 'setState({subRoute:null})' },
@@ -567,6 +237,15 @@ function pageOrgDetail(o) {
     fab: tab === 'chat' ? null : { onclick: `spaceGoToTab('club','chat')`, dot: chatUnread, label: `Open ${kind[0] === 'team' ? 'team' : 'club'} chat` },
   });
 }
+// Kind, school, member count, Sample. On a phone the count drops out when
+// the line would wrap (the band's faces already say how many).
+function orgBandEyebrow(o) {
+  const n = o.memberUids.length;
+  const label = orgKindLabel(o), count = `${n} member${n === 1 ? '' : 's'}`;
+  const long = [label, o.school || '', count, o.sample ? 'Sample' : ''].filter(Boolean).join(' · ').length > 36;
+  const head = [esc(label), o.school ? esc(o.school) : ''].filter(Boolean).join(' · ');
+  return `${head}<span class="org-band-count${long ? ' is-long' : ''}"> · ${count}</span>${o.sample ? ' · Sample' : ''}`;
+}
 // One member, no events, no announcements, no files: the overview would be
 // a stack of "nothing yet" cards, so the page leads with the two things
 // that make a club real, people and the first event.
@@ -588,51 +267,6 @@ function orgFirstStepsHtml(o) {
    strip, and a flat Coming up agenda. Every event renders once: the
    hero's event leaves the needs strip (the hero asks for the answer
    itself), and the agenda skips anything the hero or the strip shows. */
-// The day the week strip filtered the agenda to. A view choice on this
-// tab only, so it lives here rather than in state, and a different club
-// or a day outside this week resets it.
-let _orgAgendaDay = null;
-function orgAgendaDay(o) {
-  const d = _orgAgendaDay, t = todayIso();
-  return d && d.code === o.code && d.date >= t && d.date <= addDays(t, 6) ? d.date : '';
-}
-// Tapping the selected day again goes back to everything coming up.
-function orgPickAgendaDay(code, dateIso) {
-  const same = _orgAgendaDay?.code === code && _orgAgendaDay.date === dateIso;
-  _orgAgendaDay = same ? null : { code, date: dateIso };
-  render();
-  const i = daysBetween(dateIso);
-  requestAnimationFrame(() => $$('#content .space-weekstrip .space-week-daybtn')[i]?.focus({ preventScroll: true }));
-}
-// Required, Weekly, the category (agenda rows only) and Needs your answer.
-function orgEventTags(o, e, { cat = false } = {}) {
-  const dues = orgIsDuesEvent(e);
-  const c = orgCat(e);
-  return [
-    e.required && !dues ? spaceTag('required', 'Required') : '',
-    e.seriesId ? spaceTag('weekly', 'Weekly') : '',
-    cat && !dues && c[0] !== 'other' ? spaceTag('cat', c[1], c[2]) : '',
-    e.required && !dues && !orgEventPast(e) && !myOrgRsvp(o, e.id) ? spaceTag('need', 'Needs your answer') : '',
-  ].join('');
-}
-// One flat agenda row: date tile, title, when and where, tags, and the
-// compact RSVP (or the dues button) at the end.
-function orgAgendaRow(o, e) {
-  const past = orgEventPast(e);
-  const dues = orgIsDuesEvent(e);
-  const counts = orgRsvpCounts(o, e.id);
-  // Members never see "0 going"; officers count heads.
-  const going = dues ? '' : past ? `${counts.yes} said they’d go` : counts.yes || isOrgOfficer(o) ? `${counts.yes} going` : '';
-  const when = e.start ? `${fmtTime(e.start)}${e.end ? ` to ${fmtTime(e.end)}` : ''}` : dues ? 'Due' : 'All day';
-  return spaceAgendaRow({
-    date: e.date, title: e.title, past,
-    metaHtml: [esc(when), e.location ? esc(e.location) : '', going ? `<span class="org-row-going">${going}</span>` : ''].filter(Boolean).join(' · '),
-    tags: orgEventTags(o, e, { cat: true }),
-    trailingHtml: past ? '' : orgRsvpControl(o, e),
-    onclick: `showOrgEventModal('${o.code}','${e.id}')`,
-    label: `${e.title}, ${fmtDate(e.date, { weekday: 'long', month: 'short', day: 'numeric' })}`,
-  });
-}
 // The pinned announcement, under the tabs. An unread one is already a
 // "Read it" card in the needs strip, so the banner takes the first pinned
 // announcement the strip isn't showing.
@@ -658,44 +292,16 @@ function orgPinnedBanner(o, skip) {
       </div>
     </section>`;
 }
-// Officers only: how much of the next two weeks is answered, and who's
-// still silent on the next required event, with the way into Admin.
+// Officers only: the same two numbers as the top of Officer home (the
+// same orgHealth call and tiles), with the way into Admin. Who hasn't
+// answered the next event is already under the hero's faces.
 function orgOfficerMiniCard(o) {
-  if (!isOrgOfficer(o)) return '';
-  const end = addDays(todayIso(), 14);
-  const soon = upcomingOrgEvents(o).filter(e => !orgIsDuesEvent(e) && e.date <= end);
-  const r = orgRsvpRate(o, soon);
-  const req = upcomingOrgEvents(o).find(e => e.required && !orgIsDuesEvent(e));
-  const silent = req ? orgRsvpPeople(o, req).none.length : 0;
-  const stat = (value, label) => `<div class="org-mini-stat"><strong>${esc(value)}</strong><span>${label}</span></div>`;
+  if (!isOrgOfficer(o) || typeof orgHealth !== 'function') return '';
+  const h = orgHealth(o);
   return `
     <div class="card card-pad org-officer-mini">
       <div class="flex-between mb-8"><h3 class="sg-h3">${icon('shield', 16)} Officer view</h3><button class="sg-link" onclick="setState({orgTab:'admin'})">Open Admin ${icon('chevron-right', 12)}</button></div>
-      <div class="org-mini-stats">
-        ${stat(r.rate === null ? '–' : `${Math.round(r.rate * 100)}%`, soon.length ? `answered, next 2 weeks` : 'Nothing in the next 2 weeks')}
-        ${req ? stat(String(silent), `haven’t answered ${esc(req.title)}, ${esc(fmtDate(req.date, { weekday: 'short' }))}`) : stat('–', 'No required events coming up')}
-      </div>
-      ${req && silent ? `<button class="btn btn-sm org-mini-see" onclick="showOrgEventModal('${o.code}','${req.id}')">${icon('users', 14)} See who</button>` : ''}
-    </div>`;
-}
-// Quick links as cards in the rail. The dues link reads "Pay dues". Phones
-// skip this card and the Files card: the band's link row and the Files tab
-// are a tap away, and the Overview stays short.
-function orgQuickLinksCard(o) {
-  const links = orgLinkList(o);
-  if (!links.length) return '';
-  const duesId = orgDuesLink(o)?.id;
-  const glyph = (l) => (ORG_LINK_GLYPHS.find(([re]) => re.test(`${l.url} ${l.label}`)) || [0, 'link'])[1];
-  return `
-    <div class="card card-pad org-rail-links">
-      <div class="flex-between mb-8"><h3 class="sg-h3">Quick links</h3>${isOrgOfficer(o) && !o.local ? `<button class="sg-link" onclick="openOrgLinksModal('${o.code}')">${icon('pencil', 12)} Edit</button>` : ''}</div>
-      <div class="org-linkcards">${links.map(l => `
-        <a class="org-linkcard" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
-          <span class="org-linkcard-tile" aria-hidden="true">${icon(l.id === duesId ? 'check-square' : glyph(l), 16)}</span>
-          <span class="org-linkcard-text"><span class="org-linkcard-label">${l.id === duesId ? 'Pay dues' : esc(l.label)}</span><span class="org-linkcard-host">${esc(l.id === duesId ? l.label : hostOf(l.url))}</span></span>
-          <span class="org-linkcard-go" aria-hidden="true">${icon('arrow-up-right', 14)}</span>
-        </a>`).join('')}
-      </div>
+      <div class="org-mini-stats">${orgRateTile(h)}${orgEveryRequiredTile(h)}</div>
     </div>`;
 }
 function orgOverviewTab(o) {
@@ -703,14 +309,16 @@ function orgOverviewTab(o) {
   const upcoming = upcomingOrgEvents(o);
   const next = upcoming[0];
   // The strip, minus the hero's event: the hero carries its own Needs
-  // your answer tag and the full-size buttons.
+  // your answer tag and the full-size buttons. The header keeps the full
+  // count (the same one the index card, dashboard and Heads up show) and
+  // says how many sit below; a strip whose asks all sit below is left out.
   const all = spaceNeeds('club', o);
+  const need = new Set(all.items.filter(i => i.type === 'event').map(i => i.id));
   const items = all.items.filter(i => !(next && i.type === 'event' && i.id === next.id));
-  const needs = { ...all, items, count: items.length };
+  const needs = { ...all, items, count: all.count };
   const shown = new Set([...(next ? [next.id] : []), ...items.filter(i => i.type === 'event').map(i => i.id)]);
   const stripPinned = new Set(items.filter(i => i.type === 'pinned').map(i => i.id));
-  // Only the hero needed you: no strip, rather than "all caught up".
-  const strip = needs.count || !all.count ? spaceNeedsStrip('club', o, { needs }) : '';
+  const strip = spaceNeedsStrip('club', o, { needs });
   const banner = orgPinnedBanner(o, stripPinned);
   const bannerId = orgAnnouncementList(o).find(a => a.pinned && !stripPinned.has(a.id))?.id;
 
@@ -737,7 +345,7 @@ function orgOverviewTab(o) {
     ${banner}
     <div class="sg-overview org-overview">
       <div class="sg-col">
-        ${next ? orgNextHero(o, next) : `
+        ${next ? orgNextHero(o, next, need) : `
           <div class="card card-pad sg-next-empty">
             <div class="sg-eyebrow">Calendar</div>
             <div class="sg-next-title">Nothing scheduled yet</div>
@@ -751,7 +359,7 @@ function orgOverviewTab(o) {
             <h3 class="sg-h3">${day ? esc(dayLabel) : 'Coming up'}</h3>
             ${day ? `<button class="sg-link" onclick="orgPickAgendaDay('${o.code}','${day}')">Show all ${icon('chevron-right', 12)}</button>` : `<button class="sg-link" onclick="setState({orgTab:'events'})">Full calendar ${icon('chevron-right', 12)}</button>`}
           </div>
-          ${agenda.length ? `<div class="org-agenda-rows">${agenda.map(e => orgAgendaRow(o, e)).join('')}</div>` : `<p class="small muted org-agenda-empty">${agendaEmpty}</p>`}
+          ${agenda.length ? `<div class="org-agenda-rows">${agenda.map(e => orgAgendaRow(o, e, need)).join('')}</div>` : `<p class="small muted org-agenda-empty">${agendaEmpty}</p>`}
           ${above ? `<p class="small muted org-agenda-above">${above === 1 ? 'One more this day is' : `${above} more this day are`} shown above.</p>` : ''}
         </div>` : ''}
       </div>
@@ -767,7 +375,6 @@ function orgOverviewTab(o) {
             <div class="org-officer-face">${personAvatar(p.uid, p.name, 32, faces[p.uid] || orgColor(o))}<div class="org-officer-face-text"><span class="org-officer-face-name">${esc(p.name)}${p.uid === me && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</span><span class="org-officer-face-title">${esc(orgRoleLabel(o, p))}</span></div></div>`).join('')}
           </div>
         </div>
-        ${orgQuickLinksCard(o)}
         ${files.length ? `
         <div class="card card-pad org-rail-files">
           <div class="flex-between mb-8"><h3 class="sg-h3">Files</h3><button class="sg-link" onclick="setState({orgTab:'files'})">All ${files.length} ${icon('chevron-right', 12)}</button></div>
@@ -777,23 +384,10 @@ function orgOverviewTab(o) {
     </div>`;
 }
 function setOrgOnCalendar(code, on) { const e = orgEntry(code); if (!e) return; e.hideCalendar = !on; touch(); }
-function orgEventsTab(o) {
-  const all = orgEventList(o);
-  const upcoming = all.filter(e => !orgEventPast(e));
-  const past = all.filter(orgEventPast).reverse();
-  const byMonth = [];
-  upcoming.forEach(e => { const key = e.date.slice(0, 7); let g = byMonth.find(x => x.key === key); if (!g) byMonth.push(g = { key, label: fmtDate(e.date, { month: 'long', year: 'numeric' }), items: [] }); g.items.push(e); });
-  return `
-    <div class="sg-toolbar">
-      <div class="small muted">${o.hideCalendar ? 'These events are hidden from your calendar.' : 'Events you haven’t said no to are on your calendar.'}</div>
-      <div class="flex-gap">
-        ${upcoming.length ? `<button class="btn btn-sm" onclick="downloadOrgIcs('${o.code}')">${icon('download', 14)} Add all to calendar app</button>` : ''}
-        ${isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Event</button>` : ''}
-      </div>
-    </div>
-    ${byMonth.length ? byMonth.map(g => `<div class="sg-section-label">${esc(g.label)}</div><div class="card card-pad mb-16">${g.items.map(e => orgEventRow(o, e)).join('')}</div>`).join('') : emptyState(icon('calendar', 24), 'No upcoming events', isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Add an event</button>` : '', isOrgOfficer(o) ? 'Weekly meetings can repeat, so you only add them once.' : '')}
-    ${past.length ? `<details class="sg-past"><summary class="small muted">Past events (${past.length})</summary><div class="card card-pad">${past.slice(0, 40).map(e => orgEventRow(o, e)).join('')}</div></details>` : ''}
-  `;
+// compact: the rail preview. Links shrink to their host at normal weight
+// and the text stops at two lines; the Announcements tab keeps it all.
+function orgAnnouncementPreview(text) {
+  return esc(text).replace(/https?:\/\/[^\s<]+/g, (m) => `<a class="org-ann-host" href="${m}" target="_blank" rel="noopener noreferrer">${esc(hostOf(m.replace(/&amp;/g, '&')) || 'link')}</a>`);
 }
 function orgAnnouncementHtml(o, a, { compact = false } = {}) {
   const text = compact && a.text.length > 220 ? a.text.slice(0, 220) + '…' : a.text;
@@ -803,7 +397,7 @@ function orgAnnouncementHtml(o, a, { compact = false } = {}) {
         <div class="small"><span class="sg-strong">${esc(a.name)}</span> <span class="muted">· ${fmtRelativeTime(a.at)}</span>${a.pinned ? ` <span class="org-pin">${icon('pin', 11)} Pinned</span>` : ''}</div>
         ${!compact && isOrgOfficer(o) ? `<div class="flex-gap"><button class="btn btn-ghost btn-icon btn-sm" aria-label="${a.pinned ? 'Unpin' : 'Pin'} announcement" onclick="pinAnnouncement('${o.code}','${a.id}',${!a.pinned})">${icon('pin', 14)}</button><button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete announcement" data-tip="Delete announcement" onclick="deleteAnnouncement('${o.code}','${a.id}')">${icon('trash', 14)}</button></div>` : ''}
       </div>
-      <div class="org-ann-text">${linkifyText(text)}</div>
+      <div class="org-ann-text${compact ? ' is-preview' : ''}">${compact ? orgAnnouncementPreview(text) : linkifyText(text)}</div>
     </div>`;
 }
 function orgAnnouncementsTab(o) {
@@ -821,9 +415,10 @@ function orgMembersTab(o) {
   // yet: only the founder can give officer access, so the founder is asked.
   const requests = isOrgOwner(o) ? people.filter(p => p.title && !p.officer && !p.reviewed) : [];
   const officer = isOrgOfficer(o);
+  const faces = orgFaceColors(o);
   const memberRow = (p) => `
         <div class="sg-person org-member" data-search="${esc((p.name + ' ' + orgRoleLabel(o, p)).toLowerCase())}">
-          ${personAvatar(p.uid, p.name, 30, p.officer ? orgColor(o) : '#6b6b6b')}
+          ${personAvatar(p.uid, p.name, 30, faces[p.uid] || orgColor(o))}
           <div class="row-title"><div class="small sg-strong">${esc(p.name)}${p.uid === me && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div><div class="small muted">${esc(orgRoleLabel(o, p))}${p.officer && p.title ? ` · <span class="org-officer-tag">${icon('shield', 11)} ${p.owner ? 'Founder' : 'Officer'}</span>` : ''}</div></div>
           ${officer && (!o.local || o.sample) ? `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>` : p.uid === me ? `<button class="btn btn-ghost btn-sm" onclick="openMyOrgTitleModal('${o.code}')">Edit title</button>` : ''}
         </div>`;
@@ -865,130 +460,6 @@ function filterOrgMembers(q) {
   $$('#org-member-list .org-member-head').forEach(el => { el.hidden = !!needle; });
   const none = $('#org-member-list .org-member-none');
   if (none) none.hidden = shown > 0;
-}
-
-/* ── Events ────────────────────────────────────────────────────── */
-function showOrgEventModal(code, eventId) {
-  const o = findOrg(code);
-  const e = o && orgEventList(o).find(x => x.id === eventId);
-  if (!e) return;
-  const past = orgEventPast(e);
-  const dues = orgIsDuesEvent(e);
-  const officer = isOrgOfficer(o);
-  window._orgEventModal = { code, eventId };
-  const cat = orgCat(e);
-  const later = e.seriesId ? orgEventList(o).filter(x => x.seriesId === e.seriesId && x.date > e.date).length : 0;
-  // A dues event has no lists, unless someone answered before it became one:
-  // officers still see those answers rather than losing them.
-  const anyAnswers = orgRsvpCounts(o, e.id).yes + orgRsvpCounts(o, e.id).no > 0;
-  openModal(spaceEventSheet({
-    kind: 'club', code: o.code, id: e.id, color: orgColor(o), glyph: cat[2], spaceName: o.name,
-    title: e.title, date: e.date, start: e.start, end: e.end, where: e.location, notes: e.notes,
-    tags: `${spaceTag('cat', cat[1], cat[2])}${e.required && !dues ? spaceTag('required', 'Required') : ''}${e.seriesId ? spaceTag('weekly', `Weekly${later ? `, ${later} more after this` : ''}`) : ''}`,
-    rsvpHtml: past ? '' : orgRsvpControl(o, e, myOrgRsvp(o, e.id), { size: 'hero', stillComing: true, clearable: true }),
-    facesHtml: past || dues ? '' : orgFacePile(o, e, { size: 24 }),
-    actionsHtml: past ? '' : `${joinLinkButton(e.location)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button>`,
-    listsHtml: dues && !(officer && anyAnswers) ? '' : orgAttendanceLists(o, e),
-    footHtml: officer ? `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteOrgEvent('${o.code}','${e.id}')">Delete</button><button class="btn" onclick="openOrgEventModal('${o.code}','${e.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button>` : '',
-  }), { onClose: () => { window._orgEventModal = null; } });
-}
-function openOrgEventModal(code, eventId) {
-  const o = findOrg(code);
-  if (!o || !isOrgOfficer(o)) return;
-  const e = eventId ? orgEventList(o).find(x => x.id === eventId) : null;
-  const later = e?.seriesId ? orgEventList(o).filter(x => x.seriesId === e.seriesId && x.date > e.date).length : 0;
-  const v = e || { title: '', category: 'meeting', date: todayIso(), start: '19:00', end: '20:00', location: '', required: false, notes: '' };
-  openModal(`
-    <div class="modal-head"><h3>${e ? 'Edit event' : `New event for ${esc(o.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
-    <div class="modal-body">
-      <div class="field-row">
-        <div class="field"><label for="oe-title">What</label><input class="input" id="oe-title" maxlength="120" value="${esc(v.title)}" placeholder="Chapter meeting"></div>
-        <div class="field" style="max-width:220px"><label for="oe-cat">Type</label><select class="select" id="oe-cat">${ORG_EVENT_CATEGORIES.map(([k, l]) => `<option value="${k}" ${v.category === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label for="oe-date">Date</label><input class="input" type="date" id="oe-date" value="${v.date}"></div>
-        <div class="field"><label for="oe-start">Starts</label><input class="input" type="time" id="oe-start" value="${v.start || ''}"></div>
-        <div class="field"><label for="oe-end">Ends</label><input class="input" type="time" id="oe-end" value="${v.end || ''}"></div>
-      </div>
-      <div class="field"><label for="oe-where">Where</label><input class="input" id="oe-where" maxlength="120" value="${esc(v.location)}" placeholder="Student Union 210, or a Zoom link"></div>
-      <div class="field"><label for="oe-notes">Details <span class="muted">(optional)</span></label><textarea class="input" id="oe-notes" maxlength="1000" placeholder="Wear your jersey. Dues are due at the door.">${esc(v.notes)}</textarea></div>
-      <label class="checkbox-row small"><input type="checkbox" id="oe-required" ${v.required ? 'checked' : ''}><span>Required for members</span></label>
-      ${!e ? `<div class="field-row mt-8" style="align-items:center"><label class="checkbox-row small" style="margin:0"><input type="checkbox" id="oe-repeat" onchange="$('#oe-weeks').disabled=!this.checked"><span>Repeat weekly for</span></label><select class="select" id="oe-weeks" style="max-width:110px" disabled aria-label="How many weeks">${[2, 4, 6, 8, 10, 12, 15].map(n => `<option value="${n}" ${n === 8 ? 'selected' : ''}>${n} weeks</option>`).join('')}</select></div>` : ''}
-      ${e && later > 0 ? `<label class="checkbox-row small mt-8"><input type="checkbox" id="oe-series"><span>Also update the ${later} later event${later === 1 ? '' : 's'} in this weekly series (they keep their dates)</span></label>` : ''}
-    </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="oe-save" onclick="saveOrgEvent('${o.code}',${e ? `'${e.id}'` : 'null'})">${e ? 'Save' : 'Add to calendar'}</button></div>
-  `);
-}
-async function saveOrgEvent(code, eventId) {
-  const o = findOrg(code);
-  if (!o || !isOrgOfficer(o)) return;
-  const title = $('#oe-title').value.trim();
-  const date = $('#oe-date').value;
-  if (!title || !date) { toast('Add a name and a date', 'error'); return; }
-  const base = { title: title.slice(0, 120), category: $('#oe-cat').value, start: $('#oe-start').value || '', end: $('#oe-end').value || '', location: $('#oe-where').value.trim().slice(0, 120), notes: $('#oe-notes').value.trim().slice(0, 1000), required: $('#oe-required').checked };
-  const ops = {};
-  let laterCount = 0;
-  if (eventId) {
-    Object.entries({ ...base, date }).forEach(([k, val]) => { ops[`events.${eventId}.${k}`] = val; });
-    // Practice moved from 6 to 7 for the rest of the season: the later
-    // events in the series take the new details but keep their own dates.
-    const cur = orgEventList(o).find(x => x.id === eventId);
-    if ($('#oe-series')?.checked && cur?.seriesId) {
-      const later = orgEventList(o).filter(x => x.seriesId === cur.seriesId && x.date > cur.date);
-      laterCount = later.length;
-      later.forEach(x => Object.entries(base).forEach(([k, val]) => { ops[`events.${x.id}.${k}`] = val; }));
-    }
-  } else {
-    const weeks = $('#oe-repeat')?.checked ? Number($('#oe-weeks').value) || 1 : 1;
-    const seriesId = weeks > 1 ? uid() : null;
-    for (let i = 0; i < weeks; i++) {
-      const id = uid();
-      ops[`events.${id}`] = { id, ...base, date: addDays(date, i * 7), seriesId, createdBy: myOrgUid(o), createdAt: Date.now() };
-    }
-  }
-  setBtnLoading($('#oe-save'), true);
-  if (await orgWrite(code, ops)) { closeModal(); const n = Object.keys(ops).length; toast(eventId ? (laterCount ? `Updated this and ${laterCount} later event${laterCount === 1 ? '' : 's'}` : 'Event updated') : n > 1 ? `Added ${n} weekly events` : 'Event added. Members will see it on their calendar.'); }
-  else setBtnLoading($('#oe-save'), false, eventId ? 'Save' : 'Add to calendar');
-}
-function deleteOrgEvent(code, eventId) {
-  const o = findOrg(code);
-  const e = o && orgEventList(o).find(x => x.id === eventId);
-  if (!e) return;
-  const series = e.seriesId ? orgEventList(o).filter(x => x.seriesId === e.seriesId && x.date >= e.date) : [];
-  openModal(`
-    <div class="modal-body" style="padding-top:22px"><p style="font-size:14px">Delete “${esc(e.title)}” on ${esc(fmtDate(e.date))}? It comes off every member’s calendar.</p></div>
-    <div class="modal-foot">
-      <button class="btn" onclick="closeModal()">Cancel</button>
-      ${series.length > 1 ? `<button class="btn btn-danger" onclick="removeOrgEvents('${code}',${JSON.stringify(series.map(x => x.id)).replace(/"/g, '&quot;')})">This and ${series.length - 1} after</button>` : ''}
-      <button class="btn btn-danger" onclick="removeOrgEvents('${code}',['${e.id}'])">Delete event</button>
-    </div>
-  `);
-}
-async function removeOrgEvents(code, ids) {
-  const ops = {};
-  ids.filter(safeId).forEach(id => { ops[`events.${id}`] = GW_DELETE; });
-  closeModal();
-  if (await orgWrite(code, ops)) toast(ids.length > 1 ? `Deleted ${ids.length} events` : 'Event deleted');
-}
-function downloadOrgIcs(code, eventId) {
-  const o = findOrg(code);
-  if (!o) return;
-  const list = orgEventList(o).filter(e => (eventId ? e.id === eventId : !orgEventPast(e)));
-  const icsText = (v) => String(v || '').replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([,;])/g, '\\$1');
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Semester HQ//Clubs//EN'];
-  list.forEach(e => {
-    const d = e.date.replace(/-/g, '');
-    lines.push('BEGIN:VEVENT', `UID:${e.id}@${o.code}.semester-hq`, `DTSTAMP:${stamp}`,
-      ...(e.start ? [`DTSTART:${d}T${e.start.replace(':', '')}00`, `DTEND:${d}T${(e.end || addMinutesHHMM(e.start, 60)).replace(':', '')}00`] : [`DTSTART;VALUE=DATE:${d}`]),
-      `SUMMARY:${icsText(`${o.name}: ${e.title}`)}`, ...(e.location ? [`LOCATION:${icsText(e.location)}`] : []), ...(e.notes ? [`DESCRIPTION:${icsText(e.notes)}`] : []), 'END:VEVENT');
-  });
-  lines.push('END:VCALENDAR');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/calendar' }));
-  a.download = `${o.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'club'}${eventId ? '-event' : ''}.ics`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
 /* ── Announcements ─────────────────────────────────────────────── */
@@ -1051,6 +522,7 @@ function ensureOrgChatListener(code) {
 function afterOrgPageRender() {
   const code = state.route === 'orgs' ? state.subRoute : null;
   if (code && typeof centerActiveSgTab === 'function') centerActiveSgTab();
+  if (code && state.orgTab === 'admin' && typeof orgAttEdges === 'function') orgAttEdges();
   // The group page runs it from afterGroupPageRender; everywhere else this
   // one does, which also drops the sticky-row watcher on pages without one.
   if (state.route !== 'studygroups' && typeof afterSpaceRender === 'function') afterSpaceRender();
@@ -1299,49 +771,6 @@ async function confirmJoinOrg(code) {
     toast(e.message?.startsWith('That club') ? e.message : 'Couldn’t join. Check your connection and try again.', 'error', 5000);
   }
 }
-/* ── ?org=CODE invite links ────────────────────────────────────── */
-function captureOrgParam() {
-  const params = new URLSearchParams(location.search);
-  if (!params.has('org')) return;
-  const code = normalizeCode(params.get('org'));
-  // ?org=CODE&tab=admin is the direct link an officer bookmarks or sends a
-  // co-officer (see orgAdminLink); a member who opens it just lands on the
-  // club, since the Admin tab only exists for officers.
-  const tab = params.get('tab') || '';
-  params.delete('org');
-  params.delete('tab');
-  history.replaceState({}, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
-  if (code.length === 6 && !isEmbedded()) try { localStorage.setItem(PENDING_ORG_KEY, JSON.stringify({ code, at: Date.now(), tab })); } catch {}
-}
-function pendingOrgCode() { try { const p = JSON.parse(localStorage.getItem(PENDING_ORG_KEY) || 'null'); return p?.code && Date.now() - p.at < 14 * 86400000 ? p.code : null; } catch { return null; } }
-function pendingOrgTab() { try { const p = JSON.parse(localStorage.getItem(PENDING_ORG_KEY) || 'null'); return p?.tab || ''; } catch { return ''; } }
-function clearPendingOrg() { try { localStorage.removeItem(PENDING_ORG_KEY); } catch {} }
-let _orgInviteShown = false;
-async function handlePendingOrg() {
-  const code = pendingOrgCode();
-  if (!code || !fbConfigured() || isEmbedded()) return;
-  if (!_fbUser) {
-    if (_orgInviteShown) return;
-    _orgInviteShown = true;
-    openModal(`
-      <div class="modal-head"><h3>You’re invited to join a club</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
-      <div class="modal-body"><div class="sg-invite-code small-code">${code.split('').map(ch => `<span>${ch}</span>`).join('')}</div><p class="small muted mt-16">Log in or create your Semester HQ account to join. Its events go straight onto your calendar.</p></div>
-      <div class="modal-foot"><button class="btn" onclick="closeModal()">Look around first</button><a class="btn btn-primary" href="login.html">Log in to join</a></div>
-    `);
-    return;
-  }
-  if (!window._licensed) return;
-  if (orgEntry(code)?.cloud) {
-    const tab = pendingOrgTab();
-    clearPendingOrg();
-    // Already a member: honor the tab the link asked for, when it's one this
-    // person can actually see.
-    openOrg(code, tab && orgTabsFor(findOrg(code) || {}).some(([k]) => k === tab) ? tab : undefined);
-    return;
-  }
-  try { const snap = await _fbDb.collection('orgs').doc(code).get(); if (snap.exists) showOrgPreview(code, snap.data()); else clearPendingOrg(); } catch {}
-}
-
 /* ── Sample clubs for looking around ───────────────────────────── */
 // Four made-up spaces, one for each kind of group that buys a plan. They
 // live only in this tab (local: true, so orgWrite applies every change

@@ -30,12 +30,52 @@ function spaceMixHex(hex, toward, amount) {
 // colors: 0 is the color itself, then lighter each step.
 function spaceTint(hex, i = 0) { return spaceMixHex(hex, '#ffffff', [0, 0.18, 0.34, 0.48][((i % 4) + 4) % 4]); }
 
-// The inline variables for a `.space` root. A hex color gives --space and
-// the ink that reads on it (--space-ink, and --space-ink-lift for the
-// lighter fill dark mode uses). No color falls back to the theme accent.
+// The inline variables for a `.space` root. Contrast is settled here, in
+// JS, so the CSS never has to guess how light or dark a picked color is:
+//   --space           the fill (readablePair: darkened until white or ink
+//                     reads on it at 4.5:1); washes and patterns mix it
+//   --space-ink       the text on that fill
+//   --space-textsafe  the color darkened until it reads at 4.5:1 on white;
+//                     light-mode text mixes, underlines and small marks use it
+//   --space-fill-dark the color lifted toward white until it clears 3:1 on
+//                     the lightest dark-mode --surface of the 17 themes, and
+//                     a text color reads on it at 4.5:1
+//   --space-ink-lift  the text on --space-fill-dark
+//   --pattern-alpha-dark  the dark cover pattern's strength (fainter for bright colors)
+// Dark-mode washes mix --space-textsafe, so a bright pick stays a quiet tint.
+// No color falls back to the theme accent, with a quieter dark pattern.
+const SPACE_DARK_SURFACE = '#161F19';   // Sage Library dark --surface, the lightest of the 17 themes
+const _spaceVarsCache = new Map();
+function spaceContrast(a, b) { const x = colorLum(a), y = colorLum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+function spaceTextSafe(hex) {
+  for (let k = 0; k <= 50; k++) { const c = spaceMixHex(hex, '#000000', k * 0.02); if (spaceContrast(c, '#ffffff') >= 4.5) return c; }
+  return '#000000';
+}
+function spaceDarkPair(hex) {
+  for (let k = 9; k <= 50; k++) {   // from 18% lighter, the lift dark mode always had
+    const c = spaceMixHex(hex, '#ffffff', k * 0.02);
+    if (spaceContrast(c, SPACE_DARK_SURFACE) < 3) continue;
+    if (spaceContrast(c, '#ffffff') >= 4.5) return { fill: c, on: '#fff' };
+    if (spaceContrast(c, INK_ON_COLOR) >= 4.5) return { fill: c, on: INK_ON_COLOR };
+  }
+  return { fill: '#ffffff', on: INK_ON_COLOR };
+}
+// The computed colors for a hex, for tests and anything that needs the numbers.
+function spaceColorSet(hex) {
+  const key = String(hex).toLowerCase();
+  if (_spaceVarsCache.has(key)) return _spaceVarsCache.get(key);
+  const pair = readablePair(key), dark = spaceDarkPair(key);
+  // Dark mode draws the cover pattern in the lifted fill; a bright one gets a
+  // fainter pattern so the band's eyebrow and description stay at 4.5:1.
+  const patternDark = Math.max(0.1, Math.min(0.26, 0.036 / colorLum(dark.fill))).toFixed(2);
+  const set = { fill: pair.fill, ink: pair.on, textsafe: spaceTextSafe(key), fillDark: dark.fill, inkLift: dark.on, patternDark };
+  _spaceVarsCache.set(key, set);
+  return set;
+}
 function spaceVars(hex) {
-  if (!HEX_COLOR.test(hex || '')) return '--space:var(--accent);--space-ink:var(--accent-text);--space-ink-lift:var(--accent-text)';
-  return `--space:${esc(hex)};--space-ink:${inkOnColor(hex)};--space-ink-lift:${inkOnColor(spaceMixHex(hex, '#ffffff', 0.18))}`;
+  if (!HEX_COLOR.test(hex || '')) return '--space:var(--accent);--space-ink:var(--accent-text);--space-ink-lift:var(--accent-text);--pattern-alpha-dark:.12;--space-wash-dark-src:color-mix(in srgb, var(--accent) 55%, #000)';
+  const c = spaceColorSet(hex);
+  return `--space:${c.fill};--space-ink:${c.ink};--space-textsafe:${c.textsafe};--space-fill-dark:${c.fillDark};--space-ink-lift:${c.inkLift};--pattern-alpha-dark:${c.patternDark}`;
 }
 
 // Monogram from a name: "Women in Business" → "WB", "Chess" → "CH".

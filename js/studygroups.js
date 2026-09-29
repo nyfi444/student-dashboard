@@ -120,7 +120,7 @@ function groupsThisWeek(groups) {
       html: `
         <div class="list-row space-week-item space" style="${spaceVars(groupColor(g))}" onclick="showGroupSessionModal('${g.code}','${s.id}')">
           ${spaceCrest(groupCrest(g), 'xs')}
-          <div class="row-title"><div class="sg-strong">${esc(s.title)}${s.seriesId ? ' <span class="sg-series-tag">Weekly</span>' : ''}</div><div class="row-meta">${[s.start ? `${fmtTime(s.start)}${s.end ? ` to ${fmtTime(s.end)}` : ''}` : '', esc(g.name), s.where ? linkifyWhere(s.where) : ''].filter(Boolean).join(' · ')}</div></div>
+          <div class="row-title"><div class="sg-strong">${esc(s.title)}${s.seriesId ? ` ${spaceTag('weekly', 'Weekly')}` : ''}</div><div class="row-meta">${[esc(_evTimeRange(s.start, s.end)), esc(g.name), s.where ? spaceWhereHtml(s.where) : ''].filter(Boolean).join(' · ')}</div></div>
           ${rsvpControl(g, s)}
         </div>`,
     })),
@@ -248,6 +248,9 @@ function pickGroupAgendaDay(code, dateIso) {
   const d = window._groupAgendaDay;
   window._groupAgendaDay = d && d.code === code && d.date === dateIso ? null : { code, date: dateIso };
   renderPreservingInput();
+  // The redraw replaced the strip: give focus back to the day you picked.
+  const i = daysBetween(dateIso);
+  requestAnimationFrame(() => $$('#content .space-weekstrip .space-week-daybtn')[i]?.focus({ preventScroll: true }));
 }
 function groupOverviewTab(g) {
   const u = myUidFor(g);
@@ -265,13 +268,13 @@ function groupOverviewTab(g) {
   const contributors = Object.values(g.avail || {}).filter(availHasAny).length;
   const bestReady = !!best && contributors >= 2;
   return `
-    ${spaceNeedsStrip('group', g, { needs: { ...needs, items: stripItems, count: stripItems.length } })}
+    ${spaceNeedsStrip('group', g, { needs: { ...needs, items: stripItems } })}
     <div class="sg-overview sg-home">
       <div class="sg-col">
         ${next ? nextSessionHero(g, next, { need: needIds.has(next.id) }) : bestReady ? groupBestHero(g, best) : groupHomeEmptyHero(g)}
         ${next && bestReady ? groupHomeBest(g, best) : ''}
-        ${rest.length ? groupHomeComing(g, upcoming, rest, day, needIds) : ''}
-        ${groupHomeTasks(g, u, stripTaskIds, needs.items)}
+        ${rest.length ? groupHomeComing(g, upcoming, rest, day, needIds, u) : ''}
+        ${groupHomeTasks(g, u, stripTaskIds, needs.items, { contrib: !rest.length })}
       </div>
       <div class="sg-col sg-home-rail">
         ${groupHomeExam(g)}
@@ -351,7 +354,9 @@ function groupAgendaRow(g, s, need) {
     label: `${s.title}, ${fmtSessionWhen(s)}`,
   });
 }
-function groupHomeComing(g, upcoming, rest, day, needIds) {
+// The club's order: the week strip, then one card with Coming up as its
+// own header, the rows, and who has finished which tasks as its footer.
+function groupHomeComing(g, upcoming, rest, day, needIds, u) {
   const t = todayIso(), end = addDays(t, 6);
   const counts = {};
   upcoming.forEach(s => { if (s.date <= end) counts[s.date] = (counts[s.date] || 0) + 1; });
@@ -359,33 +364,43 @@ function groupHomeComing(g, upcoming, rest, day, needIds) {
   const list = day ? rest.filter(s => s.date === day) : rest.slice(0, GROUP_HOME_AGENDA_MAX);
   const dayName = day ? fmtDate(day, { weekday: 'long' }) : '';
   const empty = day
-    ? `<p class="sg-home-empty">${upcoming[0]?.date === day ? `Just the next session on ${esc(dayName)}. It’s up top.` : `Nothing on ${esc(dayName)}.`} <button class="sg-link" onclick="pickGroupAgendaDay('${g.code}','${day}')">Show all</button></p>`
+    ? `<p class="sg-home-empty">${upcoming[0]?.date === day ? `Just the next session on ${esc(dayName)}. It’s up top.` : `Nothing on ${esc(dayName)}.`}</p>`
     : '';
   const more = !day && rest.length > GROUP_HOME_AGENDA_MAX ? rest.length - GROUP_HOME_AGENDA_MAX : 0;
+  const link = day
+    ? `<button class="sg-link" onclick="pickGroupAgendaDay('${g.code}','${day}')">Show all ${icon('chevron-right', 12)}</button>`
+    : `<button class="sg-link" onclick="setGroupTab('schedule')">${more ? `All ${upcoming.length} sessions` : 'All sessions'} ${icon('chevron-right', 12)}</button>`;
   return `
     <section class="sg-home-coming" aria-label="Coming up">
-      <div class="sg-home-head"><h3 class="sg-h3">${day ? esc(dayName) : 'Coming up'}</h3><button class="sg-link" onclick="setGroupTab('schedule')">${more ? `All ${upcoming.length} sessions` : 'All sessions'} ${icon('chevron-right', 12)}</button></div>
       ${hasWeek ? spaceWeekStrip({ start: t, selected: day, counts, label: 'Pick a day to see its sessions', onPick: (d) => `pickGroupAgendaDay('${g.code}','${d}')` }) : ''}
-      <div class="card sg-home-agenda">${list.length ? list.map(s => groupAgendaRow(g, s, needIds.has(s.id))).join('') : empty}</div>
+      <div class="card sg-home-agenda">
+        <div class="sg-home-head"><h3 class="sg-h3">${day ? esc(dayName) : 'Coming up'}</h3>${link}</div>
+        <div class="sg-home-agenda-rows">${list.length ? list.map(s => groupAgendaRow(g, s, needIds.has(s.id))).join('') : empty}</div>
+        ${groupHomeContrib(g, u, taskList(g))}
+      </div>
     </section>`;
 }
 // Your open tasks, minus the ones the needs strip already asks about, and
 // who has finished what so far.
-function groupHomeTasks(g, u, stripTaskIds, needItems) {
+// The card only shows when it has something the strip doesn't: when every
+// task of yours (or everything up for grabs) is already up top, it stays
+// out. The done-so-far line sits in the Coming up card when there is one.
+function groupHomeTasks(g, u, stripTaskIds, needItems, { contrib = true } = {}) {
   const all = taskList(g);
   const open = all.filter(t => !t.done);
   const mine = open.filter(t => t.assignee === u);
   const rows = mine.filter(t => !stripTaskIds.has(t.id)).sort(byDueThenCreated).slice(0, 4);
   const upTop = needItems.some(it => it.type === 'task' || it.type === 'claim');
-  const emptyLine = !all.length ? `No tasks yet. <button class="sg-link" onclick="setGroupTab('tasks')">Add one</button>`
-    : mine.length ? 'Your tasks due this week are up top.'
-    : upTop ? 'Nothing assigned to you. Up for grabs is up top.'
-    : 'Nothing assigned to you.';
+  if (!rows.length && all.length && (mine.length || upTop)) {
+    const done = contrib ? groupHomeContrib(g, u, all) : '';
+    return done ? `<div class="card card-pad sg-home-tasks is-contrib-only">${done}</div>` : '';
+  }
+  const emptyLine = !all.length ? `No tasks yet. <button class="sg-link" onclick="setGroupTab('tasks')">Add one</button>` : 'Nothing assigned to you.';
   return `
     <div class="card card-pad sg-home-tasks">
       <div class="sg-home-head"><h3 class="sg-h3">Your tasks</h3><button class="sg-link" onclick="setGroupTab('tasks')">${open.length} open in group ${icon('chevron-right', 12)}</button></div>
       ${rows.length ? rows.map(t => groupTaskRow(g, t, { compact: true })).join('') : `<p class="sg-home-empty">${emptyLine}</p>`}
-      ${groupHomeContrib(g, u, all)}
+      ${contrib ? groupHomeContrib(g, u, all) : ''}
     </div>`;
 }
 function groupHomeContrib(g, u, all) {
@@ -400,12 +415,16 @@ function groupHomeContrib(g, u, all) {
   const people = [...by.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   const shownPeople = people.slice(0, 4);
   const extra = people.length - shownPeople.length;
+  const first = (p) => p.uid === u ? 'You' : String(p.name).split(' ')[0];
+  const label = `${done.length} of ${all.length} tasks done: ${shownPeople.map(p => `${first(p)} ${p.n}`).join(', ')}${extra ? `, ${extra} more` : ''}. Open tasks`;
+  // The whole line is the way into the Tasks tab.
   return `
-    <div class="sg-home-contrib" aria-label="Tasks finished so far">
+    <button type="button" class="sg-home-contrib" onclick="setGroupTab('tasks')" aria-label="${esc(label)}">
       <span class="sg-home-contrib-lead">${done.length} of ${all.length} done</span>
-      ${shownPeople.map(p => `<span class="sg-home-contrib-p">${personAvatar(p.uid, p.name, 18, personColor(g, p.uid))}${esc(p.uid === u ? 'You' : String(p.name).split(' ')[0])} ${p.n}</span>`).join('')}
-      ${extra ? `<span>+${extra} more</span>` : ''}
-    </div>`;
+      ${shownPeople.map(p => `<span class="sg-home-contrib-p" aria-hidden="true">${personAvatar(p.uid, p.name, 18, personColor(g, p.uid))}${esc(first(p))} ${p.n}</span>`).join('')}
+      ${extra ? `<span aria-hidden="true">+${extra} more</span>` : ''}
+      <span class="sg-home-contrib-go" aria-hidden="true">Tasks ${icon('chevron-right', 12)}</span>
+    </button>`;
 }
 // The viewer's own next exam for this group's class, from their planner.
 // Groups have no shared exam date, so it only shows when the class matches.
@@ -429,14 +448,21 @@ function groupHomeExam(g) {
 }
 // Faces, not a list. The legacy note stays: people from before the update
 // only show up once they open the group.
+// Columns for the face grid: one row up to six, then the first of 4, 5, 3
+// that doesn't leave a single face alone on the last row.
+function groupWhoCols(n) {
+  if (n <= 6) return Math.max(n, 4);
+  return [4, 5, 3].find(c => n % c !== 1) || 4;
+}
 function groupHomeWho(g, u) {
-  const people = groupPeople(g);
+  const all = groupPeople(g);
+  const people = [...all.filter(p => p.uid === u), ...all.filter(p => p.uid !== u)];
   const known = new Set(people.map(p => p.name));
   const legacy = (g.members || []).filter(n => n && !known.has(n) && n !== myGroupName());
   return `
     <div class="card card-pad sg-home-who${legacy.length ? ' has-legacy' : ''}">
       <div class="sg-home-head"><h3 class="sg-h3">Who’s in <span class="sg-home-n">${people.length}</span></h3><button class="sg-link" onclick="openInviteModal('${g.code}')">${icon('user-plus', 12)} Invite</button></div>
-      <div class="sg-home-faces" role="list">
+      <div class="sg-home-faces" role="list" style="--who-cols:${groupWhoCols(people.length)}">
         ${people.map(p => {
           const name = p.uid === u && p.name !== 'You' ? `${p.name} (you)` : p.name;
           const label = `${name}${p.role === 'owner' ? ', started the group' : ''}`;
@@ -586,34 +612,46 @@ function groupScheduleTab(g) {
       <div class="small muted">Sessions show up on every member’s Semester HQ calendar.</div>
       <div class="flex-gap wrap">${upcoming.length > 1 ? `<button class="btn btn-sm" onclick="downloadSessionIcs('${g.code}')">${icon('download', 14)} Add all to calendar app</button>` : ''}<button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 14)} Find a time</button><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} New session</button></div>
     </div>
-    ${upcoming.length ? upcoming.map(s => sessionCard(g, s)).join('') : emptyState(icon('calendar', 24), 'No upcoming sessions', `<button class="btn btn-primary btn-sm mt-8" onclick="openSessionModal('${g.code}')">Schedule one</button>`, 'Not sure when? Find a time shows when everyone is free.')}
-    ${past.length ? `<details class="sg-past"><summary class="small muted">Past sessions (${past.length})</summary>${past.slice(0, 30).map(s => sessionCard(g, s, { past: true })).join('')}</details>` : ''}
+    ${upcoming.length ? `<div class="card sg-sessions">${upcoming.map(s => sessionCard(g, s)).join('')}</div>` : emptyState(icon('calendar', 24), 'No upcoming sessions', `<button class="btn btn-primary btn-sm mt-8" onclick="openSessionModal('${g.code}')">Schedule one</button>`, 'Not sure when? Find a time shows when everyone is free.')}
+    ${past.length ? `<details class="sg-past"><summary class="small muted">Past sessions (${past.length})</summary><div class="card sg-sessions">${past.slice(0, 30).map(s => sessionCard(g, s, { past: true })).join('')}</div></details>` : ''}
   `;
 }
+// One session as an agenda row, like the ones on the group home: date
+// tile, title, when and where, the notes as a quote, Weekly and who's
+// going, then the compact RSVP and the calendar-file and edit buttons.
+// The title is the one tab stop that opens the sheet; the rest of the row
+// is a mouse-only click, as in spaceAgendaRow.
+let _sgSessionRowSeq = 0;
 function sessionCard(g, s, { past = false } = {}) {
-  const r = sessionRsvpPeople(g, s);
-  const c = { yes: r.yes.length, maybe: r.maybe.length, no: r.no.length };
-  const who = [...r.yes.map(p => `${p.name} (going)`), ...r.maybe.map(p => `${p.name} (maybe)`), ...r.no.map(p => `${p.name} (can’t)`)].join(', ');
+  const id = `sg-sess-${++_sgSessionRowSeq}`;
+  const open = `showGroupSessionModal('${g.code}','${s.id}')`;
+  const going = sessionRsvpPeople(g, s).yes.length;
+  const meta = [
+    esc(fmtSessionDay(s.date)),
+    esc(_evTimeRange(s.start, s.end) || 'Any time'),
+    s.where ? spaceWhereHtml(s.where) : '',
+    past && going ? `${going} said they’d go` : '',
+  ].filter(Boolean).join(' · ');
+  const tags = [
+    s.seriesId ? spaceTag('weekly', 'Weekly') : '',
+    !past && going ? groupFacePile(g, s, { size: 20 }) : '',
+  ].join('');
+  const describedBy = [`${id}-d`, `${id}-m`, tags ? `${id}-t` : ''].filter(Boolean).join(' ');
   return `
-    <div class="card sg-session ${past ? 'past' : ''}" onclick="showGroupSessionModal('${g.code}','${s.id}')">
-      ${dateTile(s.date)}
-      <div class="sg-session-body">
-        <div class="sg-session-top">
-          <div style="min-width:0">
-            <div class="sg-strong">${esc(s.title)}${s.seriesId ? ' <span class="sg-series-tag">Weekly</span>' : ''}</div>
-            <div class="small muted sg-meta-line"><span>${fmtSessionWhen(s)}</span>${s.where ? `<span>${icon('map-pin', 12)} ${linkifyWhere(s.where)}</span>` : ''}</div>
-          </div>
-          <div class="sg-session-actions">
-            ${!past ? `<button class="btn btn-ghost btn-icon btn-sm" data-tip="Add to your calendar app (.ics)" aria-label="Download ${esc(s.title)} as a calendar file" onclick="event.stopPropagation();downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)}</button>` : ''}
-            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit ${esc(s.title)}" data-tip="Edit" onclick="event.stopPropagation();openSessionModal('${g.code}','${s.id}')">${icon('pencil', 14)}</button>
-          </div>
-        </div>
-        ${s.notes ? `<div class="small sg-notes">${linkifyText(s.notes)}</div>` : ''}
-        <div class="sg-session-foot">
-          ${!past ? rsvpControl(g, s) : ''}
-          ${!past ? joinLinkButton(s.where) : ''}
-          <span class="small muted sg-session-count" title="${esc(who)}">${past ? `${c.yes} said they’d go` : `${c.yes} going${c.maybe ? ` · ${c.maybe} maybe` : ''}${c.no ? ` · ${c.no} can’t` : ''}`}</span>
-        </div>
+    <div class="space-agenda-row sg-session${past ? ' is-past' : ''}" data-row-click tabindex="-1" onclick="${open}">
+      ${spaceDateBlock(s.date, { size: 'tile', id: `${id}-d` })}
+      <div class="space-agenda-main">
+        <button type="button" class="space-agenda-title" onclick="event.stopPropagation();${open}" aria-describedby="${describedBy}">${esc(s.title)}</button>
+        <div class="space-agenda-meta" id="${id}-m">${meta}</div>
+        ${s.notes ? `<div class="sg-session-notes" onclick="if(event.target.closest('a'))event.stopPropagation()">${linkifyText(s.notes)}</div>` : ''}
+        ${tags ? `<div class="space-agenda-tags" id="${id}-t">${tags}</div>` : ''}
+      </div>
+      <div class="space-agenda-end sg-session-end" onclick="event.stopPropagation()">
+        ${past ? '' : rsvpControl(g, s)}
+        <span class="sg-session-tools">
+          ${!past ? `<button class="btn btn-ghost btn-icon btn-sm" data-tip="Add to your calendar app (.ics)" aria-label="Download ${esc(s.title)} as a calendar file" onclick="event.stopPropagation();downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)}</button>` : ''}
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit ${esc(s.title)}" data-tip="Edit" onclick="event.stopPropagation();openSessionModal('${g.code}','${s.id}')">${icon('pencil', 14)}</button>
+        </span>
       </div>
     </div>`;
 }
@@ -1176,27 +1214,28 @@ function dashboardGroupsWidget() {
       </div>`;
   }
   const end = addDays(todayIso(), 7);
-  const sessions = groups.flatMap(g => upcomingSessions(g).filter(s => s.date <= end && s.rsvp?.[myUidFor(g)] !== 'no').map(s => ({ g, s })))
-    .sort((a, b) => (a.s.date + (a.s.start || '')).localeCompare(b.s.date + (b.s.start || ''))).slice(0, 3);
   const tasks = groups.flatMap(g => taskList(g).filter(t => !t.done && t.assignee === myUidFor(g)).map(t => ({ g, t })))
     .sort((a, b) => byDueThenCreated(a.t, b.t)).slice(0, 3);
-  const unread = groups.filter(groupHasUnread);
+  // Your tasks lead, so the widget's fold never hides them; with tasks
+  // showing, two sessions keep it about a screenful.
+  const sessions = groups.flatMap(g => upcomingSessions(g).filter(s => s.date <= end && s.rsvp?.[myUidFor(g)] !== 'no').map(s => ({ g, s })))
+    .sort((a, b) => (a.s.date + (a.s.start || '')).localeCompare(b.s.date + (b.s.start || ''))).slice(0, tasks.length ? 2 : 3);
+  const unread = Object.fromEntries(groups.filter(groupHasUnread).map(g => [g.code, true]));
   return `
     <div class="card card-pad mb-16">
       <div class="flex-between mb-8"><h3 class="sg-h3">Study groups</h3><button class="sg-link" onclick="setState({route:'studygroups',subRoute:null})">All groups ${icon('chevron-right', 12)}</button></div>
-      ${spaceNeedsPills('group', groups)}
-      ${unread.length ? `<div class="sg-dash-unread">${unread.map(g => `<button class="pill sg-unread-pill" onclick="openGroup('${g.code}','chat')"><span class="sg-unread-dot"></span>${esc(g.name)}</button>`).join('')}</div>` : ''}
-      ${sessions.length ? sessions.map(({ g, s }) => `
-        <div class="list-row sg-session-row space" style="--course:${esc(groupColor(g) || '#6b6b6b')};${spaceVars(groupColor(g))}" onclick="showGroupSessionModal('${g.code}','${s.id}')">
-          ${spaceDateBlock(s.date, { size: 'tile' })}
-          <div class="row-title"><div class="sg-strong">${esc(s.title)}</div><div class="row-meta">${esc(g.name)} · ${fmtSessionWhen(s)}</div></div>
-          ${rsvpControl(g, s)}
-        </div>`).join('') : `<p class="small muted">No group sessions in the next 7 days.</p>`}
-      ${tasks.length ? `<div class="divider"></div><div class="small dim mb-8 sg-strong">Assigned to you</div>${tasks.map(({ g, t }) => `
+      ${spaceNeedsPills('group', groups, { unread })}
+      ${tasks.length ? `<div class="small dim mb-8 sg-strong">Assigned to you</div>${tasks.map(({ g, t }) => `
         <div class="list-row sg-task compact" onclick="openGroup('${g.code}','tasks')">
           <button type="button" class="row-check" role="checkbox" aria-checked="false" aria-label="Mark ${esc(t.title)} as done" onclick="event.stopPropagation();toggleGroupTask('${g.code}','${t.id}')"></button>
           <div class="row-title"><div>${esc(t.title)}</div><div class="row-meta">${esc(g.name)}${t.due ? ` · ${t.due < todayIso() ? '<span class="sg-overdue">Overdue</span>' : 'Due ' + fmtSessionDay(t.due)}` : ''}</div></div>
-        </div>`).join('')}` : ''}
+        </div>`).join('')}<div class="divider"></div><div class="small dim mb-8 sg-strong">This week</div>` : ''}
+      ${sessions.length ? sessions.map(({ g, s }) => `
+        <div class="list-row sg-session-row space" style="--course:${esc(groupColor(g) || '#6b6b6b')};${spaceVars(groupColor(g))}" onclick="showGroupSessionModal('${g.code}','${s.id}')">
+          ${spaceDateBlock(s.date, { size: 'tile' })}
+          <div class="row-title"><div class="sg-strong">${esc(s.title)}</div><div class="row-meta">${esc(g.name)} · ${esc(fmtSessionDay(s.date))}${s.start ? ` · ${esc(_evTimeRange(s.start, s.end))}` : ''}</div></div>
+          ${rsvpControl(g, s)}
+        </div>`).join('') : `<p class="small muted">No group sessions in the next 7 days.</p>`}
     </div>`;
 }
 

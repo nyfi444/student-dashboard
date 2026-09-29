@@ -154,7 +154,13 @@ test('every sample club opens, and Previewing as switches officer and member', a
   await admin.click();
   await expect(page.locator('#content #org-attendance tbody tr')).not.toHaveCount(0);
   for (const [chip, name] of [['Sports team', 'Club Volleyball'], ['Honor society', 'Brightfield Honor Society'], ['Club', 'Women in Business']]) {
-    await strip.getByRole('button', { name: chip, exact: true }).click();
+    // A phone keeps the strip to one line: the other samples sit behind a Samples sheet.
+    const direct = strip.getByRole('button', { name: chip, exact: true });
+    if (await direct.isVisible()) await direct.click();
+    else {
+      await strip.getByRole('button', { name: 'Samples' }).click();
+      await page.locator('#modal').getByRole('button', { name: chip, exact: true }).click();
+    }
     await expect(page.locator('#content .space-title')).toHaveText(name);
   }
   expect(await page.evaluate(() => state.orgs.filter(e => e.sample && e.local).length)).toBe(4);
@@ -171,16 +177,16 @@ test('the RSVP control answers, changes, never un-answers, and dues events ask f
   await openSample(page, 'Club', tabs);
   const ctl = page.locator('#content .space-hero .space-rsvp');
   await expect(ctl).toHaveCount(1);
-  const change = ctl.getByRole('button', { name: /^Change your answer/ });
+  const change = ctl.getByRole('button', { name: /Change your answer/ });
   if (await change.isVisible()) await change.click();
   await ctl.getByRole('button', { name: 'Going', exact: true }).click();
   await expect(ctl.locator('.space-rsvp-pill')).toHaveText('You’re going');
-  await ctl.getByRole('button', { name: /^Change your answer/ }).click();
+  await ctl.getByRole('button', { name: /Change your answer/ }).click();
   await ctl.getByRole('button', { name: 'Can’t', exact: true }).click();
   await expect(ctl.locator('.space-rsvp-pill')).toHaveText('Can’t make it');
-  await ctl.getByRole('button', { name: /^Change your answer/ }).click();
+  await ctl.getByRole('button', { name: /Change your answer/ }).click();
   await ctl.getByRole('button', { name: 'Going', exact: true }).click();
-  await ctl.getByRole('button', { name: /^Change your answer/ }).click();
+  await ctl.getByRole('button', { name: /Change your answer/ }).click();
   await ctl.getByRole('button', { name: 'Going', exact: true }).click();
   await expect(ctl.locator('.space-rsvp-pill')).toHaveText('You’re going');
   const dues = await page.evaluate(() => {

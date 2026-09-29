@@ -358,6 +358,20 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
   try { new vm.Script(scripts.map(f => read(f)).join('\n;\n'), { filename: 'index-bundle.js' }); }
   catch (e) { parsed = false; console.error('  index.html scripts do not parse together:', e.message); }
   ok('index.html: every local script, concatenated in order, parses (no name declared twice)', parsed);
+  // A second top-level `function foo` or `var foo` parses fine and silently
+  // replaces the first, and inline onclick strings call these names.
+  {
+    const seen = new Map(), dupes = [];
+    for (const f of scripts) {
+      for (const m of read(f).matchAll(/^(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)|^var\s+([A-Za-z_$][\w$]*)/gm)) {
+        const name = m[1] || m[2];
+        if (seen.has(name) && seen.get(name) !== f) dupes.push(`${name} (${seen.get(name)} and ${f})`);
+        else if (!seen.has(name)) seen.set(name, f);
+      }
+    }
+    if (dupes.length) console.error('  declared at the top of two scripts:', dupes.join(', '));
+    check('index.html: no top-level function or var is declared in two scripts', dupes, []);
+  }
 
   // Anything: every property is another anything, calling or constructing
   // one returns one, and it is never a thenable, so awaits settle.
@@ -495,7 +509,11 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
   check('needs: an overdue task is marked overdue', run(`spaceNeeds('group', __g(false, 2)).items.find(i => i.key === 'task:t3').overdue`), true);
   check('needs: a club lists required events this week (never dues) and an unread pinned announcement', run(`spaceNeeds('club', __o()).items.map(i => i.key)`), ['event:e1', 'pinned:p1']);
   check('needs: reading up to the pinned announcement clears it', run(`(() => { state.settings.orgSeen = { CLB: 100 }; const n = spaceNeeds('club', __o()).count; state.settings.orgSeen = { CLB: 50 }; return n; })()`), 1);
-  check('needs: the strip lists each item with a one-tap action and a labelled title', run(`(() => { const h = spaceNeedsStrip('club', __o()); return [/What needs you · 2/.test(h), (h.match(/class="card card-sm space-need /g) || []).length, /aria-label="Going to Chapter meeting"/.test(h), /Read it/.test(h)]; })()`), [true, 2, true, true]);
+  check('needs: the strip lists each item with a one-tap action and a labelled title', run(`(() => { const h = spaceNeedsStrip('club', __o()); return [/What needs you · 2/.test(h), (h.match(/class="(?:card card-sm )?space-need is-/g) || []).length, /aria-label="Going to Chapter meeting"/.test(h), /Read it/.test(h)]; })()`), [true, 2, true, true]);
+  check('needs: one or two items are rows in one card; three or more are cards', run(`[/space-needs is-rows/.test(spaceNeedsStrip('club', __o())), /space-needs is-rows/.test(spaceNeedsStrip('group', __g(false, 2)))]`), [true, false]);
+  check('needs: the header shows the caller’s total, with the rest said to be below', run(`(() => { const n = spaceNeeds('club', __o()); const h = spaceNeedsStrip('club', __o(), { needs: { ...n, items: n.items.slice(1) } }); return [/What needs you · 2/.test(h), /1 more below/.test(h)]; })()`), [true, true]);
+  check('needs: a strip whose items all sit below renders nothing, not “all caught up”', run(`(() => { const n = spaceNeeds('club', __o()); return spaceNeedsStrip('club', __o(), { needs: { ...n, items: [] } }); })()`), '');
+  check('needs: dashboard pills carry unread on the same chip', run(`(() => { const h = spaceNeedsPills('club', [__o(), { ...__o(), code: 'QUIET', name: 'Quiet club', events: {}, announcements: {} }], { unread: { CLB: 2, QUIET: 3 } }); return [(h.match(/class="space-dash-need /g) || []).length, /2 new/.test(h), /3 new/.test(h)]; })()`), [2, true, true]);
   check('needs: an empty space is all caught up', run(`spaceNeedsStrip('club', { ...__o(), events: {}, announcements: {} }).includes('You’re all caught up in Kestrel House.')`), true);
   run(`allGroups = () => [__g(false, 2)]; allOrgs = () => [__o()]; _groupTaskIdx = null;`);
   check('needs: the calendar shows your open group tasks on their due dates', run(`[groupTasksOnDate(__d(2)).map(x => x.kind + ':' + x.id), groupTasksOnDate(__d(1)).length, groupTasksOnDate(__d(-20)).length]`), [['grouptask:t1'], 0, 1]);
@@ -537,6 +555,29 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
     findOrg = saved;
     return out;
   })()`);
+  /* ── Space colors: contrast settled in spaceVars (js/spaces/tokens.js) ──
+     Every palette a group or club can wear, the sample colors and the
+     pickers' worst cases: light-mode text reads at 4.5:1 on white, the
+     ink reads on the fill at 4.5:1, and dark mode's fill clears 3:1 on
+     the lightest dark surface of the 17 themes. */
+  const spaceColorFails = run(`(() => {
+    const colors = [...new Set([...GROUP_COLORS, ...ORG_COLORS, ...COURSE_PALETTE, '#1F5F6B', '#f5c542', '#ffff00', '#00e5ff', '#ffb3c6', '#7CFC00', '#c0892f', '#8a6bb5', '#4f8a5b', '#ffffff', '#000000'].map(c => c.toLowerCase()))];
+    const lightest = THEMES.map(t => t.dark.surface).sort((a, b) => colorLum(b) - colorLum(a))[0];
+    const out = [];
+    for (const hex of colors) {
+      const c = spaceColorSet(hex);
+      if (spaceContrast(c.textsafe, '#ffffff') < 4.5) out.push(hex + ' textsafe');
+      if (spaceContrast(c.fill, c.ink === '#fff' ? '#ffffff' : c.ink) < 4.5) out.push(hex + ' ink on fill');
+      if (spaceContrast(c.fillDark, lightest) < 3) out.push(hex + ' dark fill');
+      if (spaceContrast(c.fillDark, c.inkLift === '#fff' ? '#ffffff' : c.inkLift) < 4.5) out.push(hex + ' ink on dark fill');
+      if (!new RegExp('--space-textsafe:' + c.textsafe).test(spaceVars(hex))) out.push(hex + ' not emitted');
+    }
+    if (lightest.toLowerCase() !== SPACE_DARK_SURFACE.toLowerCase()) out.push('SPACE_DARK_SURFACE is not the lightest dark surface (' + lightest + ')');
+    return out;
+  })()`);
+  check('space colors: text, ink and dark fill clear contrast for every palette and the picker extremes', spaceColorFails, []);
+  check('space colors: no color falls back to the accent with a quieter dark pattern', run(`spaceVars('')`).includes('--pattern-alpha-dark:.12'), true);
+
   check('club writes: a refused write says why', denied, ['Only the founder can change who’s an officer.', 'Only officers can change that.', 'Fallback', 'You’re no longer in this club.', 'This club was deleted.']);
 }
 

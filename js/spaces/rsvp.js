@@ -27,8 +27,9 @@
    spaceRsvpNextValue(current, val, toggle = true) -> val, or null to clear.
    spaceRsvpMine(kind, code, id) -> '' | 'yes' | 'maybe' | 'no'
    spaceStillComingDue(kind, code, id, ev, mine) -> boolean
-     True on the day of an event you said yes to, until it ends, unless
-     you already answered "Yes" to the prompt on this device today.
+     True on the day of an event you said yes to, until it starts, unless
+     you answered "Yes" to the prompt (or said yes at all) on this device
+     today. A yes given on the day never asks again.
    spaceStillComing(kind, code, id, yes, el)
      yes: keeps your yes (never clears it) and hides the prompt for today.
      no: writes "no". Reopens Heads up when it was answered from there.
@@ -50,10 +51,12 @@ const SPACE_RSVP_ADAPTERS = {
   group: {
     write: (code, id, val, toggle) => setSessionRsvp(code, id, val, toggle),
     mine: (code, id) => { const g = findGroup(code); return (g && g.sessions?.[id]?.rsvp?.[myUidFor(g)]) || ''; },
+    event: (code, id) => findGroup(code)?.sessions?.[id] || null,
   },
   club: {
     write: (code, id, val, toggle) => setOrgRsvp(code, id, val, toggle),
     mine: (code, id) => { const o = findOrg(code); return o ? myOrgRsvp(o, id) : ''; },
+    event: (code, id) => { const o = findOrg(code); return (o && typeof orgEventList === 'function' && orgEventList(o).find(e => e.id === id)) || null; },
   },
 };
 // Short-lived UI state that has to survive a redraw (every Firestore
@@ -92,7 +95,7 @@ function spaceRsvp(o) {
     const burstSince = now - (ui.burst || 0);
     const burst = mine === 'yes' && burstSince < SPACE_RSVP_BURST_MS ? `<span class="space-rsvp-burst" aria-hidden="true" style="--rsvp-t:-${burstSince}ms">${'<i></i>'.repeat(8)}</span>` : '';
     answered = size === 'hero'
-      ? `<div class="space-rsvp-answered"><span class="space-rsvp-pill is-${mine}${fresh}">${icon(ic, 14)}<span>${long}</span>${burst}</span><button type="button" class="sg-link space-rsvp-change" onclick="event.stopPropagation();spaceRsvpChange(this)" aria-label="Change your answer for ${title}">Change</button></div>`
+      ? `<div class="space-rsvp-answered"><span class="space-rsvp-pill is-${mine}${fresh}">${icon(ic, 14)}<span>${long}</span>${burst}</span><button type="button" class="sg-link space-rsvp-change" onclick="event.stopPropagation();spaceRsvpChange(this)" aria-label="${long}. Change your answer for ${title}">Change</button></div>`
       : `<div class="space-rsvp-answered"><button type="button" class="space-rsvp-pill is-${mine}${fresh}" onclick="event.stopPropagation();spaceRsvpChange(this)" aria-label="${long}. Change your answer for ${title}">${icon(ic, 12)}<span>${short}</span>${burst}</button></div>`;
   }
   const clear = o.clearable && mine ? `<button type="button" class="sg-link space-rsvp-clear" onclick="event.stopPropagation();setSpaceRsvp(${args},'${mine}',{toggle:true,from:this})">Clear answer</button>` : '';
@@ -129,7 +132,19 @@ function setSpaceRsvp(kind, code, id, val, { toggle = true, from } = {}) {
     ui.pop = Date.now();
     if (next === 'yes') ui.burst = Date.now();
   }
+  // A yes given on the day already answers "Still coming?", so the prompt
+  // only asks about a yes from before today.
+  if (next === 'yes') {
+    let ev = null;
+    try { ev = adapter.event?.(code, id); } catch { ev = null; }
+    if (ev && eventTimeState(ev).days === 0) {
+      try { localStorage.setItem(_spaceStillKey(kind, code, id), _spaceTodayIso()); } catch { /* private window */ }
+    }
+  }
+  if (next !== current) spaceRsvpAnnounce(next, spaceRsvpTitle(kind, code, id));
   if (from?.closest) {
+    // Only the control used last gets focus back after the redraw.
+    for (const [k, other] of _spaceRsvpUi) if (k !== key) delete other.focus;
     const inModal = !!from.closest('#modal');
     const scope = document.querySelector(inModal ? '#modal' : '#content') || document;
     const ctl = from.closest('.space-rsvp');
@@ -137,6 +152,26 @@ function setSpaceRsvp(kind, code, id, val, { toggle = true, from } = {}) {
     ui.focus = { until: Date.now() + SPACE_RSVP_FOCUS_MS, inModal, idx: Math.max(0, idx) };
   }
   return adapter.write(code, id, val, toggle);
+}
+
+// One polite live region for RSVP answers: focus stays on the control, so the
+// new answer is said here. Created once, inside the toast stack.
+function spaceRsvpTitle(kind, code, id) {
+  try { const ev = SPACE_RSVP_ADAPTERS[kind]?.event?.(code, id); return ev?.title || ''; } catch { return ''; }
+}
+function spaceRsvpAnnounce(val, title) {
+  const stack = document.getElementById('toast-stack');
+  if (!stack) return;
+  let live = document.getElementById('space-rsvp-live');
+  if (!live) {
+    live = document.createElement('div');
+    live.id = 'space-rsvp-live'; live.className = 'sr-only'; live.setAttribute('role', 'status');
+    stack.appendChild(live);
+  }
+  const t = title ? ` ${title}` : '';
+  const msg = val === 'yes' ? `You’re going to${t || ' it'}.` : val === 'maybe' ? `Maybe for${t || ' it'}.` : val === 'no' ? `Can’t make${t || ' it'}.` : `Answer cleared${title ? ` for ${title}` : ''}.`;
+  live.textContent = '';
+  setTimeout(() => { live.textContent = msg; }, 60);
 }
 
 // After a redraw, put focus back on the control you just used (its Change
@@ -162,7 +197,7 @@ function _spaceTodayIso() { const d = new Date(); return `${d.getFullYear()}-${S
 function spaceStillComingDue(kind, code, id, ev, mine) {
   if (mine !== 'yes' || !ev) return false;
   const st = eventTimeState(ev);
-  if (st.days !== 0 || st.phase === 'after' || st.allDay) return false;
+  if (st.days !== 0 || st.phase !== 'before' || st.allDay) return false;
   try { return localStorage.getItem(_spaceStillKey(kind, code, id)) !== _spaceTodayIso(); } catch { return true; }
 }
 async function spaceStillComing(kind, code, id, yes, el) {

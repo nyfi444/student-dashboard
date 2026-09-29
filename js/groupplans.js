@@ -197,36 +197,64 @@ function orgGroupPlan(o) {
 /* The club Admin tab's plan section: what's paid for, how many seats are
    used, the one link members join with, and a way into the plan's own admin
    page. Officers who haven't started a plan get the pitch and the price. */
+// Self-serve plans run 5 to 50 seats (the same limits as group-admin.html).
+const ORG_PLAN_MIN_SEATS = 5;
+const ORG_PLAN_MAX_SEATS = 50;
+function orgPlanSeatCents() { return Math.round(parseFloat(String(GROUP_SEAT_PRICE).replace(/[^0-9.]/g, '')) * 100) || 0; }
+// "11 members · $65.89 a month · one bill", in the officer's own numbers.
+function orgPlanMath(o) {
+  const count = o.memberUids?.length || 0;
+  if (count > ORG_PLAN_MAX_SEATS) return { big: true, line: `Larger than ${ORG_PLAN_MAX_SEATS}? We’ll set it up with you` };
+  const seats = Math.max(ORG_PLAN_MIN_SEATS, count);
+  const total = (seats * orgPlanSeatCents() / 100).toFixed(2);
+  return { big: false, seats, line: `${seats} ${count < ORG_PLAN_MIN_SEATS ? 'seats' : 'members'} · $${total} a month · one bill` };
+}
+// The pitch, for a sample and for any club without a plan. It sits right
+// under the four numbers on Officer home, full width.
+function orgPlanPitch(o, { actionsHtml, note }) {
+  const kindWord = o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club';
+  const m = orgPlanMath(o);
+  const perks = [['calendar', 'Everyone’s calendar in one place'], ['check-square', 'RSVPs you can see'], ['link', 'One link to join']];
+  return `<section class="card card-pad org-plan-pitch" aria-labelledby="org-plan-pitch-h">
+    <div class="org-plan-pitch-main">
+      <h3 class="sg-h3" id="org-plan-pitch-h">${icon('shield', 14, 1.8)} Cover your whole ${esc(kindWord)}</h3>
+      <p class="org-plan-math">${esc(m.line)}</p>
+      <ul class="org-plan-perks">${perks.map(([ic, t]) => `<li>${icon(ic, 14)}<span>${t}</span></li>`).join('')}</ul>
+    </div>
+    <div class="org-plan-pitch-act">
+      <div class="flex-gap wrap">${actionsHtml(m)}</div>
+      <p class="small muted">${note(m)}</p>
+    </div>
+  </section>`;
+}
 function orgPlanAdminCard(o, plan) {
   const kindWord = o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club';
+  const perSeat = `${GROUP_SEAT_PRICE} per member each month`;
   // A sample club is made up, so it only ever explains the plan. It never
   // links to a checkout prefilled with a club that doesn't exist.
   if (o.sample) {
-    return `<div class="card card-pad">
-      <h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} Covering your members</h3>
-      <p class="small muted mb-8">In your own ${esc(kindWord)}, a group plan covers every member's Semester HQ for ${GROUP_SEAT_PRICE} each a month, in one bill you can put through your budget or dues. Members claim their own seat from a single link.</p>
-      <a class="btn btn-primary btn-sm" href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">How group pricing works</a>
-    </div>`;
+    return orgPlanPitch(o, {
+      actionsHtml: () => `<a class="btn btn-primary btn-sm" href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">How group pricing works</a>`,
+      note: (m) => m.big ? `Plans past ${ORG_PLAN_MAX_SEATS} seats are put together with you.` : `In your own ${esc(kindWord)}: ${perSeat}, paid from your budget or dues.`,
+    });
   }
   if (!checkoutEnabled()) return '';
   if (!_fbUser) {
-    return `<div class="card card-pad">
-      <h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} Covering your members</h3>
-      <p class="small muted">A group plan covers every member's Semester HQ for ${GROUP_SEAT_PRICE} each a month, paid from your budget or dues. <a href="login.html">Log in</a> to set one up.</p>
-    </div>`;
+    return orgPlanPitch(o, {
+      actionsHtml: () => `<a class="btn btn-primary btn-sm" href="login.html">Log in to set it up</a>`,
+      note: (m) => m.big ? `Plans past ${ORG_PLAN_MAX_SEATS} seats are put together with you.` : `${perSeat}, paid from your budget or dues.`,
+    });
   }
   if (window._groupMineLoading && !window._groupMine) {
     return `<div class="card card-pad"><h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} Covering your members</h3><p class="small muted">Checking for a group plan…</p></div>`;
   }
   if (!plan) {
-    return `<div class="card card-pad">
-      <h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} Covering your members</h3>
-      <p class="small muted mb-8">Every member needs Semester HQ for your events and files to reach them. A group plan pays for all of them at ${GROUP_SEAT_PRICE} per member each month, in one bill you can put through your budget or dues, and members claim their own seat from a single link.</p>
-      <div class="flex-gap wrap">
-        <a class="btn btn-primary btn-sm" href="${orgGroupPlanUrl(o)}">${icon('shield', 13, 1.8)} Start a plan for ${esc(o.name)}</a>
-        <a class="btn btn-sm" href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">How group pricing works</a>
-      </div>
-    </div>`;
+    return orgPlanPitch(o, {
+      actionsHtml: (m) => m.big
+        ? `<a class="btn btn-primary btn-sm" href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Ask for a quote</a>`
+        : `<a class="btn btn-primary btn-sm" href="${orgGroupPlanUrl(o)}">${icon('shield', 13, 1.8)} Start a plan for ${esc(o.name)}</a><a class="btn btn-sm" href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">How it works</a>`,
+      note: (m) => m.big ? `Tell us your size and we’ll send a rate that fits.` : `${perSeat}, paid from your budget or dues. Members claim their own seat.`,
+    });
   }
   const live = plan.status === 'active' || plan.status === 'past_due';
   const statusLine = plan.status === 'active' ? `${plan.memberCount} of ${plan.seats} seats claimed`

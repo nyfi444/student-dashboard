@@ -18,11 +18,40 @@ function toast(msg, type = 'success', duration = 2600, action = null) {
 let _modalCloseHandler = null;
 let _modalGen = 0;
 let _modalReturnFocus = null;
+// How to find the opener again when a redraw replaced it while the dialog
+// was open (an RSVP answered in the event sheet redraws the page): its id,
+// the RSVP control it sat in, or its onclick plus class.
+let _modalReturnKey = null;
+function modalFocusKey(el) {
+  if (!el || el === document.body || !el.getAttribute) return null;
+  return { id: el.id || '', rsvp: el.closest?.('[data-rsvp-key]')?.getAttribute('data-rsvp-key') || '', onclick: el.getAttribute('onclick') || '', cls: String(el.getAttribute('class') || '') };
+}
+function modalRefindFocus(k) {
+  if (!k) return null;
+  const scope = document.getElementById('content') || document.body;
+  const shown = (x) => x && x.isConnected && x.getClientRects().length && !x.closest('[hidden]');
+  if (k.id) { const x = document.getElementById(k.id); if (shown(x) && !x.closest('#modal')) return x; }
+  if (k.onclick) {
+    const same = [...scope.querySelectorAll('[onclick]')].filter(x => x.getAttribute('onclick') === k.onclick && shown(x));
+    const hit = same.find(x => x.getAttribute('class') === k.cls) || same[0];
+    if (hit) return hit;
+  }
+  if (k.rsvp) {
+    const ctl = [...scope.querySelectorAll('.space-rsvp')].find(x => x.getAttribute('data-rsvp-key') === k.rsvp);
+    const t = ctl && [ctl.querySelector('.space-rsvp-change'), ctl.querySelector('button.space-rsvp-pill'), ctl.querySelector('.space-rsvp-btn[aria-pressed="true"]'), ctl.querySelector('.space-rsvp-btn')].find(shown);
+    if (t) return t;
+  }
+  // The event the sheet was about: its face pile or its row title.
+  const m = /show(?:GroupSession|OrgEvent)Modal\('[^']*','[^']*'\)/.exec(k.onclick || '');
+  if (m) { const x = [...scope.querySelectorAll('[onclick]')].find(el => el.getAttribute('onclick').includes(m[0]) && shown(el)); if (x) return x; }
+  const tab = scope.querySelector('[role="tab"][aria-selected="true"]');
+  return shown(tab) ? tab : null;
+}
 function openModal(html, { wide = false, onClose } = {}) {
   _modalGen++;
   const modal = $('#modal');
   const wasOpen = $('#modal-wrap').classList.contains('show');
-  if (!wasOpen) _modalReturnFocus = document.activeElement;
+  if (!wasOpen) { _modalReturnFocus = document.activeElement; _modalReturnKey = modalFocusKey(document.activeElement); }
   modal.className = 'modal' + (wide ? ' wide' : '');
   modal.innerHTML = html;
   modal.scrollTop = 0; // .is-scrolled is cleared by the className reset above
@@ -46,8 +75,11 @@ function closeModal() {
   const wasOpen = $('#modal-wrap').classList.contains('show');
   $('#overlay').classList.remove('show');
   $('#modal-wrap').classList.remove('show');
-  if (wasOpen && _modalReturnFocus && document.contains(_modalReturnFocus)) { try { _modalReturnFocus.focus({ preventScroll: true }); } catch {} }
-  _modalReturnFocus = null;
+  if (wasOpen) {
+    const back = _modalReturnFocus && document.contains(_modalReturnFocus) && _modalReturnFocus.getClientRects().length ? _modalReturnFocus : modalRefindFocus(_modalReturnKey);
+    if (back) { try { back.focus({ preventScroll: true }); } catch {} }
+  }
+  _modalReturnFocus = null; _modalReturnKey = null;
   if (_modalCloseHandler) { _modalCloseHandler(); _modalCloseHandler = null; }
   // Snapshot the generation so a stale timeout can't wipe out a modal that
   // opened again (e.g. closeModal() immediately followed by openModal())

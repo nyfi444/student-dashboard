@@ -8,7 +8,6 @@
 ──────────────────────────────────────────────────────────────── */
 /* ── Study Groups ──────────────────────────────────────────────── */
 .sg-tag { background: var(--surface-2); color: var(--text-dim); text-transform: none; letter-spacing: 0; font-weight: 600; vertical-align: 1px; }
-.sg-session .sg-date-tile { align-self: flex-start; }
 .sg-going { display: inline-flex; align-items: center; gap: 6px; }
 .sg-ics { margin-left: auto; }
 .sg-best { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--hairline); }
@@ -18,12 +17,6 @@
 .sg-mini-text { color: var(--text-dim); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 1px; }
 .sg-activity { display: flex; gap: 10px; padding: 6px 0; align-items: flex-start; }
 .sg-activity .small { padding-top: 3px; line-height: 1.4; }
-.sg-session { display: flex; gap: 14px; padding: 16px; margin-bottom: 12px; }
-.sg-session.past { box-shadow: none; }
-.sg-session-body { flex: 1; min-width: 0; }
-.sg-session-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.sg-session-actions { display: flex; gap: 2px; flex-shrink: 0; margin: -4px -6px 0 0; }
-.sg-session-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
 /* availability */
 .sg-avail-wrap .flex-between { min-height: 30px; }
 .sg-avail-head { display: flex; justify-content: space-between; align-items: center; gap: 4px 12px; flex-wrap: wrap; min-height: 30px; }
@@ -104,12 +97,8 @@
 /* A group wearing its class's color: the next-session date block and the
    sidebar tint follow --sg, set on the detail wrapper when there is one. */
 .sg-tinted .sg-next:not(.sg-next-empty) .sg-next-date { background: var(--sg-fill, var(--sg)); color: var(--on-sg, var(--accent-text)); }
-.sg-series-tag { display: inline-block; font: 600 var(--fs-sm)/1.3 var(--font); padding: 0 6px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-dim); vertical-align: 1px; margin-left: 2px; }
 .sg-title-btn { background: none; border: none; padding: 0; text-align: left; color: inherit; cursor: pointer; display: block; width: 100%; }
 .sg-title-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
-.sg-session { cursor: pointer; }
-.sg-session .sg-rsvp, .sg-session .sg-session-actions, .sg-session .sg-join-btn, .sg-session a { cursor: default; }
-.sg-session .sg-rsvp button, .sg-session .sg-session-actions button, .sg-session .sg-join-btn { cursor: pointer; }
 .sg-going { color: var(--text-dim); }
 .sg-going .sg-stack { margin-right: 2px; }
 .sg-claim { flex-shrink: 0; white-space: nowrap; }
@@ -149,15 +138,18 @@
 .sg-home-best-when { font-weight: 600; color: var(--text); }
 
 /* Coming up: the week strip and flat session rows */
-.sg-home-coming { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.sg-home-coming > .sg-home-head { margin: 8px 2px 0; }
-.card.sg-home-agenda { padding: 4px 20px; }
-.card.sg-home-agenda:not(:has(> :nth-child(2))) { border-radius: var(--r-mid); }
-.sg-home-agenda > .sg-home-empty { padding: 16px 0; }
+.sg-home-coming { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.card.sg-home-agenda { padding: 16px 20px 4px; }
+.sg-home-agenda > .sg-home-head { margin-bottom: 0; }
+.sg-home-agenda-rows > .sg-home-empty { padding: 12px 0 16px; }
 .sg-home-agenda .space-agenda-tags { align-items: center; }
 
 /* Your tasks: who has finished what */
-.sg-home-contrib { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hairline); font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.sg-home-contrib { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; width: 100%; min-height: 44px; margin: 0; padding: 12px 0; border: 0; border-top: 1px solid var(--hairline); background: none; text-align: left; cursor: pointer; font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.sg-home-contrib:hover .sg-home-contrib-lead { text-decoration: underline; text-underline-offset: 3px; }
+.sg-home-contrib-go { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; font-weight: 500; color: var(--text-dim); }
+.sg-home-tasks .sg-home-contrib { margin-top: 12px; padding-bottom: 0; }
+.sg-home-tasks.is-contrib-only .sg-home-contrib { margin-top: 0; padding-top: 0; border-top: 0; }
 .sg-home-contrib-lead { font-weight: 500; color: var(--text); }
 .sg-home-contrib-p { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 
@@ -171,7 +163,7 @@
 .sg-home-exam-bar i { display: block; height: 100%; border-radius: inherit; background: var(--space-fill); }
 
 /* Who's in: a face grid, names under the faces */
-.sg-home-faces { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 10px 8px; }
+.sg-home-faces { display: grid; grid-template-columns: repeat(var(--who-cols, 4), minmax(0, 1fr)); gap: 10px 8px; }
 .sg-home-face { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .sg-home-face-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 var(--fs-xs)/1.2 var(--font); color: var(--text-dim); }
 
@@ -186,7 +178,7 @@
 @media (max-width: 760px) {
   .sg-besthero { padding: 20px; }
   .sg-besthero-title { font-size: var(--fs-heading); }
-  .card.sg-home-agenda { padding: 4px 16px; }
+  .card.sg-home-agenda { padding: 16px 16px 4px; }
   .sg-home-activity .sg-activity:nth-of-type(n+6) { display: none; }
   .sg-home-reply .input { height: 40px; }
   /* The band's face stack stands in for Who's in on phones (the invite
@@ -195,4 +187,28 @@
   /* Rows stay short: one line of meta, and who's going lives in the sheet. */
   .sg-home-agenda .space-agenda-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sg-home-agenda .space-agenda-tags .space-facepile { display: none; }
+}
+
+/* ── Sessions tab (sessionCard): the home's agenda rows in one flat card,
+   with the notes as a quote and the file and edit buttons at the end. ── */
+.card.sg-sessions { padding: 4px 20px; }
+.sg-past .card.sg-sessions { margin-top: 8px; }
+.space-agenda-row.sg-session { align-items: start; padding: 16px 0; }
+.sg-session .space-agenda-meta a:not(.space-video-chip) { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.sg-session-notes { margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--space-line, var(--border)); font: 400 var(--fs-md)/1.5 var(--font); color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.sg-session-notes a { color: inherit; }
+.sg-session .space-agenda-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; }
+.sg-session .space-agenda-tags:empty { display: none; }
+.space-agenda-row.sg-session .sg-session-end { gap: 8px; }
+.sg-session-tools { display: inline-flex; gap: 2px; }
+.sg-session.is-past .space-agenda-title { color: var(--text-dim); }
+@media (max-width: 760px) {
+  .card.sg-sessions { padding: 4px 16px; }
+}
+@media (max-width: 520px) {
+  .sg-session-end { flex-wrap: wrap; }
+  .sg-session-tools { margin-left: auto; }
+  /* A past session has only its edit button: it stays at the row's end. */
+  .space-agenda-row.sg-session.is-past { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  .space-agenda-row.sg-session.is-past .sg-session-end { grid-column: 3; margin-top: 0; }
 }

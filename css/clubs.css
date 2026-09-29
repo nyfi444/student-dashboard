@@ -38,7 +38,7 @@
 .org-rsvp-help { margin: 0 0 12px; }
 .org-rsvp-mark { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
 .org-rsvp-mark.is-small { width: 8px; height: 8px; }
-.org-rsvp-mark.is-yes { background: var(--space-fill, var(--text)); }
+.org-rsvp-mark.is-yes { background: var(--space-mark, var(--space-fill, var(--text))); }
 .org-rsvp-mark.is-no { box-shadow: inset 0 0 0 1.5px var(--text-dim); }
 .org-rsvp-mark.is-none { width: 8px; height: 2px; border-radius: var(--r-mark); background: var(--text-faint); opacity: .7; }
 .org-rsvp-mark.is-small.is-none { width: 6px; }
@@ -46,14 +46,21 @@
 .org-rsvp-rate { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; font: 500 var(--fs-sm)/1 var(--font); color: var(--text); white-space: nowrap; }
 .org-rsvp-rate.is-new { color: var(--text-faint); font-weight: 400; }
 .org-rsvp-rate-bar { display: block; width: 40px; height: 4px; border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden; }
-.org-rsvp-rate-bar i { display: block; height: 100%; border-radius: inherit; background: var(--space-fill, var(--text)); }
+.org-rsvp-rate-bar i { display: block; height: 100%; border-radius: inherit; background: var(--space-mark, var(--space-fill, var(--text))); }
 .org-rsvp-cards { display: none; }
 .org-rsvp-card { display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 12px; align-items: start; padding: 12px 0; border-top: 1px solid var(--border); }
 .org-rsvp-card:first-child { border-top: 0; padding-top: 4px; }
 .org-rsvp-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: var(--fs-lg); min-width: 0; }
 .org-rsvp-card-top .sg-strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .org-rsvp-card-n { flex-shrink: 0; font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
-.org-rsvp-dots { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; min-height: 8px; }
+.org-rsvp-dots { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin-top: 8px; min-height: 8px; }
+/* Phone dots: one fixed 8px slot per event, so a not-yet-a-member blank
+   keeps its place, with the first and last dates under the row. */
+.org-rsvp-strip { display: inline-flex; flex-direction: column; gap: 4px; min-width: 0; }
+.org-rsvp-slots { display: flex; gap: 6px; }
+.org-rsvp-slot { display: grid; place-items: center; width: 8px; height: 8px; }
+.org-rsvp-slot .org-rsvp-mark.is-na { width: 8px; height: 8px; box-shadow: inset 0 0 0 1px var(--card-edge); }
+.org-rsvp-caps { display: flex; justify-content: space-between; gap: 8px; font: 400 var(--fs-xs)/1.2 var(--font); color: var(--text-faint); white-space: nowrap; }
 .org-rsvp-earlier { font: 400 var(--fs-sm)/1 var(--font); color: var(--text-faint); margin-right: 2px; }
 .org-rsvp-key { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 12px; }
 .org-rsvp-key .org-rsvp-mark { margin-left: 4px; }
@@ -73,7 +80,7 @@
 /* Group plan seats, as a ring. */
 .org-plan-seats { display: flex; align-items: center; gap: 16px; }
 .org-plan-ring { --p: 0; flex-shrink: 0; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%;
-  background: conic-gradient(var(--space-fill, var(--text)) calc(var(--p) * 1%), var(--surface-2) 0); }
+  background: conic-gradient(var(--space-mark, var(--space-fill, var(--text))) calc(var(--p) * 1%), var(--surface-2) 0); }
 .org-plan-ring::before { content: ''; grid-area: 1 / 1; width: 52px; height: 52px; border-radius: 50%; background: var(--surface); }
 .org-plan-ring strong { grid-area: 1 / 1; position: relative; font: 500 var(--fs-fig-s)/1 var(--font); letter-spacing: -.02em; }
 
@@ -93,23 +100,13 @@
 .org-agenda-above { margin: 8px 0 0; }
 .org-agenda .space-agenda-row:last-child { padding-bottom: 0; }
 .org-officer-mini .org-mini-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.org-mini-stat { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.org-mini-stat strong { font: 400 var(--fs-display)/1 var(--font-serif); letter-spacing: -.02em; }
-.org-mini-stat span { font: 400 var(--fs-sm)/1.35 var(--font); color: var(--text-dim); overflow-wrap: anywhere; }
-.org-mini-see { margin-top: 12px; }
+/* The same tiles as Officer home, drawn flat inside this card. */
+.org-officer-mini .space-stat, .org-needs-done .space-stat { margin: 0; padding: 0; border: 0; background: none; box-shadow: none; border-radius: 0; min-width: 0; }
 .org-officer-faces { display: flex; flex-direction: column; }
 .org-officer-face { display: flex; align-items: center; gap: 12px; padding: 8px 0; min-width: 0; }
 .org-officer-face-text { display: flex; flex-direction: column; min-width: 0; }
 .org-officer-face-name { font: 500 var(--fs-lg)/1.3 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .org-officer-face-title { font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
-.org-linkcards { display: flex; flex-direction: column; gap: 8px; }
-.org-linkcard { display: grid; grid-template-columns: 32px minmax(0, 1fr) 14px; align-items: center; column-gap: 12px; min-height: 52px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-mid); color: var(--text); text-decoration: none; transition: border-color var(--dur-1), background var(--dur-1); }
-.org-linkcard:hover { border-color: var(--line-strong); background: var(--fill-hover); }
-.org-linkcard-tile { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-tight); background: var(--space-wash, var(--surface-2)); color: var(--space-text, var(--text-dim)); }
-.org-linkcard-text { display: flex; flex-direction: column; min-width: 0; }
-.org-linkcard-label { font: 600 var(--fs-md)/1.3 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.org-linkcard-host { font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.org-linkcard-go { display: inline-flex; color: var(--text-faint); }
 @media (max-width: 1100px) {
   .org-admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -122,7 +119,7 @@
   .org-needs-request { grid-template-columns: 44px minmax(0, 1fr); }
   .org-needs-request .btn { grid-column: 2; justify-self: start; margin-top: 8px; }
   .org-needs-acts { justify-content: flex-start; }
-  .org-rail-links, .org-rail-files { display: none; }
+  .org-rail-files { display: none; }
   .org-agenda .space-tag.is-cat { display: none; }
 }
 @media (max-width: 640px) {
@@ -145,6 +142,9 @@
 .org-ann.is-pinned { background: color-mix(in srgb, var(--text) 4%, var(--surface)); margin: 0 -12px; padding: 12px; border-radius: var(--r-tight); }
 .org-ann-text { font-size: 14px; line-height: 1.5; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .org-ann-text a { color: var(--text); font-weight: 600; }
+/* The rail preview: two lines, links as their host at normal weight. */
+.org-ann-text.is-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.org-ann-text .org-ann-host { font-weight: 400; color: var(--space-text, var(--text)); text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .org-pin { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim); }
 .org-member .row-title { display: flex; flex-direction: column; }
 .org-counts { white-space: nowrap; }
@@ -185,7 +185,9 @@
 .org-member-search { max-width: 420px; }
 .org-member-head { display: flex; align-items: center; gap: 8px; margin: 16px 0 4px; }
 /* attendance grid: sticky member column, one narrow column per event */
-.org-att { position: relative; overflow-x: auto; margin: 0 -20px; padding: 0 20px; } /* relative: keeps the cells’ .sr-only text inside the scroller, or a phone page scrolls sideways */
+.org-att { position: relative; overflow-x: auto; margin: 0 -20px; padding: 0 20px; }
+/* More columns off to the right: the edge fades until the last one shows. */
+.org-att.is-more { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 88px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 88px), transparent); } /* relative: keeps the cells’ .sr-only text inside the scroller, or a phone page scrolls sideways */
 .org-att table { border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); min-width: 100%; }
 .org-att th, .org-att td { padding: 8px; text-align: center; border-bottom: 1px solid var(--hairline); white-space: nowrap; vertical-align: middle; }
 .org-att thead th { vertical-align: bottom; font-weight: 600; color: var(--text-dim); }
@@ -198,11 +200,43 @@
 .org-att thead .org-att-total { color: var(--text-dim); }
 .org-att-ev { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 64px; max-width: 96px; }
 .org-att-ev:hover .org-att-title { text-decoration: underline; }
-.org-att-date { font: 600 var(--fs-xs)/1.2 var(--font); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); }
+.org-att-date { font: 500 var(--fs-xs)/1.2 var(--font); color: var(--text-dim); }
 .org-att-title { font-size: var(--fs-sm); font-weight: 600; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .org-att-cell.is-upcoming { background: color-mix(in srgb, var(--space, var(--accent)) 5%, transparent); }
 @media (max-width: 760px) {
   .org-link-row { grid-template-columns: 1fr auto; }
   .org-link-row .input[type=url] { grid-column: 1 / -1; }
   .org-att { margin: 0 -14px; padding: 0 14px; }
+}
+
+/* ── Fix round 1 ───────────────────────────────────────────────── */
+/* Band eyebrow: on a narrow phone a long line drops the member count. */
+@media (max-width: 520px) { .org-band-count.is-long { display: none; } }
+/* Calendar tab rows carry the same tags as the Overview. */
+.org-event-row .org-event-tags { margin-top: 6px; }
+/* Officer home, Needs you: a weekly series is one row with a chip per date. */
+.org-needs-rows .space-agenda-row.is-series .space-agenda-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.org-needs-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.org-needs-chip { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text); font: 500 var(--fs-sm)/1 var(--font); white-space: nowrap; }
+.org-needs-cap { font: 400 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); }
+/* Nothing to chase: the end state, with the answer rate beside it. */
+.org-needs-done { display: flex; align-items: center; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap; }
+.org-needs-done-text { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.org-needs-done-title { font: 500 var(--fs-xl)/1.35 var(--font); color: var(--text); }
+.org-needs-done-kpi { min-width: 160px; }
+/* Officer home, no plan yet: the pitch, full width under the numbers. */
+.org-plan-pitch { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px 32px; }
+.org-plan-pitch .sg-h3 { margin: 0; }
+.org-plan-math { margin: 8px 0 0; font: 500 var(--fs-xl)/1.35 var(--font); color: var(--text); }
+.org-plan-perks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 0; padding: 0; list-style: none; font: 400 var(--fs-md)/1.4 var(--font); color: var(--text-dim); }
+.org-plan-perks li { display: inline-flex; align-items: center; gap: 6px; }
+.org-plan-perks .i { color: var(--space-text, var(--text-dim)); }
+.org-plan-pitch-act { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: 320px; }
+.org-plan-pitch-act .small { margin: 0; text-align: right; }
+@media (max-width: 760px) {
+  .org-plan-pitch { grid-template-columns: minmax(0, 1fr); }
+  .org-plan-perks { flex-direction: column; }
+  .org-plan-pitch-act { align-items: flex-start; max-width: none; }
+  .org-plan-pitch-act .small { text-align: left; }
+  .org-needs-done { flex-direction: column; align-items: flex-start; }
 }

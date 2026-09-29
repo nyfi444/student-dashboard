@@ -82,20 +82,48 @@ function spaceExpandDesc(btn) {
   btn.hidden = true;
 }
 
+// A real tablist: one tab in the Tab order (the active one), arrow keys,
+// Home and End move and open (automatic activation), and the tab body is
+// the one tabpanel, labelled by the active tab.
+const SPACE_TABPANEL_ID = 'space-tabpanel';
+function spaceTabId(key) { return `space-tab-${String(key || '').replace(/[^A-Za-z0-9_-]/g, '')}`; }
 function spaceTabs(o) {
-  const tabs = o.tabs.map(t => {
+  const hasActive = o.tabs.some(t => t.key === o.active);
+  const tabs = o.tabs.map((t, i) => {
     const on = t.key === o.active;
     const count = t.count && !on ? `<span class="space-tab-count"><span class="sr-only">, </span>${t.count > 99 ? '99+' : t.count}<span class="sr-only"> new</span></span>` : '';
-    const dot = !count && t.dot && !on ? '<span class="sg-tab-dot space-tab-dot" aria-label="new"></span>' : '';
-    return `<button role="tab" aria-selected="${on}" class="${on ? 'active' : ''}${t.phoneHidden ? ' space-tab-phone-hidden' : ''}" data-tab="${esc(t.key)}" onclick="${o.onTab(t.key)}">${t.iconHtml || ''}${esc(t.label)}${count}${dot}</button>`;
+    const dot = !count && t.dot && !on ? '<span class="sg-tab-dot space-tab-dot" aria-hidden="true"></span><span class="sr-only">, new messages</span>' : '';
+    const stop = on || (!hasActive && i === 0);
+    return `<button type="button" role="tab" id="${spaceTabId(t.key)}" aria-controls="${SPACE_TABPANEL_ID}" aria-selected="${on}" tabindex="${stop ? 0 : -1}" class="${on ? 'active' : ''}${t.phoneHidden ? ' space-tab-phone-hidden' : ''}" data-tab="${esc(t.key)}" onclick="${o.onTab(t.key)}">${t.iconHtml || ''}${esc(t.label)}${count}${dot}</button>`;
   }).join('');
+  const listLabel = o.label || (o.kind === 'club' ? 'Club sections' : 'Group sections');
   return `
     <div class="space-tabs-sentinel" aria-hidden="true"></div>
     <div class="space-tabbar">
       <div class="space-tabbar-id" aria-hidden="true">${spaceCrest(o.crest, 'sm')}<span class="space-tabbar-name">${esc(o.title)}</span></div>
-      <div class="sg-tabs space-tabs" role="tablist">${tabs}</div>
+      <div class="sg-tabs space-tabs" role="tablist" aria-label="${esc(listLabel)}" onkeydown="spaceTabsKey(event)">${tabs}</div>
       ${o.invite ? `<button type="button" class="btn btn-sm ${o.invite.primary === false ? '' : 'btn-primary'} space-tabbar-invite" onclick="${o.invite.onclick}">${icon('user-plus', 14)} Invite</button>` : ''}
     </div>`;
+}
+
+function spaceTabsKey(e) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  const list = e.currentTarget;
+  const tabs = [...list.querySelectorAll('[role="tab"]')].filter(b => b.getClientRects().length);
+  if (!tabs.length) return;
+  e.preventDefault();
+  let i = tabs.indexOf(document.activeElement);
+  if (i < 0) i = Math.max(0, tabs.findIndex(b => b.getAttribute('aria-selected') === 'true'));
+  const j = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+  const key = tabs[j].dataset.tab;
+  tabs[j].click();
+  // The click redraws the page; focus the new active tab in the new row.
+  const refocus = () => {
+    const b = [...document.querySelectorAll('#content .space-tabs [role="tab"]')].find(x => x.dataset.tab === key);
+    if (b && document.activeElement !== b) b.focus({ preventScroll: true });
+  };
+  refocus();
+  requestAnimationFrame(refocus);
 }
 
 function spaceChatFab(o) {
@@ -104,13 +132,24 @@ function spaceChatFab(o) {
   return `<button type="button" class="space-chat-fab" aria-label="${esc(label)}" onclick="${o.onclick}">${icon('message-circle', 22)}${badge}</button>`;
 }
 
+// The other samples, for the phone "Samples" sheet (the strip keeps one line there).
+let _spaceSampleOthers = [];
+function spaceSampleSheet() {
+  const list = _spaceSampleOthers || [];
+  if (!list.length) return;
+  openModal(`
+    <div class="modal-head"><h3>Try another sample</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body"><div class="space-sample-sheet">${list.map(c => `<button type="button" class="btn space-sample-sheet-btn" onclick="closeModal();${c.onclick}">${c.icon ? icon(c.icon, 16) : ''}<span>${esc(c.label)}</span>${icon('chevron-right', 14)}</button>`).join('')}</div></div>`);
+}
 function spaceSampleStrip(s) {
   if (!s) return '';
+  _spaceSampleOthers = s.others || [];
   const opt = (on, label, ic, onclick) => `<button type="button" class="${on ? 'active' : ''}" aria-pressed="${on}" onclick="${onclick}">${icon(ic, 13)}${label}</button>`;
   const view = s.view ? `
     <div class="space-sample-view">
       <span class="space-sample-label" aria-hidden="true">Previewing as</span>
       <div class="segmented" role="group" aria-label="Previewing as">${opt(s.view.officer, 'Officer', 'shield', s.view.onOfficer)}${opt(!s.view.officer, 'Member', 'users', s.view.onMember)}</div>
+      ${(s.others || []).length ? `<button type="button" class="chip space-sample-more" aria-haspopup="dialog" onclick="spaceSampleSheet()">${icon('layers', 13)}Samples</button>` : ''}
     </div>` : '';
   const others = (s.others || []).length ? `
     <div class="space-sample-try">
@@ -130,8 +169,8 @@ function spaceShell(o) {
       ${spaceBand(o.band)}
       ${spaceSampleStrip(o.sample)}
       ${o.notice || ''}
-      ${spaceTabs(o.tabs)}
-      <div class="sg-tab-body">${o.body}</div>
+      ${spaceTabs({ kind: o.kind, ...o.tabs })}
+      <div class="sg-tab-body" role="tabpanel" id="${SPACE_TABPANEL_ID}" aria-labelledby="${spaceTabId(o.tabs.active)}">${o.body}</div>
       ${o.fab ? spaceChatFab(o.fab) : ''}
     </div>`;
 }
@@ -177,21 +216,35 @@ function spaceCountdownChip(date, start, end) {
   return t ? `<span class="space-chip${t === 'Now' ? ' is-now' : ''}">${t === 'Now' ? '<span class="space-now-dot"></span>' : ''}${esc(t)}</span>` : '';
 }
 
+// The card is one button (Enter and Space come from ui.js's keydown for
+// role=button): named by the space's name and described by the next event,
+// the unread line and the need count, never by the avatar letters.
+let _spaceCardSeq = 0;
 function spaceCard(o) {
-  const need = o.needCount ? `<span class="space-need-pill">${o.needCount} need${o.needCount === 1 ? 's' : ''} you</span>` : '';
+  const id = `space-card-${++_spaceCardSeq}`;
+  const need = o.needCount ? `<span class="space-need-pill" id="${id}-need">${o.needCount} need${o.needCount === 1 ? 's' : ''} you</span>` : '';
+  // Unread sits in front of the last-message line; a space with no line
+  // (clubs) says what's new in words.
+  const unreadText = String(o.unreadLabel || 'New messages');
+  const unread = o.unread
+    ? (o.lineHtml
+      ? `<div class="space-card-line" id="${id}-line"><span class="space-card-unread" aria-hidden="true"></span>${o.lineHtml}<span class="sr-only">, new messages</span></div>`
+      : `<div class="space-card-line is-bare" id="${id}-line"><span class="space-card-unread" aria-hidden="true"></span><span class="space-card-unread-text">${esc(unreadText.charAt(0).toUpperCase() + unreadText.slice(1).toLowerCase())}</span></div>`)
+    : (o.lineHtml ? `<div class="space-card-line" id="${id}-line">${o.lineHtml}</div>` : '');
+  const describedBy = [o.nextHtml ? `${id}-next` : '', unread ? `${id}-line` : '', need ? `${id}-need` : ''].filter(Boolean).join(' ');
+  const foot = String(o.footHtml || '').replace('<span class="sg-stack">', '<span class="sg-stack" aria-hidden="true">');
   return `
-    <div class="card sg-card space space-card" style="${spaceVars(o.color)}${o.style ? ';' + o.style : ''}" role="button" tabindex="0" onclick="${o.onclick}" onkeydown="if(event.key==='Enter')${o.onclick}">
+    <div class="card sg-card space space-card" style="${spaceVars(o.color)}${o.style ? ';' + o.style : ''}" role="button" tabindex="0" onclick="${o.onclick}" aria-labelledby="${id}-name"${describedBy ? ` aria-describedby="${describedBy}"` : ''}>
       <div class="space-card-cover space-cover" data-pattern="${spacePattern(o.code)}">
         ${spaceCrest(o.crest, 'md')}
-        ${o.unread ? `<span class="space-card-unread" role="img" aria-label="${esc(o.unreadLabel || 'New messages')}"></span>` : ''}
       </div>
       <div class="space-card-body">
         ${o.eyebrow ? `<div class="eyebrow space-card-eyebrow">${o.eyebrow}</div>` : ''}
-        <div class="sg-card-name">${esc(o.name)}</div>
-        ${o.nextHtml ? `<div class="space-card-next">${o.nextHtml}</div>` : ''}
-        ${o.lineHtml || ''}
+        <div class="sg-card-name" id="${id}-name">${esc(o.name)}</div>
+        ${o.nextHtml ? `<div class="space-card-next" id="${id}-next">${o.nextHtml}</div>` : ''}
+        ${unread}
       </div>
-      <div class="space-card-foot">${o.footHtml || ''}${need}</div>
+      <div class="space-card-foot">${foot}${need}</div>
     </div>`;
 }
 
@@ -216,6 +269,16 @@ function spaceWeekCard(o) {
 }
 
 /* ── After render ────────────────────────────────────────────── */
+// The smallest scroll of the tab row that shows the whole active tab.
+// scrollLeft only: scrollIntoView would move the page too.
+function spaceActiveTabIntoView(tabs) {
+  const a = tabs?.querySelector('button.active');
+  if (!a || tabs.scrollWidth <= tabs.clientWidth) return;
+  const r = a.getBoundingClientRect(), box = tabs.getBoundingClientRect();
+  const pad = 24;
+  if (r.right > box.right - pad) tabs.scrollLeft += r.right - box.right + pad;
+  else if (r.left < box.left) tabs.scrollLeft -= box.left - r.left + 8;
+}
 // Every render replaces the page, so the sticky-row observer is always
 // dropped and re-attached to the new nodes.
 let _spaceStickyObs = null;
@@ -229,16 +292,23 @@ function afterSpaceRender() {
   const stuck = () => sentinel.getBoundingClientRect().top < 0;
   bar.classList.toggle('is-stuck', stuck());
   requestAnimationFrame(() => requestAnimationFrame(() => bar.classList.remove('is-instant')));
-  if ('IntersectionObserver' in window) {
-    _spaceStickyObs = new IntersectionObserver(() => bar.classList.toggle('is-stuck', stuck()), { threshold: [0, 1] });
-    _spaceStickyObs.observe(sentinel);
-  }
   // The tab row fades at the right edge only while more tabs sit off it.
   const tabs = bar.querySelector('.space-tabs');
+  const edge = () => { if (tabs) tabs.classList.toggle('is-clipped', tabs.scrollWidth - tabs.clientWidth - tabs.scrollLeft > 4); };
   if (tabs) {
-    const edge = () => tabs.classList.toggle('is-clipped', tabs.scrollWidth - tabs.clientWidth - tabs.scrollLeft > 4);
     edge();
     tabs.addEventListener('scroll', edge, { passive: true });
+  }
+  // Sticking narrows the row (the crest slides in at the left), so the
+  // active tab is brought back into view once the slide has settled.
+  const settle = () => { spaceActiveTabIntoView(tabs); edge(); };
+  if ('IntersectionObserver' in window) {
+    _spaceStickyObs = new IntersectionObserver(() => {
+      const was = bar.classList.contains('is-stuck'), now = stuck();
+      bar.classList.toggle('is-stuck', now);
+      if (was !== now) { settle(); setTimeout(settle, 380); }
+    }, { threshold: [0, 1] });
+    _spaceStickyObs.observe(sentinel);
   }
   // "More" under a description only when the phone clamp actually cut it.
   const desc = document.querySelector('#content .space-desc');

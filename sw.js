@@ -18,7 +18,7 @@ const APP_SHELL = [
   'js/authemail.js', 'js/checkout.js', 'js/setupcounts.js', 'js/groupplans.js', 'js/group-admin.js', 'js/ui.js', 'js/dashboard.js', 'js/courses.js', 'js/semestersetup.js', 'js/calendar.js', 'js/todos.js',
   'js/assignments.js', 'js/notebook-templates.js', 'js/notebook.js', 'js/timer.js', 'js/exams.js', 'js/projects.js', 'js/studytools.js',
   'js/spaces/core.js', 'js/spaces/tokens.js', 'js/spaces/header.js', 'js/spaces/rsvp.js', 'js/spaces/eventcard.js', 'js/spaces/needs.js', 'js/spaces/chat.js', 'js/spaces/files.js', 'js/spaces/invite.js',
-  'js/groups/sync.js', 'js/groups/availability.js', 'js/groups/resources.js', 'js/studygroups.js', 'js/career.js', 'js/capture.js', 'js/wrapped.js', 'js/classes.js', 'js/quickparse.js', 'js/syllabus.js', 'js/lmsfeed.js', 'js/orgs.js', 'js/orgs/admin.js', 'js/orgs/files.js', 'js/appearance.js', 'js/reminders.js', 'js/settings.js', 'js/palette.js', 'js/install.js', 'js/offline.js', 'js/app.js',
+  'js/groups/sync.js', 'js/groups/availability.js', 'js/groups/resources.js', 'js/studygroups.js', 'js/career.js', 'js/capture.js', 'js/wrapped.js', 'js/classes.js', 'js/quickparse.js', 'js/syllabus.js', 'js/lmsfeed.js', 'js/orgs/sync.js', 'js/orgs/events.js', 'js/orgs.js', 'js/orgs/admin.js', 'js/orgs/files.js', 'js/appearance.js', 'js/reminders.js', 'js/settings.js', 'js/palette.js', 'js/install.js', 'js/offline.js', 'js/app.js',
 ];
 const CDN_HOSTS = ['www.gstatic.com', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'fonts.gstatic.com', 'api.fontshare.com', 'cdn.fontshare.com'];
 

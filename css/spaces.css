@@ -6,26 +6,31 @@
    groups.css and clubs.css.
 ──────────────────────────────────────────────────────────────── */
 
-/* ── Tokens ── */
+/* ── Tokens ──
+   spaceVars (js/spaces/tokens.js) settles contrast in JS: --space is a fill its ink reads on,
+   --space-textsafe reads at 4.5:1 on white, --space-fill-dark clears 3:1 on every dark surface.
+   --space-mark is for small meaningful marks (dots, bars, underlines, today and now outlines). */
 .space {
   --space-wash: color-mix(in srgb, var(--space) 9%, var(--bg));
   --space-wash-strong: color-mix(in srgb, var(--space) 16%, var(--surface));
   --space-line: color-mix(in srgb, var(--space) 34%, var(--border));
-  --space-text: color-mix(in srgb, var(--space) 78%, var(--text));
-  --space-bg-text: color-mix(in srgb, var(--space) 70%, var(--bg-text));
+  --space-text: color-mix(in srgb, var(--space-textsafe, var(--space)) 78%, var(--text));
+  --space-bg-text: color-mix(in srgb, var(--space-textsafe, var(--space)) 70%, var(--bg-text));
   --space-fill: var(--space);
   --space-on: var(--space-ink, var(--accent-text));
+  --space-mark: var(--space-textsafe, var(--space));
   --pattern-alpha: .16;
 }
 html.dark .space {
-  --space-wash: color-mix(in srgb, var(--space) 20%, var(--bg));
-  --space-wash-strong: color-mix(in srgb, var(--space) 28%, var(--surface));
-  --space-line: color-mix(in srgb, var(--space) 50%, var(--border));
-  --space-text: color-mix(in srgb, var(--space) 45%, var(--text));
-  --space-bg-text: color-mix(in srgb, var(--space) 40%, var(--bg-text));
-  --space-fill: color-mix(in srgb, var(--space) 82%, #fff);
+  --space-wash: color-mix(in srgb, var(--space-wash-dark-src, var(--space-textsafe, var(--space))) 20%, var(--bg));
+  --space-wash-strong: color-mix(in srgb, var(--space-wash-dark-src, var(--space-textsafe, var(--space))) 28%, var(--surface));
+  --space-line: color-mix(in srgb, var(--space-textsafe, var(--space)) 50%, var(--border));
+  --space-text: color-mix(in srgb, var(--space-fill-dark, var(--space)) 45%, var(--text));
+  --space-bg-text: color-mix(in srgb, var(--space-fill-dark, var(--space)) 40%, var(--bg-text));
+  --space-fill: var(--space-fill-dark, color-mix(in srgb, var(--space) 82%, #fff));
   --space-on: var(--space-ink-lift, var(--accent-text));
-  --pattern-alpha: .26;
+  --space-mark: var(--space-fill);
+  --pattern-alpha: var(--pattern-alpha-dark, .26);
 }
 
 /* ── Cover patterns: 1px ink tiles, strongest at the top right and faded out toward the lower left so the
@@ -86,7 +91,7 @@ html.dark .space-band { border: 1px solid var(--space-line); }
 .space-actions > .head-menu { display: none !important; }
 .space-actions .sg-stack { margin-right: 4px; }
 .space-actions .sg-stack .sg-avatar { box-shadow: 0 0 0 2px var(--space-wash); }
-.space-more { width: 36px; min-height: 36px; color: var(--bg-text-dim); }
+.space-more { width: 36px; min-height: 36px; color: var(--bg-text); }
 .space-more:hover { color: var(--bg-text); background: color-mix(in srgb, var(--bg-text) 7%, transparent); }
 .space-id {
   grid-area: id; margin-top: 32px; min-width: 0;
@@ -104,7 +109,7 @@ html.dark .space-band { border: 1px solid var(--space-line); }
 .space-desc { margin: 8px 0 0; max-width: 560px; font: 400 var(--fs-lg)/1.5 var(--font); color: var(--bg-text-dim); text-wrap: pretty; }
 .space-menu-check { display: inline-flex; margin-left: auto; padding-left: 12px; }
 .space-desc-more {
-  border: 0; background: none; padding: 0; margin-top: 2px; cursor: pointer;
+  position: relative; min-height: 24px; border: 0; background: none; padding: 4px 0; margin-top: 0; cursor: pointer;
   font: 500 var(--fs-sm)/1.4 var(--font); color: var(--bg-text); text-decoration: underline; text-underline-offset: 3px;
 }
 .space-links { grid-area: links; min-width: 0; }
@@ -122,6 +127,12 @@ html.dark .space-band { border: 1px solid var(--space-line); }
 .space-sample .segmented button:hover { color: var(--bg-text); }
 .space-sample .segmented button[aria-pressed='true'] { color: var(--text); }
 .space-sample-chips { display: flex; gap: 6px; min-width: 0; }
+.space-sample-more { display: none; }
+.space-sample-more .i { width: 13px; height: 13px; }
+/* The phone "Try another sample" sheet. */
+.space-sample-sheet { display: flex; flex-direction: column; gap: 8px; }
+.space-sample-sheet-btn { justify-content: flex-start; gap: 10px; min-height: 48px; width: 100%; font-size: var(--fs-lg); }
+.space-sample-sheet-btn > span { flex: 1; text-align: left; }
 .space-sample-chips .chip .i, .space-sample-pick .chip .i { width: 13px; height: 13px; }
 /* The four samples in the Clubs & teams empty state. */
 .space-sample-pick { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; margin-top: 8px; }
@@ -130,7 +141,9 @@ html.dark .space-band { border: 1px solid var(--space-line); }
 /* Wraps even on a phone, where .chip-row normally scrolls: four chips fit in two rows. */
 .space-sample-pick .chip-row { justify-content: center; max-width: 100%; flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }
 
-/* ── Tab row: sticks to the top of the window once the band is gone ── */
+/* ── Tab row: sticks to the top of the window once the band is gone ──
+   Focus moves and scrollIntoView (the Members tab's RSVPs jump) stop below the stuck row. */
+html:has(.space-tabbar) { scroll-padding-top: calc(60px + env(safe-area-inset-top, 0px)); }
 .space-tabs-sentinel { height: 1px; margin-bottom: -1px; }
 .space-tabbar {
   position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
@@ -164,10 +177,10 @@ html.dark .space-band { border: 1px solid var(--space-line); }
 }
 .space-tabs button .i { width: 14px; height: 14px; }
 .space-tabs button:hover { color: var(--bg-text); }
-.space-tabs button.active { color: var(--bg-text); border-bottom-color: var(--space); }
+.space-tabs button.active { color: var(--bg-text); border-bottom-color: var(--space-mark); }
 html.dark .space-tabs button.active { border-bottom-color: var(--space-text); }
 .space-tabs button:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus-edge); border-radius: var(--r-tight-active); }
-.space-tabs .space-tab-dot { width: 6px; height: 6px; background: var(--space-fill); }
+.space-tabs .space-tab-dot { width: 6px; height: 6px; background: var(--space-mark); }
 .space-tab-count {
   display: inline-block; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill);
   background: var(--space-fill); color: var(--space-on); font: 600 var(--fs-xs)/18px var(--font); text-align: center;
@@ -182,9 +195,22 @@ html.dark .space-tabs button.active { border-bottom-color: var(--space-text); }
 @media (max-width: 1100px) { .space-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .space-card.sg-card { padding: 0; gap: 0; min-height: 0; overflow: hidden; }
 .space-card-cover[data-pattern="3"]::after { left: 10px; }
-.space-card-cover { height: 76px; flex-shrink: 0; background: var(--space-wash); }
+.space-card-cover { height: 76px; flex-shrink: 0; background: var(--space-wash); --pattern-alpha: .22; }
+html.dark .space-card-cover { --pattern-alpha: calc(var(--pattern-alpha-dark, .26) * 1.15); }
+/* The card's pattern fades from the top left, behind the crest, like the band's texture reads from its corner. */
+.space-card-cover::before {
+  -webkit-mask: var(--pattern) repeat, radial-gradient(120% 140% at 0% 0%, #000 0%, rgb(0 0 0 / .6) 45%, transparent 85%);
+  -webkit-mask-composite: source-in;
+  mask: var(--pattern) repeat, radial-gradient(120% 140% at 0% 0%, #000 0%, rgb(0 0 0 / .6) 45%, transparent 85%);
+  mask-composite: intersect;
+}
 .space-card-cover .space-crest { position: absolute; left: 20px; bottom: -20px; box-shadow: 0 0 0 3px var(--surface); }
-.space-card-unread { position: absolute; top: 14px; right: 16px; width: 8px; height: 8px; border-radius: 50%; background: var(--space-fill); box-shadow: 0 0 0 2px var(--space-wash); }
+/* Unread: a dot in front of the last-message line (a dot, never a count). */
+.space-card-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-top: 8px; }
+.space-card-line > .space-card-msg { margin-top: 0; min-width: 0; }
+.space-card-unread { flex-shrink: 0; align-self: flex-start; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--space-mark); }
+.space-card-line.is-bare { align-items: center; font: 400 var(--fs-sm)/1.45 var(--font); color: var(--text); }
+.space-card-line.is-bare .space-card-unread { align-self: center; margin-top: 0; }
 .space-card-body { display: flex; flex-direction: column; min-width: 0; padding: 32px 20px 16px; }
 .space-card-eyebrow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .space-card-body .sg-card-name { margin-top: 6px; overflow-wrap: anywhere; }
@@ -193,11 +219,17 @@ html.dark .space-tabs button.active { border-bottom-color: var(--space-text); }
 .space-card-msg { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 8px; font: 400 var(--fs-sm)/1.45 var(--font); color: var(--text-dim); }
 .space-card-msg.is-unread { color: var(--text); }
 .space-card-foot { display: flex; align-items: center; gap: 8px; min-width: 0; margin: auto 20px 0; padding: 12px 0 16px; border-top: 1px solid var(--hairline); font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
-/* Samples and real clubs can have 3-digit counts and a need pill at once;
-   keep each piece on one line and let the pill drop below when a phone runs out of room. */
-.space-card-foot { flex-wrap: wrap; row-gap: 8px; }
+/* One line at every width but the narrowest: stack | count and role (they ellipsize) | the need pill at the end. */
+.space-card-foot { flex-wrap: nowrap; gap: 6px; }
+.space-card-foot > .space-need-pill { gap: 5px; padding: 2px 7px; }
+.space-card.sg-card { container-type: inline-size; }
+/* A narrow card with a need pill keeps the officer mark as its shield alone. */
+@container (max-width: 340px) { .space-card-foot:has(> .space-need-pill) .space-officer { font-size: 0; gap: 0; } }
 .space-card-foot > span { white-space: nowrap; }
-@media (max-width: 420px) { .space-card-foot { gap: 8px 6px; } }
+.space-card-foot > span:not(.sg-stack):not(.space-need-pill) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.space-card-foot > .sg-stack { flex: none; }
+.space-card-foot > .sg-stack .sg-avatar + .sg-avatar { margin-left: -9px; }
+@media (max-width: 420px) { .space-card-foot { flex-wrap: wrap; gap: 8px 6px; } }
 .space-card-foot .space-officer { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 500; }
 .space-card-foot .space-officer .i { width: 12px; height: 12px; }
 .space-chip {
@@ -207,13 +239,26 @@ html.dark .space-tabs button.active { border-bottom-color: var(--space-text); }
 .space-chip.is-now { background: var(--space-fill); color: var(--space-on); }
 .space-now-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: spaceNowPulse 1.6s var(--ease-out) infinite; }
 @keyframes spaceNowPulse { 0% { transform: scale(1); opacity: 1; } 70% { transform: scale(1.6); opacity: .35; } 100% { transform: scale(1); opacity: 1; } }
-.space-need-pill { margin-left: auto; flex-shrink: 0; padding: 2px 8px; border-radius: var(--r-pill); background: var(--text); color: var(--surface); font: 600 var(--fs-sm)/1.4 var(--font); white-space: nowrap; }
+.space-need-pill {
+  margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: var(--r-pill);
+  background: var(--space-wash-strong, var(--surface-2)); color: var(--space-text, var(--text)); font: 500 var(--fs-sm)/1.4 var(--font); white-space: nowrap;
+}
+.space-need-pill::before { content: ''; flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--space-mark, var(--text)); }
 .space-week-day { margin: 16px 0 6px 2px; }
 .space-week-day:first-of-type { margin-top: 4px; }
 .space-week .is-more { display: none; }
 .space-week.is-open .is-more { display: block; }
 .space-week-item { cursor: pointer; flex-wrap: wrap; }
 .space-week-item .row-title { min-width: 160px; }
+/* Phones: a compact RSVP or pay control sits left-aligned under the title, as in the agenda rows. */
+@media (max-width: 520px) {
+  .space-week-item:has(> .space-rsvp), .space-week-item:has(> .space-dues-btn), .space-week-item:has(> .space-dues-add) {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; column-gap: 12px; row-gap: 8px;
+  }
+  .space-week-item > .row-title { min-width: 0; }
+  .space-week-item > .space-crest { margin-top: 2px; }
+  .list-row.space-week-item > .space-rsvp, .list-row.space-week-item > .space-dues-btn, .list-row.space-week-item > .space-dues-add { grid-column: 2; justify-self: start; margin-left: 0; }
+}
 .space-week-all { margin-top: 8px; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -224,6 +269,13 @@ html.dark .space-tabs button.active { border-bottom-color: var(--space-text); }
 /* ── Phone ── */
 @media (max-width: 760px) {
   .space-cover[data-pattern="3"]::after { left: 8px; }
+  /* The band's texture stays up behind the actions row, clear of the eyebrow and description. */
+  .space-band.space-cover::before {
+    -webkit-mask: var(--pattern) repeat, radial-gradient(90% 60% at 100% 0%, #000 0%, rgb(0 0 0 / .5) 40%, transparent 75%);
+    -webkit-mask-composite: source-in;
+    mask: var(--pattern) repeat, radial-gradient(90% 60% at 100% 0%, #000 0%, rgb(0 0 0 / .5) 40%, transparent 75%);
+    mask-composite: intersect;
+  }
   .space-band {
     grid-template-columns: minmax(0, 1fr); grid-template-areas: "back" "id" "actions";
     min-height: 0; padding: 8px 16px 16px;
@@ -274,12 +326,16 @@ html.dark .space-tabs button.active { border-bottom-color: var(--space-text); }
 
   .space-grid { grid-template-columns: minmax(0, 1fr); }
 
-  /* Sample strip: the band already says "Sample", so a phone keeps the
-     preview switch and one scrolling row of the other samples. */
+  /* Sample strip: the band already says "Sample", so a phone keeps one
+     line: the preview switch and a Samples chip that opens the others in a sheet. */
   .space-sample { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 0 0 12px; }
   .space-sample-note { display: none; }
-  .space-sample-view { justify-content: space-between; }
+  .space-sample-try { display: none !important; }
+  .space-sample-view { gap: 8px; }
+  .space-sample-view > .space-sample-more { display: inline-flex; margin-left: auto; min-height: 36px; flex-shrink: 0; }
   .space-sample .segmented button { min-height: 36px; }
+  .space-sample .segmented button .i { display: none; }
+  .space-sample-view > .space-sample-label { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .space-sample-try { gap: 0; }
   .space-sample-try > .space-sample-label { padding-right: 8px; }
   .space-sample-chips {
@@ -322,6 +378,9 @@ html.dark .space-tabs button.active { border-bottom-color: var(--space-text); }
 .space-rsvp-pill.is-maybe { background: var(--space-wash-strong, var(--surface-2)); color: var(--space-text, var(--text)); border-color: var(--space-line, var(--border)); }
 .space-rsvp-pill.is-no { background: var(--surface-2); color: var(--text-dim); }
 .space-rsvp.is-row .space-rsvp-pill { min-height: 28px; padding: 0 10px 0 8px; gap: 4px; font-size: var(--fs-sm); }
+/* In a row the answer is a quiet wash pill; solid stays for the hero's "You're going". */
+.space-rsvp.is-row .space-rsvp-pill.is-yes { background: var(--space-wash-strong, var(--surface-2)); color: var(--space-text, var(--text)); }
+.space-rsvp.is-row .space-rsvp-pill .i { width: 12px; height: 12px; }
 button.space-rsvp-pill { cursor: pointer; transition: box-shadow var(--dur-1); }
 button.space-rsvp-pill:hover { box-shadow: 0 0 0 2px var(--space-line, var(--line-strong)); }
 .space-rsvp-clear { margin-left: 4px; }
@@ -354,8 +413,9 @@ button.space-rsvp-pill:hover { box-shadow: 0 0 0 2px var(--space-line, var(--lin
 button.space-facepile { cursor: pointer; border-radius: var(--r-tight); }
 button.space-facepile:hover .space-facepile-text { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .space-facepile .sg-stack { flex-shrink: 0; }
-.space-facepile .sg-stack .sg-avatar { box-shadow: 0 0 0 2px var(--surface); }
+.space-facepile .sg-stack .sg-avatar { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--card-edge); }
 .space-facepile .sg-stack .sg-avatar + .sg-avatar { margin-left: -8px; }
+.space-facepile.is-small .sg-stack .sg-avatar + .sg-avatar { margin-left: -6px; }
 .space-facepile-text { min-width: 0; }
 .space-facepile-text.is-zero, .space-facepile-detail { color: var(--text-faint); }
 
@@ -366,7 +426,7 @@ button.space-facepile:hover .space-facepile-text { color: var(--text); text-deco
 }
 .space-date-block .eyebrow { color: inherit; opacity: .8; }
 .space-date-block strong { font: 400 44px/1 var(--font-serif); letter-spacing: -.02em; margin: 4px 0 6px; }
-.sg-date-tile.space-date-tile.is-today { border: 1.5px solid var(--space, var(--text)); padding: 3.5px 0; }
+.sg-date-tile.space-date-tile.is-today { border: 1.5px solid var(--space-mark, var(--text)); padding: 3.5px 0; }
 
 /* ── Tags (spaceTag) ── */
 .space-tag { display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 0 8px; border-radius: var(--r-pill); font: 600 var(--fs-sm)/1.3 var(--font); white-space: nowrap; }
@@ -374,11 +434,12 @@ button.space-facepile:hover .space-facepile-text { color: var(--text); text-deco
 .space-tag.is-required { box-shadow: inset 0 0 0 1px var(--text); color: var(--text); }
 .space-tag.is-weekly { background: var(--surface-2); color: var(--text-dim); }
 .space-tag.is-cat { padding: 0; font-weight: 500; color: var(--text-dim); }
-.space-tag.is-need { background: var(--text); color: var(--surface); }
+.space-tag.is-need { gap: 6px; background: var(--space-wash-strong, var(--surface-2)); color: var(--space-text, var(--text)); font-weight: 500; }
+.space-tag.is-need::before { content: ''; flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--space-mark, var(--text)); }
 
 /* ── Event hero (spaceEventHero) ── */
 .space-hero { position: relative; overflow: hidden; padding: 32px; }
-.space-hero.is-now { border: 1.5px solid var(--space, var(--text)); }
+.space-hero.is-now { border: 1.5px solid var(--space-mark, var(--text)); }
 .space-hero-now {
   display: flex; align-items: center; gap: 8px; height: 32px; margin: -32px -32px 24px; padding: 0 32px;
   background: var(--space-wash-strong, var(--surface-2)); color: var(--space-text, var(--text)); font: 600 var(--fs-sm)/1 var(--font);
@@ -390,6 +451,8 @@ button.space-facepile:hover .space-facepile-text { color: var(--text); text-deco
 .space-hero-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .space-hero-eyebrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-height: 22px; min-width: 0; }
 .space-hero-chip.is-ended { background: var(--surface-2); color: var(--text-dim); }
+.space-hero-eyetags { display: contents; }
+.space-hero-tags { display: none; }
 .space-hero-title {
   display: block; width: 100%; margin: 8px 0; padding: 0; border: 0; background: none; color: var(--text); text-align: left;
   font: 400 30px/1.08 var(--font-serif); letter-spacing: -.015em; text-wrap: balance; overflow-wrap: anywhere;
@@ -410,9 +473,11 @@ button.space-hero-title:hover { text-decoration: underline; text-decoration-thic
 /* ── Agenda row (spaceAgendaRow) ── */
 .space-agenda-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; min-height: 64px; padding: 12px 0; border-top: 1px solid var(--border); }
 .space-agenda-row:first-child { border-top: 0; }
-.space-agenda-row[role="button"] { cursor: pointer; }
-.space-agenda-row[role="button"]:hover .space-agenda-title { text-decoration: underline; text-underline-offset: 3px; }
+.space-agenda-row[data-row-click] { cursor: pointer; }
+.space-agenda-row[data-row-click]:hover .space-agenda-title { text-decoration: underline; text-underline-offset: 3px; }
 .space-agenda-title { font: 500 var(--fs-lg)/1.35 var(--font); letter-spacing: -.005em; overflow-wrap: anywhere; }
+button.space-agenda-title { position: relative; display: block; min-height: 24px; max-width: 100%; padding: 2px 0; margin: -2px 0; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; border-radius: var(--r-tight-active); }
+.space-agenda-row.is-past button.space-agenda-title { color: var(--text-dim); }
 .space-agenda-meta { margin-top: 2px; font: 400 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); }
 .space-agenda-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .space-agenda-row.is-past .space-agenda-title { color: var(--text-dim); }
@@ -424,9 +489,9 @@ button.space-hero-title:hover { text-decoration: underline; text-decoration-thic
 .space-week-daybtn:hover { background: var(--fill-hover); }
 .space-week-daybtn[aria-pressed="true"] { background: var(--fill-selected); box-shadow: inset 0 0 0 1px var(--control-border); }
 .space-week-daybtn strong { font: 500 var(--fs-fig-s)/1 var(--font); letter-spacing: -.02em; }
-.space-week-daybtn.is-today strong { color: var(--space-text, var(--text)); text-decoration: underline 2px var(--space, var(--text)); text-underline-offset: 4px; }
+.space-week-daybtn.is-today strong { color: var(--space-text, var(--text)); text-decoration: underline 2px var(--space-mark, var(--text)); text-underline-offset: 4px; }
 .space-week-dots { display: flex; gap: 3px; height: 5px; }
-.space-week-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--space-fill, var(--text)); }
+.space-week-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--space-mark, var(--text)); }
 
 /* ── Stat tile (spaceStatTile) ── */
 .space-stat { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; }
@@ -434,7 +499,7 @@ button.space-hero-title:hover { text-decoration: underline; text-decoration-thic
 .space-stat-label { font: 600 var(--fs-sm)/1.3 var(--font); color: var(--text); }
 .space-stat-sub { font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
 .space-stat-bar { display: block; height: 4px; margin-top: 6px; border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden; }
-.space-stat-bar i { display: block; height: 100%; border-radius: inherit; background: var(--space-fill, var(--text)); }
+.space-stat-bar i { display: block; height: 100%; border-radius: inherit; background: var(--space-mark, var(--text)); }
 
 /* ── Event sheet (spaceEventSheet) ── */
 .modal:has(> .space-sheet) { width: 560px; }
@@ -459,6 +524,9 @@ button.space-hero-title:hover { text-decoration: underline; text-decoration-thic
 .space-sheet-panel { margin-top: 12px; }
 .space-sheet-empty { padding: 8px 0; }
 
+/* ── Links in group and club home cards: a 24px target, 44px on phones ── */
+.space .sg-link { min-height: 24px; padding: 4px 0; }
+
 /* ── Heads up: "Still coming?" rows (js/reminders.js) ── */
 .headsup-row.headsup-prompt { flex-wrap: wrap; row-gap: 8px; }
 .headsup-row.headsup-prompt:hover { background: none; }
@@ -475,9 +543,17 @@ button.space-hero-title:hover { text-decoration: underline; text-decoration-thic
   .space-rsvp.is-hero .space-rsvp-buttons { display: flex; width: 100%; flex-wrap: nowrap; }
   .space-rsvp.is-hero .space-rsvp-btn { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 8px; }
   .space-rsvp.is-hero .space-rsvp-pill, .space-dues-btn.is-hero { min-height: 44px; }
-  .space-rsvp.is-row .space-rsvp-btn { min-height: 36px; }
-  .space-rsvp.is-row .space-rsvp-pill { min-height: 32px; }
+  .space-rsvp.is-row .space-rsvp-btn, .space-rsvp.is-row .space-rsvp-pill { min-height: 40px; }
+  .space-rsvp.is-row .space-rsvp-btn, .space-rsvp.is-row button.space-rsvp-pill { position: relative; }
+  .space-rsvp.is-row .space-rsvp-btn::after, .space-rsvp.is-row button.space-rsvp-pill::after { content: ''; position: absolute; inset: -2px 0; }
   .space-hero { padding: 20px; }
+  /* Phones: NEXT UP and the countdown on one line, then the title, then Required and the need tag
+     on one line under it (Weekly drops). The chat button never covers the hero's last lines. */
+  .space-hero-top { justify-content: flex-start; align-items: center; gap: 8px; }
+  .space-hero-eyetags { display: none; }
+  .space-hero-tags { display: flex; flex-wrap: nowrap; gap: 6px; min-width: 0; overflow: hidden; margin: -2px 0 10px; }
+  .space-hero-tags .space-tag.is-weekly { display: none; }
+  .space:has(> .space-chat-fab) .space-hero { padding-bottom: 72px; }
   .space-hero-now { margin: -20px -20px 16px; padding: 0 20px; }
   .space-hero-grid { grid-template-columns: 64px minmax(0, 1fr); column-gap: 16px; }
   .space-hero-grid > .space-date-block { grid-row: auto; width: 64px; padding: 8px 0 10px; }
@@ -510,7 +586,19 @@ button.space-hero-title:hover { text-decoration: underline; text-decoration-thic
    Flat cards (card card-sm: 1px --card-edge, --r-mid, no shadow, no colored bar). The space shows up only in
    the small icon tile. Rose (--em-ink) is only the check: the flash when a card clears and "all caught up". */
 .space-needs { margin: 0 0 20px; }
-.space-needs-head { display: flex; align-items: center; min-height: 20px; margin-bottom: 10px; }
+.space-needs-head { display: flex; align-items: baseline; gap: 12px; min-height: 20px; margin-bottom: 10px; }
+.space-needs-below { font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+/* One or two items: full-width compact rows inside one card (icon, eyebrow and title on one line, action at the right). */
+.space-needs.is-rows .space-needs-track { display: block; padding: 0 16px; }
+.space-needs.is-rows .space-need {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "top title acts";
+  align-items: center; column-gap: 12px; padding: 10px 0; border-top: 1px solid var(--hairline);
+}
+.space-needs.is-rows .space-need:first-child { border-top: 0; }
+.space-needs.is-rows .space-need-top { grid-area: top; max-width: 280px; }
+.space-needs.is-rows .space-need-title { grid-area: title; }
+.space-needs.is-rows .space-need-title-text { -webkit-line-clamp: 1; }
+.space-needs.is-rows .space-need-acts { grid-area: acts; flex-wrap: nowrap; margin-top: 0; padding-top: 0; }
 .space-needs-track { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
 .space-need { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 14px 16px;
   transition: opacity 180ms var(--ease-out, ease-out), transform 180ms var(--ease-out, ease-out); }
@@ -522,8 +610,9 @@ button.space-hero-title:hover { text-decoration: underline; text-decoration-thic
 .space-need-ic .i { width: 14px; height: 14px; }
 .space-need-eyebrow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
 .space-need-eyebrow.is-overdue { color: var(--danger-text); }
-.space-need-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; padding: 0; border: 0;
+.space-need-title { position: relative; display: block; width: 100%; min-height: 24px; padding: 2px 0; border: 0;
   background: none; text-align: left; font: 600 var(--fs-lg)/1.35 var(--font); color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
+.space-need-title-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .space-need-title:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .space-need-title:focus-visible { border-radius: var(--r-tight-active); }
 .space-need-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 4px; }
@@ -554,9 +643,13 @@ button.space-hero-title:hover { text-decoration: underline; text-decoration-thic
   border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--surface); color: var(--text); font: 500 var(--fs-md)/1 var(--font); cursor: pointer;
   transition: border-color var(--dur-1, 120ms); }
 .space-dash-need:hover { border-color: var(--line-strong); }
-.space-dash-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--space-fill); }
+.space-dash-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--space-mark); }
 .space-dash-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.space-dash-need .space-need-pill { margin-left: 0; background: var(--space-wash-strong); color: var(--space-text); }
+.space-dash-need .space-need-pill { margin-left: 0; }
+.space-dash-need .space-need-pill::before { display: none; }
+.space-dash-new { display: inline-flex; align-items: center; gap: 6px; padding-right: 8px; font: 500 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); white-space: nowrap; }
+.space-dash-need .space-need-pill + .space-dash-new { margin-left: -2px; }
+.space-dash-newdot { width: 6px; height: 6px; border-radius: 50%; background: var(--space-mark); }
 @media (max-width: 760px) {
   .space-needs { margin-bottom: 16px; }
   /* One row that scrolls sideways and snaps card by card, edge to edge. */
@@ -565,6 +658,13 @@ button.space-hero-title:hover { text-decoration: underline; text-decoration-thic
   .space-needs-track::-webkit-scrollbar { display: none; }
   .space-need, .space-need.is-extra { display: flex; flex: 0 0 min(82vw, 300px); scroll-snap-align: start; }
   .space-need:only-child { flex-basis: 100%; }
+  .space-needs.is-rows .space-needs-track { display: block; margin: 0; padding: 0 16px; overflow: visible; }
+  .space-needs.is-rows .space-need { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "title" "acts"; row-gap: 6px; padding: 14px 0; }
+  .space-needs.is-rows .space-need-top { max-width: none; }
+  .space-needs.is-rows .space-need-title-text { -webkit-line-clamp: 2; }
+  .space-needs.is-rows .space-need-acts { flex-wrap: wrap; }
+  .space-needs.is-rows .space-need.is-gone { flex-basis: auto; margin-right: 0; }
+  .space-desc-more::before, .space-need-title::before, button.space-agenda-title::before { content: ''; position: absolute; inset: -10px 0; }
   .space-needs-more { display: none; }
   .space-need-btn { min-height: 40px; padding: 0 12px; font-size: var(--fs-md); }
   .space-need.is-gone { flex-basis: 0; padding-left: 0; padding-right: 0; border-width: 0; margin-right: -10px;

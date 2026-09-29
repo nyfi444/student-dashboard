@@ -25,8 +25,12 @@
    spaceNeedsStrip(kind, space, { needs }) -> html
      The strip at the top of an Overview. Each card acts in one tap and
      clears in place. Empty: "You're all caught up in <name>."
-   spaceNeedsPills(kind, spaces) -> html   per-space counts for the
-     dashboard widgets; each pill opens that space's Overview.
+   spaceNeedsPills(kind, spaces, { unread }) -> html   per-space counts for
+     the dashboard widgets; each pill opens that space's Overview. unread
+     maps code to true (group chat) or a count (club announcements) and
+     adds "new messages" or "2 new" to that space's pill.
+   The strip header prints needs.count (the caller's total), with
+   "<n> more below" when the hero or agenda carries some of it.
    groupTasksOnDate(dateIso) -> calendar items: your open group tasks due
      that day, in the group's color (kind 'grouptask').
 ──────────────────────────────────────────────────────────────── */
@@ -142,6 +146,14 @@ const _spaceNeedsCleared = new Map();   // `${kind}:${code}:${key}` -> time
 const _spaceNeedsOpen = new Set();      // strips showing every card
 let _spaceNeedsFocus = null;            // { strip, idx, left, until }
 
+// A task you just took with "I'll take it" stays where its card was, as
+// "Yours now", instead of folding away and coming back as "Your task".
+const _spaceNeedsMorph = new Map();     // `${kind}:${code}:task:<id>` -> { idx, at }
+const SPACE_NEEDS_MORPH_MS = 60000;
+function _needsFirstWords(text, n = 8) {
+  const w = String(text || '').split(/\s+/).filter(Boolean);
+  return w.slice(0, n).join(' ') + (w.length > n ? '…' : '');
+}
 function _needsArgs(kind, code, key) { return `'${kind}','${esc(code)}','${esc(key)}'`; }
 function _needsActions(kind, space, it) {
   const code = space.code, a = (act) => `onclick="spaceNeedsAct(this,${_needsArgs(kind, code, it.key)},'${act}')"`;
@@ -153,12 +165,13 @@ function _needsActions(kind, space, it) {
   if (it.type === 'event') return `
     <button class="btn btn-sm space-need-btn" ${a('yes')} aria-label="Going to ${t}">${icon('check', 14)} Going</button>
     <button class="btn btn-sm space-need-btn" ${a('no')} aria-label="Can’t make ${t}">Can’t</button>`;
-  if (it.type === 'task') return `<button class="btn btn-sm space-need-btn" ${a('done')} aria-label="Mark ${t} as done">${icon('check', 14)} Done</button>`;
-  if (it.type === 'claim') return `<button class="btn btn-sm space-need-btn" ${a('claim')} aria-label="Take ${t}">${icon('user-plus', 14)} I’ll take it</button>`;
+  // Every name starts with the words on the button (voice control), then says what it acts on.
+  if (it.type === 'task') return `<button class="btn btn-sm space-need-btn" ${a('done')} aria-label="Done: ${t}">${icon('check', 14)} Done</button>`;
+  if (it.type === 'claim') return `<button class="btn btn-sm space-need-btn" ${a('claim')} aria-label="I’ll take it: ${t}">${icon('user-plus', 14)} I’ll take it</button>`;
   if (it.type === 'avail') return scheduleBusyRanges().length
-    ? `<button class="btn btn-sm space-need-btn" ${a('fill')} aria-label="Fill your availability from your class schedule">${icon('calendar', 14)} Fill from my schedule</button>`
-    : `<button class="btn btn-sm space-need-btn" onclick="setGroupTab('availability')" aria-label="Add your availability in Find a time">${icon('grid', 14)} Add my times</button>`;
-  if (it.type === 'pinned') return `<button class="btn btn-sm space-need-btn" ${a('read')} aria-label="Read the pinned announcement">Read it</button>`;
+    ? `<button class="btn btn-sm space-need-btn" ${a('fill')} aria-label="Fill from my schedule: add your availability">${icon('calendar', 14)} Fill from my schedule</button>`
+    : `<button class="btn btn-sm space-need-btn" onclick="setGroupTab('availability')" aria-label="Add my times: add your availability in Find a time">${icon('grid', 14)} Add my times</button>`;
+  if (it.type === 'pinned') return `<button class="btn btn-sm space-need-btn" ${a('read')} aria-label="Read it: ${esc(_needsFirstWords(it.title))}">Read it</button>`;
   return '';
 }
 // Where tapping the title goes: the sheet or the tab the item lives in.
@@ -177,22 +190,36 @@ function spaceNeedsStrip(kind, space, { needs } = {}) {
   const strip = `${kind}:${space.code}`;
   const now = Date.now();
   for (const [k, at] of _spaceNeedsCleared) if (now - at > 4000) _spaceNeedsCleared.delete(k);
-  const items = n.items.filter(it => !((now - (_spaceNeedsCleared.get(`${strip}:${it.key}`) || 0)) < 1500));
+  for (const [k, m] of _spaceNeedsMorph) if (now - m.at > SPACE_NEEDS_MORPH_MS) _spaceNeedsMorph.delete(k);
+  let items = n.items.filter(it => !((now - (_spaceNeedsCleared.get(`${strip}:${it.key}`) || 0)) < 1500));
+  // A task just taken keeps the claim card's place and says "Yours now".
+  items.filter(it => _spaceNeedsMorph.has(`${strip}:${it.key}`)).forEach(it => {
+    const m = _spaceNeedsMorph.get(`${strip}:${it.key}`);
+    items = items.filter(x => x !== it);
+    items.splice(Math.min(m.idx, items.length), 0, { ...it, eyebrow: it.eyebrow.replace(/^Your task/, 'Yours now'), morphed: true });
+  });
+  // The header shows the caller's total (the hero and the agenda below may
+  // carry some of it), so the index card, dashboard and Heads up agree.
+  const elsewhere = Math.max(0, (Number.isFinite(n.count) ? n.count : n.items.length) - n.items.length);
   if (_spaceNeedsFocus && _spaceNeedsFocus.strip === strip && _spaceNeedsFocus.until > now) requestAnimationFrame(spaceNeedsRestore);
+  if (!items.length && elsewhere) return '';
   if (!items.length) {
     const fresh = [..._spaceNeedsCleared.entries()].some(([k, at]) => k.startsWith(strip + ':') && now - at < 2500);
     return `<div class="space-needs-clear${fresh ? ' is-fresh' : ''}" data-needs="${esc(strip)}" tabindex="-1" role="status"><span class="space-needs-check" aria-hidden="true">${icon('check', 14, 2.4)}</span>You’re all caught up in ${esc(space.name)}.</div>`;
   }
   const open = _spaceNeedsOpen.has(strip);
   const extra = Math.max(0, items.length - SPACE_NEEDS_SHOW);
+  // One or two: full-width rows in one card, so a single to-do doesn't
+  // leave a wide empty track. Three or more: the card grid.
+  const rows = items.length <= 2;
   return `
-    <section class="space-needs${open ? ' is-open' : ''}" data-needs="${esc(strip)}" aria-label="What needs you">
-      <div class="space-needs-head"><span class="eyebrow">What needs you · ${items.length}</span></div>
-      <div class="space-needs-track" role="list">
+    <section class="space-needs${open ? ' is-open' : ''}${rows ? ' is-rows' : ''}" data-needs="${esc(strip)}" aria-label="What needs you">
+      <div class="space-needs-head"><span class="eyebrow">What needs you · ${items.length + elsewhere}</span>${elsewhere ? `<span class="space-needs-below">${elsewhere} more below</span>` : ''}</div>
+      <div class="space-needs-track${rows ? ' card' : ''}" role="list">
         ${items.map((it, i) => `
-          <div class="card card-sm space-need is-${it.type}${i >= SPACE_NEEDS_SHOW ? ' is-extra' : ''}" role="listitem" data-need-key="${esc(it.key)}">
-            <div class="space-need-top"><span class="space-need-ic" aria-hidden="true">${icon(SPACE_NEEDS_ICON[it.type] || 'bell', 14)}</span><span class="space-need-eyebrow${it.overdue ? ' is-overdue' : ''}">${esc(it.eyebrow)}</span></div>
-            <button type="button" class="space-need-title" onclick="${_needsOpenJs(kind, space.code, it)}">${esc(it.title)}</button>
+          <div class="${rows ? '' : 'card card-sm '}space-need is-${it.type}${it.morphed ? ' is-morphed' : ''}${i >= SPACE_NEEDS_SHOW ? ' is-extra' : ''}" role="listitem" data-need-key="${esc(it.key)}">
+            <div class="space-need-top"><span class="space-need-ic" aria-hidden="true">${icon(it.morphed ? 'check' : (SPACE_NEEDS_ICON[it.type] || 'bell'), 14)}</span><span class="space-need-eyebrow${it.overdue ? ' is-overdue' : ''}">${esc(it.eyebrow)}</span></div>
+            <button type="button" class="space-need-title" onclick="${_needsOpenJs(kind, space.code, it)}"><span class="space-need-title-text">${esc(it.title)}</span></button>
             <div class="space-need-acts">${_needsActions(kind, space, it)}</div>
             <span class="space-need-done" aria-hidden="true">${icon('check', 18, 2.4)}</span>
           </div>`).join('')}
@@ -227,6 +254,32 @@ function spaceNeedsAct(btn, kind, code, key, act) {
   if (!card || card.classList.contains('is-clearing')) { if (!card) run(); return; }
   if (act === 'fill') { run(); return; }   // moves to Find a time; nothing to fold
   const cards = stripEl ? [...stripEl.querySelectorAll('.space-need')] : [];
+  const claimId = key.split(':')[1];
+  const claimStays = act === 'claim' && (() => {
+    const x = findGroup(code)?.taskItems?.[claimId], t = todayIso();
+    return !!(x?.due && x.due <= addDays(t, SPACE_NEEDS_DAYS) && x.due >= addDays(t, -SPACE_NEEDS_OVERDUE_DAYS));
+  })();
+  if (claimStays) {
+    // A task due soon doesn't clear: it becomes yours, in place, and the
+    // count holds. One with no near due date leaves the strip, so it folds.
+    const id = claimId;
+    const idx = Math.max(0, cards.indexOf(card));
+    _spaceNeedsMorph.set(`${strip}:task:${id}`, { idx, at: Date.now() });
+    _spaceNeedsFocus = { strip, idx, left: stripEl?.querySelector('.space-needs-track')?.scrollLeft || 0, until: Date.now() + 1500 };
+    const eb = card.querySelector('.space-need-eyebrow');
+    if (eb) eb.textContent = eb.textContent.replace(/^Up for grabs/, 'Yours now');
+    const ic = card.querySelector('.space-need-ic');
+    if (ic) ic.innerHTML = icon('check', 14);
+    card.classList.add('is-morphed');
+    const acts = card.querySelector('.space-need-acts');
+    const t = card.querySelector('.space-need-title')?.textContent || '';
+    if (acts) {
+      acts.innerHTML = `<button class="btn btn-sm space-need-btn" onclick="spaceNeedsAct(this,${_needsArgs(kind, code, `task:${id}`)},'done')" aria-label="Done: ${esc(t)}">${icon('check', 14)} Done</button>`;
+      acts.querySelector('button')?.focus({ preventScroll: true });
+    }
+    run();
+    return;
+  }
   _spaceNeedsCleared.set(`${strip}:${key}`, Date.now());
   _spaceNeedsFocus = { strip, idx: Math.max(0, cards.indexOf(card)), left: stripEl?.querySelector('.space-needs-track')?.scrollLeft || 0, until: Date.now() + 1500 };
   card.querySelectorAll('button').forEach(b => { b.disabled = true; });
@@ -273,12 +326,21 @@ function spaceNeedsReadPinned(code, annId, card) {
 }
 
 /* ── Dashboard: one count per space ───────────────────────────── */
-function spaceNeedsPills(kind, spaces) {
-  const rows = (spaces || []).map(s => ({ s, n: spaceNeeds(kind, s) })).filter(x => x.n.count);
+// unread: { [code]: true } for group chat, or { [code]: n } for a club's new
+// announcements. It rides on that space's pill (a space with unread and no
+// needs gets a pill with just that), so each space shows one chip.
+function spaceNeedsPills(kind, spaces, { unread } = {}) {
+  const u = unread || {};
+  const rows = (spaces || []).map(s => ({ s, n: spaceNeeds(kind, s), un: u[s.code] })).filter(x => x.n.count || x.un);
   if (!rows.length) return '';
   const open = (s) => kind === 'group' ? `openGroup('${esc(s.code)}')` : `openOrg('${esc(s.code)}')`;
-  return `<div class="space-dash-needs">${rows.map(({ s, n }) => `
-    <button type="button" class="space-dash-need space" style="${spaceVars(n.color)}" onclick="${open(s)}" aria-label="${esc(s.name)}: ${n.count} thing${n.count === 1 ? '' : 's'} need${n.count === 1 ? 's' : ''} you">
-      <span class="space-dash-dot" aria-hidden="true"></span><span class="space-dash-name">${esc(s.name)}</span><span class="space-need-pill">${n.count} need${n.count === 1 ? 's' : ''} you</span>
-    </button>`).join('')}</div>`;
+  const newText = (un) => typeof un === 'number' && un > 0 ? `${un} new` : 'new messages';
+  return `<div class="space-dash-needs">${rows.map(({ s, n, un }) => {
+    const need = n.count ? `${n.count} need${n.count === 1 ? 's' : ''} you` : '';
+    const label = [need ? `${n.count} thing${n.count === 1 ? '' : 's'} need${n.count === 1 ? 's' : ''} you` : '', un ? newText(un) : ''].filter(Boolean).join(', ');
+    return `
+    <button type="button" class="space-dash-need space" style="${spaceVars(n.color || (kind === 'club' && typeof orgColor === 'function' ? orgColor(s) : typeof groupColor === 'function' ? groupColor(s) : ''))}" onclick="${open(s)}" aria-label="${esc(s.name)}: ${esc(label)}">
+      <span class="space-dash-dot" aria-hidden="true"></span><span class="space-dash-name">${esc(s.name)}</span>${need ? `<span class="space-need-pill">${need}</span>` : ''}${un ? `<span class="space-dash-new"><span class="space-dash-newdot" aria-hidden="true"></span>${newText(un)}</span>` : ''}
+    </button>`;
+  }).join('')}</div>`;
 }

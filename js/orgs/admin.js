@@ -55,7 +55,16 @@ function orgSetRsvpRange(range) {
   if (!ORG_RSVP_RANGES.some(r => r[0] === range) || range === _orgRsvpRange) return;
   _orgRsvpRange = range;
   render();
+  // The redraw drops focus to <body>; put it back on the range just picked.
+  document.querySelector('#content .org-rsvp-range button[aria-pressed="true"]')?.focus({ preventScroll: true });
 }
+// The grid scrolls sideways when there are more events than fit: a fade on
+// the right edge says so, and goes once the last column is in view.
+function orgAttEdge(el) {
+  if (!el) return;
+  el.classList.toggle('is-more', el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+}
+function orgAttEdges() { document.querySelectorAll('#content .org-att').forEach(orgAttEdge); }
 function orgJoinedBy(p, e) { return !p.joinedAt || iso(new Date(p.joinedAt)) <= e.date; }
 function orgAnswerOf(o, memberUid, e) { const v = o.rsvp?.[memberUid]?.[e.id]; return v === 'yes' || v === 'no' ? v : ''; }
 // Answered (Going or Can't) out of the answers that were asked for.
@@ -99,6 +108,18 @@ function orgHealth(o) {
   const joined = people.filter(p => p.joinedAt && iso(new Date(p.joinedAt)) >= monthStart).length;
   return { people, last, rate, required, every, counted, monthStart, joined };
 }
+// Officer home and the Overview's Officer view show these two tiles, from
+// the same orgHealth numbers, so they always match.
+function orgRateTile(h) {
+  return spaceStatTile(h.rate.rate === null
+    ? { value: '–', label: 'Answer rate', sub: 'No past events yet' }
+    : { value: `${Math.round(h.rate.rate * 100)}%`, label: 'Answer rate', sub: h.last.length < 4 ? `Last ${h.last.length} event${h.last.length === 1 ? '' : 's'} (all there are)` : 'Last 4 events', bar: h.rate.rate });
+}
+function orgEveryRequiredTile(h) {
+  return spaceStatTile(h.counted
+    ? { value: `${h.every} of ${h.counted}`, label: 'Answered every required event', sub: ORG_RSVP_RANGES.find(r => r[0] === _orgRsvpRange)[1], bar: h.every / h.counted }
+    : { value: '–', label: 'Answered every required event', sub: 'No required events yet' });
+}
 function orgRsvpMark(v, { small = false } = {}) {
   const label = { yes: 'Going', no: 'Can’t', none: 'No answer', na: 'Not in the club yet' }[v];
   return `<span class="org-rsvp-mark is-${v}${small ? ' is-small' : ''}" title="${label}"><span class="sr-only">${label}</span></span>`;
@@ -117,8 +138,12 @@ function orgAttendanceHtml_officer(o) {
     ? `<span class="org-rsvp-rate"><span class="org-rsvp-rate-n">${s.answered} of ${s.asked}</span><span class="org-rsvp-rate-bar" aria-hidden="true"><i style="width:${Math.round(s.rate * 100)}%"></i></span></span>`
     : `<span class="org-rsvp-rate is-new">New</span>`;
   const DOTS = 12;
+  // The first and last dates under a member's dots, so a row reads as a
+  // span of time. Two or three dots share one caption.
+  const short = (e) => esc(fmtDate(e.date, { month: 'short', day: 'numeric' }));
+  const dateCaps = (evs) => !evs.length ? '' : `<span class="org-rsvp-caps" aria-hidden="true">${evs.length < 4 ? `<span>${short(evs[0])}${evs.length > 1 ? ` to ${short(evs[evs.length - 1])}` : ''}</span>` : `<span>${short(evs[0])}</span><span>${short(evs[evs.length - 1])}</span>`}</span>`;
   return `
-    <div class="org-att org-rsvp-table"><table>
+    <div class="org-att org-rsvp-table" onscroll="orgAttEdge(this)"><table>
       <thead><tr><th class="org-att-name" scope="col">Member</th><th class="org-att-total" scope="col">Answered</th>${events.map(e => `<th scope="col" class="${orgEventPast(e) ? '' : 'is-upcoming'}" title="${esc(e.title)} · ${esc(fmtDate(e.date))}"><button class="org-att-ev" onclick="showOrgEventModal('${o.code}','${e.id}')" aria-label="${esc(e.title)}, ${esc(fmtDate(e.date, { month: 'short', day: 'numeric' }))}"><span class="org-att-date">${esc(fmtDate(e.date, { month: 'short', day: 'numeric' }))}</span><span class="org-att-title">${esc(e.title)}</span>${e.required ? `<span class="org-att-req">Required</span>` : ''}</button></th>`).join('')}</tr></thead>
       <tbody>${rows.map(p => `<tr><th class="org-att-name" scope="row"><span class="sg-strong">${nameOf(p)}</span>${p.title ? ` <span class="muted">· ${esc(p.title)}</span>` : ''}</th><td class="org-att-total">${rateHtml(stats.get(p.uid))}</td>${events.map(e => `<td class="org-att-cell${orgEventPast(e) ? '' : ' is-upcoming'}">${mark(p, e)}</td>`).join('')}</tr>`).join('')}</tbody>
       <tfoot><tr><th class="org-att-name muted" scope="row">Going</th><td></td>${events.map(e => { const c = orgRsvpCounts(o, e.id); return `<td class="org-att-cell muted" title="${c.yes} going, ${c.no} can’t, ${c.none} no answer">${c.yes}</td>`; }).join('')}</tr></tfoot>
@@ -132,7 +157,7 @@ function orgAttendanceHtml_officer(o) {
         ${personAvatar(p.uid, p.name, 28, faces[p.uid] || orgColor(o))}
         <div class="org-rsvp-card-main">
           <div class="org-rsvp-card-top"><span class="sg-strong">${nameOf(p)}</span><span class="org-rsvp-card-n">${s.asked ? `${s.answered} of ${s.asked} answered` : 'New'}</span></div>
-          <div class="org-rsvp-dots">${earlier ? `<span class="org-rsvp-earlier">+${earlier} earlier</span>` : ''}${shownEvents.map(e => mark(p, e, { small: true })).join('')}</div>
+          <div class="org-rsvp-dots">${earlier ? `<span class="org-rsvp-earlier">+${earlier} earlier</span>` : ''}<span class="org-rsvp-strip"><span class="org-rsvp-slots">${shownEvents.map(e => `<span class="org-rsvp-slot">${mark(p, e, { small: true })}</span>`).join('')}</span>${dateCaps(shownEvents)}</span></div>
         </div>
       </div>`;
     }).join('')}</div>
@@ -156,20 +181,52 @@ function downloadOrgRosterCsv(code) {
    them, the RSVPs grid, then the running-the-club sections in two
    columns. Only ever shown to officers. */
 const ORG_NEEDS_SHOW = 4;
+const ORG_NEEDS_DAYS = 14; // Needs you looks two weeks ahead
+// Required events in the next two weeks that someone hasn't answered. A
+// weekly series is one row, with a chip per date; its See who and Post a
+// nudge act on the nearest date.
+function orgAdminSilent(o) {
+  const end = addDays(todayIso(), ORG_NEEDS_DAYS);
+  const rows = [], bySeries = new Map();
+  upcomingOrgEvents(o).filter(e => e.required && !orgIsDuesEvent(e) && e.date <= end).forEach(e => {
+    const n = orgRsvpPeople(o, e).none.length;
+    if (!n) return;
+    const key = e.seriesId || '';
+    if (key && bySeries.has(key)) { bySeries.get(key).dates.push({ e, n }); return; }
+    const row = { e, n, dates: [{ e, n }] };
+    if (key) bySeries.set(key, row);
+    rows.push(row);
+  });
+  return rows;
+}
 function orgAdminNeedsCard(o) {
   const people = orgPeople(o);
   const requests = isOrgOwner(o) ? people.filter(p => p.title && !p.officer && !p.reviewed) : [];
-  const silent = upcomingOrgEvents(o).filter(e => e.required && !orgIsDuesEvent(e))
-    .map(e => ({ e, n: orgRsvpPeople(o, e).none.length })).filter(x => x.n);
+  const silent = orgAdminSilent(o);
   const count = (requests.length ? 1 : 0) + silent.length;
-  const row = ({ e, n }) => spaceAgendaRow({
-    date: e.date, title: e.title,
-    metaHtml: `${esc(fmtDate(e.date, { weekday: 'short', month: 'short', day: 'numeric' }))}${e.start ? ` · ${esc(fmtTime(e.start))}` : ''} · <span class="em">${n} ${n === 1 ? 'hasn’t' : 'haven’t'} answered</span>`,
-    trailingHtml: `<div class="org-needs-acts"><button class="btn btn-sm" onclick="showOrgEventModal('${o.code}','${e.id}')">See who</button><button class="btn btn-sm" onclick="remindToRsvp('${o.code}','${e.id}')">${icon('megaphone', 14)} Post a nudge</button></div>`,
-    onclick: `showOrgEventModal('${o.code}','${e.id}')`,
-    label: `${e.title}: ${n} haven’t answered`,
-  });
+  const short = (d) => fmtDate(d, { month: 'short', day: 'numeric' });
+  const row = ({ e, n, dates }) => {
+    const series = dates.length > 1;
+    const meta = series
+      ? `<span class="org-needs-chips">${dates.map(d => `<span class="org-needs-chip">${esc(short(d.e.date))} · ${d.n}</span>`).join('')}</span><span class="org-needs-cap">haven’t answered</span>`
+      : `${esc(fmtDate(e.date, { weekday: 'short', month: 'short', day: 'numeric' }))}${e.start ? ` · ${esc(fmtTime(e.start))}` : ''} · <span class="em">${n} ${n === 1 ? 'hasn’t' : 'haven’t'} answered</span>`;
+    return spaceAgendaRow({
+      date: e.date, title: series ? `${e.title} · weekly` : e.title,
+      metaHtml: meta,
+      trailingHtml: `<div class="org-needs-acts"><button class="btn btn-sm" onclick="showOrgEventModal('${o.code}','${e.id}')" aria-label="See who hasn’t answered ${esc(e.title)}, ${esc(short(e.date))}">See who</button><button class="btn btn-sm" onclick="remindToRsvp('${o.code}','${e.id}')" aria-label="Post a nudge for ${esc(e.title)}, ${esc(short(e.date))}">${icon('megaphone', 14)} Post a nudge</button></div>`,
+      onclick: `showOrgEventModal('${o.code}','${e.id}')`,
+      className: series ? 'is-series' : '',
+    });
+  };
   const extra = silent.slice(ORG_NEEDS_SHOW);
+  // Nothing to chase: a calm end state an officer can show their board.
+  const clear = () => {
+    const h = orgHealth(o);
+    return `<div class="org-needs-done" role="status">
+      <div class="org-needs-done-text"><span class="org-needs-check" aria-hidden="true">${icon('check', 14, 2.4)}</span><span class="org-needs-done-title">Everyone’s answered for the next 2 weeks</span></div>
+      <div class="org-needs-done-kpi">${orgRateTile(h)}</div>
+    </div>`;
+  };
   return `
     <div class="card card-pad org-admin-needs">
       <div class="flex-between mb-8"><h3 class="sg-h3">Needs you${count ? ` <span class="org-admin-count">${count}</span>` : ''}</h3></div>
@@ -181,22 +238,17 @@ function orgAdminNeedsCard(o) {
         </div>` : ''}
         ${silent.slice(0, ORG_NEEDS_SHOW).map(row).join('')}
         ${extra.length ? `<details class="org-needs-more"><summary class="sg-link">${icon('chevron-right', 12)} ${extra.length} more required event${extra.length === 1 ? '' : 's'}</summary>${extra.map(row).join('')}</details>` : ''}
-      </div>` : `<p class="org-needs-clear"><span class="org-needs-check" aria-hidden="true">${icon('check', 14, 2.4)}</span>Everyone has answered what’s coming up.</p>`}
+      </div>` : clear()}
     </div>`;
 }
 function orgAdminStats(o) {
   const h = orgHealth(o);
   const plan = typeof orgGroupPlan === 'function' ? orgGroupPlan(o) : null;
-  const pct = (x) => `${Math.round(x * 100)}%`;
   const officers = h.people.filter(p => p.officer).length;
   return `
     <div class="org-admin-stats">
-      ${spaceStatTile(h.rate.rate === null
-        ? { value: '–', label: 'Answer rate', sub: 'No past events yet' }
-        : { value: pct(h.rate.rate), label: 'Answer rate', sub: h.last.length < 4 ? `Last ${h.last.length} event${h.last.length === 1 ? '' : 's'} (all there are)` : 'Last 4 events', bar: h.rate.rate })}
-      ${spaceStatTile(h.counted
-        ? { value: `${h.every} of ${h.counted}`, label: 'Answered every required event', sub: ORG_RSVP_RANGES.find(r => r[0] === _orgRsvpRange)[1], bar: h.every / h.counted }
-        : { value: '–', label: 'Answered every required event', sub: 'No required events yet' })}
+      ${orgRateTile(h)}
+      ${orgEveryRequiredTile(h)}
       ${spaceStatTile({ value: String(h.joined), label: `New member${h.joined === 1 ? '' : 's'} this month`, sub: `Since ${fmtDate(h.monthStart, { month: 'short', day: 'numeric' })}` })}
       ${plan && plan.status === 'active'
         ? spaceStatTile({ value: `${plan.memberCount} of ${plan.seats}`, label: 'Seats claimed', sub: 'Your group plan', bar: plan.seats ? plan.memberCount / plan.seats : 0 })
@@ -221,6 +273,9 @@ function orgAdminTab(o) {
   const officers = people.filter(p => p.officer);
   const noEvents = !upcomingOrgEvents(o).length;
   const plan = typeof orgGroupPlan === 'function' ? orgGroupPlan(o) : null;
+  // No plan yet (or a sample): the pitch goes right under the numbers, in
+  // this club's own seat math. A club with a plan keeps it in the rail.
+  const pitch = typeof orgPlanAdminCard === 'function' && (o.sample || !plan);
   const color = orgDetailsColor(o);
   const faces = orgFaceColors(o);
   return `
@@ -230,6 +285,7 @@ function orgAdminTab(o) {
         <p class="small muted">Only officers see this. Numbers cover current members.</p>
       </div>
       ${orgAdminStats(o)}
+      ${pitch ? orgPlanAdminCard(o, plan) : ''}
       ${orgAdminNeedsCard(o)}
       <div class="org-admin-grid">
         <div class="org-admin-col">
@@ -263,7 +319,7 @@ function orgAdminTab(o) {
         </div>
 
         <div class="org-admin-col">
-          ${orgPlanAdminCard(o, plan)}
+          ${pitch ? '' : orgPlanAdminCard(o, plan)}
 
           <div class="card card-pad">
             <div class="flex-between mb-8"><h3 class="sg-h3">${icon('users', 16)} Who’s who</h3><button class="sg-link" onclick="setState({orgTab:'members'})">All ${people.length} ${icon('chevron-right', 12)}</button></div>

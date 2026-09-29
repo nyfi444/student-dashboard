@@ -4,8 +4,9 @@ const NAV = [
   // Groups sits near the top so the shared spaces are in view without scrolling.
   ['Groups', [['studygroups', 'users', 'Study Groups'], ['orgs', 'shield', 'Clubs & Teams']]],
   ['Coursework', [['courses', 'graduation-cap', 'Courses'], ['assignments', 'clipboard-list', 'Assignments'], ['exams', 'flag', 'Exams'], ['projects', 'folder', 'Projects']]],
-  ['Study', [['notebook', 'book-open', 'Notebook'], ['timer', 'timer', 'Study Timer'], ['studytools', 'layers', 'Flashcards']]],
-  ['Campus', [['career', 'briefcase', 'Applications']]],
+  // Applications closes out Study (it had a heading of its own), so the
+  // desktop sidebar fits a 900px-tall window without scrolling.
+  ['Study', [['notebook', 'book-open', 'Notebook'], ['timer', 'timer', 'Study Timer'], ['studytools', 'layers', 'Flashcards'], ['career', 'briefcase', 'Applications']]],
 ];
 // On a phone the bottom bar holds these four and a More button; More opens
 // everything else (and Settings) in a panel, so nothing hides off the edge.
