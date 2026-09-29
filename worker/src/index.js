@@ -60,6 +60,9 @@
       failure in checkout, licenses, accounts or group plans; once an hour
       at most when app and site error reports spike; and a morning digest
       from the daily cron on days with errors. Capped. See alerts.js.
+  13. Anonymous form answers (/form/answer): the ONLY writer of an answer
+      to an anonymous form. Files it under a random id with no name, and
+      keeps the link to the sender where only they can read it. See forms.js.
 ──────────────────────────────────────────────────────────────── */
 
 /* ── Where each job lives ─────────────────────────────────────────
@@ -82,6 +85,7 @@
      groups.js       job 9   group plans
      feeds.js        job 10  LMS calendar feeds
      account.js      deleting an account, terms acceptance
+     forms.js        job 13  anonymous answers to a club's or study group's form
      authmail.js     job 11  sign-in link and password-reset emails
      alerts.js       job 12  emails Nyla when something breaks
 
@@ -106,6 +110,7 @@ import { sendDailyDigest } from './alerts.js';
 import { featureForPath, handleAdminErrors, handleLogError, logServerIssue, pruneOldIssues } from './diagnostics.js';
 import { buildBusinessEvents, handleAdminBizEvents, handleTrackEvent } from './events.js';
 import { handleCalendarFeed } from './feeds.js';
+import { handleFormAnswer } from './forms.js';
 import { handleGroupRoute } from './groups.js';
 import { checkRateLimit, corsHeaders, isAllowedOrigin, jsonError } from './http.js';
 import { handleAdminLedger, writeDailyLedger } from './ledger.js';
@@ -220,6 +225,11 @@ async function routeRequest(request, env, ctx) {
   if (url.pathname.startsWith('/group/')) {
     if (!(await checkRateLimit(env, ip, 'group', 40))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
     return handleGroupRoute(url.pathname.slice('/group/'.length), request, env, origin);
+  }
+  if (url.pathname === '/form/answer') {
+    // Looser than most: a whole club can answer a vote from one campus network.
+    if (!(await checkRateLimit(env, ip, 'form-answer', 60))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleFormAnswer(request, env, origin);
   }
   if (url.pathname === '/calendar-feed') {
     if (!(await checkRateLimit(env, ip, 'feed', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);

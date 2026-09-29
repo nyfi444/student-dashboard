@@ -12,11 +12,18 @@
      only decide which buttons to draw.
    A form set to "anyone with the link" can also be answered by someone
    who isn't in the space, on form.html, with a free account.
+   A form that sorts its answers (an application) lets whoever runs it
+   mark each one accepted, waitlisted or declined. The marks live where
+   the person they are about cannot read them, and nothing is sent.
+   An anonymous form's answers carry no name: they are sent through the
+   Worker (js/spaces/formsend.js), and listed here as Answer 1, 2, 3 in an
+   order that has nothing to do with when they arrived.
 
    Data: a cloud space keeps forms in its forms subcollection, listened
    to only while that space's page is open (formsAfterRender). A local or
-   sample space keeps them on its planner entry: entry.forms[id] and
-   entry.formResponses[formId][uid].
+   sample space keeps them on its planner entry: entry.forms[id],
+   entry.formResponses[formId][uid], entry.formMarks[formId][uid], and
+   entry.formAnon[formId] (my own anonymous answer's id).
 
    FORM_ADAPTERS[kind]  kind is 'club' or 'group': the space, who I am in
      it, whether I may make a form, whether I run a given one.
@@ -59,8 +66,9 @@ const _formStore = {};                  // space key -> { forms: [raw], loaded, 
 let _formSub = { key: '', unsub: null };
 let _formMine = { uid: '', map: {}, unsub: null };   // my own record of what I answered
 let _formResp = { key: '', list: null, failed: false, unsub: null };   // answers to the form on screen
+let _formMarks = { key: '', map: {}, unsub: null };                    // accepted / waitlisted / declined, same form
 const _formCounts = {};                 // `${space key}:${id}` -> number of answers
-const _formView = {};                   // space key -> { id, pane: 'summary' | 'people', person }
+const _formView = {};                   // space key -> { id, pane: 'summary' | 'people', person, filter }
 
 function formRef(kind, code, id) {
   const forms = _fbDb.collection(formCollection(kind)).doc(code).collection('forms');
@@ -83,9 +91,21 @@ function formsLoading(kind, sp) { const s = _formStore[formKey(kind, sp.code)]; 
 // My own answer to a form: { at } when I have one. The full answer is read
 // when the sheet opens (formMyAnswer).
 function formAnswered(kind, sp, id) {
-  if (sp.local) { const r = FORM_ADAPTERS[kind].entry(sp.code)?.formResponses?.[id]?.[LOCAL_UID]; return r ? { at: r.updatedAt || r.at || 0 } : null; }
+  if (sp.local) {
+    const entry = FORM_ADAPTERS[kind].entry(sp.code);
+    const r = entry?.formResponses?.[id]?.[LOCAL_UID] || entry?.formAnon?.[id];
+    return r ? { at: r.updatedAt || r.at || 0 } : null;
+  }
   const rec = _formMine.map[formAnswerKey(kind, sp.code, id)];
   return rec ? { at: Number(rec.at) || 0 } : null;
+}
+// What the sending code needs to know about me and this space.
+function formCtx(kind, sp) {
+  return { db: _fbDb, storage: fbStorage, user: _fbUser, kind, code: sp.code, name: myGroupName(), member: true };
+}
+function formMarks(kind, sp, form) {
+  if (sp.local) return FORM_ADAPTERS[kind].entry(sp.code)?.formMarks?.[form.id] || {};
+  return _formMarks.key === `${formKey(kind, sp.code)}:${form.id}` ? _formMarks.map : {};
 }
 // Forms I run myself don't count: an officer who posts an interest form
 // isn't being asked to fill it in.
@@ -111,7 +131,12 @@ function formCount(kind, sp, form) {
 
 /* ── Listeners: only while the space's page is open ────────────── */
 function formsCloseSpace() { if (_formSub.unsub) _formSub.unsub(); _formSub = { key: '', unsub: null }; }
-function formsCloseAnswers() { if (_formResp.unsub) _formResp.unsub(); _formResp = { key: '', list: null, failed: false, unsub: null }; }
+function formsCloseAnswers() {
+  if (_formResp.unsub) _formResp.unsub();
+  if (_formMarks.unsub) _formMarks.unsub();
+  _formResp = { key: '', list: null, failed: false, unsub: null };
+  _formMarks = { key: '', map: {}, unsub: null };
+}
 function formsCloseMine() { if (_formMine.unsub) _formMine.unsub(); _formMine = { uid: '', map: {}, unsub: null }; }
 function formsListen(kind, code) {
   const key = formKey(kind, code);
@@ -156,6 +181,13 @@ function formsListenAnswers(kind, code, id) {
     _formResp.unsub = null;
     renderRemote();
   });
+  // The marks are asked for whether or not the form sorts its answers
+  // today: one that used to keeps its marks for the spreadsheet.
+  _formMarks.key = key;
+  _formMarks.unsub = formRef(kind, code, id).collection('marks').limit(FORM_RESPONSES_SHOWN).onSnapshot(snap => {
+    _formMarks.map = Object.fromEntries(snap.docs.map(d => [d.id, d.data().status]).filter(([, st]) => FORM_MARKS.some(m => m[0] === st)));
+    renderRemote();
+  }, err => { diag.warn('forms', 'Form marks didn’t load', err); _formMarks.unsub = null; });
 }
 // How many answers each form I run has, for the list. The count query
 // reads no answers. Answers arrive without the form itself changing, so
@@ -264,11 +296,12 @@ function formCard(kind, sp, f) {
   const meta = [
     `${n} question${n === 1 ? '' : 's'}`,
     f.audience === 'link' ? 'Anyone with the link' : 'Members only',
+    f.anonymous ? 'Anonymous' : '',
     formClosesLabel(f),
   ].filter(Boolean);
   const answerBtn = phase === 'draft' ? ''
     : mine ? (phase === 'open' && f.allowEdit
-      ? `<button type="button" class="btn btn-sm" onclick="openFormFill(${args})">${icon('pencil', 14)}Change my answer</button>`
+      ? `<button type="button" class="btn btn-sm" onclick="openFormFill(${args})">${icon('pencil', 14)}${f.anonymous ? 'Answer again' : 'Change my answer'}</button>`
       : `<button type="button" class="btn btn-sm" onclick="openFormFill(${args})">${icon('eye', 14)}My answer</button>`)
     : phase === 'open' ? `<button type="button" class="btn ${runs ? '' : 'btn-primary '}btn-sm" onclick="openFormFill(${args})">${icon('pencil', 14)}Fill out</button>` : '';
   return `
@@ -308,7 +341,10 @@ function openFormMenu(btn, kind, code, id) {
 function formWho(kind, sp) {
   return { name: myGroupName(), email: sp.local ? '' : (_fbUser?.email || '') };
 }
+// My own answer, read back. An anonymous one can't be: it is filed where
+// nothing connects it to me except a record only the server follows.
 async function formMyAnswer(kind, sp, f) {
+  if (f.anonymous) return null;
   if (sp.local) { const r = FORM_ADAPTERS[kind].entry(sp.code)?.formResponses?.[f.id]?.[LOCAL_UID]; return r ? formCleanResponse(f, r, LOCAL_UID) : null; }
   if (!formAnswered(kind, sp, f.id)) return null;
   try { const snap = await formRef(kind, sp.code, f.id).collection('responses').doc(_fbUser.uid).get(); return snap.exists ? formCleanResponse(f, snap.data(), snap.id) : null; }
@@ -319,23 +355,37 @@ async function openFormFill(kind, code, id) {
   if (!sp || !f) return;
   if (!sp.local && !cloudGroupsEnabled()) { toast('Log in to answer this form.', 'error'); return; }
   const mine = await formMyAnswer(kind, sp, f);
+  const answered = mine || (f.anonymous ? formAnswered(kind, sp, f.id) : null);
   const open = formIsOpen(f);
-  const readOnly = !open || (!!mine && !f.allowEdit);
-  window._formFill = { kind, code, id, at: mine?.at || 0 };
+  const readOnly = !open || (!!answered && !f.allowEdit);
+  window._formFill = { kind, code, id, at: mine?.at || 0, sent: mine?.answers || {}, again: !!answered };
+  const when = answered ? esc(fmtRelativeTime(answered.updatedAt || answered.at).toLowerCase()) : '';
+  const sentNote = !answered ? (open ? '' : '<p class="ff-sent">This form is closed and isn’t taking answers.</p>')
+    : f.anonymous ? `<p class="ff-sent">${icon('check', 14)}<span>You answered ${when}. Your answer is anonymous, so it can’t be shown here.${!open ? ' This form is closed.' : f.allowEdit ? ' Sending again replaces it.' : ' Answers to this form can’t be changed.'}</span></p>`
+    : readOnly ? `<p class="ff-sent">${icon('check', 14)}<span>You answered ${when}.${open ? ' Answers to this form can’t be changed.' : ' This form is closed.'}</span></p>` : '';
+  const showFields = open ? !(f.anonymous && readOnly) : !!mine;
   openModal(`
     <div class="modal-head"><h3>${esc(f.title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body form-fill space" style="${spaceVars(A.color(sp))}">
-      <div class="form-fill-from">${esc(sp.name)}${formClosesLabel(f) ? ` · ${esc(formClosesLabel(f))}` : ''}</div>
-      ${readOnly && mine ? `<p class="ff-sent">${icon('check', 14)} You answered ${esc(fmtRelativeTime(mine.updatedAt || mine.at).toLowerCase())}.${open ? ' Answers to this form can’t be changed.' : ' This form is closed.'}</p>` : ''}
-      ${!open && !mine ? '<p class="ff-sent">This form is closed and isn’t taking answers.</p>' : ''}
-      ${!open && !mine ? '' : formFillHtml(f, { answers: mine?.answers || {}, who: formWho(kind, sp), runners: A.runners(sp, f), readOnly })}
+      <div class="form-fill-from">${esc(sp.name)}${f.anonymous ? ' · Anonymous' : ''}${formClosesLabel(f) ? ` · ${esc(formClosesLabel(f))}` : ''}</div>
+      ${sentNote}
+      ${showFields ? formFillHtml(f, { answers: mine?.answers || {}, who: formWho(kind, sp), runners: A.runners(sp, f), readOnly }) : ''}
     </div>
     <div class="modal-foot">
-      ${mine && open ? `<button class="btn btn-ghost form-fill-remove" onclick="confirmRemoveMyAnswer(${formArgs(kind, code, id)})">Remove my answer</button>` : ''}
+      ${answered ? `<button class="btn btn-ghost form-fill-remove" onclick="confirmRemoveMyAnswer(${formArgs(kind, code, id)})">Remove my answer</button>` : ''}
       <button class="btn" onclick="closeModal()">${readOnly ? 'Close' : 'Cancel'}</button>
-      ${readOnly ? '' : `<button class="btn btn-primary" id="form-send" onclick="submitFormFill(this)">${mine ? 'Save my answer' : 'Send'}</button>`}
+      ${readOnly ? '' : `<button class="btn btn-primary" id="form-send" onclick="submitFormFill(this)">${answered ? (f.anonymous ? 'Send again' : 'Save my answer') : 'Send'}</button>`}
     </div>
   `, { wide: true });
+}
+// A sample or signed-out space keeps a picked file in memory, as a data URL.
+function formLocalFile(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve({ name: file.name, size: file.size, type: file.type || '', url: String(r.result) });
+    r.onerror = () => reject(new Error('That file couldn’t be read.'));
+    r.readAsDataURL(file);
+  });
 }
 async function submitFormFill(btn) {
   const st = window._formFill;
@@ -346,50 +396,63 @@ async function submitFormFill(btn) {
   const res = formCheckAnswers(f, formFillRead(root, f));
   if (!formFillShowErrors(root, f, res.errors)) return;
   const now = Date.now();
-  const who = formWho(st.kind, sp);
-  const me = A.me(sp);
-  const data = { uid: me, name: who.name.slice(0, 80), member: true, answers: res.answers, at: st.at || now, updatedAt: now, ...(f.collectEmail && who.email ? { email: who.email } : {}) };
+  const done = (msg) => { closeModal(); toast(msg, 'success'); };
   if (sp.local) {
-    const entry = A.entry(st.code);
+    const entry = A.entry(st.code), me = A.me(sp);
     entry.formResponses = entry.formResponses || {};
-    (entry.formResponses[f.id] = entry.formResponses[f.id] || {})[me] = data;
-    closeModal();
+    const all = entry.formResponses[f.id] = entry.formResponses[f.id] || {};
+    try {
+      for (const q of formFileQuestions(f)) {
+        const picked = formFillPicked(q.id);
+        if (!picked) continue;
+        if (picked.size > GROUP_FILE_MAX_BYTES_LOCAL) { formFillShowErrors(root, f, { [q.id]: `Without an account, files stop at ${formFileSize(GROUP_FILE_MAX_BYTES_LOCAL)}. Log in to send bigger ones.` }); return; }
+        res.answers[q.id] = await formLocalFile(picked);
+      }
+    } catch (e) { toast(e.message, 'error'); return; }
+    if (f.anonymous) {
+      entry.formAnon = entry.formAnon || {};
+      const answerId = entry.formAnon[f.id]?.answerId || `anon${uid()}`;
+      all[answerId] = { anon: true, answers: res.answers, at: new Date(todayIso() + 'T00:00:00').getTime() };
+      entry.formAnon[f.id] = { answerId, at: now };
+    } else {
+      all[me] = { uid: me, name: formWho(st.kind, sp).name.slice(0, 80), member: true, answers: res.answers, at: st.at || now, updatedAt: now };
+    }
     touch();
-    toast(st.at ? 'Answer saved' : 'Sent', 'success');
+    done(st.again ? 'Answer saved' : 'Sent');
     return;
   }
   setBtnLoading(btn, true);
   try {
-    const batch = _fbDb.batch();
-    batch.set(formRef(st.kind, st.code, f.id).collection('responses').doc(me), data);
-    batch.set(_fbDb.collection('planners').doc(me).collection('formAnswers').doc(formAnswerKey(st.kind, st.code, f.id)), { kind: st.kind, code: st.code, formId: f.id, title: f.title, spaceName: sp.name, at: now });
-    await batch.commit();
+    await formSendAnswer(formCtx(st.kind, sp), f, res.answers, { at: st.at, sent: st.sent });
     _formCountAt.at = 0;   // my own answer changes the count: ask again on the next render
-    closeModal();
-    toast(st.at ? 'Answer saved' : `Sent to ${sp.name}`, 'success');
-    playUiSound?.('send');
+    done(st.again ? 'Answer saved' : `Sent to ${sp.name}`);
+    playUiSound('send');
   } catch (e) {
-    diag.error('forms', 'Form answer failed', e);
     setBtnLoading(btn, false);
-    toast(e.code === 'permission-denied' ? 'That didn’t go through. The form may have just closed.' : 'Couldn’t send. Check your connection and try again.', 'error', 5000);
+    if (e.errors && !formFillShowErrors(root, f, e.errors)) return;
+    diag.error('forms', 'Form answer failed', e);
+    toast(e.status ? e.message : e.code === 'permission-denied' || e.code === 'storage/unauthorized' ? 'That didn’t go through. The form may have just closed.' : 'Couldn’t send. Check your connection and try again.', 'error', 5000);
   }
 }
 function confirmRemoveMyAnswer(kind, code, id) {
   confirmDialog('Your answer is deleted, and the people running the form stop seeing it.', () => removeMyAnswer(kind, code, id), 'Remove', 'Remove your answer?');
 }
 async function removeMyAnswer(kind, code, id) {
-  const A = FORM_ADAPTERS[kind], sp = A.space(code);
-  if (!sp) return;
+  const A = FORM_ADAPTERS[kind], sp = A.space(code), f = findForm(kind, code, id);
+  if (!sp || !f) return;
   const me = A.me(sp);
-  if (sp.local) { const all = A.entry(code).formResponses?.[id]; if (all) delete all[me]; touch(); toast('Answer removed', 'info'); return; }
+  if (sp.local) {
+    const entry = A.entry(code), all = entry.formResponses?.[id] || {};
+    if (f.anonymous) { delete all[entry.formAnon?.[id]?.answerId]; if (entry.formAnon) delete entry.formAnon[id]; }
+    else { delete all[me]; if (entry.formMarks?.[id]) delete entry.formMarks[id][me]; }
+    touch(); toast('Answer removed', 'info');
+    return;
+  }
   try {
-    const batch = _fbDb.batch();
-    batch.delete(formRef(kind, code, id).collection('responses').doc(me));
-    batch.delete(_fbDb.collection('planners').doc(me).collection('formAnswers').doc(formAnswerKey(kind, code, id)));
-    await batch.commit();
+    await formTakeBack(formCtx(kind, sp), f);
     _formCountAt.at = 0;
     toast('Answer removed', 'info');
-  } catch (e) { diag.error('forms', 'Removing an answer failed', e); toast('Couldn’t remove it. Check your connection and try again.', 'error'); }
+  } catch (e) { diag.error('forms', 'Removing an answer failed', e); toast(e.status ? e.message : 'Couldn’t remove it. Check your connection and try again.', 'error'); }
 }
 
 /* ── Sharing ───────────────────────────────────────────────────── */
@@ -488,19 +551,26 @@ async function deleteForm(kind, code, id) {
     const entry = A.entry(code);
     if (entry.forms) delete entry.forms[id];
     if (entry.formResponses) delete entry.formResponses[id];
+    if (entry.formMarks) delete entry.formMarks[id];
+    if (entry.formAnon) delete entry.formAnon[id];
     touch();
     toast('Form deleted', 'info');
     return;
   }
   try {
-    // The answers go first: once the form is gone nobody could reach them.
+    // The answers go first, with their files and marks: once the form is
+    // gone nobody could reach them.
     const ref = formRef(kind, code, id);
-    for (let round = 0; round < 20; round++) {
-      const snap = await ref.collection('responses').limit(200).get();
-      if (snap.empty) break;
-      const batch = _fbDb.batch();
-      snap.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
+    const f = findForm(kind, code, id);
+    for (const sub of ['responses', 'marks']) {
+      for (let round = 0; round < 20; round++) {
+        const snap = await ref.collection(sub).limit(200).get();
+        if (snap.empty) break;
+        if (sub === 'responses' && f && !f.anonymous) for (const d of snap.docs) await formDeleteFiles(formCtx(kind, sp), f, d.id);
+        const batch = _fbDb.batch();
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
     }
     await ref.delete();
     delete _formCounts[`${key}:${id}`];
@@ -510,7 +580,7 @@ async function deleteForm(kind, code, id) {
 
 /* ── The answers ───────────────────────────────────────────────── */
 function openFormResults(kind, code, id) {
-  _formView[formKey(kind, code)] = { id, pane: 'summary', person: '' };
+  _formView[formKey(kind, code)] = { id, pane: 'summary', person: '', filter: 'all' };
   render();
   window.scrollTo(0, 0);
 }
@@ -521,18 +591,24 @@ function setFormPane(kind, code, pane, person = '') {
   v.pane = pane; v.person = person;
   render();
 }
+function setFormFilter(kind, code, filter) {
+  const v = _formView[formKey(kind, code)];
+  if (!v) return;
+  v.filter = filter; v.person = '';
+  render();
+}
 function formResultsHtml(kind, sp, f, view) {
   const args = formArgs(kind, sp.code, f.id);
   const spArgs = formArgs(kind, sp.code);
   const list = formResponses(kind, sp, f);
   const phase = formPhase(f);
   const n = list ? list.length : 0;
-  const outside = list ? list.filter(r => !r.member).length : 0;
+  const outside = list && !f.anonymous ? list.filter(r => !r.member).length : 0;
   const head = `
     <button type="button" class="sg-link forms-back" onclick="closeFormResults(${spArgs})">${icon('chevron-left', 12)} All forms</button>
     <div class="forms-results-head">
       <div>
-        <div class="forms-results-tags">${formStatusTag(f)}<span class="row-meta">${esc([f.audience === 'link' ? 'Anyone with the link' : 'Members only', formClosesLabel(f)].filter(Boolean).join(' · '))}</span></div>
+        <div class="forms-results-tags">${formStatusTag(f)}<span class="row-meta">${esc([f.audience === 'link' ? 'Anyone with the link' : 'Members only', f.anonymous ? 'Anonymous' : '', formClosesLabel(f)].filter(Boolean).join(' · '))}</span></div>
         <h2 class="forms-results-title">${esc(f.title)}</h2>
         <div class="forms-results-count">${list ? `<strong>${n}</strong> answer${n === 1 ? '' : 's'}${outside ? ` · ${outside} from people who aren’t members yet` : ''}` : ''}</div>
       </div>
@@ -558,19 +634,52 @@ function formResultsHtml(kind, sp, f, view) {
       ${head}
       <div class="segmented forms-pane-pick" role="group" aria-label="Show">
         <button type="button" aria-pressed="${pane === 'summary'}" class="${pane === 'summary' ? 'active' : ''}" onclick="setFormPane(${spArgs},'summary')">Summary</button>
-        <button type="button" aria-pressed="${pane === 'people'}" class="${pane === 'people' ? 'active' : ''}" onclick="setFormPane(${spArgs},'people')">By person</button>
+        <button type="button" aria-pressed="${pane === 'people'}" class="${pane === 'people' ? 'active' : ''}" onclick="setFormPane(${spArgs},'people')">${f.anonymous ? 'One by one' : 'By person'}</button>
       </div>
       ${n >= FORM_RESPONSES_SHOWN ? `<p class="small muted">Showing the first ${FORM_RESPONSES_SHOWN} answers.</p>` : ''}
-      ${pane === 'summary' ? formSummaryHtml(f, list) : formPeopleHtml(kind, sp, f, list, view.person)}
+      ${f.anonymous ? `<p class="forms-anon-note">${icon('lock', 14)}<span>Answers to this form carry no names. They are listed in no particular order, with the day they were sent.</span></p>` : ''}
+      ${pane === 'summary' ? formSummaryHtml(kind, sp, f, list) : formPeopleHtml(kind, sp, f, list, view)}
     </div>`;
 }
 function formsRetryAnswers(kind, code) { formsCloseAnswers(); render(); }
-function formSummaryHtml(f, list) {
-  return `<div class="forms-summary">${formSummary(f, list).map((s, i) => {
+// The order answers are listed in, and what each is called. Anonymous
+// answers go by the id they were filed under, never by when they came.
+function formListed(f, list) {
+  const sorted = [...list].sort(f.anonymous ? (a, b) => a.uid.localeCompare(b.uid) : (a, b) => (b.updatedAt || b.at) - (a.updatedAt || a.at));
+  return sorted.map((r, i) => ({ ...r, label: f.anonymous ? `Answer ${i + 1}` : r.name }));
+}
+function formFileButton(kind, sp, f, r, q, cls = 'btn btn-sm') {
+  const v = r.answers[q.id];
+  return `<button type="button" class="${cls} forms-file" onclick="openFormFile(this,${formArgs(kind, sp.code, f.id)},'${esc(r.uid)}','${esc(q.id)}')">${icon('paperclip', 14)}<span>${esc(v.name)}</span><span class="ff-file-size">${formFileSize(v.size)}</span></button>`;
+}
+async function openFormFile(btn, kind, code, id, who, questionId) {
+  const A = FORM_ADAPTERS[kind], sp = A.space(code), f = findForm(kind, code, id);
+  if (!sp || !f || !safeId(who) || !safeId(questionId)) return;
+  const r = (formResponses(kind, sp, f) || []).find(x => x.uid === who);
+  const v = r?.answers[questionId];
+  if (!v) return;
+  const open = (url) => { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.download = v.name; document.body.appendChild(a); a.click(); a.remove(); };
+  if (sp.local) { if (v.url) open(v.url); else toast('This sample file is just for show.', 'info'); return; }
+  setBtnLoading(btn, true);
+  try { open(await formFileUrl(formCtx(kind, sp), id, who, questionId)); }
+  catch (e) { diag.warn('forms', 'A form file didn’t open', e); toast(e.code === 'storage/object-not-found' ? 'That file is gone. It may have been removed.' : 'Couldn’t open that file. Check your connection and try again.', 'error', 4500); }
+  finally { setBtnLoading(btn, false); }
+}
+function formSummaryHtml(kind, sp, f, list) {
+  const listed = formListed(f, list);
+  const labelOf = Object.fromEntries(listed.map(r => [r.uid, r.label]));
+  const byUid = Object.fromEntries(listed.map(r => [r.uid, r]));
+  const marks = f.review ? formMarks(kind, sp, f) : null;
+  const sorting = marks ? `<div class="card card-pad forms-sum forms-sum-marks"><div class="forms-sum-head"><h3>Sorted so far</h3><span class="row-meta">Only ${kind === 'club' ? 'officers' : 'you and the group’s owner'} see this</span></div>
+    <div class="forms-mark-counts">${[...FORM_MARKS, ['', 'Not sorted yet', 'more-horizontal']].map(([k, label]) => `<button type="button" class="forms-mark-count" onclick="setFormPane(${formArgs(kind, sp.code)},'people');setFormFilter(${formArgs(kind, sp.code)},'${k || 'none'}')"><strong>${list.filter(r => (marks[r.uid] || '') === k).length}</strong><span>${label}</span></button>`).join('')}</div></div>` : '';
+  return `<div class="forms-summary">${sorting}${formSummary(f, list).map((s, i) => {
     const title = `<div class="forms-sum-head"><h3>${esc(s.q.label || `Question ${i + 1}`)}</h3><span class="row-meta">${s.answered} of ${list.length} answered</span></div>`;
-    if (s.kind === 'text') {
-      const shown = s.answers.slice(0, 40);
-      return `<div class="card card-pad forms-sum">${title}${shown.length ? `<ul class="forms-sum-text">${shown.map(a => `<li><div class="forms-sum-quote">${esc(a.text).replace(/\n/g, '<br>')}</div><div class="row-meta">${esc(a.name)}</div></li>`).join('')}</ul>${s.answers.length > shown.length ? `<p class="small muted">And ${s.answers.length - shown.length} more in the spreadsheet.</p>` : ''}` : '<p class="small muted">Nobody answered this one.</p>'}</div>`;
+    if (s.kind === 'text' || s.kind === 'files') {
+      const shown = (f.anonymous ? [...s.answers].sort((a, b) => a.uid.localeCompare(b.uid)) : s.answers).slice(0, 40);
+      const item = (a) => s.kind === 'files'
+        ? `<li>${formFileButton(kind, sp, f, byUid[a.uid], s.q)}<div class="row-meta">${esc(labelOf[a.uid] || a.name)}</div></li>`
+        : `<li><div class="forms-sum-quote">${esc(a.text).replace(/\n/g, '<br>')}</div><div class="row-meta">${esc(labelOf[a.uid] || a.name)}</div></li>`;
+      return `<div class="card card-pad forms-sum">${title}${shown.length ? `<ul class="forms-sum-text${s.kind === 'files' ? ' is-files' : ''}">${shown.map(item).join('')}</ul>${s.answers.length > shown.length ? `<p class="small muted">And ${s.answers.length - shown.length} more ${s.kind === 'files' ? 'under By person' : 'in the spreadsheet'}.</p>` : ''}` : `<p class="small muted">Nobody ${s.kind === 'files' ? 'sent a file' : 'answered this one'}.</p>`}</div>`;
     }
     const top = Math.max(0, ...s.rows.map(r => r.count));
     return `<div class="card card-pad forms-sum">${title}${s.kind === 'scale' && s.answered ? `<div class="forms-sum-avg"><strong>${s.avg}</strong> average, out of 5</div>` : ''}
@@ -582,64 +691,129 @@ function formSummaryHtml(f, list) {
         </div>`).join('')}</div></div>`;
   }).join('')}</div>`;
 }
-function formPeopleHtml(kind, sp, f, list, person) {
-  const sorted = [...list].sort((a, b) => (b.updatedAt || b.at) - (a.updatedAt || a.at));
-  const open = sorted.find(r => r.uid === person);
+function formMarkTag(status) {
+  const m = FORM_MARKS.find(x => x[0] === status);
+  return m ? `<span class="space-tag forms-mark is-${m[0]}">${icon(m[2], 12)}${m[1]}</span>` : '';
+}
+function formFace(f, r, size, color) {
+  return f.anonymous ? `<span class="avatar sg-avatar forms-anon-face" aria-hidden="true" style="width:${size}px;height:${size}px">${icon('lock', Math.round(size * 0.45))}</span>` : personAvatar(r.uid, r.name, size, r.member ? color : spaceTint(color, 2));
+}
+function formPeopleHtml(kind, sp, f, list, view) {
+  const listed = formListed(f, list);
+  const open = listed.find(r => r.uid === view.person);
   const spArgs = formArgs(kind, sp.code);
+  const args = formArgs(kind, sp.code, f.id);
   const color = FORM_ADAPTERS[kind].color(sp);
+  const marks = f.review ? formMarks(kind, sp, f) : {};
+  const sent = (r) => f.anonymous ? new Date(r.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : fmtRelativeTime(r.updatedAt || r.at);
   if (open) {
+    const mark = marks[open.uid] || '';
+    const at = listed.indexOf(open), prev = listed[at - 1], next = listed[at + 1];
     return `
       <div class="card card-pad forms-person">
-        <button type="button" class="sg-link forms-back" onclick="setFormPane(${spArgs},'people')">${icon('chevron-left', 12)} Everyone</button>
-        <div class="forms-person-head">
-          ${personAvatar(open.uid, open.name, 36, open.member ? color : spaceTint(color, 2))}
-          <div><div class="sg-strong">${esc(open.name)}</div><div class="row-meta">${[open.email ? esc(open.email) : '', open.member ? 'Member' : 'Not a member yet', esc(fmtRelativeTime(open.updatedAt || open.at))].filter(Boolean).join(' · ')}</div></div>
-          <button type="button" class="btn btn-ghost btn-sm forms-person-remove" onclick="confirmRemoveAnswer(${formArgs(kind, sp.code, f.id)},'${esc(open.uid)}')">${icon('trash', 14)}Remove</button>
+        <div class="forms-person-nav">
+          <button type="button" class="sg-link forms-back" onclick="setFormPane(${spArgs},'people')">${icon('chevron-left', 12)} Everyone</button>
+          <span class="forms-person-step"><button type="button" class="btn btn-ghost btn-sm btn-icon" aria-label="The answer before" ${prev ? '' : 'disabled '}onclick="setFormPane(${spArgs},'people','${esc(prev?.uid || '')}')">${icon('chevron-left', 14)}</button><span class="row-meta">${at + 1} of ${listed.length}</span><button type="button" class="btn btn-ghost btn-sm btn-icon" aria-label="The next answer" ${next ? '' : 'disabled '}onclick="setFormPane(${spArgs},'people','${esc(next?.uid || '')}')">${icon('chevron-right', 14)}</button></span>
         </div>
-        <dl class="forms-person-answers">${f.questions.map((q, i) => `<dt>${esc(q.label || `Question ${i + 1}`)}</dt><dd>${formAnswerEmpty(open.answers[q.id]) ? '<span class="muted">No answer</span>' : esc(formAnswerText(q, open.answers[q.id])).replace(/\n/g, '<br>')}</dd>`).join('')}</dl>
+        <div class="forms-person-head">
+          ${formFace(f, open, 36, color)}
+          <div><div class="sg-strong">${esc(open.label)}</div><div class="row-meta">${[open.email ? esc(open.email) : '', f.anonymous ? '' : open.member ? 'Member' : 'Not a member yet', esc(sent(open))].filter(Boolean).join(' · ')}</div></div>
+          <button type="button" class="btn btn-ghost btn-sm forms-person-remove" onclick="confirmRemoveAnswer(${args},'${esc(open.uid)}')">${icon('trash', 14)}Remove</button>
+        </div>
+        ${f.review ? `<div class="forms-decide" role="group" aria-label="Decide on this answer">
+          ${FORM_MARKS.map(([k, label, ic, verb]) => `<button type="button" class="btn btn-sm forms-decide-btn is-${k}${mark === k ? ' is-on' : ''}" aria-pressed="${mark === k}" onclick="setFormMark(${args},'${esc(open.uid)}','${k}')">${icon(ic, 14)}${mark === k ? label : verb}</button>`).join('')}
+          <span class="forms-decide-note">Only ${kind === 'club' ? 'officers' : 'you and the group’s owner'} see this. Nothing is sent to ${esc(open.name)}.</span>
+        </div>` : ''}
+        <dl class="forms-person-answers">${f.questions.map((q, i) => `<dt>${esc(q.label || `Question ${i + 1}`)}</dt><dd>${formAnswerEmpty(open.answers[q.id]) ? '<span class="muted">No answer</span>' : q.type === 'file' ? formFileButton(kind, sp, f, open, q) : esc(formAnswerText(q, open.answers[q.id])).replace(/\n/g, '<br>')}</dd>`).join('')}</dl>
       </div>`;
   }
-  return `<div class="forms-people">${sorted.map(r => `
+  const filter = f.review && ['none', ...FORM_MARKS.map(m => m[0])].includes(view.filter) ? view.filter : 'all';
+  const shown = listed.filter(r => filter === 'all' || (marks[r.uid] || 'none') === filter);
+  const chips = f.review ? `<div class="chip-row forms-filter" role="group" aria-label="Show">${[['all', 'All'], ['none', 'Not sorted yet'], ...FORM_MARKS].map(([k, label]) => {
+    const count = k === 'all' ? listed.length : listed.filter(r => (marks[r.uid] || 'none') === k).length;
+    return `<button type="button" class="chip" aria-pressed="${filter === k}" onclick="setFormFilter(${spArgs},'${k}')">${label}<span class="chip-count">${count}</span></button>`;
+  }).join('')}</div>` : '';
+  return `${chips}<div class="forms-people">${shown.map(r => `
     <button type="button" class="list-row forms-person-row" onclick="setFormPane(${spArgs},'people','${esc(r.uid)}')">
-      ${personAvatar(r.uid, r.name, 30, r.member ? color : spaceTint(color, 2))}
-      <span class="row-title"><span class="sg-strong">${esc(r.name)}</span>${r.member ? '' : ` ${spaceTag('weekly', 'Not a member yet')}`}<span class="row-meta forms-person-sub">${[r.email ? esc(r.email) : '', esc(fmtRelativeTime(r.updatedAt || r.at))].filter(Boolean).join(' · ')}</span></span>
+      ${formFace(f, r, 30, color)}
+      <span class="row-title"><span class="sg-strong">${esc(r.label)}</span>${f.anonymous || r.member ? '' : ` ${spaceTag('weekly', 'Not a member yet')}`}<span class="row-meta forms-person-sub">${[r.email ? esc(r.email) : '', esc(sent(r))].filter(Boolean).join(' · ')}</span></span>
+      ${formMarkTag(marks[r.uid])}
       ${icon('chevron-right', 14)}
-    </button>`).join('')}</div>`;
+    </button>`).join('') || '<p class="small muted forms-none">Nobody here yet.</p>'}</div>`;
+}
+// Tapping the mark an answer already has clears it.
+async function setFormMark(kind, code, id, who, status) {
+  const A = FORM_ADAPTERS[kind], sp = A.space(code), f = findForm(kind, code, id);
+  if (!sp || !f || !f.review || !A.runs(sp, f) || !safeId(who) || !FORM_MARKS.some(m => m[0] === status)) return;
+  const clear = formMarks(kind, sp, f)[who] === status;
+  if (sp.local) {
+    const entry = A.entry(code);
+    entry.formMarks = entry.formMarks || {};
+    const all = entry.formMarks[id] = entry.formMarks[id] || {};
+    if (clear) delete all[who]; else all[who] = status;
+    touch();
+    return;
+  }
+  try {
+    const ref = formRef(kind, code, id).collection('marks').doc(who);
+    if (clear) await ref.delete(); else await ref.set({ status, by: A.me(sp), at: Date.now() });
+  } catch (e) {
+    diag.error('forms', 'Marking an answer failed', e);
+    toast(e.code === 'permission-denied' ? (kind === 'club' ? 'Only officers can sort answers.' : 'Only whoever made this form, or the group’s owner, can sort answers.') : 'Couldn’t save that. Check your connection and try again.', 'error', 4500);
+  }
 }
 function confirmRemoveAnswer(kind, code, id, who) {
   if (!safeId(who)) return;
-  confirmDialog('Their answer is deleted for good. They can send a new one while the form is open.', () => removeAnswer(kind, code, id, who), 'Remove', 'Remove this answer?');
+  const f = findForm(kind, code, id);
+  confirmDialog(`${f?.anonymous ? 'This answer' : 'Their answer'} is deleted for good${f && formFileQuestions(f).length ? ', with any file sent with it' : ''}. They can send a new one while the form is open.`, () => removeAnswer(kind, code, id, who), 'Remove', 'Remove this answer?');
 }
 async function removeAnswer(kind, code, id, who) {
-  const A = FORM_ADAPTERS[kind], sp = A.space(code);
-  if (!sp || !safeId(who)) return;
+  const A = FORM_ADAPTERS[kind], sp = A.space(code), f = findForm(kind, code, id);
+  if (!sp || !f || !safeId(who)) return;
   const v = _formView[formKey(kind, code)];
   if (v) v.person = '';
-  if (sp.local) { const all = A.entry(code).formResponses?.[id]; if (all) delete all[who]; touch(); toast('Answer removed', 'info'); return; }
-  try { await formRef(kind, code, id).collection('responses').doc(who).delete(); toast('Answer removed', 'info'); }
-  catch (e) { diag.error('forms', 'Removing an answer failed', e); toast('Couldn’t remove it. Check your connection and try again.', 'error'); }
+  if (sp.local) {
+    const entry = A.entry(code);
+    if (entry.formResponses?.[id]) delete entry.formResponses[id][who];
+    if (entry.formMarks?.[id]) delete entry.formMarks[id][who];
+    touch(); toast('Answer removed', 'info');
+    return;
+  }
+  try {
+    await formRef(kind, code, id).collection('responses').doc(who).delete();
+    await formRef(kind, code, id).collection('marks').doc(who).delete().catch(() => {});
+    if (!f.anonymous) await formDeleteFiles(formCtx(kind, sp), f, who);
+    toast('Answer removed', 'info');
+  } catch (e) { diag.error('forms', 'Removing an answer failed', e); toast('Couldn’t remove it. Check your connection and try again.', 'error'); }
 }
 function downloadFormCsv(kind, code, id) {
   const sp = FORM_ADAPTERS[kind].space(code), f = findForm(kind, code, id);
   const list = sp && f ? formResponses(kind, sp, f) : null;
   if (!list?.length) return;
   const name = `${f.title} answers`.replace(/[^\w\s-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'form-answers';
-  downloadCsv(`${name}.csv`, formCsvRows(f, list));
+  downloadCsv(`${name}.csv`, formCsvRows(f, list, f.review ? formMarks(kind, sp, f) : {}));
 }
 
 /* ── Sample spaces ─────────────────────────────────────────────── */
-// Two forms with answers, so a sample club or group shows the whole
-// thing: one open interest form with answers from people who aren't
-// members, and one members' form still waiting for you.
+// Forms with answers, so a sample club or group shows the whole thing:
+// an open interest form answered by people who aren't members, a sign-up
+// still waiting for you, applications half sorted, and an anonymous
+// suggestion box.
 // people: [{ uid, name }] the sample's members; by: the officer who made them.
 function sampleForms(kind, { name, color, people, by, byName, now = Date.now() }) {
   const D = 86400000;
   const base = { spaceKind: kind, spaceName: name, spaceColor: color, createdBy: by, createdByName: byName, updatedAt: now - D };
-  const out = { forms: {}, formResponses: {} };
+  const out = { forms: {}, formResponses: {}, formMarks: {} };
   const add = (tplKey, extra, answersOf, who) => {
     const f = formForSave({ ...formFromTemplate(tplKey), ...base, ...extra });
     out.forms[f.id] = f;
-    out.formResponses[f.id] = Object.fromEntries(who.map((p, i) => [p.uid, { uid: p.uid, name: p.name, member: !!p.member, ...(f.collectEmail ? { email: `${p.name.toLowerCase().replace(/[^a-z]/g, '')}@school.edu` } : {}), answers: formCheckAnswers(f, answersOf(f.questions, i)).answers, at: now - (i + 1) * 5 * 3600000, updatedAt: now - (i + 1) * 5 * 3600000 }]));
+    out.formResponses[f.id] = Object.fromEntries(who.map((p, i) => {
+      const answers = formCheckAnswers(f, answersOf(f.questions, i)).answers;
+      const at = now - (i + 1) * 5 * 3600000;
+      return f.anonymous
+        ? [`anon${String(i).padStart(2, '0')}${f.id.slice(0, 4)}`, { anon: true, answers, at: Math.floor(at / D) * D }]
+        : [p.uid, { uid: p.uid, name: p.name, member: !!p.member, ...(f.collectEmail ? { email: `${p.name.toLowerCase().replace(/[^a-z]/g, '')}@school.edu` } : {}), answers, at, updatedAt: at }];
+    }));
     return f;
   };
   const pick = (q, i) => q.options[i % q.options.length];
@@ -649,6 +823,13 @@ function sampleForms(kind, { name, color, people, by, byName, now = Date.now() }
     const notes = ['I’m a transfer, so I’m looking for people to do things with.', '', 'Can I come to a meeting before I decide?', '', 'My roommate is a member and talks about it all the time.', '', ''];
     add('interest', { status: 'open', createdAt: now - 9 * D, closesAt: null }, (qs, i) => ({ [qs[0].id]: pick(qs[0], i), [qs[1].id]: majors[i], [qs[2].id]: [pick(qs[2], i), pick(qs[2], i + 2)], [qs[3].id]: pick(qs[3], i * 2), [qs[4].id]: notes[i] }), visitors);
     add('signup', { status: 'open', title: 'Fall retreat sign-up', description: 'So we know how many seats and how much food.', createdAt: now - 2 * D, closesAt: formClosesAtFromDate(addDays(todayIso(), 6)) }, (qs, i) => ({ [qs[0].id]: pick(qs[0], i % 5 === 4 ? 2 : i % 3 === 2 ? 1 : 0), [qs[1].id]: pick(qs[1], i), [qs[2].id]: i === 1 ? 'Vegetarian' : i === 4 ? 'Peanut allergy' : '' }), people.slice(0, 8).map(p => ({ ...p, member: true })));
+    const applicants = ['Camille', 'Dev', 'Noelle', 'Marcus', 'Yuki', 'Sasha'].map((n, i) => ({ uid: `sample-applicant-${i}`, name: n, member: false }));
+    const whys = ['I ran the business club at my high school and I miss it.', 'I want to get better at talking to people I don’t know.', 'My advisor said this is where the internships come from.', 'I’m starting a small shop and I need people to learn from.', 'I went to your panel last spring and stayed an hour after.', 'Honestly, my friends are in it.'];
+    const resume = typeof libSamplePdf === 'function' ? (n) => { const d = libSamplePdf(`${n}, résumé`, ['Education', 'Experience', 'Activities']); return { name: `${n}-resume.pdf`, size: d.size, type: 'application/pdf', url: d.dataUrl }; } : () => undefined;
+    const app = add('application', { status: 'open', title: 'Spring membership application', createdAt: now - 6 * D, closesAt: formClosesAtFromDate(addDays(todayIso(), 10)) }, (qs, i) => ({ [qs[0].id]: pick(qs[0], i + 1), [qs[1].id]: majors[(i + 2) % majors.length], [qs[2].id]: whys[i], [qs[3].id]: i % 2 ? '' : 'I’m organized and I show up.', [qs[4].id]: pick(qs[4], i % 4 === 3 ? 1 : 0), [qs[5].id]: i % 3 ? '' : 'Intramural soccer', [qs[6].id]: i < 3 ? resume(applicants[i].name) : undefined }), applicants);
+    out.formMarks[app.id] = { [applicants[0].uid]: 'accepted', [applicants[1].uid]: 'accepted', [applicants[3].uid]: 'waitlisted', [applicants[5].uid]: 'declined' };
+    const said = ['Meetings run long. Could we end at the hour?', 'More events off campus.', 'The group chat is a lot. Maybe one for announcements only.', 'I’d come more often if meetings weren’t on Thursdays.', 'Thank you for the career panel. More of those.'];
+    add('suggestions', { status: 'open', createdAt: now - 12 * D, closesAt: null }, (qs, i) => ({ [qs[0].id]: pick(qs[0], i === 1 ? 1 : i === 2 ? 3 : 0), [qs[1].id]: said[i] }), said.map((_, i) => ({ uid: `a${i}`, name: '' })));
   } else {
     add('study', { status: 'open', createdAt: now - D, closesAt: null }, (qs, i) => ({ [qs[0].id]: ['The second half of the unit, mostly.', 'Anything with graphs.', 'I’m fine on the reading, shaky on the problem sets.'][i % 3], [qs[1].id]: [pick(qs[1], i), pick(qs[1], i + 1)], [qs[2].id]: pick(qs[2], i) }), people.slice(0, 3).map(p => ({ ...p, member: true })));
   }

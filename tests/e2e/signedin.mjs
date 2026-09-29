@@ -66,9 +66,28 @@ export async function firestoreAdmin(method, path, body) {
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   if (method === 'GET' && res.status === 404) return null;
-  const json = await res.json();
+  const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`${method} ${path}: ${JSON.stringify(json)}`);
   return json;
+}
+
+const toValue = (x) => typeof x === 'string' ? { stringValue: x } : typeof x === 'boolean' ? { booleanValue: x } : typeof x === 'number' ? { integerValue: String(Math.trunc(x)) } : x === null ? { nullValue: null }
+  : Array.isArray(x) ? { arrayValue: { values: x.map(toValue) } } : { mapValue: { fields: Object.fromEntries(Object.entries(x).map(([k, v]) => [k, toValue(v)])) } };
+export const toFields = (obj) => toValue(obj).mapValue.fields;
+async function standInForFormAnswer(body) {
+  const uid = JSON.parse(Buffer.from(String(body.idToken).split('.')[1], 'base64url').toString()).user_id;
+  const collection = body.kind === 'group' ? 'studyGroups' : 'orgs';
+  const form = `${collection}/${body.code}/forms/${body.formId}`;
+  const index = `planners/${uid}/formAnswers/${collection}_${body.code}_${body.formId}`;
+  const had = await firestoreAdmin('GET', index);
+  const answerId = had?.fields?.answerId?.stringValue || `anon${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  if (body.remove) {
+    if (had) { await firestoreAdmin('DELETE', `${form}/responses/${answerId}`); await firestoreAdmin('DELETE', index); }
+    return [200, { ok: true, removed: !!had }];
+  }
+  await firestoreAdmin('PATCH', `${form}/responses/${answerId}`, { fields: toFields({ anon: true, answers: body.answers, at: Math.floor(Date.now() / 86400000) * 86400000 }) });
+  await firestoreAdmin('PATCH', index, { fields: toFields({ kind: body.kind, code: body.code, formId: body.formId, at: Date.now(), anon: true, answerId }) });
+  return [200, { ok: true, replaced: !!had }];
 }
 
 /* Blocks the real Firebase project and answers the Worker; see the top of
@@ -88,6 +107,12 @@ async function isolate(page, problems) {
     if (path === '/account/attest') return json(200, { ok: true });
     if (path === '/claim-license') return json(200, { paid: false });
     if (path === '/track-event') return json(200, { ok: true });
+    // Anonymous form answers go through the Worker. This stands in for it:
+    // it files the answer under a random id with no name, and keeps the
+    // link in the sender's own planner, the way worker/src/forms.js does.
+    // What the real one refuses and stores is tested in worker-forms.mjs;
+    // here it lets the screens on both sides be driven for real.
+    if (path === '/form/answer') return json(...await standInForFormAnswer(route.request().postDataJSON()));
     if (path === '/log-error') {
       let report = '';
       try { report = JSON.stringify(route.request().postDataJSON()).slice(0, 500); } catch {}

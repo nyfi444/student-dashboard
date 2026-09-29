@@ -47,6 +47,7 @@ jobs:
           node tests/worker-security.mjs
           node tests/worker-measure.mjs
           node tests/worker-alerts.mjs
+          node tests/worker-forms.mjs
 
   rules:
     runs-on: ubuntu-latest

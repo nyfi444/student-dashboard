@@ -13,12 +13,21 @@
    record of it (planners/{uid}/formAnswers), which is how "delete my
    account" finds it later.
 
+   An anonymous form's answers don't go to Firestore from here at all:
+   they go to the Worker, which files them with no name (formsend.js).
+   A file sent as an answer goes to Storage under the sender's own uid.
+
    What a form is: js/spaces/formcore.js. The fields: js/spaces/formfill.js.
+   Sending: js/spaces/formsend.js.
    Every string on a form was typed by a student, so all of it is escaped.
 ──────────────────────────────────────────────────────────────── */
-let _auth = null, _db = null;
+let _auth = null, _db = null, _storage = null;
+const FP_STORAGE_SRC = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js';
 const fpLink = formParseToken(new URLSearchParams(location.search).get('f'));
-const fp = { ready: false, user: null, form: null, mine: null, member: false, state: 'loading', editing: false, busy: false };
+// answered: when they sent an answer, from their own record of it. For an
+// anonymous form that record is all there is to show: the answer itself
+// can't be read back.
+const fp = { ready: false, user: null, form: null, mine: null, answered: 0, member: false, state: 'loading', editing: false, busy: false };
 
 function fpEmulatorHost() {
   try {
@@ -26,6 +35,17 @@ function fpEmulatorHost() {
     return localStorage.getItem('shq_firebase_emulators') === '1' ? '127.0.0.1' : '';
   } catch { return ''; }
 }
+// The Storage library loads the first time a file is sent or opened.
+async function fpStorage() {
+  if (!_storage) {
+    if (!firebase.storage) await loadScriptOnce(FP_STORAGE_SRC);
+    _storage = firebase.storage();
+    const emulator = fpEmulatorHost();
+    if (emulator) _storage.useEmulator(emulator, 9199);
+  }
+  return _storage;
+}
+function fpCtx() { return { db: _db, storage: fpStorage, user: fp.user, kind: fpLink.kind, code: fpLink.code, name: fpName(), member: fp.member }; }
 function fpFormRef() { return _db.collection(fpLink.collection).doc(fpLink.code).collection('forms').doc(fpLink.id); }
 function fpName() { return ((fp.user?.displayName || (fp.user?.email || '').split('@')[0] || '').replace(/\s+/g, ' ').trim() || 'Someone').slice(0, 80); }
 function fpWho() { return { name: fpName(), email: fp.user?.email || '' }; }
@@ -33,25 +53,27 @@ function fpRunners() { const f = fp.form; return f.spaceKind === 'group' ? 'whoe
 
 /* ── Loading ───────────────────────────────────────────────────── */
 async function fpLoad() {
-  fp.state = 'loading'; fp.form = null; fp.mine = null; fp.member = false; fp.editing = false;
+  fp.state = 'loading'; fp.form = null; fp.mine = null; fp.answered = 0; fp.member = false; fp.editing = false;
   fpRender();
   const me = fp.user.uid;
   // Their own answer first: it can be read even after the form has closed.
   try { const snap = await fpFormRef().collection('responses').doc(me).get(); if (snap.exists) fp.mine = snap.data(); } catch {}
+  try { const rec = await formMyRecordRef(fpCtx(), fpLink.id).get(); if (rec.exists) fp.answered = Number(rec.data().at) || 1; } catch {}
   try {
     const snap = await fpFormRef().get();
     fp.form = snap.exists ? formClean({ ...snap.data(), id: snap.id }) : null;
   } catch (e) {
     if (e.code !== 'permission-denied') { diag.warn('forms', 'Form page could not load the form', e); fp.state = 'offline'; fpRender(); return; }
   }
-  if (!fp.form) { fp.state = fp.mine ? 'answered-closed' : 'gone'; fpRender(); return; }
+  if (!fp.form) { fp.state = fp.mine || fp.answered ? 'answered-closed' : 'gone'; fpRender(); return; }
   if (fp.form.status === 'draft') { fp.state = 'gone'; fpRender(); return; }
   // Whether they're in the space, so the answer can say so truthfully. A
   // space they can't read is one they aren't in.
   try { const sp = await _db.collection(fpLink.collection).doc(fpLink.code).get(); fp.member = sp.exists && (sp.data().memberUids || []).includes(me); } catch { fp.member = false; }
   if (fp.mine) fp.mine = formCleanResponse(fp.form, fp.mine, me);
+  if (fp.form.anonymous) fp.mine = null;
   if (fp.form.audience === 'members' && !fp.member) fp.state = 'members';
-  else if (fp.mine) fp.state = 'answered';
+  else if (fp.mine || (fp.form.anonymous && fp.answered)) fp.state = 'answered';
   else fp.state = formIsOpen(fp.form) ? 'fill' : 'closed';
   fpRender();
 }
@@ -63,23 +85,20 @@ async function fpSend(btn) {
   if (!f || !root) return;
   const res = formCheckAnswers(f, formFillRead(root, f));
   if (!formFillShowErrors(root, f, res.errors)) return;
-  const now = Date.now(), me = fp.user.uid;
-  const data = { uid: me, name: fpName(), member: fp.member, answers: res.answers, at: fp.mine?.at || now, updatedAt: now, ...(f.collectEmail ? { email: fp.user.email || '' } : {}) };
   fp.busy = true;
   setBtnLoading(btn, true);
   try {
-    const batch = _db.batch();
-    batch.set(fpFormRef().collection('responses').doc(me), data);
-    batch.set(_db.collection('planners').doc(me).collection('formAnswers').doc(formAnswerKey(fpLink.kind, fpLink.code, fpLink.id)), { kind: fpLink.kind, code: fpLink.code, formId: fpLink.id, title: f.title, spaceName: f.spaceName, at: now });
-    await batch.commit();
-    fp.mine = formCleanResponse(f, data, me);
+    const data = await formSendAnswer(fpCtx(), f, res.answers, { at: fp.mine?.at || 0, sent: fp.mine?.answers || {} });
+    fp.mine = f.anonymous ? null : formCleanResponse(f, data, fp.user.uid);
+    fp.answered = Date.now();
     fp.state = 'sent'; fp.editing = false;
     fpRecordTerms();
   } catch (e) {
-    diag.warn('forms', 'Form page could not send an answer', e);
     setBtnLoading(btn, false);
-    toast(e.code === 'permission-denied' ? 'That didn’t go through. The form may have just closed.' : 'Couldn’t send. Check your connection and try again.', 'error', 6000);
     fp.busy = false;
+    if (e.errors && !formFillShowErrors(root, f, e.errors)) return;
+    diag.warn('forms', 'Form page could not send an answer', e);
+    toast(e.status ? e.message : e.code === 'permission-denied' || e.code === 'storage/unauthorized' ? 'That didn’t go through. The form may have just closed.' : 'Couldn’t send. Check your connection and try again.', 'error', 6000);
     return;
   }
   fp.busy = false;
@@ -90,17 +109,30 @@ function fpConfirmRemove() {
   confirmDialog('Your answer is deleted, and the people running the form stop seeing it.', fpRemove, 'Remove', 'Remove your answer?');
 }
 async function fpRemove() {
-  const me = fp.user.uid;
   try {
-    const batch = _db.batch();
-    batch.delete(fpFormRef().collection('responses').doc(me));
-    batch.delete(_db.collection('planners').doc(me).collection('formAnswers').doc(formAnswerKey(fpLink.kind, fpLink.code, fpLink.id)));
-    await batch.commit();
-    fp.mine = null; fp.editing = false;
+    // A form that has since closed can no longer be read, so what is known
+    // about it comes from the link and from the answer itself.
+    const raw = fp.mine?.answers || {};
+    const theirFiles = Object.keys(raw).filter(k => FORM_ID.test(k) && raw[k] && typeof raw[k] === 'object' && !Array.isArray(raw[k])).map(id => ({ id, type: 'file' }));
+    await formTakeBack(fpCtx(), fp.form || { id: fpLink.id, anonymous: !fp.mine, questions: theirFiles });
+    fp.mine = null; fp.answered = 0; fp.editing = false;
     fp.state = fp.form && formIsOpen(fp.form) ? 'fill' : 'gone';
     toast('Answer removed', 'info');
     fpRender();
-  } catch (e) { diag.warn('forms', 'Form page could not remove an answer', e); toast('Couldn’t remove it. Check your connection and try again.', 'error'); }
+  } catch (e) { diag.warn('forms', 'Form page could not remove an answer', e); toast(e.status ? e.message : 'Couldn’t remove it. Check your connection and try again.', 'error'); }
+}
+// Opens a file they sent earlier.
+async function fpOpenFile(btn, questionId) {
+  const v = fp.mine?.answers[questionId];
+  if (!v) return;
+  setBtnLoading(btn, true);
+  try {
+    const a = document.createElement('a');
+    a.href = await formFileUrl(fpCtx(), fpLink.id, fp.user.uid, questionId);
+    a.target = '_blank'; a.rel = 'noopener'; a.download = v.name;
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { diag.warn('forms', 'Form page could not open a file', e); toast('Couldn’t open that file. Check your connection and try again.', 'error'); }
+  finally { setBtnLoading(btn, false); }
 }
 function fpEdit() { fp.editing = true; fp.state = 'answered'; fpRender(); }
 // The same record the app keeps that the age and Terms box was ticked.
@@ -120,7 +152,7 @@ function fpStateHtml(ic, title, body, actions = '') {
 }
 function fpBand(f) {
   const closes = formClosesLabel(f);
-  return `<div class="fp-band"><div class="fp-from">${esc(f.spaceName || (f.spaceKind === 'group' ? 'A study group' : 'A club'))}</div><h1 class="fp-title">${esc(f.title)}</h1>${closes ? `<div class="fp-closes">${esc(closes)}</div>` : ''}</div>`;
+  return `<div class="fp-band"><div class="fp-from">${esc(f.spaceName || (f.spaceKind === 'group' ? 'A study group' : 'A club'))}${f.anonymous ? ' · Anonymous' : ''}</div><h1 class="fp-title">${esc(f.title)}</h1>${closes ? `<div class="fp-closes">${esc(closes)}</div>` : ''}</div>`;
 }
 function fpPitch() {
   return `<div class="card fp-pitch"><div><strong>Your entire semester, finally in one place.</strong><span>Semester HQ is the planner this form was made in: classes, deadlines, study groups and clubs together.</span></div><a class="btn" href="index.html">See Semester HQ ${icon('arrow-up-right', 14)}</a></div>`;
@@ -158,20 +190,29 @@ function fpRender() {
     case 'members': root.innerHTML = fpCard(`${fpBand(f)}${fpStateHtml('users', 'This one is for members', `Only members of ${esc(f.spaceName || 'the group')} can answer it. If that’s you, sign in with the account you use for Semester HQ.`)}`, style); return;
     case 'closed': root.innerHTML = fpCard(`${fpBand(f)}${fpStateHtml('lock', 'This form is closed', 'It stopped taking answers. Ask whoever sent it if there’s another way to reach them.')}`, style); return;
     case 'answered-closed': root.innerHTML = fpCard(fpStateHtml('check', 'You answered this form', 'It has since closed, so your answer can’t be changed here.', `<button class="btn btn-ghost" onclick="fpConfirmRemove()">Remove my answer</button>`)) + fpPitch(); return;
-    case 'sent': root.innerHTML = fpCard(`${fpBand(f)}${fpStateHtml('check', 'Sent', `Your answers went to ${esc(fpRunners())}.${f.allowEdit && formIsOpen(f) ? ' You can change them while the form is open.' : ''}`, f.allowEdit && formIsOpen(f) ? `<button class="btn" onclick="fpEdit()">${icon('pencil', 14)}Change my answer</button>` : '')}`, style) + (fp.member ? '' : fpPitch()); return;
+    case 'sent': root.innerHTML = fpCard(`${fpBand(f)}${fpStateHtml('check', 'Sent', `Your answers went to ${esc(fpRunners())}${f.anonymous ? ', without your name' : ''}.${f.allowEdit && formIsOpen(f) ? (f.anonymous ? ' You can send again to replace them while the form is open.' : ' You can change them while the form is open.') : ''}`, f.allowEdit && formIsOpen(f) ? `<button class="btn" onclick="fpEdit()">${icon('pencil', 14)}${f.anonymous ? 'Answer again' : 'Change my answer'}</button>` : '')}`, style) + (fp.member ? '' : fpPitch()); return;
   }
   const open = formIsOpen(f);
-  const canEdit = open && (!fp.mine || (f.allowEdit && fp.editing));
-  const sent = fp.mine ? `<p class="ff-sent">${icon('check', 14)}<span>You answered ${esc(fmtRelativeTime(fp.mine.updatedAt || fp.mine.at).toLowerCase())}.${!open ? ' This form is closed.' : f.allowEdit ? '' : ' Answers to this form can’t be changed.'}</span></p>` : '';
+  const answered = !!fp.mine || (f.anonymous && !!fp.answered);
+  const canEdit = open && (!answered || (f.allowEdit && fp.editing));
+  const when = answered ? esc(fmtRelativeTime(fp.mine?.updatedAt || fp.mine?.at || fp.answered).toLowerCase()) : '';
+  const sent = !answered ? ''
+    : f.anonymous ? `<p class="ff-sent">${icon('check', 14)}<span>You answered ${when}. Your answer is anonymous, so it can’t be shown here.${!open ? ' This form is closed.' : f.allowEdit ? ' Sending again replaces it.' : ' Answers to this form can’t be changed.'}</span></p>`
+    : `<p class="ff-sent">${icon('check', 14)}<span>You answered ${when}.${!open ? ' This form is closed.' : f.allowEdit ? '' : ' Answers to this form can’t be changed.'}</span></p>`;
+  // An anonymous answer can't be read back, so there is nothing to show
+  // until they choose to answer again.
+  const fields = f.anonymous && answered && !canEdit ? '' : formFillHtml(f, { answers: fp.mine?.answers || {}, who: fpWho(), runners: fpRunners(), readOnly: !canEdit });
+  const myFiles = !canEdit && fp.mine ? formFileQuestions(f).filter(q => fp.mine.answers[q.id]).map(q => `<button class="btn btn-sm forms-file" onclick="fpOpenFile(this,'${esc(q.id)}')">${icon('paperclip', 14)}<span>${esc(fp.mine.answers[q.id].name)}</span></button>`).join('') : '';
   root.innerHTML = fpCard(`
     ${fpBand(f)}
     <div class="fp-main form-fill">
-      ${canEdit && fp.editing ? '' : sent}
-      ${formFillHtml(f, { answers: fp.mine?.answers || {}, who: fpWho(), runners: fpRunners(), readOnly: !canEdit })}
+      ${canEdit && fp.editing && !f.anonymous ? '' : sent}
+      ${fields}
+      ${myFiles ? `<div class="fp-files"><span class="row-meta">Open what you sent</span>${myFiles}</div>` : ''}
       <div class="fp-actions">
-        ${fp.mine && open ? '<button class="btn btn-ghost" onclick="fpConfirmRemove()">Remove my answer</button>' : ''}
-        ${fp.mine && open && f.allowEdit && !fp.editing ? `<button class="btn btn-primary" onclick="fpEdit()">${icon('pencil', 14)}Change my answer</button>` : ''}
-        ${canEdit ? `<button class="btn btn-primary" id="fp-send" onclick="fpSend(this)">${fp.mine ? 'Save my answer' : 'Send'}</button>` : ''}
+        ${answered ? '<button class="btn btn-ghost" onclick="fpConfirmRemove()">Remove my answer</button>' : ''}
+        ${answered && open && f.allowEdit && !fp.editing ? `<button class="btn btn-primary" onclick="fpEdit()">${icon('pencil', 14)}${f.anonymous ? 'Answer again' : 'Change my answer'}</button>` : ''}
+        ${canEdit ? `<button class="btn btn-primary" id="fp-send" onclick="fpSend(this)">${answered ? (f.anonymous ? 'Send again' : 'Save my answer') : 'Send'}</button>` : ''}
       </div>
     </div>`, style);
 }
@@ -257,7 +298,7 @@ function fpSignOut() { _auth.signOut(); }
   const emulator = fpEmulatorHost();
   // The emulators run as demo-semester-hq, a project id the Firebase tools
   // treat as offline-only: nothing addressed to it can reach the real one.
-  firebase.initializeApp(emulator ? { ...FB_CONFIG, projectId: 'demo-semester-hq' } : FB_CONFIG);
+  firebase.initializeApp(emulator ? { ...FB_CONFIG, projectId: 'demo-semester-hq', storageBucket: 'demo-semester-hq.appspot.com' } : FB_CONFIG);
   _auth = firebase.auth();
   _db = firebase.firestore();
   if (emulator) { _auth.useEmulator(`http://${emulator}:9099`, { disableWarnings: true }); _db.useEmulator(emulator, 8080); }

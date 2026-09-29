@@ -13,10 +13,45 @@
      runners   'the officers of Chess Club', for that same line
      readOnly  show the answers, take no input
    formFillRead(root, form) -> { [question id]: raw value }
+     For a file question the value is { name, size, type }: the file
+     picked just now (formFillPicked(id) is the File itself, for the
+     caller to upload), or the one already sent.
    formFillShowErrors(root, form, errors) -> focuses the first one
    Every label, option and answer is somebody's typing: escaped here.
 ──────────────────────────────────────────────────────────────── */
 function formFieldId(q) { return `ff-${q.id}`; }
+// Files picked in the form on screen, and the ones already sent, by
+// question id. One form is on screen at a time; formFillHtml resets both.
+let _ffPicked = {}, _ffSent = {};
+function formFillPicked(questionId) { return _ffPicked[questionId] instanceof File ? _ffPicked[questionId] : null; }
+function formFileSize(bytes) { return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
+function formFileStateHtml(q, readOnly) {
+  const picked = _ffPicked[q.id], sent = _ffSent[q.id];
+  const f = picked instanceof File ? { name: picked.name, size: picked.size } : picked === null ? null : sent || null;
+  if (!f) return readOnly ? '<span class="ff-file-none">No file</span>' : `<span class="ff-file-hint">Any kind of file, up to ${formFileSize(FORM_FILE_MAX_BYTES)}</span>`;
+  return `<span class="ff-file-name">${icon('paperclip', 14)}<span>${esc(f.name)}</span><span class="ff-file-size">${formFileSize(f.size)}</span></span>${readOnly ? '' : `<button type="button" class="btn btn-ghost btn-sm ff-file-remove" onclick="formFileClear('${q.id}')">Remove</button>`}`;
+}
+// No `accept` on the input, ever: a type filter grays files out in the
+// phone's and the Mac's picker, and people can't pick the file they have.
+function formFilePick(questionId, input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  _ffPicked[questionId] = file;
+  formFileRedraw(questionId, file.size > FORM_FILE_MAX_BYTES ? `That file is ${formFileSize(file.size)}. The limit is ${formFileSize(FORM_FILE_MAX_BYTES)}.` : '');
+}
+function formFileClear(questionId) { _ffPicked[questionId] = null; formFileRedraw(questionId, ''); }
+function formFileRedraw(questionId, error) {
+  const box = document.querySelector(`[data-ff-q="${CSS.escape(questionId)}"]`);
+  const state = box?.querySelector('.ff-file-state');
+  if (!state) return;
+  state.innerHTML = formFileStateHtml({ id: questionId }, false);
+  const btn = box.querySelector('.ff-file-pick span');
+  if (btn) btn.textContent = _ffPicked[questionId] instanceof File || (_ffPicked[questionId] !== null && _ffSent[questionId]) ? 'Choose another' : 'Choose a file';
+  const err = box.querySelector('.ff-err');
+  box.classList.toggle('has-error', !!error);
+  if (err) { err.textContent = error; err.hidden = !error; }
+}
 function formFieldHtml(q, value, { readOnly = false } = {}) {
   const id = formFieldId(q);
   const dis = readOnly ? ' disabled' : '';
@@ -38,6 +73,11 @@ function formFieldHtml(q, value, { readOnly = false } = {}) {
       return `<div class="ff-scale" role="radiogroup" aria-labelledby="${id}-label" aria-describedby="${described}">${[1, 2, 3, 4, 5].map(n => `
         <label class="ff-scale-opt"><input type="radio" name="${id}" id="${id}-${n}" value="${n}"${Number(value) === n ? ' checked' : ''}${dis}><span>${n}</span></label>`).join('')}
       </div>`;
+    case 'file':
+      return `<div class="ff-file" role="group" aria-labelledby="${id}-label" aria-describedby="${described}">
+        ${readOnly ? '' : `<label class="btn btn-sm ff-file-pick">${icon('upload', 14)}<span>${value ? 'Choose another' : 'Choose a file'}</span><input type="file" id="${id}" class="sr-only" onchange="formFilePick('${q.id}',this)"></label>`}
+        <span class="ff-file-state" aria-live="polite">${formFileStateHtml(q, readOnly)}</span>
+      </div>`;
     case 'date':
       return `<input class="input ff-input ff-date" type="date" id="${id}" value="${esc(value || '')}" aria-describedby="${described}"${q.required ? ' aria-required="true"' : ''}${dis}>`;
     default:
@@ -46,7 +86,7 @@ function formFieldHtml(q, value, { readOnly = false } = {}) {
 }
 function formQuestionHtml(q, i, value, opts = {}) {
   const id = formFieldId(q);
-  const grouped = q.type === 'choice' || q.type === 'checks' || q.type === 'scale';
+  const grouped = q.type === 'choice' || q.type === 'checks' || q.type === 'scale' || q.type === 'file';
   const label = `${esc(q.label || `Question ${i + 1}`)}${q.required ? ' <span class="ff-req" aria-hidden="true">*</span><span class="sr-only"> (needs an answer)</span>' : ''}`;
   return `
     <div class="ff-q" data-ff-q="${esc(q.id)}">
@@ -58,12 +98,15 @@ function formQuestionHtml(q, i, value, opts = {}) {
 }
 // What the people running the form will see next to the answers.
 function formWhoLine(form, who, runners) {
+  if (form.anonymous) return `<p class="ff-who">${icon('lock', 14)}<span>This form is anonymous. Your name and email are not attached to your answers, so ${esc(runners || 'the people running this form')} see what you wrote and not who wrote it. Leave out anything that would give you away.</span></p>`;
   if (!who?.name) return '';
   const email = form.collectEmail && who.email ? ` and email (${esc(who.email)})` : '';
   return `<p class="ff-who">${icon('eye', 14)}<span>Your answers go to ${esc(runners || 'the people running this form')}, with your name (${esc(who.name)})${email}. Nobody else sees them.</span></p>`;
 }
 function formFillHtml(form, { answers = {}, who = null, runners = '', readOnly = false } = {}) {
   const required = form.questions.some(q => q.required);
+  _ffPicked = {};
+  _ffSent = Object.fromEntries(form.questions.filter(q => q.type === 'file' && answers[q.id]).map(q => [q.id, answers[q.id]]));
   return `
     <div class="ff" data-ff="${esc(form.id)}">
       ${form.description ? `<p class="ff-desc">${esc(form.description).replace(/\n/g, '<br>')}</p>` : ''}
@@ -79,6 +122,10 @@ function formFillRead(root, form) {
     if (q.type === 'choice' || q.type === 'scale') {
       const el = root.querySelector(`input[name="${id}"]:checked`);
       if (el) out[q.id] = q.type === 'scale' ? Number(el.value) : el.value;
+    } else if (q.type === 'file') {
+      const picked = _ffPicked[q.id];
+      if (picked instanceof File) out[q.id] = { name: picked.name, size: picked.size, type: picked.type || '' };
+      else if (picked !== null && _ffSent[q.id]) out[q.id] = _ffSent[q.id];
     } else if (q.type === 'checks') {
       out[q.id] = [...root.querySelectorAll(`input[name="${id}"]:checked`)].map(el => el.value);
     } else {

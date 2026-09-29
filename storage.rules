@@ -62,6 +62,39 @@ service firebase.storage {
       allow delete: if orgOfficer(code);
     }
 
+    // Files sent as an answer to a form (js/spaces/forms.js). One file per
+    // question, stored under the sender's own uid: .../forms/FORM/UID/QUESTION.
+    // Only the sender puts one there, while the form is open and only if
+    // they could answer it. Only the sender and whoever runs the form can
+    // open it. An anonymous form takes no files, since the path would name
+    // the sender.
+    function formOpenForFiles(form) {
+      return form != null
+        && form.data.status == 'open'
+        && (form.data.closesAt == null || request.time.toMillis() < form.data.closesAt)
+        && form.data.get('anonymous', false) != true;
+    }
+    function orgForm(code, formId) { return firestore.get(/databases/(default)/documents/orgs/$(code)/forms/$(formId)); }
+    function groupForm(code, formId) { return firestore.get(/databases/(default)/documents/studyGroups/$(code)/forms/$(formId)); }
+    match /orgs/{code}/forms/{formId}/{uid}/{questionId} {
+      allow read: if isOwner(uid) || orgOfficer(code);
+      allow create, update: if isOwner(uid) && under(10)
+        && formOpenForFiles(orgForm(code, formId))
+        && (orgForm(code, formId).data.audience == 'link' || orgMember(code));
+      allow delete: if isOwner(uid) || orgOfficer(code);
+    }
+    match /studyGroups/{code}/forms/{formId}/{uid}/{questionId} {
+      function runsGroupForm() {
+        return groupMember(code) && groupForm(code, formId) != null
+          && (groupForm(code, formId).data.createdBy == request.auth.uid || groupOwner(code));
+      }
+      allow read: if isOwner(uid) || runsGroupForm();
+      allow create, update: if isOwner(uid) && under(10)
+        && formOpenForFiles(groupForm(code, formId))
+        && (groupForm(code, formId).data.audience == 'link' || groupMember(code));
+      allow delete: if isOwner(uid) || runsGroupForm();
+    }
+
     // First-version study group files. Existing links keep working; nothing
     // new is written here and nothing can be replaced.
     match /studyGroups/{groupId}/{fileId} {

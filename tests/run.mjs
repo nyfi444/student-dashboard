@@ -740,7 +740,7 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
       formCleanResponse(f, { answers: {} }, 'bad id'),
       formCleanResponse(f, null, 'u1'),
     ];
-  })()`), [{ uid: 'u1', name: 'Jada', email: '', member: false, answers: { q1: 'Bio' }, at: 12, updatedAt: 0 }, null, null]);
+  })()`), [{ uid: 'u1', anon: false, name: 'Jada', email: '', member: false, answers: { q1: 'Bio' }, at: 12, updatedAt: 0 }, null, null]);
   check('forms: results count each choice, of the people who answered that question', run(`(() => {
     const f = __form();
     const r = (uid, answers) => formCleanResponse(f, { uid, name: uid, answers, at: 1 }, uid);
@@ -760,7 +760,7 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
     formAnswerKey('club', 'ABC123', 'f1'), formAnswerKey('group', 'ABC123', 'f1'),
   ]`), ['c.ABC123.f1', 'g.ABC123.f1', { kind: 'club', collection: 'orgs', code: 'ABC123', id: 'f1' }, { kind: 'group', collection: 'studyGroups', code: 'ABC123', id: 'f-1_x' }, null, null, null, null, null, 'orgs_ABC123_f1', 'studyGroups_ABC123_f1']);
   check('forms: every starting point opens as it is, except the blank one', run(`FORM_TEMPLATES.map(t => [t.key, formPublishProblem(formFromTemplate(t.key))]).filter(([, p]) => p)`), [['blank', 'Give the form a title.']]);
-  check('forms: clubs and study groups each get their own starting points', run(`[formTemplatesFor('club').map(t => t.key), formTemplatesFor('group').map(t => t.key)]`), [['blank', 'interest', 'application', 'signup', 'order', 'feedback'], ['blank', 'signup', 'feedback', 'study']]);
+  check('forms: clubs and study groups each get their own starting points', run(`[formTemplatesFor('club').map(t => t.key), formTemplatesFor('group').map(t => t.key)]`), [['blank', 'interest', 'application', 'signup', 'order', 'feedback', 'suggestions'], ['blank', 'signup', 'feedback', 'suggestions', 'study']]);
   check('forms: the sample club and group get forms whose answers all fit their questions', run(`(() => {
     const out = [];
     for (const kind of ['club', 'group']) {
@@ -771,8 +771,55 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
       }
     }
     return out;
-  })()`), [['club', '', true, true, false], ['club', '', true, true, false], ['group', '', true, true, false]]);
-  check('forms: the tabs exist for clubs and study groups, and their entry points loaded', [run(`[ORG_TABS.some(t => t[0] === 'forms'), GROUP_TABS.some(t => t[0] === 'forms')]`), loaded(['formsTab', 'formsWaiting', 'formsAfterRender', 'openFormFill', 'submitFormFill', 'openFormShare', 'openFormResults', 'downloadFormCsv', 'openFormPicker', 'openFormBuilder', 'fbSave', 'formFillHtml', 'formFillRead'])], [[true, true], []]);
+  })()`), [['club', '', true, true, false], ['club', '', true, true, false], ['club', '', true, true, false], ['club', '', true, true, false], ['group', '', true, true, false]]);
+  check('forms: the tabs exist for clubs and study groups, and their entry points loaded', [run(`[ORG_TABS.some(t => t[0] === 'forms'), GROUP_TABS.some(t => t[0] === 'forms')]`), loaded(['formsTab', 'formsWaiting', 'formsAfterRender', 'openFormFill', 'submitFormFill', 'openFormShare', 'openFormResults', 'downloadFormCsv', 'openFormPicker', 'openFormBuilder', 'fbSave', 'fbAnonymous', 'formFillHtml', 'formFillRead', 'formFillPicked', 'formSendAnswer', 'formTakeBack', 'formFileUrl', 'setFormMark', 'openFormFile'])], [[true, true], []]);
+
+  check('forms: a file answer keeps its name, size and type, and nothing that could point somewhere else', run(`(() => {
+    const q = { id: 'q', type: 'file', options: [] };
+    return [
+      formCleanAnswer(q, { name: '  My   résumé.pdf ', size: 2048, type: 'application/pdf', path: 'orgs/OTHER1/forms/x/y/z', url: 'https://evil.example/x' }),
+      formCleanAnswer(q, { name: '../../secret\\\\plan.pdf', size: 10, type: 'not a type' }),
+      formCleanAnswer(q, { name: 'demo.txt', size: 5, url: 'data:text/plain;base64,aGk=' }),
+      formCleanAnswer(q, { name: 'page.html', size: 5, url: 'data:text/html,<script>1</script>' }),
+      formCleanAnswer(q, { name: 'big.mov', size: FORM_FILE_MAX_BYTES + 1 }),
+      formCleanAnswer(q, { name: '', size: 10 }),
+      formCleanAnswer(q, { name: 'empty.pdf', size: 0 }),
+      formCleanAnswer(q, 'resume.pdf'),
+      formCleanAnswer(q, ['resume.pdf']),
+    ];
+  })()`), [{ name: 'My résumé.pdf', size: 2048, type: 'application/pdf' }, { name: '....secretplan.pdf', size: 10, type: '' }, { name: 'demo.txt', size: 5, type: '', url: 'data:text/plain;base64,aGk=' }, { name: 'page.html', size: 5, type: '' }, null, null, null, null, null].map(v => v === null ? undefined : v));
+  check('forms: a file that is too big says so, and a required file question needs a file', run(`(() => {
+    const f = formClean({ id: 'f', title: 't', questions: [{ id: 'q1', type: 'file', label: 'Résumé', required: true }, { id: 'q2', type: 'file', label: 'Photo' }] });
+    return [formCheckAnswers(f, { q2: { name: 'big.mov', size: FORM_FILE_MAX_BYTES + 1 } }).errors, formCheckAnswers(f, { q1: { name: 'cv.pdf', size: 9 } }).ok, formAnswerEmpty({}), formAnswerEmpty({ name: 'cv.pdf', size: 9 }), formAnswerText(f.questions[0], { name: 'cv.pdf', size: 9 })];
+  })()`), [{ q1: 'This one needs an answer.', q2: 'That file is over 10 MB. Pick a smaller one.' }, true, true, false, 'cv.pdf']);
+  check('forms: where a file lives is worked out from the form, the sender and the question', run(`[formFilePath('club', 'ABC123', 'f1', 'u1', 'q1'), formFilePath('group', 'ABC123', 'f1', 'u1', 'q1')]`), ['orgs/ABC123/forms/f1/u1/q1', 'studyGroups/ABC123/forms/f1/u1/q1']);
+  check('forms: an anonymous form collects no email, is not sorted, and takes no files', run(`(() => {
+    const f = formClean({ id: 'f', title: 'Box', status: 'open', anonymous: true, collectEmail: true, review: true, questions: [{ id: 'q1', type: 'long', label: 'Say it' }, { id: 'q2', type: 'file', label: 'Proof' }] });
+    return [f.anonymous, f.collectEmail, f.review, formPublishProblem(f), formClean({ id: 'f', title: 't', anonymous: 'yes' }).anonymous];
+  })()`), [true, false, false, 'Question 2 asks for a file, and an anonymous form can’t take one. Change the question or turn anonymous off.', false]);
+  check('forms: an anonymous answer is read with no name, email or membership, whatever the document claims', run(`(() => {
+    const f = __form({ anonymous: true });
+    return formCleanResponse(f, { anon: true, uid: 'carol', name: 'Carol', email: 'carol@school.edu', member: true, answers: { q1: 'Bio' }, at: 86400000 }, 'a1b2c3');
+  })()`), { uid: 'a1b2c3', anon: true, name: 'Anonymous', email: '', member: false, answers: { q1: 'Bio' }, at: 86400000, updatedAt: 0 });
+  check('forms: the spreadsheet of an anonymous form has no names, no times of day, and no order of arrival', run(`(() => {
+    const f = __form({ anonymous: true });
+    const r = (id, at, q1) => formCleanResponse(f, { anon: true, answers: { q1 }, at }, id);
+    const rows = formCsvRows(f, [r('zz9', new Date(2026, 9, 1).getTime(), 'first in'), r('aa1', new Date(2026, 9, 3).getTime(), 'last in')]);
+    return [rows[0].slice(0, 3), rows[1].slice(0, 3), rows[2].slice(0, 3)];
+  })()`), [['Answer', 'Sent', 'Major?'], ['Answer 1', '2026-10-03', 'last in'], ['Answer 2', '2026-10-01', 'first in']]);
+  check('forms: a form that sorts its answers puts the decision in the spreadsheet', run(`(() => {
+    const f = __form({ review: true, collectEmail: false });
+    const r = (uid) => formCleanResponse(f, { uid, name: uid, answers: { q1: 'x' }, at: 1 }, uid);
+    const rows = formCsvRows(f, [r('a'), r('b'), r('c')], { a: 'accepted', b: 'declined', c: 'made-up' });
+    return [rows[0].slice(0, 3), rows.slice(1).map(x => x[2]), FORM_MARKS.map(m => m[0])];
+  })()`), [['Name', 'Member', 'Status'], ['Accepted', 'Declined', ''], ['accepted', 'waitlisted', 'declined']]);
+  check('forms: the sample club has applications half sorted and an anonymous box with no names in it', run(`(() => {
+    const s = sampleForms('club', { name: 'Sample', color: '#1F5F6B', people: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(u => ({ uid: 'sample-' + u, name: u.toUpperCase() })), by: 'sample-a', byName: 'A', now: 1790000000000 });
+    const forms = Object.values(s.forms);
+    const app = forms.find(f => f.review), box = forms.find(f => f.anonymous);
+    const anon = Object.values(s.formResponses[box.id]);
+    return [Object.values(s.formMarks[app.id]).sort(), Object.keys(s.formMarks[app.id]).every(u => u in s.formResponses[app.id]), anon.length, anon.every(r => r.anon === true && !('uid' in r) && !('name' in r) && !('email' in r) && r.at % 86400000 === 0)];
+  })()`), [['accepted', 'accepted', 'declined', 'waitlisted'], true, 5, true]);
 
   /* The fill-out page loads its own short list of scripts. The same two
      quiet failures apply to it: a name declared twice, or a file that
@@ -793,8 +840,8 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
       }
     }
     check('form.html: no top-level function or var is declared in two scripts', dupes, []);
-    check('form.html: it loads the shared form files the app loads, and never the planner itself', [['js/spaces/formcore.js', 'js/spaces/formfill.js', 'js/form-page.js'].filter(f => !pageScripts.includes(f)), pageScripts.filter(f => /state\.js|firebase\.js|app\.js/.test(f))], [[], []]);
-    check('form.html: upload inputs and remote QR services are not used', [/<input[^>]+type="file"/.test(formHtml), /api\.qrserver|chart\.googleapis/.test(formHtml + read('js/spaces/forms.js'))], [false, false]);
+    check('form.html: it loads the shared form files the app loads, and never the planner itself', [['js/spaces/formcore.js', 'js/spaces/formfill.js', 'js/spaces/formsend.js', 'js/form-page.js'].filter(f => !pageScripts.includes(f)), pageScripts.filter(f => /state\.js|firebase\.js|app\.js/.test(f))], [[], []]);
+    check('forms: the file picker never filters by type, and no remote QR service is used', [/type="file"[^>]*accept|accept=[^>]*type="file"/.test(read('js/spaces/formfill.js') + formHtml), /type="file"/.test(read('js/spaces/formfill.js')), /api\.qrserver|chart\.googleapis/.test(formHtml + read('js/spaces/forms.js'))], [false, true, false]);
   }
 }
 

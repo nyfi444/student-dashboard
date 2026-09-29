@@ -47,7 +47,7 @@ function openFormBuilder(kind, code, id, opts = {}) {
   // An unsaved copy of this same form wins over the saved one.
   const kept = window._formDraft;
   if (!(kept && kept.dirty && kept.kind === kind && kept.code === code && kept.form.id === id)) {
-    window._formDraft = { kind, code, form: { ...f, questions: f.questions.map(q => ({ ...q, options: [...q.options] })) }, isNew: false, dirty: false };
+    window._formDraft = { kind, code, form: { ...f, questions: f.questions.map(q => ({ ...q, options: [...q.options] })) }, isNew: false, dirty: false, wasStatus: f.status };
   }
   fbOpen(opts);
 }
@@ -77,7 +77,7 @@ function fbClosed() {
   if (!d || !d.dirty || d.previewing) return;
   toast('Your changes are kept until you leave this page.', 'info', 6000, { label: 'Keep editing', run: () => fbOpen() });
 }
-function fbQuestionHtml(q, i, n) {
+function fbQuestionHtml(q, i, n, anonymous) {
   const opts = formHasOptions(q.type);
   return `
     <div class="fb-q" data-fb-q="${i}">
@@ -85,7 +85,7 @@ function fbQuestionHtml(q, i, n) {
         <span class="fb-q-num" aria-hidden="true">${i + 1}</span>
         <div class="fb-q-main">
           <input class="input fb-q-label" id="fb-q-${i}-label" maxlength="${FORM_LABEL_MAX}" value="${esc(q.label)}" placeholder="Your question" aria-label="Question ${i + 1}" oninput="fbQ(${i},'label',this.value)">
-          <select class="select fb-q-type" aria-label="Kind of answer for question ${i + 1}" onchange="fbType(${i},this.value)">${FORM_TYPES.map(([k, label]) => `<option value="${k}"${q.type === k ? ' selected' : ''}>${label}</option>`).join('')}</select>
+          <select class="select fb-q-type" aria-label="Kind of answer for question ${i + 1}" onchange="fbType(${i},this.value)">${FORM_TYPES.map(([k, label]) => `<option value="${k}"${q.type === k ? ' selected' : ''}${k === 'file' && anonymous && q.type !== 'file' ? ' disabled' : ''}>${label}</option>`).join('')}</select>
         </div>
       </div>
       ${opts ? `<div class="fb-opts">${q.options.map((o, j) => `
@@ -97,6 +97,7 @@ function fbQuestionHtml(q, i, n) {
         ${q.options.length < FORM_OPTIONS_MAX ? `<button type="button" class="sg-link fb-add-opt" onclick="fbAddOpt(${i})">${icon('plus', 12)} Add a choice</button>` : ''}
       </div>` : ''}
       ${q.type === 'scale' ? '<div class="fb-scale-note small muted">People pick a number from 1 to 5. Say what the ends mean in the note below.</div>' : ''}
+      ${q.type === 'file' ? `<div class="fb-scale-note small ${anonymous ? 'fb-warn' : 'muted'}">${anonymous ? 'An anonymous form can’t take files. Change this question, or turn anonymous off.' : 'One file of any kind, up to 10 MB. Only the sender and the people running the form can open it.'}</div>` : ''}
       <input class="input fb-q-help" maxlength="${FORM_HELP_MAX}" value="${esc(q.help)}" placeholder="A note under the question (optional)" aria-label="Note under question ${i + 1}" oninput="fbQ(${i},'help',this.value)">
       <div class="fb-q-foot">
         <label class="checkbox-row"><input type="checkbox"${q.required ? ' checked' : ''} onchange="fbQ(${i},'required',this.checked)"> Needs an answer</label>
@@ -114,13 +115,16 @@ function fbDraw() {
   const f = d.form, n = f.questions.length;
   const A = FORM_ADAPTERS[d.kind], sp = A.space(d.code);
   const noun = d.kind === 'group' ? 'group' : 'club';
+  // Anonymous or not is settled once the form has been open (firestore.rules
+  // holds the same line).
+  const locked = !d.isNew && d.wasStatus !== 'draft';
   body.innerHTML = `
     <div class="fb-top">
       <input class="input fb-title" id="fb-title" maxlength="${FORM_TITLE_MAX}" value="${esc(f.title)}" placeholder="Form title" aria-label="Form title" oninput="fbSet('title',this.value)">
       <textarea class="input fb-desc" id="fb-desc" rows="2" maxlength="${FORM_DESC_MAX}" placeholder="A line or two about what this is for (optional)" aria-label="Description" oninput="fbSet('description',this.value)">${esc(f.description)}</textarea>
     </div>
     ${!d.isNew && f.status !== 'draft' ? `<div class="sg-callout mb-16">${icon('info', 16)}<div class="small">This form is already out. Rewording a question is fine; removing one hides the answers it already has.</div></div>` : ''}
-    <div class="fb-questions">${f.questions.map((q, i) => fbQuestionHtml(q, i, n)).join('')}</div>
+    <div class="fb-questions">${f.questions.map((q, i) => fbQuestionHtml(q, i, n, f.anonymous)).join('')}</div>
     ${n < FORM_QUESTIONS_MAX ? `<button type="button" class="btn fb-add" onclick="fbAdd()">${icon('plus', 14)}Add a question</button>` : `<p class="small muted">A form holds up to ${FORM_QUESTIONS_MAX} questions.</p>`}
     <div class="fb-settings">
       <h4 class="fb-h">Who can answer</h4>
@@ -131,8 +135,11 @@ function fbDraw() {
       <p class="small muted fb-audience-note">${f.audience === 'link'
         ? `For interest forms and applications. People who aren’t in ${esc(sp?.name || `the ${noun}`)} open the link and sign in with a free Semester HQ account to answer. They don’t join the ${noun} or see anything else in it.`
         : `Only people in ${esc(sp?.name || `the ${noun}`)} can open and answer it.`}</p>
-      <label class="checkbox-row"><input type="checkbox"${f.collectEmail ? ' checked' : ''} onchange="fbSet('collectEmail',this.checked)"> Include each person’s email with their answer</label>
-      <label class="checkbox-row"><input type="checkbox"${f.allowEdit ? ' checked' : ''} onchange="fbSet('allowEdit',this.checked)"> Let people change their answer while the form is open</label>
+      <h4 class="fb-h fb-h-gap">Answers</h4>
+      <label class="checkbox-row fb-check"><input type="checkbox" id="fb-anon"${f.anonymous ? ' checked' : ''}${locked ? ' disabled' : ''} onchange="fbAnonymous(this.checked)"><span>Anonymous answers<span class="fb-check-note">${locked ? `This was settled when the form first opened, and can’t change now: people answered ${f.anonymous ? 'believing their names were left out' : 'with their names on'}.` : 'No names or emails. You see what people wrote and never who wrote it. Each person still gets one answer.'}</span></span></label>
+      <label class="checkbox-row fb-check"><input type="checkbox"${f.review ? ' checked' : ''}${f.anonymous ? ' disabled' : ''} onchange="fbSet('review',this.checked)"><span>Sort answers: accept, waitlist or decline<span class="fb-check-note">For applications. Only ${d.kind === 'club' ? 'officers' : 'you and the group’s owner'} see what you decide, and nothing is sent to the person.</span></span></label>
+      <label class="checkbox-row fb-check"><input type="checkbox"${f.collectEmail ? ' checked' : ''}${f.anonymous ? ' disabled' : ''} onchange="fbSet('collectEmail',this.checked)"><span>Include each person’s email with their answer</span></label>
+      <label class="checkbox-row fb-check"><input type="checkbox"${f.allowEdit ? ' checked' : ''} onchange="fbSet('allowEdit',this.checked)"><span>Let people ${f.anonymous ? 'replace' : 'change'} their answer while the form is open</span></label>
       <div class="field fb-closes"><label for="fb-closes">Stop taking answers after <span class="muted">(optional)</span></label>
         <div class="fb-closes-row"><input class="input" type="date" id="fb-closes" value="${esc(formClosesDate(f))}" min="${todayIso()}" onchange="fbCloses(this.value)">${f.closesAt ? `<button type="button" class="sg-link" onclick="fbCloses('')">No closing day</button>` : ''}</div>
       </div>
@@ -157,9 +164,18 @@ function fbAudience(audience) {
   d.form.audience = audience;
   // Someone outside the space can only be reached by email, so a link
   // form starts with it on; it can still be switched off.
-  if (audience === 'link') d.form.collectEmail = true;
+  if (audience === 'link' && !d.form.anonymous) d.form.collectEmail = true;
   fbTouch(); fbDraw();
   fbFocus('#fb-audience button.active');
+}
+function fbAnonymous(on) {
+  const d = window._formDraft;
+  if (!d) return;
+  d.form.anonymous = on;
+  // An anonymous form collects no email and isn't sorted person by person.
+  if (on) { d.form.collectEmail = false; d.form.review = false; }
+  fbTouch(); fbDraw();
+  fbFocus('#fb-anon');
 }
 function fbCloses(dateIso) { fbSet('closesAt', formClosesAtFromDate(dateIso)); fbDraw(); }
 function fbAdd() {

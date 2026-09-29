@@ -210,3 +210,56 @@ body.fp-body { background: var(--bg); color: var(--bg-text); }
   .fp-main { padding: 18px 18px 20px; }
   .fp-actions .btn { flex: 1 1 auto; }
 }
+
+/* ── A file as an answer ── */
+.ff-file { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.ff-file-pick { position: relative; cursor: pointer; flex-shrink: 0; }
+.ff-file-pick:focus-within { box-shadow: var(--focus-ring); }
+.ff-file-state { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; font-size: var(--fs-md); color: var(--text-dim); }
+.ff-file-hint, .ff-file-none { color: var(--text-faint); }
+.ff-file-name { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text); font-weight: 500; }
+.ff-file-name > span:first-of-type { overflow-wrap: anywhere; min-width: 0; }
+.ff-file-name .i { flex-shrink: 0; color: var(--space-mark, var(--text-faint)); }
+.ff-file-size { flex-shrink: 0; font-weight: 400; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.ff-q.has-error .ff-file-pick { border-color: var(--control-border); }
+.forms-file { max-width: 100%; min-width: 0; height: auto; min-height: 30px; padding-top: 4px; padding-bottom: 4px; text-align: left; }
+.forms-file > span:first-of-type { overflow-wrap: anywhere; min-width: 0; }
+.forms-sum-text.is-files li { padding-left: 0; border-left: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.fp-files { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+/* ── Anonymous forms ── */
+.forms-anon-note { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 16px; font-size: var(--fs-md); line-height: 1.5; color: var(--bg-text-dim); max-width: 70ch; }
+.forms-anon-note .i { flex-shrink: 0; margin-top: 3px; color: var(--bg-text-faint); }
+.forms-anon-face { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 50%; background: var(--space-wash-strong, var(--surface-2)); color: var(--space-text, var(--text-dim)); }
+
+/* ── Accepted, waitlisted, declined ── */
+.forms-mark { flex-shrink: 0; }
+.forms-mark.is-accepted { background: var(--space-fill, var(--accent)); color: var(--space-on, var(--accent-text)); }
+.forms-mark.is-waitlisted { background: var(--space-wash-strong, var(--surface-2)); color: var(--space-text, var(--text)); }
+.forms-mark.is-declined { box-shadow: inset 0 0 0 1px var(--field-border); color: var(--text-faint); }
+.forms-filter { margin-bottom: 12px; }
+.forms-filter .chip-count { margin-left: 2px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.forms-none { margin: 8px 0; color: var(--bg-text-faint); }
+.forms-person-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.forms-person-nav .forms-back { margin-bottom: 0; }
+.forms-person-step { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.forms-decide { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 20px; padding: 12px; border-radius: var(--r-tight); background: color-mix(in srgb, var(--text) 4%, transparent); }
+.forms-decide-btn.is-on.is-accepted { background: var(--space-fill, var(--accent)); border-color: var(--space-fill, var(--accent)); color: var(--space-on, var(--accent-text)); }
+.forms-decide-btn.is-on.is-waitlisted { background: var(--space-wash-strong, var(--surface-2)); border-color: var(--space-line, var(--control-border)); color: var(--space-text, var(--text)); }
+.forms-decide-btn.is-on.is-declined { background: var(--fill-selected); border-color: var(--control-border); color: var(--text); }
+.forms-decide-note { flex: 1 1 220px; min-width: 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-faint); overflow-wrap: anywhere; }
+.forms-sum-marks { grid-column: 1 / -1; }
+.forms-mark-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 8px; }
+.forms-mark-count { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px; border: 1px solid var(--card-edge); border-radius: var(--r-tight); background: var(--surface); color: var(--text-dim); font: 400 var(--fs-md)/1.3 var(--font); text-align: left; cursor: pointer; transition: background var(--dur-1), border-color var(--dur-1); }
+.forms-mark-count:hover { background: var(--fill-hover); border-color: var(--line-strong); }
+.forms-mark-count:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.forms-mark-count strong { font: 500 var(--fs-fig-m)/1.1 var(--font); color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ── Builder: the Answers settings ── */
+.fb-h-gap { margin-top: 16px; }
+.fb-check { align-items: flex-start; min-height: 0; padding: 4px 0; }
+.fb-check input { flex-shrink: 0; margin-top: 2px; }
+.fb-check > span { min-width: 0; line-height: 1.4; }
+.fb-check-note { display: block; margin-top: 2px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-faint); max-width: 60ch; }
+.fb-check:has(input:disabled) > span { color: var(--text-faint); }
+.fb-warn { color: var(--danger-text); font-weight: 500; }

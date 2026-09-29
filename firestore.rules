@@ -18,8 +18,18 @@ service cloud.firestore {
       // per form. It exists so "delete my account" can find every answer
       // they ever sent, including to clubs they never joined: the form
       // rules below refuse an answer that doesn't arrive with its entry.
+      //
+      // An entry for an ANONYMOUS form is written by the Worker (it holds
+      // the id of the answer, which carries no name). The owner can read it
+      // and nothing else: if they could remove it, they could answer an
+      // anonymous vote again and again.
       match /formAnswers/{key} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        function mineToKeep() { return request.auth != null && request.auth.uid == uid; }
+        allow read: if mineToKeep();
+        allow create: if mineToKeep() && request.resource.data.get('anon', false) != true;
+        allow update: if mineToKeep() && request.resource.data.get('anon', false) != true
+          && resource.data.get('anon', false) != true;
+        allow delete: if mineToKeep() && resource.data.get('anon', false) != true;
       }
     }
 
@@ -34,7 +44,28 @@ service cloud.firestore {
         && d.collectEmail is bool
         && d.allowEdit is bool
         && (d.closesAt == null || d.closesAt is number)
-        && d.createdBy is string;
+        && d.createdBy is string
+        && d.get('anonymous', false) is bool
+        && d.get('review', false) is bool;
+    }
+    // An anonymous form takes its answers through the Worker only, so no
+    // answer to it is ever filed under anybody's uid.
+    function formIsNamed(form) { return form.get('anonymous', false) != true; }
+    // Whether a form is anonymous is settled by the time it leaves draft.
+    // Switching it later would either put names next to answers people
+    // gave believing there would be none, or hide who sent the ones that
+    // were named.
+    function formKeepsItsPromise(after, before) {
+      return before.status == 'draft'
+        || after.get('anonymous', false) == before.get('anonymous', false);
+    }
+    // Accepted, waitlisted or declined: a note the people running the form
+    // keep about an answer. Never readable by the person it is about.
+    function validFormMark(d) {
+      return d.keys().hasOnly(['status', 'by', 'at'])
+        && d.status in ['accepted', 'waitlisted', 'declined']
+        && d.by == request.auth.uid
+        && d.at is number;
     }
     function formIsOpen(form) {
       return form.status == 'open' && (form.closesAt == null || request.time.toMillis() < form.closesAt);
@@ -135,7 +166,8 @@ service cloud.firestore {
           && request.resource.data.createdBy == request.auth.uid;
         allow update: if runsForm(resource.data)
           && validForm(request.resource.data, formId)
-          && request.resource.data.createdBy == resource.data.createdBy;
+          && request.resource.data.createdBy == resource.data.createdBy
+          && formKeepsItsPromise(request.resource.data, resource.data);
         allow delete: if runsForm(resource.data);
 
         // Answers: one per person, filed under their uid. Only the sender
@@ -152,14 +184,21 @@ service cloud.firestore {
           }
           allow get: if mine() || runsForm(theForm());
           allow list: if runsForm(theForm());
-          allow create: if mayAnswer()
+          allow create: if mayAnswer() && formIsNamed(theForm())
             && validFormAnswer(request.resource.data, uid, theForm(), isMember(groupData()))
             && recorded();
-          allow update: if mayAnswer()
+          allow update: if mayAnswer() && formIsNamed(theForm())
             && theForm().allowEdit == true
             && validFormAnswer(request.resource.data, uid, theForm(), isMember(groupData()))
             && request.resource.data.at == resource.data.at;
           allow delete: if mine() || runsForm(theForm());
+        }
+
+        // Accepted, waitlisted, declined: only whoever runs the form.
+        match /marks/{uid} {
+          function markedForm() { return get(/databases/$(database)/documents/studyGroups/$(code)/forms/$(formId)).data; }
+          allow read, delete: if runsForm(markedForm());
+          allow create, update: if runsForm(markedForm()) && validFormMark(request.resource.data);
         }
       }
     }
@@ -277,7 +316,8 @@ service cloud.firestore {
           && request.resource.data.createdBy == request.auth.uid;
         allow update: if formOfficer()
           && validForm(request.resource.data, formId)
-          && request.resource.data.createdBy == resource.data.createdBy;
+          && request.resource.data.createdBy == resource.data.createdBy
+          && formKeepsItsPromise(request.resource.data, resource.data);
         allow delete: if formOfficer();
 
         // Answers: one per person, filed under their uid. Only the sender
@@ -294,14 +334,21 @@ service cloud.firestore {
           }
           allow get: if mine() || formOfficer();
           allow list: if formOfficer();
-          allow create: if mayAnswer()
+          allow create: if mayAnswer() && formIsNamed(theForm())
             && validFormAnswer(request.resource.data, uid, theForm(), formMember())
             && recorded();
-          allow update: if mayAnswer()
+          allow update: if mayAnswer() && formIsNamed(theForm())
             && theForm().allowEdit == true
             && validFormAnswer(request.resource.data, uid, theForm(), formMember())
             && request.resource.data.at == resource.data.at;
           allow delete: if mine() || formOfficer();
+        }
+
+        // Accepted, waitlisted, declined: officers only. The person an
+        // answer belongs to cannot read what was decided about it here.
+        match /marks/{uid} {
+          allow read, delete: if formOfficer();
+          allow create, update: if formOfficer() && validFormMark(request.resource.data);
         }
       }
     }
