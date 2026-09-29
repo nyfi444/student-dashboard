@@ -169,8 +169,10 @@ html:has(.space-tabbar) { scroll-padding-top: calc(60px + env(safe-area-inset-to
 .space-tabbar.is-stuck .space-tabbar-invite { visibility: visible; opacity: 1; transition: opacity var(--dur-2); }
 .space-tabbar.is-instant, .space-tabbar.is-instant::before, .space-tabbar.is-instant * { transition: none !important; }
 .space-tabs.sg-tabs { flex: 1; min-width: 0; border-bottom: 0; margin-bottom: 0; }
+/* position: relative keeps each tab's sr-only text inside the scrolling row, so a tab
+   scrolled off the right edge can't widen the page. */
 .space-tabs button {
-  display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; margin: 0;
+  position: relative; display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; margin: 0;
   border-top: 2px solid transparent; border-bottom: 2px solid transparent;
   font: 600 var(--fs-md)/1 var(--font); color: var(--bg-text-faint);
   transition: color var(--dur-1), border-color var(--dur-1);
@@ -258,6 +260,17 @@ html.dark .space-card-cover { --pattern-alpha: calc(var(--pattern-alpha-dark, .2
   .space-week-item > .row-title { min-width: 0; }
   .space-week-item > .space-crest { margin-top: 2px; }
   .list-row.space-week-item > .space-rsvp, .list-row.space-week-item > .space-dues-btn, .list-row.space-week-item > .space-dues-add { grid-column: 2; justify-self: start; margin-left: 0; }
+  /* The same for the dashboard's Clubs & teams and Study groups rows: the date tile spans both lines,
+     so the control sits under the title instead of on a line of its own. */
+  .list-row.sg-session-row.space:has(> .space-rsvp), .list-row.sg-session-row.space:has(> .space-dues-btn), .list-row.sg-session-row.space:has(> .space-dues-add) {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; column-gap: 12px; row-gap: 8px;
+  }
+  .list-row.sg-session-row.space > .space-date-tile { grid-row: span 2; }
+  .list-row.sg-session-row.space > .row-title { min-width: 0; }
+  .list-row.sg-session-row.space > .space-rsvp, .list-row.sg-session-row.space > .space-dues-btn, .list-row.sg-session-row.space > .space-dues-add { grid-column: 2; justify-self: start; margin-left: 0; }
+  /* The "need you" pills stack one per space on a phone, so these two widgets get a taller cap
+     (still under a screen) and three event rows show above Show all. */
+  .xp[data-xp="dash-orgs"], .xp[data-xp="dash-studyGroups"] { --xp-max: 620px !important; }
 }
 .space-week-all { margin-top: 8px; }
 
@@ -305,10 +318,11 @@ html.dark .space-card-cover { --pattern-alpha: calc(var(--pattern-alpha-dark, .2
   .space-tabbar-name, .space-tabbar-invite { display: none; }
   .space-tabs { scroll-snap-type: x proximity; }
   .space-tabs button { scroll-snap-align: center; padding: 0 12px; }
-  .space-tabs button.space-tab-phone-hidden:not(.active) { display: none; }
+  .space-tabs button.space-tab-phone-last { order: 1; }
 
+  .space.space-fab-on > .space-chat-fab { display: grid; }
   .space-chat-fab {
-    display: grid; place-items: center; position: fixed; z-index: 170;
+    place-items: center; position: fixed; z-index: 170;
     right: 16px; bottom: calc(84px + env(safe-area-inset-bottom));
     width: 56px; height: 56px; padding: 0; border: 0; border-radius: var(--r-mid); cursor: pointer;
     background: var(--space-fill); color: var(--space-on); box-shadow: var(--shadow-float);
@@ -548,12 +562,11 @@ button.space-agenda-title { position: relative; display: block; min-height: 24px
   .space-rsvp.is-row .space-rsvp-btn::after, .space-rsvp.is-row button.space-rsvp-pill::after { content: ''; position: absolute; inset: -2px 0; }
   .space-hero { padding: 20px; }
   /* Phones: NEXT UP and the countdown on one line, then the title, then Required and the need tag
-     on one line under it (Weekly drops). The chat button never covers the hero's last lines. */
+     on one line under it (Weekly drops). */
   .space-hero-top { justify-content: flex-start; align-items: center; gap: 8px; }
   .space-hero-eyetags { display: none; }
   .space-hero-tags { display: flex; flex-wrap: nowrap; gap: 6px; min-width: 0; overflow: hidden; margin: -2px 0 10px; }
   .space-hero-tags .space-tag.is-weekly { display: none; }
-  .space:has(> .space-chat-fab) .space-hero { padding-bottom: 72px; }
   .space-hero-now { margin: -20px -20px 16px; padding: 0 20px; }
   .space-hero-grid { grid-template-columns: 64px minmax(0, 1fr); column-gap: 16px; }
   .space-hero-grid > .space-date-block { grid-row: auto; width: 64px; padding: 8px 0 10px; }

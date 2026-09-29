@@ -83,14 +83,18 @@ function dashboardOrgsWidget() {
       ${rows.length ? rows.map(({ o, e }) => `
         <div class="list-row sg-session-row space" style="--course:${esc(orgColor(o))};${spaceVars(orgColor(o))}" onclick="openOrgEvent('${o.code}','${e.id}')">
           ${spaceDateBlock(e.date, { size: 'tile' })}
-          <div class="row-title"><div class="sg-strong">${esc(e.title)}${e.required ? ' <span class="org-required">Required</span>' : ''}</div><div class="row-meta">${esc(o.name)}${e.start ? ` · ${fmtTime(e.start)}` : ''}</div></div>
+          <div class="row-title"><div class="sg-strong">${esc(e.title)}${orgRowRequiredTag(e)}</div><div class="row-meta">${esc(o.name)}${e.start ? ` · ${fmtTime(e.start)}` : ''}</div></div>
           ${orgRsvpControl(o, e)}
         </div>`).join('') : '<p class="small muted">Nothing on the calendar in the next 10 days.</p>'}
     </div>`;
 }
 
+// Small rows (dashboard, This week) carry only Required, in the same
+// outline tag as the Overview; the RSVP control already sits beside them.
+function orgRowRequiredTag(e) { return e.required && !orgIsDuesEvent(e) ? ` ${spaceTag('required', 'Required')}` : ''; }
+
 /* ── Navigation ────────────────────────────────────────────────── */
-function openOrg(code, tab) { setState({ route: 'orgs', subRoute: code, orgTab: tab || 'overview' }); window.scrollTo(0, 0); if (tab === 'announcements') markOrgSeen(code); }
+function openOrg(code, tab) { _orgWeekOpen = false; setState({ route: 'orgs', subRoute: code, orgTab: tab || 'overview' }); window.scrollTo(0, 0); if (tab === 'announcements') markOrgSeen(code); }
 function openOrgEvent(code, eventId) { openOrg(code, 'events'); setTimeout(() => showOrgEventModal(code, eventId), 60); }
 
 /* ── Clubs & teams page ────────────────────────────────────────── */
@@ -100,6 +104,9 @@ function pageOrgs() {
     if (o) return pageOrgDetail(o);
   }
   const orgs = allOrgs();
+  // Arriving from another page (the old page is still on screen while this
+  // builds): This week starts capped again.
+  if (!document.querySelector('#content [data-org-index]')) _orgWeekOpen = false;
   return `
     ${pageHead('Clubs & Teams', 'Your club, team, or chapter’s calendar, right next to your classes.', orgs.length ? `
       <button class="btn btn-sm" onclick="openJoinOrgModal()">${icon('user-plus', 14)} Join with code</button>
@@ -109,30 +116,38 @@ function pageOrgs() {
     ${orgs.length ? `
       ${orgsThisWeek()}
       <div class="sg-section-label">Yours</div>
-      <div class="space-grid">${orgs.map(orgIndexCard).join('')}</div>
+      <div class="space-grid" data-org-index>${orgs.map(orgIndexCard).join('')}</div>
     ` : orgsEmptyHero()}
     <div class="sg-pricing-note small">${icon('users', 14)} Bringing your whole team or chapter? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Group pricing</a> covers every member at a lower rate.</div>
   `;
 }
-// On a phone the first three rows show, so your clubs aren't two screens
-// down; See all opens the rest in place and stays open across redraws.
+// Three rows on a phone and four on a desktop, so your clubs sit above
+// the fold. See all opens the rest in place, stays open across redraws of
+// this page, and closes again once you go somewhere else.
 let _orgWeekOpen = false;
 function orgsThisWeek() {
   const phone = window.matchMedia?.('(max-width: 760px)').matches;
   const card = spaceWeekCard({
     title: 'This week',
-    max: phone && !_orgWeekOpen ? 3 : _orgWeekOpen ? 99 : 6,
+    max: _orgWeekOpen ? 99 : (phone ? 3 : 4),
     rows: orgUpcomingForMe(7).map(({ o, e }) => ({
       date: e.date,
       html: `
         <div class="list-row space-week-item space" style="${spaceVars(orgColor(o))}" onclick="showOrgEventModal('${o.code}','${e.id}')">
           ${spaceCrest({ text: orgMonogram(o) }, 'xs')}
-          <div class="row-title"><div class="sg-strong">${esc(e.title)}${e.required ? ' <span class="org-required">Required</span>' : ''}</div><div class="row-meta">${[e.start ? `${fmtTime(e.start)}${e.end ? ` to ${fmtTime(e.end)}` : ''}` : '', esc(o.name), e.location ? esc(e.location) : ''].filter(Boolean).join(' · ')}</div></div>
+          <div class="row-title"><div class="sg-strong">${esc(e.title)}${orgRowRequiredTag(e)}</div><div class="row-meta">${[e.start ? `${fmtTime(e.start)}${e.end ? ` to ${fmtTime(e.end)}` : ''}` : '', esc(o.name), e.location ? esc(e.location) : ''].filter(Boolean).join(' · ')}</div></div>
           ${orgRsvpControl(o, e)}
         </div>`,
     })),
   });
-  return card ? `<div class="org-week" onclick="if(event.target.closest('.space-week-all'))_orgWeekOpen=true">${card}</div>` : '';
+  return card ? `<div class="org-week" role="none" onclick="orgWeekSeeAll(event)">${card}</div>` : '';
+}
+// See all removes itself, so focus moves to the first row it revealed.
+function orgWeekSeeAll(ev) {
+  if (!ev.target.closest('.space-week-all')) return;
+  _orgWeekOpen = true;
+  const row = ev.currentTarget.querySelector('.space-week-row.is-more .list-row');
+  if (row) { if (!row.hasAttribute('tabindex')) row.setAttribute('tabindex', '0'); row.focus({ preventScroll: true }); }
 }
 function orgsEmptyHero() {
   return emptyStateHtml({
@@ -144,9 +159,13 @@ function orgsEmptyHero() {
   });
 }
 // Faces in a club's colors: officers in the club color, everyone else in
-// lighter steps of it, so a stack never reads as a row of grey dots.
+// lighter steps of it, so a stack never reads as a row of grey dots. In
+// dark mode the base is the lifted fill (spaceDarkPair), so a navy or wine
+// club's faces don't sink into each other or the dark band. personAvatar
+// picks each face's letter color from its own fill.
 function orgFaceColors(o) {
-  const color = orgColor(o), map = {};
+  const raw = orgColor(o), map = {};
+  const color = state.settings?.dark && HEX_COLOR.test(raw || '') ? spaceDarkPair(raw).fill : raw;
   orgPeople(o).forEach((p, i) => { map[p.uid] = p.officer ? color : spaceTint(color, (i % 3) + 1); });
   return map;
 }
@@ -172,7 +191,7 @@ function orgIndexCard(o) {
       ? `${spaceCountdownChip(next.date, next.start, next.end)}<span class="space-card-when"><span class="em">${esc(next.title)}</span>${spaceWhen(next.date, next.start) ? ` · ${esc(spaceWhen(next.date, next.start))}` : ''}</span>`
       : '<span class="space-card-when">Nothing scheduled</span>',
     unread: !!(unread || chatUnread),
-    unreadLabel: [unread ? `${unread} new announcement${unread === 1 ? '' : 's'}` : '', chatUnread ? 'New messages' : ''].filter(Boolean).join(', '),
+    unreadLabel: [unread ? `${unread} new announcement${unread === 1 ? '' : 's'}` : '', chatUnread ? 'new messages' : ''].filter(Boolean).join(' · '),
     footHtml: `${avatarStackHtml(orgPeople(o), 4, 24, (uid) => faces[uid])}<span>${o.loading ? 'Loading…' : `${count} member${count === 1 ? '' : 's'}`}</span>${isOrgOfficer(o) ? `<span class="space-officer">${icon('shield', 12)} Officer</span>` : ''}`,
     needCount: o.loading ? 0 : orgIndexNeedCount(o),
   });
@@ -275,20 +294,19 @@ function orgPinnedBanner(o, skip) {
   const a = pinned[0];
   if (!a) return '';
   const more = pinned.length - 1;
-  const text = a.text.length > 220 ? a.text.slice(0, 220) + '…' : a.text;
-  const faces = orgFaceColors(o);
+  const flat = a.text.replace(/\s+/g, ' ').trim();
+  const text = flat.length > 220 ? flat.slice(0, 220) + '…' : flat;
+  // A flat row like the needs strip's: the pin tile is the only tint.
   return `
     <section class="org-pinned" aria-label="Pinned announcement">
-      <div class="org-pinned-top">
-        <span class="org-pinned-pin" aria-hidden="true">${icon('pin', 14)}</span>
-        ${personAvatar(a.uid || a.name, a.name, 22, faces[a.uid] || orgColor(o))}
-        <span class="org-pinned-by">Pinned by <span class="sg-strong">${esc(a.name)}</span> · ${esc(fmtRelativeTime(a.at))}</span>
-        ${isOrgOfficer(o) && !(o.local && !o.sample) ? `<button class="btn btn-ghost btn-sm org-pinned-unpin" onclick="pinAnnouncement('${o.code}','${a.id}',false)" aria-label="Unpin this announcement">Unpin</button>` : ''}
+      <span class="org-pinned-pin" aria-hidden="true">${icon('pin', 14)}</span>
+      <div class="org-pinned-body">
+        <div class="org-pinned-by">Pinned by ${esc(a.name)} · ${esc(fmtRelativeTime(a.at))}${more ? ` · <button class="sg-link org-pinned-more" onclick="setState({orgTab:'announcements'})">+${more} more pinned</button>` : ''}</div>
+        <div class="org-pinned-text">${linkifyText(text)}</div>
       </div>
-      <div class="org-pinned-text">${linkifyText(text)}</div>
-      <div class="org-pinned-foot">
-        <button class="sg-link" onclick="spaceNeedsReadPinned('${o.code}','${a.id}',null)">Read ${icon('chevron-right', 12)}</button>
-        ${more ? `<button class="sg-link" onclick="setState({orgTab:'announcements'})">+${more} more pinned</button>` : ''}
+      <div class="org-pinned-acts">
+        <button class="btn btn-sm" onclick="spaceNeedsReadPinned('${o.code}','${a.id}',null)" aria-label="Read the pinned announcement">Read</button>
+        ${isOrgOfficer(o) && !(o.local && !o.sample) ? `<button class="btn btn-ghost btn-sm" onclick="pinAnnouncement('${o.code}','${a.id}',false)" aria-label="Unpin this announcement">Unpin</button>` : ''}
       </div>
     </section>`;
 }

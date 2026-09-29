@@ -205,7 +205,14 @@
 @media (max-width: 760px) {
   .card.sg-sessions { padding: 4px 16px; }
 }
+/* Sessions tab header. Desktop keeps all three buttons in the toolbar;
+   the text link under the list is the phone's "Add all". */
+.sg-ics-all-link { display: none; }
 @media (max-width: 520px) {
+  .sg-sched-actions { flex-wrap: nowrap; }
+  .sg-sched-actions .sg-ics-all { display: none; }
+  .sg-sched-actions .sg-new-session { order: -1; }
+  .sg-ics-all-link { display: inline-flex; gap: 6px; margin-top: 12px; font-size: var(--fs-md); color: var(--bg-text-dim); }
   .sg-session-end { flex-wrap: wrap; }
   .sg-session-tools { margin-left: auto; }
   /* A past session has only its edit button: it stays at the row's end. */

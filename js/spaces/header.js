@@ -22,10 +22,12 @@
      (checked true or false makes it a checkbox item).
    spaceTabs({ tabs, active, onTab, crest, title, invite })
      tabs: [{ key, label, iconHtml, count, dot, phoneHidden }]; onTab(key)
-     returns the onclick JS for a tab. The row sticks to the top once the
+     returns the onclick JS for a tab. phoneHidden (the Chat tab) now only
+     moves that tab to the end of the row on a phone; it stays visible. The row sticks to the top once the
      band scrolls away (afterSpaceRender watches it) and then shows the
      crest, the name and, on a desktop, a small Invite.
-   spaceChatFab({ onclick, count, dot, label })   phones only.
+   spaceChatFab({ onclick, count, dot, label })   phones only, and only
+     while the tab row is stuck (.space-fab-on on the .space root).
    spaceCrest(crest, size)   size: 'xl' 64, 'lg' 48, 'md' 40, 'sm' 24, 'xs' 20.
    spaceCard({ code, color, crest, eyebrow, name, onclick, nextHtml,
                lineHtml, footHtml, needCount, unread, unreadLabel, style })
@@ -36,8 +38,10 @@
 ──────────────────────────────────────────────────────────────── */
 function spaceCrest(crest, size = 'xl') {
   let text = String(crest?.text || '?');
-  // The small crests (tab row, This week) have room for three letters.
-  if ((size === 'sm' || size === 'xs') && /^[A-Z0-9]{4,}$/.test(text)) text = text.slice(0, 3);
+  // The 20px crest (This week rows) holds one letter; the 24px one in the
+  // stuck tab row holds two (three ran edge to edge).
+  if (size === 'xs') text = (text.match(/^(?:&[a-z]+;|&#\d+;|[\s\S])/u) || ['?'])[0];
+  else if (size === 'sm' && /^[A-Z0-9]{3,}$/.test(text)) text = text.slice(0, 2);
   const sub = (size === 'xl' || size === 'lg') && crest?.sub ? `<span class="space-crest-sub">${crest.sub}</span>` : '';
   const len = String(text).replace(/&[a-z]+;|&#\d+;/g, 'x').length;
   return `<span class="space-crest is-${size}${len >= 4 ? ' is-long' : ''}${sub ? ' has-sub' : ''}" aria-hidden="true"><span class="space-crest-main">${text}</span>${sub}</span>`;
@@ -94,7 +98,7 @@ function spaceTabs(o) {
     const count = t.count && !on ? `<span class="space-tab-count"><span class="sr-only">, </span>${t.count > 99 ? '99+' : t.count}<span class="sr-only"> new</span></span>` : '';
     const dot = !count && t.dot && !on ? '<span class="sg-tab-dot space-tab-dot" aria-hidden="true"></span><span class="sr-only">, new messages</span>' : '';
     const stop = on || (!hasActive && i === 0);
-    return `<button type="button" role="tab" id="${spaceTabId(t.key)}" aria-controls="${SPACE_TABPANEL_ID}" aria-selected="${on}" tabindex="${stop ? 0 : -1}" class="${on ? 'active' : ''}${t.phoneHidden ? ' space-tab-phone-hidden' : ''}" data-tab="${esc(t.key)}" onclick="${o.onTab(t.key)}">${t.iconHtml || ''}${esc(t.label)}${count}${dot}</button>`;
+    return `<button type="button" role="tab" id="${spaceTabId(t.key)}" aria-controls="${SPACE_TABPANEL_ID}" aria-selected="${on}" tabindex="${stop ? 0 : -1}" class="${on ? 'active' : ''}${t.phoneHidden ? ' space-tab-phone-last' : ''}" data-tab="${esc(t.key)}" onclick="${o.onTab(t.key)}">${t.iconHtml || ''}${esc(t.label)}${count}${dot}</button>`;
   }).join('');
   const listLabel = o.label || (o.kind === 'club' ? 'Club sections' : 'Group sections');
   return `
@@ -109,7 +113,9 @@ function spaceTabs(o) {
 function spaceTabsKey(e) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
   const list = e.currentTarget;
-  const tabs = [...list.querySelectorAll('[role="tab"]')].filter(b => b.getClientRects().length);
+  // Visual order, not DOM order: a phone moves Chat to the end of the row.
+  const tabs = [...list.querySelectorAll('[role="tab"]')].filter(b => b.getClientRects().length)
+    .sort((a, b) => a.offsetLeft - b.offsetLeft);
   if (!tabs.length) return;
   e.preventDefault();
   let i = tabs.indexOf(document.activeElement);
@@ -290,7 +296,11 @@ function afterSpaceRender() {
   // Set the state this render starts in without animating it, then watch.
   bar.classList.add('is-instant');
   const stuck = () => sentinel.getBoundingClientRect().top < 0;
-  bar.classList.toggle('is-stuck', stuck());
+  // The phone chat button shows only once the row sticks, so at rest it
+  // never sits over the hero; the Chat tab covers that state.
+  const root = bar.closest('.space');
+  const setStuck = (on) => { bar.classList.toggle('is-stuck', on); if (root) root.classList.toggle('space-fab-on', on); };
+  setStuck(stuck());
   requestAnimationFrame(() => requestAnimationFrame(() => bar.classList.remove('is-instant')));
   // The tab row fades at the right edge only while more tabs sit off it.
   const tabs = bar.querySelector('.space-tabs');
@@ -305,7 +315,7 @@ function afterSpaceRender() {
   if ('IntersectionObserver' in window) {
     _spaceStickyObs = new IntersectionObserver(() => {
       const was = bar.classList.contains('is-stuck'), now = stuck();
-      bar.classList.toggle('is-stuck', now);
+      setStuck(now);
       if (was !== now) { settle(); setTimeout(settle, 380); }
     }, { threshold: [0, 1] });
     _spaceStickyObs.observe(sentinel);

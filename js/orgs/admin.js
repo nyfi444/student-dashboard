@@ -208,7 +208,7 @@ function orgAdminNeedsCard(o) {
   const row = ({ e, n, dates }) => {
     const series = dates.length > 1;
     const meta = series
-      ? `<span class="org-needs-chips">${dates.map(d => `<span class="org-needs-chip">${esc(short(d.e.date))} · ${d.n}</span>`).join('')}</span><span class="org-needs-cap">haven’t answered</span>`
+      ? `<span class="org-needs-cap">Haven’t answered</span><span class="org-needs-chips">${dates.map(d => `<span class="org-needs-chip">${esc(short(d.e.date))} · ${d.n}</span>`).join('')}</span>`
       : `${esc(fmtDate(e.date, { weekday: 'short', month: 'short', day: 'numeric' }))}${e.start ? ` · ${esc(fmtTime(e.start))}` : ''} · <span class="em">${n} ${n === 1 ? 'hasn’t' : 'haven’t'} answered</span>`;
     return spaceAgendaRow({
       date: e.date, title: series ? `${e.title} · weekly` : e.title,
@@ -288,14 +288,14 @@ function orgAdminTab(o) {
       ${pitch ? orgPlanAdminCard(o, plan) : ''}
       ${orgAdminNeedsCard(o)}
       <div class="org-admin-grid">
-        <div class="org-admin-col">
-          <div class="card card-pad" id="org-attendance">
-            <div class="flex-between mb-8 wrap org-rsvp-head"><h3 class="sg-h3">${icon('check-square', 16)} RSVPs</h3>${orgEventList(o).length ? `<button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 14)} Export CSV</button>` : ''}</div>
-            <div class="segmented org-rsvp-range" role="group" aria-label="Which events">${ORG_RSVP_RANGES.map(([k, l]) => `<button type="button" aria-pressed="${_orgRsvpRange === k}" class="${_orgRsvpRange === k ? 'active' : ''}" onclick="orgSetRsvpRange('${k}')">${l}</button>`).join('')}</div>
-            <p class="small muted org-rsvp-help">Who answered Going or Can’t, plus the next two events. Tap an event to see the full list or post a nudge.</p>
-            ${orgAttendanceHtml_officer(o)}
-          </div>
+        <div class="card card-pad org-admin-wide" id="org-attendance">
+          <div class="flex-between mb-8 wrap org-rsvp-head"><h3 class="sg-h3">${icon('check-square', 16)} RSVPs</h3>${orgEventList(o).length ? `<button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 14)} Export CSV</button>` : ''}</div>
+          <div class="segmented org-rsvp-range" role="group" aria-label="Which events">${ORG_RSVP_RANGES.map(([k, l]) => `<button type="button" aria-pressed="${_orgRsvpRange === k}" class="${_orgRsvpRange === k ? 'active' : ''}" onclick="orgSetRsvpRange('${k}')">${l}</button>`).join('')}</div>
+          <p class="small muted org-rsvp-help">Who answered Going or Can’t, plus the next two events. Tap an event to see the full list or post a nudge.</p>
+          ${orgAttendanceHtml_officer(o)}
+        </div>
 
+        <div class="org-admin-col">
           <div class="card card-pad">
             <h3 class="sg-h3 mb-8">${icon('user-plus', 16)} Getting people in</h3>
             <p class="small muted mb-8">One link, one code. Members who join see every event on their own calendar.${o.sample ? ' This is a sample, so these links are just for show.' : ''}</p>

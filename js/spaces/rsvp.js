@@ -138,7 +138,7 @@ function setSpaceRsvp(kind, code, id, val, { toggle = true, from } = {}) {
     let ev = null;
     try { ev = adapter.event?.(code, id); } catch { ev = null; }
     if (ev && eventTimeState(ev).days === 0) {
-      try { localStorage.setItem(_spaceStillKey(kind, code, id), _spaceTodayIso()); } catch { /* private window */ }
+      _spaceStillMark(kind, code, id);
     }
   }
   if (next !== current) spaceRsvpAnnounce(next, spaceRsvpTitle(kind, code, id));
@@ -192,18 +192,48 @@ function spaceRsvpRestoreFocus() {
 }
 
 /* ── "Still coming?" on the day ───────────────────────────────── */
-function _spaceStillKey(kind, code, id) { return `shq.stillComing.${kind}.${code}.${id}`; }
+// One localStorage key, shq.stillComing, holds { 'kind.code.id': isoDate }
+// for the day-of yeses on this device. Each write drops the days gone by,
+// so it stays a handful of entries. (It used to be one key per answer;
+// those old keys are cleared once per load, on the first read.)
+const SPACE_STILL_STORE = 'shq.stillComing';
+let _spaceStillSwept = false;
+function _spaceStillKey(kind, code, id) { return `${kind}.${code}.${id}`; }
 function _spaceTodayIso() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function _spaceStillMap() {
+  if (!_spaceStillSwept) {
+    _spaceStillSwept = true;
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(SPACE_STILL_STORE + '.')) localStorage.removeItem(k);
+      }
+    } catch { /* storage blocked */ }
+  }
+  try {
+    const m = JSON.parse(localStorage.getItem(SPACE_STILL_STORE) || '{}');
+    return m && typeof m === 'object' && !Array.isArray(m) ? m : {};
+  } catch { return {}; }
+}
+function _spaceStillMark(kind, code, id) {
+  try {
+    const today = _spaceTodayIso();
+    const m = _spaceStillMap();
+    for (const k of Object.keys(m)) if (typeof m[k] !== 'string' || m[k] < today) delete m[k];
+    m[_spaceStillKey(kind, code, id)] = today;
+    localStorage.setItem(SPACE_STILL_STORE, JSON.stringify(m));
+  } catch { /* private window: it asks again next time */ }
+}
 function spaceStillComingDue(kind, code, id, ev, mine) {
   if (mine !== 'yes' || !ev) return false;
   const st = eventTimeState(ev);
   if (st.days !== 0 || st.phase !== 'before' || st.allDay) return false;
-  try { return localStorage.getItem(_spaceStillKey(kind, code, id)) !== _spaceTodayIso(); } catch { return true; }
+  return _spaceStillMap()[_spaceStillKey(kind, code, id)] !== _spaceTodayIso();
 }
 async function spaceStillComing(kind, code, id, yes, el) {
   const fromHeadsUp = !!el?.closest?.('.headsup-prompt');
   if (yes) {
-    try { localStorage.setItem(_spaceStillKey(kind, code, id), _spaceTodayIso()); } catch { /* private window: it asks again next time */ }
+    _spaceStillMark(kind, code, id);
     // Keeps your yes; toggle=false can never clear it.
     await setSpaceRsvp(kind, code, id, 'yes', { toggle: false });
     if (typeof toast === 'function') toast('See you there');
