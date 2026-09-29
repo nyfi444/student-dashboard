@@ -129,8 +129,16 @@ async function anonymizeFormsBy(env, path, uid) {
 // A space being deleted takes its forms and every answer to them with it.
 async function deleteSpaceForms(env, path) {
   const forms = await runFirestoreQuery(env, { from: [{ collectionId: 'forms' }], limit: 100 }, path);
-  for (const f of forms) if (safeFieldKey(f.id)) await deleteFirestoreSubcollection(env, `${path}/forms/${f.id}`, 'responses');
+  for (const f of forms) {
+    if (!safeFieldKey(f.id)) continue;
+    await deleteFirestoreSubcollection(env, `${path}/forms/${f.id}`, 'responses');
+    await deleteFirestoreSubcollection(env, `${path}/forms/${f.id}`, 'marks');
+  }
   await deleteFirestoreSubcollection(env, path, 'forms');
+  // Files sent as answers. Logged, not thrown: the space is still deleted
+  // if Storage is having a bad day.
+  try { await deleteStorageFolder(env, `${path}/forms/`); }
+  catch (e) { await logServerIssue(env, 'account', 'Account delete could not remove form files', e); }
 }
 // Returns what could not be erased, in the same words leaveSharedSpaces uses.
 async function eraseFormAnswers(env, uid) {
@@ -144,8 +152,20 @@ async function eraseFormAnswers(env, uid) {
     // The list is the person's own document, so nothing in it is trusted
     // to name a path: each part has to be a plain id.
     if (!collection || !safeFieldKey(a.code) || !safeFieldKey(a.formId)) continue;
-    try { await deleteFirestoreDoc(env, `${collection}/${a.code}/forms/${a.formId}/responses`, uid); }
-    catch (e) { failed.push(`erase a form answer in ${collection}/${a.code}`); await logServerIssue(env, 'account', 'Account delete could not erase a form answer', e); }
+    const form = `${collection}/${a.code}/forms/${a.formId}`;
+    try {
+      if (a.anon === true) {
+        // An anonymous answer is filed under a random id, which only this
+        // entry knows (worker/src/forms.js).
+        if (safeFieldKey(a.answerId)) await deleteFirestoreDoc(env, `${form}/responses`, a.answerId);
+      } else {
+        await deleteFirestoreDoc(env, `${form}/responses`, uid);
+        // What was decided about their answer goes with it, and so do the
+        // files they sent as answers.
+        await deleteFirestoreDoc(env, `${form}/marks`, uid);
+        await deleteStorageFolder(env, `${form}/${uid}/`);
+      }
+    } catch (e) { failed.push(`erase a form answer in ${collection}/${a.code}`); await logServerIssue(env, 'account', 'Account delete could not erase a form answer', e); }
   }
   try { await deleteFirestoreSubcollection(env, `planners/${uid}`, 'formAnswers'); }
   catch (e) { failed.push('clear the form answer list'); await logServerIssue(env, 'account', 'Account delete could not clear the form answer list', e); }

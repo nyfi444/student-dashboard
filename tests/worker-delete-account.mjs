@@ -31,11 +31,12 @@ const ok = (name, v) => check(name, !!v, true);
 
 /* A fake Firestore holding one document, recording what was written. */
 function world(doc, { failFirstCommit = false } = {}) {
-  const log = { commits: [], deletedDocs: [], deletedSubs: [], messageWrites: [] };
+  const log = { commits: [], deletedDocs: [], deletedSubs: [], deletedFolders: [], messageWrites: [] };
   let failures = failFirstCommit ? 1 : 0;
   sandbox.readFirestoreDocWithTime = async () => (doc ? { data: doc, updateTime: 't1' } : null);
   sandbox.deleteFirestoreDoc = async (env, c, id) => { log.deletedDocs.push(`${c}/${id}`); };
   sandbox.deleteFirestoreSubcollection = async (env, path, sub) => { log.deletedSubs.push(`${path}/${sub}`); };
+  sandbox.deleteStorageFolder = async (env, prefix) => { log.deletedFolders.push(prefix); return 1; };
   sandbox.runFirestoreQuery = async () => [];
   sandbox.logServerIssue = async () => {};
   sandbox.commitFirestore = async (env, writes) => {
@@ -123,10 +124,15 @@ log = formsWorld({ formAnswers: [
   { id: 'x', kind: 'club', code: 'CLUB01/../../licenses', formId: 'f1' },
   { id: 'y', kind: 'planners', code: 'CLUB01', formId: 'f1' },
   { id: 'z', kind: 'club', code: 'CLUB01', formId: 'a/b' },
+  { id: 'orgs_CLUB01_f3', kind: 'club', code: 'CLUB01', formId: 'f3', anon: true, answerId: 'a1b2c3d4' },
+  { id: 'orgs_CLUB01_f4', kind: 'club', code: 'CLUB01', formId: 'f4', anon: true, answerId: '../../licenses/mem2' },
 ] });
 let threw = false;
 let left = await sandbox.eraseFormAnswers({}, 'mem2');
-check('form answers: each one is erased where it was sent, clubs never joined included', log.deletedDocs, ['orgs/CLUB01/forms/f1/responses/mem2', 'studyGroups/ABC123/forms/f2/responses/mem2']);
+check('form answers: each one is erased where it was sent, clubs never joined included, with what was decided about it', log.deletedDocs.filter(d => !d.includes('/f3/')), ['orgs/CLUB01/forms/f1/responses/mem2', 'orgs/CLUB01/forms/f1/marks/mem2', 'studyGroups/ABC123/forms/f2/responses/mem2', 'studyGroups/ABC123/forms/f2/marks/mem2']);
+check('form answers: the files sent as answers go too', log.deletedFolders, ['orgs/CLUB01/forms/f1/mem2/', 'studyGroups/ABC123/forms/f2/mem2/']);
+check('form answers: an anonymous one is found by the id only the person’s own record knows', log.deletedDocs.filter(d => d.includes('/f3/')), ['orgs/CLUB01/forms/f3/responses/a1b2c3d4']);
+ok('form answers: a record that names anything but a plain id deletes nothing', !log.deletedDocs.some(d => d.includes('licenses') || d.includes('/f4/')));
 check('form answers: the list is read from the person’s own planner', log.queries, ['planners/mem2:formAnswers']);
 check('form answers: the list itself is cleared', log.deletedSubs, ['planners/mem2/formAnswers']);
 check('form answers: nothing left behind', left, []);
@@ -146,7 +152,8 @@ check('forms they wrote stay, with their name taken off', log.commits.at(-1), [{
 log = formsWorld({ forms: [{ id: 'f1' }, { id: 'f2' }] });
 sandbox.readFirestoreDocWithTime = async () => ({ data: { createdBy: 'solo', memberUids: ['solo'], people: {} }, updateTime: 't1' });
 await sandbox.removeMemberFromSharedSpace({}, 'orgs/CLUB01', 'solo', 'org');
-check('last member out of a club: every form’s answers go, then the forms', log.deletedSubs, ['orgs/CLUB01/messages', 'orgs/CLUB01/forms/f1/responses', 'orgs/CLUB01/forms/f2/responses', 'orgs/CLUB01/forms']);
+check('last member out of a club: every form’s answers and marks go, then the forms', log.deletedSubs, ['orgs/CLUB01/messages', 'orgs/CLUB01/forms/f1/responses', 'orgs/CLUB01/forms/f1/marks', 'orgs/CLUB01/forms/f2/responses', 'orgs/CLUB01/forms/f2/marks', 'orgs/CLUB01/forms']);
+check('last member out of a club: and the files sent as answers', log.deletedFolders, ['orgs/CLUB01/forms/']);
 
 /* ── Concurrency ───────────────────────────────────────────────── */
 log = world(groupDoc(), { failFirstCommit: true });
