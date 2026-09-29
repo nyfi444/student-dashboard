@@ -46,6 +46,7 @@ function groupOverviewTab(g) {
     <div class="sg-overview sg-home">
       <div class="sg-col">
         ${next ? nextSessionHero(g, next, { need: needIds.has(next.id) }) : bestReady ? groupBestHero(g, best) : groupHomeEmptyHero(g)}
+        ${groupRecapPrompt(g)}
         ${next && bestReady ? groupHomeBest(g, best) : ''}
         ${rest.length ? groupHomeComing(g, upcoming, rest, day, needIds, u) : ''}
         ${groupHomeTasks(g, u, stripTaskIds, needs.items, { contrib: !rest.length })}
@@ -115,6 +116,7 @@ function groupAgendaRow(g, s, need) {
   const range = s.start ? `${fmtTime(s.start)}${s.end ? ` to ${fmtTime(s.end)}` : ''}` : 'Any time';
   const going = sessionRsvpPeople(g, s).yes.length;
   const tags = [
+    spaceWhenChip(s),
     need ? spaceTag('need', 'Needs your answer') : '',
     s.seriesId ? spaceTag('weekly', 'Weekly') : '',
     going ? groupFacePile(g, s, { size: 20 }) : '',

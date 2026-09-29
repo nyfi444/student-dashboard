@@ -38,9 +38,11 @@
      people: [{ uid, name, sub }], colorOf, empty, footHtml }].
    spaceEventSheet({ kind, code, id, color, glyph, spaceName, title, date,
                      start, end, where, notes, tags, rsvpHtml, facesHtml,
-                     actionsHtml, listsHtml, footHtml })
+                     actionsHtml, listsHtml, footHtml, recapHtml })
      The whole event sheet (modal content). Plain text: spaceName, title,
-     notes (linkified). Trusted HTML: tags, the *Html options.
+     notes (linkified). Trusted HTML: tags, the *Html options. The state
+     strip reads the countdown, Happening now or Ended (eventTimeState);
+     recapHtml shows only once it ended, under the notes.
 ──────────────────────────────────────────────────────────────── */
 const SPACE_RSVP_CHOICES = {
   group: [['yes', 'Going', 'check'], ['maybe', 'Maybe', 'help-circle'], ['no', 'Can’t', 'x']],
@@ -278,7 +280,7 @@ function spaceEventSheet(o) {
     ? `<div class="space-sheet-state is-now"><span class="space-now-dot" aria-hidden="true"></span>Happening now${st.allDay ? ' · all day' : ` · until ${esc(fmtTime(st.endsAt))}`}</div>`
     : st.phase === 'after'
       ? '<div class="space-sheet-state is-after">Ended</div>'
-      : `<div class="space-sheet-state"><span class="space-chip">${esc(_evCap(st.label))}</span>${st.days > 1 ? `<span class="small muted">${esc(fmtDate(o.date, { weekday: 'long' }))}</span>` : ''}</div>`;
+      : `<div class="space-sheet-state"><span class="space-chip"${spaceLiveAttrs(o)}><span class="space-live-text">${esc(_evCap(st.label))}</span></span>${st.days > 1 ? `<span class="small muted">${esc(fmtDate(o.date, { weekday: 'long' }))}</span>` : ''}</div>`;
   return `
     <div class="space space-sheet" style="${spaceVars(o.color)}">
       <div class="space-sheet-cover space-cover" data-pattern="${spacePattern(o.code)}">
@@ -295,6 +297,7 @@ function spaceEventSheet(o) {
         </div>
         ${state}
         ${o.notes ? `<div class="space-hero-notes">${linkifyText(o.notes)}</div>` : ''}
+        ${st.phase === 'after' && o.recapHtml ? `<div class="space-sheet-recap">${o.recapHtml}</div>` : ''}
         ${o.rsvpHtml || o.facesHtml ? `<div class="space-sheet-rsvp">${o.rsvpHtml || ''}${o.facesHtml || ''}</div>` : ''}
         ${o.actionsHtml ? `<div class="space-sheet-actions">${o.actionsHtml}</div>` : ''}
         ${o.listsHtml ? `<div class="divider"></div>${o.listsHtml}` : ''}

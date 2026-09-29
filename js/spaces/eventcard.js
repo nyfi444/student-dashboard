@@ -26,10 +26,13 @@
      (glyph plus label) | 'need' ("Needs your answer", ink fill).
    spaceEventHero({ date, start, end, eyebrow, title, where, notes, tags,
                     onOpen, rsvpHtml, facesHtml, actionsHtml, extraHtml,
-                    now, className })
+                    afterHtml, now, className })
      The big "next up" card in three states (see eventTimeState): before
      shows a countdown chip, now adds a "Happening now · until 8:00 PM"
-     strip and a primary Join call for a link, after says it ended.
+     strip and a primary Join call for a link, after says it ended, drops
+     the RSVP and shows afterHtml (the recap field or Post a recap). The
+     card and its chip carry spaceLiveAttrs, so the minute tick keeps them
+     current.
      eyebrow and title are plain text; tags, the *Html options and
      spaceWhereHtml(where) are trusted HTML. onOpen is onclick JS for the
      title (usually the event sheet).
@@ -48,6 +51,42 @@
    spaceFacePile({ people, colorOf, meUid, size, max, verb, zeroText,
                    detail, onclick, label })
      Faces plus "You, Maya and 3 others are going". See spaceFaceCaption.
+     verb 'said' is the after-the-event caption: "Maya and 2 others said
+     they’d go", "You said you’d go".
+
+   Before, during, after (Tier A item 7):
+   spaceLiveAttrs(ev, { fmt }) -> ' data-ev-live="date|start|end"
+       data-ev-phase="before|now|after"' for any element whose look
+     depends on the event's phase. The minute tick re-renders the page
+     when a phase in #content no longer matches, and rewrites the text of
+     a `.space-live-text` inside it ("in 40 min" to "in 39 min") without a
+     render. fmt 'short' uses spaceCountdown's words (index cards).
+   spaceWhenChip(ev, { soonDays = 0, now }) -> '' or a chip for rows:
+     "Happening now" (live dot) during, "In 40 min" / "In 3 hours" /
+     "Tonight" / "Today" before when the event is within soonDays (0:
+     today only, since row meta already says Tomorrow), nothing after.
+   spaceLiveTick(now) -> true when it re-rendered. Runs once a minute (on
+     the minute) and when the tab comes back into view. It only renders on
+     the studygroups, orgs and dashboard routes, and never while a dialog
+     is open, a field has focus, the availability grid is mid-drag or the
+     page is hidden; it tries again on the next tick. Nothing is pushed,
+     emailed or scheduled beyond this one timer.
+   spaceRecapCard({ date, start, end, title, eyebrow, facesHtml, bodyHtml,
+                    dismissJs })
+     The quiet "just ended" card: eyebrow ("Last night · ended 6:00 PM"
+     when not given), a 22px serif title, the face pile, then bodyHtml
+     (a spaceRecapField, or a Post a recap button). dismissJs is the
+     onclick for its Not now button. title is plain text.
+   spaceRecapField(onclickJs, label = 'What did we cover?')
+     A 3-line box that looks like a field and opens the real one in a
+     dialog (so a snapshot redraw can never wipe a half-typed recap).
+   spaceRecentlyEnded(ev, hours = 18, now) -> true when the event ended
+     within the last `hours` hours.
+   spaceRecapDismissed(key) / spaceRecapDismiss(key)
+     "Not now" on a recap card, remembered on this device only
+     (localStorage 'shq.recapSkip', pruned after 3 days).
+   spaceRecapText(html) -> plain text of a member's recap note (sanitized
+     first, never executed), for 2-line snippets.
 ──────────────────────────────────────────────────────────────── */
 
 /* ── Time ──────────────────────────────────────────────────────── */
@@ -136,13 +175,13 @@ function spaceEventHero(o) {
   const range = _evTimeRange(o.start, o.end);
   const whereHtml = spaceWhereHtml(o.where);
   const isLink = typeof isHttpUrl === 'function' && isHttpUrl(o.where);
-  const chip = st.phase === 'before' && st.label ? `<span class="space-chip space-hero-chip">${esc(_evCap(st.label))}</span>`
+  const chip = st.phase === 'before' && st.label ? `<span class="space-chip space-hero-chip"${spaceLiveAttrs(o)}><span class="space-live-text">${esc(_evCap(st.label))}</span></span>`
     : st.phase === 'after' ? '<span class="space-chip space-hero-chip is-ended">Ended</span>' : '';
   const strip = st.phase === 'now'
     ? `<div class="space-hero-now"><span class="space-now-dot" aria-hidden="true"></span>Happening now${st.allDay ? ' · all day' : ` · until ${esc(fmtTime(st.endsAt))}`}</div>` : '';
   const join = isLink ? (st.phase === 'now' ? joinLinkButton(o.where, 'btn-primary space-join-now') : st.phase === 'before' ? joinLinkButton(o.where) : '') : '';
   return `
-    <div class="card space-hero is-${st.phase}${o.className ? ' ' + o.className : ''}">
+    <div class="card space-hero is-${st.phase}${o.className ? ' ' + o.className : ''}"${spaceLiveAttrs(o)}>
       ${strip}
       <div class="space-hero-grid">
         ${spaceDateBlock(o.date)}
@@ -162,8 +201,9 @@ function spaceEventHero(o) {
         <div class="space-hero-rest">
           ${o.notes ? `<div class="space-hero-notes">${linkifyText(o.notes)}</div>` : ''}
           ${o.extraHtml || ''}
+          ${st.phase === 'after' && o.afterHtml ? `<div class="space-hero-after">${o.afterHtml}</div>` : ''}
           <div class="space-hero-foot">
-            ${o.rsvpHtml || ''}
+            ${st.phase === 'after' ? '' : o.rsvpHtml || ''}
             ${join}
             ${o.actionsHtml ? `<span class="space-hero-actions">${o.actionsHtml}</span>` : ''}
           </div>
@@ -238,6 +278,13 @@ function spaceFaceCaption(people, meUid, verb = 'going') {
   const me = people.some(p => p.uid === meUid);
   const names = [...(me ? ['You'] : []), ...people.filter(p => p.uid !== meUid).map(p => String(p.name || 'Someone').split(' ')[0])];
   if (!names.length) return '';
+  // After the event: what people said, not who came (no one checks in).
+  if (verb === 'said') {
+    if (names.length === 1) return me ? 'You said you’d go' : `${names[0]} said they’d go`;
+    if (names.length <= 3) return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} said they’d go`;
+    const r = names.length - 2;
+    return `${names[0]}, ${names[1]} and ${r} other${r === 1 ? '' : 's'} said they’d go`;
+  }
   if (names.length === 1) return me ? `You’re ${verb}` : `${names[0]} is ${verb}`;
   if (names.length <= 3) return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} are ${verb}`;
   const rest = names.length - 2;
@@ -258,4 +305,122 @@ function spaceFacePile(o) {
   return o.onclick
     ? `<button type="button" class="${cls}" onclick="event.stopPropagation();${o.onclick}"${aria ? ` aria-label="${esc(aria)}"` : ''}>${inner}</button>`
     : `<span class="${cls}">${inner}</span>`;
+}
+
+/* ── Live: before, during, after ───────────────────────────────── */
+function spaceLiveAttrs(ev, { fmt = '', now } = {}) {
+  const st = eventTimeState(ev || {}, now || new Date());
+  return ` data-ev-live="${esc([ev?.date || '', ev?.start || '', ev?.end || ''].join('|'))}" data-ev-phase="${st.phase}"${fmt ? ` data-ev-fmt="${esc(fmt)}"` : ''}`;
+}
+// A chip for rows: only when it says more than the date tile beside it.
+function spaceWhenChip(ev, { soonDays = 0, now } = {}) {
+  const st = eventTimeState(ev || {}, now || new Date());
+  if (st.phase === 'now') return `<span class="space-chip is-now space-when-chip"${spaceLiveAttrs(ev, { now })}><span class="space-now-dot" aria-hidden="true"></span><span class="space-live-text">Happening now</span></span>`;
+  if (st.phase !== 'before' || st.days > soonDays || !st.label) return '';
+  return `<span class="space-chip space-when-chip"${spaceLiveAttrs(ev, { now })}><span class="space-live-text">${esc(_evCap(st.label))}</span></span>`;
+}
+function _spaceLiveText(el, date, start, end, now) {
+  if (el.dataset.evFmt === 'short' && typeof spaceCountdown === 'function') return spaceCountdown(date, start, end);
+  return _evCap(countdownLabel({ date, start, end }, now));
+}
+const SPACE_LIVE_ROUTES = ['studygroups', 'orgs', 'dashboard'];
+let _spaceLiveTimer = 0, _spaceLiveDay = '', _spaceLiveSig = null;
+// Today's group sessions and club events, phase by phase: catches a
+// boundary on screens whose rows carry no data-ev-live (the dashboard).
+function _spaceLiveSignature(now) {
+  const t = _evIso(now);
+  let list = [];
+  try { if (typeof groupSessionsOnDate === 'function') list = list.concat(groupSessionsOnDate(t)); } catch {}
+  try { if (typeof orgEventsOnDate === 'function') list = list.concat(orgEventsOnDate(t)); } catch {}
+  return list.map(e => `${e.code}:${e.id}:${eventTimeState({ date: t, start: e.start, end: e.end }, now).phase}`).join(',');
+}
+function spaceLiveBusy() {
+  if (document.hidden) return true;
+  if (document.getElementById('modal-wrap')?.classList.contains('show')) return true;
+  const a = document.activeElement;
+  if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName || ''))) return true;
+  return typeof _availPaint !== 'undefined' && !!_availPaint;
+}
+function spaceLiveTick(now = new Date()) {
+  if (typeof document === 'undefined' || typeof state === 'undefined' || !document.querySelectorAll) return false;
+  let stale = false;
+  document.querySelectorAll('[data-ev-live]').forEach(el => {
+    const [date, start, end] = String(el.dataset.evLive || '').split('|');
+    const st = eventTimeState({ date, start, end }, now);
+    if (st.phase !== el.dataset.evPhase) { if (el.closest('#content')) stale = true; return; }
+    if (st.phase !== 'before') return;
+    const txt = el.classList.contains('space-live-text') ? el : el.querySelector(':scope > .space-live-text');
+    const next = txt && _spaceLiveText(el, date, start, end, now);
+    if (txt && next && txt.textContent !== next) txt.textContent = next;
+  });
+  const day = _evIso(now);
+  if (_spaceLiveDay && _spaceLiveDay !== day) stale = true;
+  const sig = _spaceLiveSignature(now);
+  if (_spaceLiveSig !== null && sig !== _spaceLiveSig) stale = true;
+  if (_spaceLiveSig === null) _spaceLiveSig = sig;
+  if (!stale || !SPACE_LIVE_ROUTES.includes(state.route) || spaceLiveBusy()) return false;
+  _spaceLiveDay = day;
+  _spaceLiveSig = sig;
+  if (typeof renderPreservingInput === 'function') renderPreservingInput(); else render();
+  return true;
+}
+function spaceLiveStart() {
+  if (_spaceLiveTimer || typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
+  _spaceLiveDay = _evIso(new Date());
+  // On the minute, so "in 40 min" turns over when the clock does.
+  const arm = () => { _spaceLiveTimer = setTimeout(() => { try { spaceLiveTick(); } catch (e) { if (typeof diag !== 'undefined') diag.warn?.('spaces', 'Live tick failed', e); } arm(); }, 60000 - (Date.now() % 60000) + 200); };
+  arm();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) spaceLiveTick(); });
+}
+if (typeof window !== 'undefined' && window.document) spaceLiveStart();
+
+/* ── After: the recap card ─────────────────────────────────────── */
+function spaceRecentlyEnded(ev, hours = 18, now = new Date()) {
+  const st = eventTimeState(ev || {}, now);
+  return st.phase === 'after' && !st.allDay && -st.endsInMin <= hours * 60;
+}
+function _spaceRecapEyebrow(ev, now = new Date()) {
+  const st = eventTimeState(ev, now);
+  const ended = `ended ${fmtTime(st.endsAt)}`;
+  if (st.days === 0) return -st.endsInMin <= 90 ? 'Just ended' : `Today · ${ended}`;
+  if (st.days === -1) return `${_evMin(st.endsAt) >= 17 * 60 ? 'Last night' : 'Yesterday'} · ${ended}`;
+  return `${fmtDate(ev.date, { weekday: 'short', month: 'short', day: 'numeric' })} · ${ended}`;
+}
+function spaceRecapField(onclickJs, label = 'What did we cover?') {
+  return `<button type="button" class="space-recap-field" onclick="${onclickJs}"><span>${esc(label)}</span></button>`;
+}
+function spaceRecapCard(o) {
+  return `
+    <section class="card space-recap-card" aria-label="${esc(`Recap for ${o.title}`)}"${spaceLiveAttrs(o)}>
+      <div class="space-recap-top">
+        <span class="eyebrow">${esc(o.eyebrow || _spaceRecapEyebrow(o))}</span>
+        ${o.dismissJs ? `<button type="button" class="btn btn-ghost btn-sm space-recap-skip" onclick="${o.dismissJs}">Not now</button>` : ''}
+      </div>
+      <h3 class="space-recap-title">${esc(o.title)}</h3>
+      ${o.facesHtml ? `<div class="space-recap-faces">${o.facesHtml}</div>` : ''}
+      ${o.bodyHtml || ''}
+    </section>`;
+}
+const SPACE_RECAP_SKIP = 'shq.recapSkip';
+function _spaceRecapSkips() {
+  try {
+    const m = JSON.parse(localStorage.getItem(SPACE_RECAP_SKIP) || '{}') || {};
+    const cut = Date.now() - 3 * 86400000;
+    Object.keys(m).forEach(k => { if (!(m[k] > cut)) delete m[k]; });
+    return m;
+  } catch { return {}; }
+}
+function spaceRecapDismissed(key) { return !!_spaceRecapSkips()[key]; }
+function spaceRecapDismiss(key) {
+  const m = _spaceRecapSkips();
+  m[key] = Date.now();
+  try { localStorage.setItem(SPACE_RECAP_SKIP, JSON.stringify(m)); } catch {}
+  if (typeof renderPreservingInput === 'function') renderPreservingInput();
+}
+function spaceRecapText(html) {
+  const clean = typeof sanitizeHtml === 'function' ? sanitizeHtml(String(html || '')) : '';
+  try {
+    const doc = new DOMParser().parseFromString(clean.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|li|h[1-6]|div)>/gi, '\n'), 'text/html');
+    return String(doc.body.textContent || '').replace(/\n{2,}/g, '\n').trim();
+  } catch { return ''; }
 }

@@ -370,6 +370,7 @@ function orgOverviewTab(o) {
             <p class="small muted">${officer ? 'Add your first meeting or practice and it shows up on every member’s calendar.' : 'When officers add events, they’ll show up here and on your calendar.'}</p>
             ${officer ? `<button class="btn btn-primary btn-sm mt-8" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Add an event</button>` : ''}
           </div>`}
+        ${orgRecapPrompt(o)}
         ${next ? spaceWeekStrip({ start: t, selected: day, counts, onPick: (d) => `orgPickAgendaDay('${o.code}','${d}')`, label: `Pick a day to see ${o.name} events` }) : ''}
         ${next || day ? `
         <div class="card card-pad org-agenda">

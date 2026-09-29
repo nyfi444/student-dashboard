@@ -3,6 +3,22 @@
    details sheet, new/edit/delete and calendar files. Moved out of
    js/studygroups.js as is; every name stays global. Loaded after
    js/groups/home.js and before js/studygroups.js.
+
+   Before, during, after (Tier A item 7). Phases come from eventTimeState
+   (js/spaces/eventcard.js); sessionIsPast (js/groups/sync.js) is its
+   'after'.
+     Before: the hero's countdown chip, spaceWhenChip on rows for today
+       and tomorrow, and agenda chips in the session dialog that add a
+       line to the existing notes field (SESSION_AGENDA_LINES).
+     Now: the hero's Happening now strip and big Join call, the row chip.
+     After: a recap is an ordinary Files note (kind 'note') titled
+       sessionRecapTitle(s), "Recap: Midterm 2 review, Sep 29", written
+       through addGroupItem (the existing items create rule). Recaps are
+       found by that exact title, so a renamed session loses its match.
+       sessionRecaps(g, s) -> the matching notes, newest first.
+       openSessionRecapModal(code, sid, back) / saveSessionRecap(code, sid,
+       back): the "What did we cover?" dialog; back reopens the sheet.
+       groupRecapPrompt(g) -> the home's "just ended" card, or ''.
 ──────────────────────────────────────────────────────────────── */
 /* ── Sessions ──────────────────────────────────────────────────── */
 // The shared control (js/spaces/rsvp.js) with a group's answers: Going,
@@ -38,12 +54,12 @@ function sessionRsvpPeople(g, s) {
 }
 // "You, Maya and 3 others are going". Groups have no officers, so everyone
 // sees the counts; only the empty hero line changes.
-function groupFacePile(g, s, { size = 26, zero = true } = {}) {
+function groupFacePile(g, s, { size = 26, zero = true, past = false } = {}) {
   const who = sessionRsvpPeople(g, s);
   return spaceFacePile({
-    people: who.yes, meUid: myUidFor(g), size, colorOf: (uid) => personColor(g, uid),
-    zeroText: zero ? 'Be the first to say you’re going' : '0 going',
-    detail: who.maybe.length ? `${who.maybe.length} maybe` : '',
+    people: who.yes, meUid: myUidFor(g), size, colorOf: (uid) => personColor(g, uid), verb: past ? 'said' : 'going',
+    zeroText: past ? 'No one said they’d go' : zero ? 'Be the first to say you’re going' : '0 going',
+    detail: !past && who.maybe.length ? `${who.maybe.length} maybe` : '',
     onclick: `showGroupSessionModal('${g.code}','${s.id}')`,
     label: `See who’s going to ${s.title}`,
   });
@@ -75,7 +91,8 @@ function showGroupSessionModal(code, sid) {
     title: s.title, date: s.date, start: s.start, end: s.end, where: s.where, notes: s.notes,
     tags: s.seriesId ? spaceTag('weekly', `Weekly${later ? `, ${later} more after this` : ''}`) : '',
     rsvpHtml: past ? '' : rsvpControl(g, s, { size: 'hero', stillComing: true, clearable: true }),
-    facesHtml: past ? '' : groupFacePile(g, s, { size: 24 }),
+    facesHtml: groupFacePile(g, s, { size: 24, past }),
+    recapHtml: sessionRecapBlock(g, s, { back: true }),
     actionsHtml: past ? '' : `${joinLinkButton(s.where)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`,
     listsHtml: spaceRsvpLists({ key: spaceRsvpKey('group', g.code, s.id), lists }),
     footHtml: `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteSession('${g.code}','${s.id}')">Delete</button><button class="btn" onclick="openSessionModal('${g.code}','${s.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button>`,
@@ -93,13 +110,14 @@ function nextSessionHero(g, s, { need = false } = {}) {
   // The countdown chip (or the Happening now strip) carries the when.
   return spaceEventHero({
     date: s.date, start: s.start, end: s.end, where: s.where, notes: s.notes,
-    eyebrow: 'Next session',
+    eyebrow: eventTimeState(s).phase === 'now' ? 'In session' : 'Next session',
     tags: `${need ? spaceTag('need', 'Needs your answer') : ''}${s.seriesId ? spaceTag('weekly', 'Weekly') : ''}`,
     title: s.title,
     onOpen: `showGroupSessionModal('${g.code}','${s.id}')`,
     rsvpHtml: rsvpControl(g, s, { size: 'hero', stillComing: true }),
-    facesHtml: groupFacePile(g, s),
-    actionsHtml: `<button class="btn btn-ghost btn-sm sg-ics" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`,
+    facesHtml: groupFacePile(g, s, { past: sessionIsPast(s) }),
+    afterHtml: sessionRecapBlock(g, s),
+    actionsHtml: sessionIsPast(s) ? '' : `<button class="btn btn-ghost btn-sm sg-ics" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`,
     className: 'sg-next-hero',
   });
 }
@@ -139,10 +157,12 @@ function sessionCard(g, s, { past = false, needIds = null } = {}) {
     past && going ? `${going} said they’d go` : '',
   ].filter(Boolean).join(' · ');
   const tags = [
+    past ? '' : spaceWhenChip(s),
     !past && needIds?.has(s.id) ? spaceTag('need', 'Needs your answer') : '',
     s.seriesId ? spaceTag('weekly', 'Weekly') : '',
     !past && going ? groupFacePile(g, s, { size: 20 }) : '',
   ].join('');
+  const recap = past ? sessionRecapSnippet(g, s) : '';
   const describedBy = [`${id}-d`, `${id}-m`, tags ? `${id}-t` : ''].filter(Boolean).join(' ');
   return `
     <div class="space-agenda-row sg-session${past ? ' is-past' : ''}" data-row-click tabindex="-1" onclick="${open}">
@@ -152,6 +172,7 @@ function sessionCard(g, s, { past = false, needIds = null } = {}) {
         <div class="space-agenda-meta" id="${id}-m">${meta}</div>
         ${s.notes ? `<div class="sg-session-notes" onclick="if(event.target.closest('a'))event.stopPropagation()">${linkifyText(s.notes)}</div>` : ''}
         ${tags ? `<div class="space-agenda-tags" id="${id}-t">${tags}</div>` : ''}
+        ${recap}
       </div>
       <div class="space-agenda-end sg-session-end" onclick="event.stopPropagation()">
         ${past ? '' : rsvpControl(g, s)}
@@ -182,7 +203,9 @@ function openSessionModal(code, sid, prefill = {}) {
         <div class="field"><label for="ss-end">End</label><input class="input" type="time" id="ss-end" value="${esc(v.end)}"></div>
       </div>
       <div class="field"><label for="ss-where">Where</label><input class="input" id="ss-where" value="${esc(v.where)}" maxlength="300" placeholder="Library room 204, or paste a Zoom / Meet link"></div>
-      <div class="field"><label for="ss-notes">Agenda or notes <span class="muted">(optional)</span></label><textarea class="input" id="ss-notes" maxlength="1000" placeholder="Bring your chapter 5 problems…">${esc(v.notes)}</textarea></div>
+      <div class="field"><label for="ss-notes">Agenda or notes <span class="muted">(optional)</span></label><textarea class="input" id="ss-notes" maxlength="1000" placeholder="Bring your chapter 5 problems…" oninput="syncSessionAgendaChips()">${esc(v.notes)}</textarea>
+        <div class="sg-agenda-chips" role="group" aria-label="Add a line to the agenda"><span class="sg-agenda-chips-label">Add to the agenda</span>${SESSION_AGENDA_LINES.map((l, i) => `<button type="button" class="chip" data-agenda="${i}" aria-pressed="${sessionNotesHave(v.notes, l)}" onclick="addSessionAgendaLine(${i})">${icon('plus', 12)} ${esc(l)}</button>`).join('')}</div>
+      </div>
       ${!s ? `<div class="field-row" style="align-items:center"><label class="checkbox-row small" style="margin:0"><input type="checkbox" id="ss-repeat" onchange="$('#ss-weeks').disabled=!this.checked"><span>Repeat weekly for</span></label><select class="select" id="ss-weeks" style="max-width:110px" disabled aria-label="How many weeks">${SESSION_REPEAT_WEEKS.map(n => `<option value="${n}" ${n === 6 ? 'selected' : ''}>${n} weeks</option>`).join('')}</select></div>` : ''}
       ${s && later > 0 ? `<label class="checkbox-row small"><input type="checkbox" id="ss-series"><span>Also update the ${later} later session${later === 1 ? '' : 's'} in this weekly series (they keep their dates)</span></label>` : ''}
       ${!s ? `<p class="small muted mt-8">Everyone in ${esc(g.name)} will see this on their calendar and can RSVP.</p>` : ''}
@@ -274,4 +297,110 @@ function downloadSessionIcs(code, sid) {
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+/* ── Before: agenda lines ──────────────────────────────────────── */
+// A one-tap agenda. Each chip adds its line to the notes (the field the
+// session already has, 1000 characters at most); tapping it again takes
+// the line back out.
+const SESSION_AGENDA_LINES = ['Quiz each other', 'Explain the hard one', 'Plan next steps'];
+function sessionNotesHave(notes, line) { return String(notes || '').split('\n').some(x => x.trim() === line); }
+function addSessionAgendaLine(i) {
+  const el = $('#ss-notes');
+  const line = SESSION_AGENDA_LINES[i];
+  if (!el || !line) return;
+  if (sessionNotesHave(el.value, line)) {
+    el.value = el.value.split('\n').filter(x => x.trim() !== line).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  } else {
+    const next = `${el.value.replace(/\s+$/, '')}${el.value.trim() ? '\n' : ''}${line}`;
+    if (next.length > 1000) { toast('The notes are full. Trim them to add this.', 'error'); return; }
+    el.value = next;
+  }
+  syncSessionAgendaChips();
+}
+function syncSessionAgendaChips() {
+  const v = $('#ss-notes')?.value || '';
+  $$('#modal .sg-agenda-chips [data-agenda]').forEach(b => b.setAttribute('aria-pressed', String(sessionNotesHave(v, SESSION_AGENDA_LINES[+b.dataset.agenda]))));
+}
+
+/* ── After: recaps ─────────────────────────────────────────────── */
+const SESSION_RECAP_MAX = 2000;
+function sessionRecapTitle(s) { return `Recap: ${s.title}, ${fmtDate(s.date, { month: 'short', day: 'numeric' })}`; }
+function sessionRecaps(g, s) {
+  const t = sessionRecapTitle(s);
+  return groupItems(g).filter(it => it.kind === 'note' && it.title === t);
+}
+function _sessionRecapBy(g, it) {
+  const me = it.sharedByUid === myUidFor(g);
+  return `${me ? 'You' : esc(String(it.sharedBy || 'Someone').split(' ')[0])}${it.sharedAt ? ` · ${esc(fmtDate(_evIso(new Date(it.sharedAt)), { month: 'short', day: 'numeric' }))}` : ''}`;
+}
+// Past rows: the newest recap in two lines, or a quiet Add a recap.
+function sessionRecapSnippet(g, s) {
+  const list = sessionRecaps(g, s);
+  if (!list.length) return `<button type="button" class="sg-link sg-recap-add" onclick="event.stopPropagation();openSessionRecapModal('${g.code}','${s.id}')">${icon('pencil', 12)} Add a recap</button>`;
+  const text = spaceRecapText(list[0].content);
+  return `<div class="sg-recap-snippet"><span class="sg-recap-by">${icon('file-text', 12)} Recap by ${_sessionRecapBy(g, list[0])}${list.length > 1 ? ` and ${list.length - 1} more` : ''}</span>${text ? `<span class="sg-recap-text">${esc(text)}</span>` : ''}</div>`;
+}
+// The sheet (and the hero, once it ends): every recap in full, then the
+// field for another. back: the field reopens this sheet after saving.
+function sessionRecapBlock(g, s, { back = false } = {}) {
+  const list = sessionRecaps(g, s);
+  const open = `openSessionRecapModal('${g.code}','${s.id}',${back})`;
+  const notes = list.map(it => `
+    <article class="space-recap-note">
+      <div class="space-recap-note-by">${personAvatar(it.sharedByUid || '', it.sharedBy || 'Someone', 20, personColor(g, it.sharedByUid))}<span>${_sessionRecapBy(g, it)}</span></div>
+      <div class="space-recap-note-body">${sanitizeHtml(String(it.content || ''))}</div>
+    </article>`).join('');
+  return `
+    <div class="space-recap">
+      <div class="space-recap-head"><span class="sg-h3">${list.length ? 'Recap' : 'What did we cover?'}</span><span class="small muted">Saved to Files</span></div>
+      ${notes}
+      ${spaceRecapField(open, list.length ? 'Add to the recap' : 'A few lines for anyone who missed it')}
+    </div>`;
+}
+function openSessionRecapModal(code, sid, back = false) {
+  const g = findGroup(code);
+  const s = g?.sessions?.[sid];
+  if (!s || !safeId(sid)) return;
+  const cancel = back ? `showGroupSessionModal('${g.code}','${s.id}')` : 'closeModal()';
+  openModal(`
+    <div class="modal-head"><h3>What did we cover?</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
+    <div class="modal-body">
+      <p class="small muted sg-recap-for">${esc(s.title)} · ${esc(fmtDate(s.date, { weekday: 'short', month: 'short', day: 'numeric' }))}</p>
+      <div class="field"><label for="sr-text" class="sr-only">What did we cover?</label><textarea class="input sg-recap-input" id="sr-text" rows="3" maxlength="${SESSION_RECAP_MAX}" placeholder="Went through enzyme inhibitors, quizzed each other on chapter 8. Next time: the practice exam."></textarea></div>
+      <p class="small muted">It saves to Files as “${esc(sessionRecapTitle(s))}”, so everyone in ${esc(g.name)} can read it.</p>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="${cancel}">Cancel</button><button class="btn btn-primary" id="sr-save" onclick="saveSessionRecap('${g.code}','${s.id}',${!!back})">${icon('check', 14)} Save to Files</button></div>
+  `);
+  setTimeout(() => $('#sr-text')?.focus(), 60);
+}
+async function saveSessionRecap(code, sid, back = false) {
+  const g = findGroup(code);
+  const s = g?.sessions?.[sid];
+  const text = ($('#sr-text')?.value || '').trim().slice(0, SESSION_RECAP_MAX);
+  if (!s) return;
+  if (!text) { toast('Write a line or two first', 'error'); return; }
+  const btn = $('#sr-save');
+  setBtnLoading(btn, true);
+  const ok = await addGroupItem(code, { kind: 'note', title: sessionRecapTitle(s), content: `<p>${esc(text).replace(/\n/g, '<br>')}</p>` });
+  if (!ok) { setBtnLoading(btn, false, 'Save to Files'); return; }
+  toast('Recap saved to Files');
+  if (back) showGroupSessionModal(code, sid); else closeModal();
+  renderPreservingInput();
+}
+// The home's "just ended" card: the last session you said you'd go to (or
+// made), for 18 hours after it ends, until someone writes a recap or you
+// say Not now on this device.
+function groupRecapPrompt(g) {
+  const u = myUidFor(g);
+  const s = sessionList(g).filter(x => sessionIsPast(x) && spaceRecentlyEnded(x)).pop();
+  if (!s || !(s.rsvp?.[u] === 'yes' || s.createdBy === u)) return '';
+  const key = `group:${g.code}:${s.id}`;
+  if (sessionRecaps(g, s).length || spaceRecapDismissed(key)) return '';
+  return spaceRecapCard({
+    date: s.date, start: s.start, end: s.end, title: s.title,
+    facesHtml: groupFacePile(g, s, { size: 22, past: true }),
+    bodyHtml: `${spaceRecapField(`openSessionRecapModal('${g.code}','${s.id}')`)}<p class="space-recap-hint">It saves to Files, so anyone who missed it can catch up.</p>`,
+    dismissJs: `spaceRecapDismiss('${key}')`,
+  });
 }

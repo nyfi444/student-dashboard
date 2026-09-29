@@ -2,6 +2,17 @@
    Event rows, answers (Going or Can't), the Next up hero, the Overview
    agenda and its tags, the Calendar tab, and the event sheets (view, add,
    edit, delete, .ics). Loaded after js/orgs/sync.js and before js/orgs.js.
+
+   Before, during, after (Tier A item 7). Phases come from eventTimeState
+   (js/spaces/eventcard.js); orgEventPast (js/orgs/sync.js) is its 'after'.
+   Rows carry spaceWhenChip (today, tomorrow, Happening now). Once an
+   event ends, officers get Post a recap on the sheet, the rows and the
+   Overview's "just ended" card:
+     postOrgRecap(code, eventId) opens openAnnouncementModal with a
+       prefill built from the event (never an inline string).
+     orgRecapPosted(o, e) -> true when an announcement posted after the
+       event ended names it, which retires the card.
+     orgRecapPrompt(o) -> the Overview card for officers, or ''.
 ──────────────────────────────────────────────────────────────── */
 /* ── Calendar, dashboard, Heads up ─────────────────────────────── */
 // Events that belong on your own calendar: anything you haven't said no to.
@@ -23,14 +34,14 @@ function orgEventRow(o, e, { showOrg = false, need = null } = {}) {
   const dues = orgIsDuesEvent(e);
   // Count text only (no faces in rows). Members never see "0 going".
   const count = dues ? '' : past ? `${counts.yes} said they’d go` : counts.yes || isOrgOfficer(o) ? `${counts.yes} going` : '';
-  const trailing = past ? '' : dues ? orgDuesAction(o, e) : orgRsvpControl(o, e);
+  const trailing = past ? orgRecapLink(o, e) : dues ? orgDuesAction(o, e) : orgRsvpControl(o, e);
   return `
     <div class="list-row sg-session-row org-event-row ${past ? 'is-past' : ''}" style="--course:${esc(orgColor(o))}" onclick="showOrgEventModal('${o.code}','${e.id}')">
       ${spaceDateBlock(e.date, { size: 'tile' })}
       <div class="row-title">
         <div class="sg-strong">${esc(e.title)}</div>
         <div class="row-meta">${[showOrg ? esc(o.name) : '', orgCatHtml(e), esc(_evTimeRange(e.start, e.end)), e.location ? esc(e.location) : '', count ? `<span class="org-row-going">${count}</span>` : ''].filter(Boolean).join(' · ')}</div>
-        ${(() => { const t = orgEventTags(o, e, { need }); return t ? `<div class="space-agenda-tags org-event-tags">${t}</div>` : ''; })()}
+        ${(() => { const t = `${past ? '' : spaceWhenChip(e)}${orgEventTags(o, e, { need })}`; return t ? `<div class="space-agenda-tags org-event-tags">${t}</div>` : ''; })()}
       </div>
       ${trailing}
     </div>`;
@@ -44,14 +55,14 @@ function orgRsvpPeople(o, e) {
 }
 // "You, Maya and 3 others are going". Officers, who count heads, see the
 // real numbers; members at zero see an invitation instead of "0 going".
-function orgFacePile(o, e, { size = 26 } = {}) {
+function orgFacePile(o, e, { size = 26, past = false } = {}) {
   const who = orgRsvpPeople(o, e);
   const faces = orgFaceColors(o);
   const officer = isOrgOfficer(o);
   return spaceFacePile({
-    people: who.yes, meUid: myOrgUid(o), size, colorOf: (uid) => faces[uid] || orgColor(o),
-    zeroText: officer ? '0 going' : 'Be the first to say you’re going',
-    detail: officer && who.none.length ? `${who.none.length} haven’t answered` : '',
+    people: who.yes, meUid: myOrgUid(o), size, colorOf: (uid) => faces[uid] || orgColor(o), verb: past ? 'said' : 'going',
+    zeroText: past ? 'No one said they’d go' : officer ? '0 going' : 'Be the first to say you’re going',
+    detail: !past && officer && who.none.length ? `${who.none.length} haven’t answered` : '',
     onclick: `showOrgEventModal('${o.code}','${e.id}')`,
     label: `See who’s going to ${e.title}`,
   });
@@ -109,12 +120,13 @@ function orgNextHero(o, e, need = null) {
   // The countdown chip (or the Happening now strip) carries the when.
   return spaceEventHero({
     date: e.date, start: e.start, end: e.end, where: e.location, notes: e.notes,
-    eyebrow: dues ? 'Next up · Due' : 'Next up',
+    eyebrow: dues ? 'Next up · Due' : eventTimeState(e).phase === 'now' ? 'On now' : 'Next up',
     tags: orgEventTags(o, e, { need }),
     title: e.title,
     onOpen: `showOrgEventModal('${o.code}','${e.id}')`,
     rsvpHtml: orgRsvpControl(o, e, myOrgRsvp(o, e.id), { size: 'hero', stillComing: true }),
-    facesHtml: dues ? '' : orgFacePile(o, e),
+    facesHtml: dues ? '' : orgFacePile(o, e, { past: orgEventPast(e) }),
+    afterHtml: dues ? '' : orgRecapButton(o, e),
     actionsHtml: `<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button>`,
     className: 'org-next-hero',
   });
@@ -165,8 +177,8 @@ function orgAgendaRow(o, e, need = null) {
   return spaceAgendaRow({
     date: e.date, title: e.title, past,
     metaHtml: [esc(when), e.location ? esc(e.location) : '', going ? `<span class="org-row-going">${going}</span>` : ''].filter(Boolean).join(' · '),
-    tags: orgEventTags(o, e, { cat: true, need }),
-    trailingHtml: past ? '' : orgRsvpControl(o, e),
+    tags: `${past ? '' : spaceWhenChip(e)}${orgEventTags(o, e, { cat: true, need })}`,
+    trailingHtml: past ? orgRecapLink(o, e) : orgRsvpControl(o, e),
     onclick: `showOrgEventModal('${o.code}','${e.id}')`,
   });
 }
@@ -208,7 +220,8 @@ function showOrgEventModal(code, eventId) {
     title: e.title, date: e.date, start: e.start, end: e.end, where: e.location, notes: e.notes,
     tags: `${spaceTag('cat', cat[1], cat[2])}${e.required && !dues ? spaceTag('required', 'Required') : ''}${e.seriesId ? spaceTag('weekly', `Weekly${later ? `, ${later} more after this` : ''}`) : ''}`,
     rsvpHtml: past ? '' : orgRsvpControl(o, e, myOrgRsvp(o, e.id), { size: 'hero', stillComing: true, clearable: true }),
-    facesHtml: past || dues ? '' : orgFacePile(o, e, { size: 24 }),
+    facesHtml: dues ? '' : orgFacePile(o, e, { size: 24, past }),
+    recapHtml: dues ? '' : orgRecapButton(o, e),
     actionsHtml: past ? '' : `${joinLinkButton(e.location)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button>`,
     listsHtml: dues && !(officer && anyAnswers) ? '' : orgAttendanceLists(o, e),
     footHtml: officer ? `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteOrgEvent('${o.code}','${e.id}')">Delete</button><button class="btn" onclick="openOrgEventModal('${o.code}','${e.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button>` : '',
@@ -311,4 +324,48 @@ function downloadOrgIcs(code, eventId) {
   a.download = `${o.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'club'}${eventId ? '-event' : ''}.ics`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ── After: Post a recap (officers) ────────────────────────────── */
+function _orgEndMs(e) { const st = eventTimeState(e); return new Date(`${e.date}T${st.endsAt}:00`).getTime(); }
+function orgRecapPosted(o, e) {
+  const end = _orgEndMs(e);
+  const t = String(e.title || '').toLowerCase();
+  return !!t && orgAnnouncementList(o).some(a => (a.at || 0) >= end && a.text.toLowerCase().includes(t));
+}
+// Rows only offer it for the past week, and not once a recap names the
+// event; the sheet always has it.
+function orgRecapLink(o, e) {
+  if (!isOrgOfficer(o) || orgIsDuesEvent(e) || !spaceRecentlyEnded(e, 7 * 24) || orgRecapPosted(o, e)) return '';
+  return `<button type="button" class="sg-link org-recap-link" onclick="event.stopPropagation();postOrgRecap('${o.code}','${e.id}')">${icon('megaphone', 12)} Post a recap</button>`;
+}
+function orgRecapButton(o, e) {
+  if (!isOrgOfficer(o) || orgIsDuesEvent(e)) return '';
+  const done = orgRecapPosted(o, e);
+  return `<div class="org-recap-row"><button class="btn btn-sm" onclick="postOrgRecap('${o.code}','${e.id}')">${icon('megaphone', 14)} ${done ? 'Post another recap' : 'Post a recap'}</button><span class="small muted">${done ? 'There’s one in Announcements.' : 'Thank people for coming and share what happened.'}</span></div>`;
+}
+function postOrgRecap(code, eventId) {
+  const o = findOrg(code);
+  const e = o && orgEventList(o).find(x => x.id === eventId);
+  if (!e || !isOrgOfficer(o)) return;
+  const st = eventTimeState(e);
+  const when = st.days === 0 ? (_evMin(e.start) >= 17 * 60 ? ' tonight' : ' today') : st.days === -1 ? ' yesterday' : ` on ${fmtDate(e.date, { weekday: 'long', month: 'short', day: 'numeric' })}`;
+  const text = `Thanks to everyone who came to ${e.title}${when}! Here’s the recap:\n\n`;
+  openAnnouncementModal(code, text.slice(0, ORG_ANNOUNCEMENT_MAX));
+  requestAnimationFrame(() => { const el = $('#an-text'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
+}
+// The Overview's "just ended" card, officers only: the latest event that
+// ended in the last 18 hours, until a recap names it or you say Not now.
+function orgRecapPrompt(o) {
+  if (!isOrgOfficer(o)) return '';
+  const e = orgEventList(o).filter(x => !orgIsDuesEvent(x) && orgEventPast(x) && spaceRecentlyEnded(x)).pop();
+  if (!e) return '';
+  const key = `club:${o.code}:${e.id}`;
+  if (orgRecapPosted(o, e) || spaceRecapDismissed(key)) return '';
+  return spaceRecapCard({
+    date: e.date, start: e.start, end: e.end, title: e.title,
+    facesHtml: orgFacePile(o, e, { size: 22, past: true }),
+    bodyHtml: `<div class="org-recap-row"><button class="btn btn-primary btn-sm" onclick="postOrgRecap('${o.code}','${e.id}')">${icon('megaphone', 14)} Post a recap</button><span class="small muted">It goes to Announcements.</span></div>`,
+    dismissJs: `spaceRecapDismiss('${key}')`,
+  });
 }

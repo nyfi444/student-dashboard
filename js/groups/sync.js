@@ -84,14 +84,9 @@ function findGroup(code) { return groupView(groupEntry(code)); }
 function groupItems(g) { return (g.local ? [...(groupEntry(g.code)?.items || [])] : [...(_groupItems[g.code] || [])]).filter(s => s && safeId(s.id)).sort((a, b) => (b.sharedAt || 0) - (a.sharedAt || 0)); }
 function groupMessages(g) { return (g.local ? (groupEntry(g.code)?.messages || []) : (_groupMessages[g.code] || [])).filter(m => m && safeId(m.id) && typeof m.text === 'string'); }
 function sessionList(g) { return Object.values(g.sessions || {}).filter(s => s && safeId(s.id) && typeof s.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.date)).sort((a, b) => (a.date + (a.start || '')).localeCompare(b.date + (b.start || ''))); }
-function sessionIsPast(s) {
-  const t = todayIso();
-  if (s.date !== t) return s.date < t;
-  const end = s.end || s.start;
-  if (!end) return false;
-  const now = new Date();
-  return toMin(end) < now.getHours() * 60 + now.getMinutes();
-}
+// Past once it ends; with no end time it runs an hour (js/spaces/eventcard.js),
+// so a session stays on the hero, and says Happening now, while it's on.
+function sessionIsPast(s) { return eventTimeState(s).phase === 'after'; }
 function upcomingSessions(g) { return sessionList(g).filter(s => !sessionIsPast(s)); }
 function rsvpCounts(s) { const v = Object.values(s.rsvp || {}); return { yes: v.filter(x => x === 'yes').length, maybe: v.filter(x => x === 'maybe').length, no: v.filter(x => x === 'no').length }; }
 function taskList(g) { return Object.values(g.taskItems || {}).filter(t => t && safeId(t.id) && t.title); }

@@ -65,11 +65,9 @@ function orgEventList(o) {
     .map(e => ({ ...e, title: cleanStr(e.title, 120), start: /^\d{2}:\d{2}$/.test(e.start || '') ? e.start : '', end: /^\d{2}:\d{2}$/.test(e.end || '') ? e.end : '', location: cleanStr(e.location, 120), notes: cleanStr(e.notes, 1000), category: ORG_EVENT_CATEGORIES.some(c => c[0] === e.category) ? e.category : 'other' }))
     .sort((a, b) => (a.date + (a.start || '')).localeCompare(b.date + (b.start || '')));
 }
-function orgEventPast(e) {
-  const t = todayIso();
-  if (e.date !== t) return e.date < t;
-  return !!(e.end || e.start) && toMin(e.end || e.start) < nowMinutes();
-}
+// Past once it ends; with no end time it runs an hour, and an all-day event
+// (dues) lasts its whole day. See eventTimeState in js/spaces/eventcard.js.
+function orgEventPast(e) { return eventTimeState(e).phase === 'after'; }
 function upcomingOrgEvents(o) { return orgEventList(o).filter(e => !orgEventPast(e)); }
 function myOrgRsvp(o, eventId) { const v = o.rsvp?.[myOrgUid(o)]?.[eventId]; return v === 'yes' || v === 'no' ? v : ''; }
 function orgRsvpCounts(o, eventId) {

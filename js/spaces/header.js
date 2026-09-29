@@ -194,20 +194,13 @@ function spaceGoToTab(kind, tab) {
 // "Now", "in 40m", "in 3h", "Tomorrow", "in 4 days", or a short date.
 function spaceCountdown(date, start, end) {
   if (!date) return '';
-  const now = new Date();
-  const days = daysBetween(date);
-  if (days < 0) return '';
-  if (days === 0) {
-    if (!start) return 'Today';
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const s = toMin(start), e = end ? toMin(end) : s + 60;
-    if (nowMin >= s && nowMin < e) return 'Now';
-    if (nowMin >= e) return '';
-    const mins = s - nowMin;
-    return mins < 60 ? `in ${mins}m` : `in ${Math.round(mins / 60)}h`;
-  }
-  if (days === 1) return 'Tomorrow';
-  if (days < 7) return `in ${days} days`;
+  // Phases from eventTimeState (js/spaces/eventcard.js): no end means an hour.
+  const st = eventTimeState({ date, start, end });
+  if (st.phase === 'after') return '';
+  if (st.phase === 'now') return st.allDay ? 'Today' : 'Now';
+  if (st.days === 0) return st.startsInMin < 60 ? `in ${st.startsInMin}m` : `in ${Math.round(st.startsInMin / 60)}h`;
+  if (st.days === 1) return 'Tomorrow';
+  if (st.days < 7) return `in ${st.days} days`;
   return fmtDate(date);
 }
 // The words that go after the countdown chip without repeating it: the
@@ -217,9 +210,13 @@ function spaceWhen(date, start) {
   const day = days >= 2 && days < 7 ? fmtDate(date, { weekday: 'short' }) : '';
   return [day, start ? fmtTime(start) : ''].filter(Boolean).join(' ');
 }
+// "Now" reads "Happening now" with the live dot. The chip carries
+// spaceLiveAttrs, so the minute tick keeps its words and phase current.
 function spaceCountdownChip(date, start, end) {
   const t = spaceCountdown(date, start, end);
-  return t ? `<span class="space-chip${t === 'Now' ? ' is-now' : ''}">${t === 'Now' ? '<span class="space-now-dot"></span>' : ''}${esc(t)}</span>` : '';
+  if (!t) return '';
+  const now = t === 'Now';
+  return `<span class="space-chip${now ? ' is-now' : ''}"${spaceLiveAttrs({ date, start, end }, { fmt: 'short' })}>${now ? '<span class="space-now-dot" aria-hidden="true"></span>' : ''}<span class="space-live-text">${now ? 'Happening now' : esc(t)}</span></span>`;
 }
 
 // The card is one button (Enter and Space come from ui.js's keydown for

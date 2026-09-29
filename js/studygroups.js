@@ -143,7 +143,7 @@ function groupIndexCard(g) {
     name: g.name,
     onclick: `openGroup('${g.code}')`,
     nextHtml: next
-      ? `${spaceCountdownChip(next.date, next.start, next.end)}<span class="space-card-when">${[esc(spaceWhen(next.date, next.start)), next.where ? esc(next.where) : ''].filter(Boolean).join(' · ') || esc(next.title)}</span>`
+      ? `${spaceCountdownChip(next.date, next.start, next.end)}<span class="space-card-when">${[esc(spaceWhen(next.date, next.start)), next.where ? esc(groupWhereShort(next.where)) : ''].filter(Boolean).join(' · ') || esc(next.title)}</span>`
       : '<span class="space-card-when">No session scheduled</span>',
     lineHtml: g.lastMessage ? `<div class="space-card-msg ${unread ? 'is-unread' : ''}"><span class="em">${esc(g.lastMessage.name)}:</span> ${esc(g.lastMessage.text)}</div>` : '',
     unread,
@@ -775,6 +775,7 @@ function createSampleGroup() {
         { front: 'G protein', back: 'Membrane protein that is active when bound to GTP and relays receptor signals' },
       ] },
       { id: uid(), kind: 'note', title: 'Lecture 14 summary', sharedBy: 'Priya', sharedByUid: priya, sharedAt: now - 30 * H, content: '<h2>Lecture 14: Cell communication</h2><ul><li>Three stages: reception, transduction, response</li><li>GPCRs are the largest family of receptors</li><li>Amplification: one ligand can trigger thousands of responses</li></ul>' },
+      { id: uid(), kind: 'note', title: `Recap: Chapter 7 problem set, ${fmtDate(addDays(t, -6), { month: 'short', day: 'numeric' })}`, sharedBy: 'Priya', sharedByUid: priya, sharedAt: now - 5 * D - 12 * H, content: '<p>We got through 7.1 to 7.14. The Hill coefficient ones tripped everyone up, so Maya walked us through cooperativity with the oxygen curve.<br>Next time: chapter 8 vocab, then the practice exam.</p>' },
     ],
   };
   const last = entry.messages[entry.messages.length - 1];

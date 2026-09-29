@@ -454,6 +454,23 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
   check('event time: tomorrow', st({ date: '2026-09-30', start: '09:00' }, 10), ['before', 'tomorrow']);
   check('event time: two days out', st({ date: '2026-10-01', start: '09:00' }, 10), ['before', 'in 2 days']);
   check('event time: a deadline later today reads today', run(`countdownLabel({ date: '2026-09-29' }, ${at(10)})`), 'today');
+  // Tier A item 7: row chips, the recap window, the past-tense face caption.
+  check('event time: a row chip says Happening now during, nothing after, nothing two days out', run(`[
+    /Happening now/.test(spaceWhenChip({ date: '2026-09-29', start: '09:30' }, { now: ${at(10)} })),
+    spaceWhenChip({ date: '2026-09-29', start: '08:00', end: '09:00' }, { now: ${at(10)} }),
+    spaceWhenChip({ date: '2026-10-01', start: '09:00' }, { now: ${at(10)} }),
+    /Tonight/.test(spaceWhenChip({ date: '2026-09-29', start: '19:00' }, { now: ${at(10)} })),
+  ]`), [true, '', '', true]);
+  check('event time: "just ended" lasts 18 hours after the end', run(`[
+    spaceRecentlyEnded({ date: '2026-09-28', start: '17:00', end: '18:00' }, 18, ${at(10)}),
+    spaceRecentlyEnded({ date: '2026-09-28', start: '13:00', end: '14:00' }, 18, ${at(10)}),
+    spaceRecentlyEnded({ date: '2026-09-29', start: '11:00' }, 18, ${at(10)}),
+  ]`), [true, false, false]);
+  check('face pile: after the event it says who said they’d go', run(`[
+    spaceFaceCaption([{ uid: 'me', name: 'Nyla' }], 'me', 'said'),
+    spaceFaceCaption([{ uid: 'a', name: 'Maya Lee' }], 'me', 'said'),
+    spaceFaceCaption([{ uid: 'me' }, { uid: 'a', name: 'Maya' }, { uid: 'b', name: 'Jo' }, { uid: 'c', name: 'Al' }], 'me', 'said'),
+  ]`), ['You said you’d go', 'Maya said they’d go', 'You, Maya and 2 others said they’d go']);
 
   /* ── 8. What needs you (js/spaces/needs.js), on the loaded scripts ──
      One list feeds the strip, the index and dashboard counts, Heads up

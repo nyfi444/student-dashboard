@@ -103,11 +103,17 @@ function dashNextMeta(i) {
   if (!i.sub && !range) return '';
   return `<div class="dash-next-meta small">${i.sub ? `<span class="assign-course"><span class="course-dot"></span>${esc(i.sub)}</span>` : ''}${i.sub && range ? '<span aria-hidden="true">·</span>' : ''}${range ? `<span>${range}</span>` : ''}</div>`;
 }
+// A group session or club event with no end time runs an hour (capped at
+// 23:59), the same as on its own page (eventTimeState, js/spaces/eventcard.js).
+function dashItemEnd(i) {
+  if (i.end) return i.end;
+  return (i.kind === 'group' || i.kind === 'org') && i.start ? eventTimeState({ date: todayIso(), start: i.start }).endsAt : null;
+}
 function dashHero() {
   const t = todayIso();
   const items = todayTimeline();
   const nowMin = nowMinutes();
-  const current = items.find(i => i.start && i.end && i.kind !== 'due' && toMin(i.start) <= nowMin && toMin(i.end) > nowMin);
+  const current = items.find(i => i.start && dashItemEnd(i) && i.kind !== 'due' && toMin(i.start) <= nowMin && toMin(dashItemEnd(i)) > nowMin);
   const upcoming = items.find(i => i.start && toMin(i.start) > nowMin);
   const nextDeadline = state.assignments.filter(a => !isAssignmentDone(a) && dashCourseScope(a) && a.dueDate && a.dueDate >= t)
     .sort((a, b) => (a.dueDate + (a.dueTime || '')).localeCompare(b.dueDate + (b.dueTime || '')))[0];
@@ -159,7 +165,7 @@ function dashHero() {
           ${items.length ? (() => {
             let nowDrawn = false;
             return items.map((i, idx) => {
-              const past = i.end ? toMin(i.end) <= nowMin : i.start ? toMin(i.start) < nowMin - 30 : false;
+              const past = dashItemEnd(i) ? toMin(dashItemEnd(i)) <= nowMin : i.start ? toMin(i.start) < nowMin - 30 : false;
               const live = i === current;
               // A thin "now" line before the first thing still ahead, once something is behind it.
               const nowLine = !nowDrawn && idx > 0 && !past && !live ? (nowDrawn = true, `<div class="dash-tl-now" aria-hidden="true"><span>${fmtTime(`${String(Math.floor(nowMin / 60)).padStart(2, '0')}:${String(nowMin % 60).padStart(2, '0')}`)}</span></div>`) : '';

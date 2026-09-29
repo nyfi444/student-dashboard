@@ -686,3 +686,70 @@ button.space-agenda-title { position: relative; display: block; min-height: 24px
   .space-need, .space-need.is-gone, .space-need.is-clearing > *, .space-need.is-clearing .space-need-done { transition: none; }
   .space-needs-clear.is-fresh .space-needs-check { animation: none; }
 }
+
+/* ── Before, during, after (Tier A item 7): row chips, recaps, agenda chips ──
+   js/spaces/eventcard.js (spaceWhenChip, spaceRecapCard, spaceRecapField),
+   js/groups/sessions.js (recaps, agenda lines), js/orgs/events.js (Post a recap). */
+.space-when-chip { min-height: 20px; padding: 0 8px; line-height: 20px; }
+.space-when-chip .space-now-dot { width: 6px; height: 6px; }
+
+/* The hero once it ends, and the sheet's recap block. */
+.space-hero-after { margin-top: 20px; }
+.space-sheet-recap { margin-top: 20px; }
+.space-recap { display: flex; flex-direction: column; gap: 12px; }
+.space-recap-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.space-recap-note { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-radius: var(--r-mid); background: var(--surface-2); }
+.space-recap-note-by { display: flex; align-items: center; gap: 8px; font: 500 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.space-recap-note-by .sg-avatar { flex-shrink: 0; }
+.space-recap-note-body { font: 400 var(--fs-lg)/1.55 var(--font); color: var(--text); overflow-wrap: anywhere; }
+.space-recap-note-body > :first-child { margin-top: 0; }
+.space-recap-note-body > :last-child { margin-bottom: 0; }
+.space-recap-note-body p, .space-recap-note-body ul, .space-recap-note-body ol { margin: 0 0 8px; }
+.space-recap-note-body h1, .space-recap-note-body h2, .space-recap-note-body h3 { margin: 0 0 6px; font: 600 var(--fs-lg)/1.4 var(--font); }
+
+/* A field-shaped button: three lines tall; the real field opens in a dialog. */
+.space-recap-field {
+  display: flex; align-items: flex-start; width: 100%; min-height: 84px; padding: 12px 16px; border: 1px solid transparent; border-radius: var(--r-card);
+  background: var(--surface-2); color: var(--text-faint); font: 400 var(--fs-lg)/1.5 var(--font); text-align: left; cursor: text;
+  transition: border-color var(--dur-1), background var(--dur-1);
+}
+.space-recap-field:hover { border-color: var(--space-line, var(--border)); background: color-mix(in srgb, var(--space-wash, var(--surface-2)) 60%, var(--surface-2)); }
+.space-recap-field:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* The "just ended" card on a group or club home. */
+.space-recap-card { display: flex; flex-direction: column; gap: 12px; padding: 24px; }
+.space-recap-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; }
+.space-recap-top .eyebrow { color: var(--text-dim); }
+.space-recap-skip { margin: -4px -8px -4px 0; color: var(--text-dim); }
+.space-recap-title { margin: 0; font: 400 var(--fs-heading)/1.15 var(--font-serif); letter-spacing: -.01em; color: var(--text); overflow-wrap: anywhere; }
+.space-recap-faces:empty { display: none; }
+.space-recap-hint { margin: -4px 0 0; font: 400 var(--fs-sm)/1.4 var(--font); color: var(--text-faint); }
+
+/* Past session rows: the newest recap in two lines, or Add a recap. */
+.sg-recap-snippet { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; padding: 8px 12px; border-radius: var(--r-tight); background: var(--surface-2); min-width: 0; }
+.sg-recap-by { display: inline-flex; align-items: center; gap: 6px; font: 500 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); }
+.sg-recap-by .i { color: var(--text-faint); }
+.sg-recap-text { font: 400 var(--fs-md)/1.5 var(--font); color: var(--text); white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sg-recap-add { margin-top: 6px; gap: 6px; min-height: 24px; }
+.sg-recap-for { margin: 0 0 12px; }
+.sg-recap-input { min-height: 96px; resize: vertical; }
+
+/* The session dialog's agenda lines. */
+.sg-agenda-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 8px; }
+.sg-agenda-chips-label { font: 500 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); margin-right: 2px; }
+.sg-agenda-chips .chip { min-height: 30px; }
+.sg-agenda-chips .chip .i { width: 12px; height: 12px; }
+.sg-agenda-chips .chip[aria-pressed='true'] .i { transform: rotate(45deg); }
+
+/* Clubs: Post a recap, on the sheet, the hero, the card and past rows. */
+.org-recap-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.org-recap-link { gap: 6px; min-height: 24px; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .space-recap-card { padding: 20px; }
+  .sg-agenda-chips .chip { min-height: 36px; }
+  .sg-recap-add, .org-recap-link { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .space-recap-field, .sg-agenda-chips .chip .i { transition: none; }
+}
