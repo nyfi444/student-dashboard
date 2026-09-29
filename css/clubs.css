@@ -4,15 +4,135 @@
    study groups and the rest of the app. Section names below are the
    ones these rules sat under in styles.css.
 ──────────────────────────────────────────────────────────────── */
-/* The club Admin tab: a column of cards, each one job (see orgAdminTab). */
+/* Officer home (the Admin tab, orgAdminTab): heading, four numbers,
+   Needs you, then two columns of cards. One column on phones. */
 .org-admin { display: flex; flex-direction: column; gap: 16px; }
 .org-admin .card { margin-bottom: 0; }
 .org-admin .field:last-of-type { margin-bottom: 0; }
+.org-admin-head { display: flex; flex-direction: column; gap: 4px; }
+.org-admin-title { margin: 0; font: 400 var(--fs-title)/1.1 var(--font-serif); letter-spacing: -.015em; color: var(--bg-text, var(--text)); text-wrap: balance; }
+.org-admin-head .small { color: var(--bg-text-dim, var(--text-dim)); }
+.org-admin-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.org-admin-stats .space-stat { margin: 0; min-width: 0; }
+.org-admin-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.org-admin-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.org-admin-count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-dim); font: 600 var(--fs-sm)/1 var(--font); vertical-align: 1px; }
+.org-admin .sg-h3 .i, .org-overview .sg-h3 .i { color: var(--text-faint); }
+.org-needs-rows .space-agenda-row { min-height: 56px; }
+.org-needs-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.org-needs-request { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; padding: 12px 0; }
+.org-needs-request + .space-agenda-row { border-top: 1px solid var(--border); }
+.org-needs-ic { display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--r-tight); background: var(--surface-2); color: var(--text-dim); }
+.org-needs-request-text { min-width: 0; font-size: var(--fs-lg); }
+.org-needs-more { border-top: 1px solid var(--border); }
+.org-needs-more > summary { display: flex; align-items: center; gap: 4px; min-height: 44px; list-style: none; cursor: pointer; }
+.org-needs-more > summary::-webkit-details-marker { display: none; }
+.org-needs-more > summary .i { transition: transform var(--dur-1); }
+.org-needs-more[open] > summary .i { transform: rotate(90deg); }
+.org-needs-more > .space-agenda-row:first-of-type { border-top: 1px solid var(--border); }
+.org-needs-clear { display: flex; align-items: center; gap: 8px; margin: 0; font: 400 var(--fs-md)/1.4 var(--font); color: var(--text-dim); }
+.org-needs-check { flex-shrink: 0; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: var(--em-ink); box-shadow: inset 0 0 0 1.5px currentColor; }
+.org-needs-check .i { width: 12px; height: 12px; }
+/* RSVPs: range, grid (desktop) or member cards (phone), and a key. */
+.org-rsvp-range { margin-bottom: 8px; }
+.org-rsvp-help { margin: 0 0 12px; }
+.org-rsvp-mark { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+.org-rsvp-mark.is-small { width: 8px; height: 8px; }
+.org-rsvp-mark.is-yes { background: var(--space-fill, var(--text)); }
+.org-rsvp-mark.is-no { box-shadow: inset 0 0 0 1.5px var(--text-dim); }
+.org-rsvp-mark.is-none { width: 8px; height: 2px; border-radius: var(--r-mark); background: var(--text-faint); opacity: .7; }
+.org-rsvp-mark.is-small.is-none { width: 6px; }
+.org-rsvp-mark.is-na { background: none; box-shadow: none; }
+.org-rsvp-rate { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; font: 500 var(--fs-sm)/1 var(--font); color: var(--text); white-space: nowrap; }
+.org-rsvp-rate.is-new { color: var(--text-faint); font-weight: 400; }
+.org-rsvp-rate-bar { display: block; width: 40px; height: 4px; border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden; }
+.org-rsvp-rate-bar i { display: block; height: 100%; border-radius: inherit; background: var(--space-fill, var(--text)); }
+.org-rsvp-cards { display: none; }
+.org-rsvp-card { display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 12px; align-items: start; padding: 12px 0; border-top: 1px solid var(--border); }
+.org-rsvp-card:first-child { border-top: 0; padding-top: 4px; }
+.org-rsvp-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: var(--fs-lg); min-width: 0; }
+.org-rsvp-card-top .sg-strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-rsvp-card-n { flex-shrink: 0; font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.org-rsvp-dots { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; min-height: 8px; }
+.org-rsvp-earlier { font: 400 var(--fs-sm)/1 var(--font); color: var(--text-faint); margin-right: 2px; }
+.org-rsvp-key { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 12px; }
+.org-rsvp-key .org-rsvp-mark { margin-left: 4px; }
+.org-rsvp-key .org-rsvp-mark:first-child { margin-left: 0; }
+/* Club details: a live preview of the color and cover pattern. */
+.org-details-preview { margin-bottom: 16px; }
+.org-details-cover { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 12px 16px; border-radius: var(--r-mid); background: var(--space-wash); overflow: hidden; }
+.org-details-name { position: relative; font: 600 var(--fs-lg)/1.3 var(--font); color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-whos-row .row-title .muted { font-weight: 400; }
+.org-admin #oa-save { margin-top: 16px; }
+/* Leaving as founder: pick who takes over. */
+.org-heir-list { display: flex; flex-direction: column; max-height: 50vh; overflow-y: auto; }
+.org-heir { display: grid; grid-template-columns: 20px 28px minmax(0, 1fr); align-items: center; column-gap: 12px; min-height: 52px; padding: 8px 0; border-top: 1px solid var(--border); cursor: pointer; }
+.org-heir:first-child { border-top: 0; }
+.org-heir input { width: 18px; height: 18px; margin: 0; accent-color: var(--text); }
+.org-heir-text { display: flex; flex-direction: column; min-width: 0; font-size: var(--fs-lg); }
+/* Group plan seats, as a ring. */
+.org-plan-seats { display: flex; align-items: center; gap: 16px; }
+.org-plan-ring { --p: 0; flex-shrink: 0; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%;
+  background: conic-gradient(var(--space-fill, var(--text)) calc(var(--p) * 1%), var(--surface-2) 0); }
+.org-plan-ring::before { content: ''; grid-area: 1 / 1; width: 52px; height: 52px; border-radius: 50%; background: var(--surface); }
+.org-plan-ring strong { grid-area: 1 / 1; position: relative; font: 500 var(--fs-fig-s)/1 var(--font); letter-spacing: -.02em; }
+
+/* Club Overview (orgOverviewTab): pinned banner, agenda, rail. */
+.org-pinned { margin: 0 0 16px; padding: 16px 20px; border-radius: var(--r-mid); background: var(--space-wash-strong, var(--surface-2)); color: var(--text); }
+.org-pinned-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.org-pinned-pin { display: inline-flex; color: var(--space-text, var(--text-dim)); }
+.org-pinned-by { flex: 1; min-width: 0; font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-pinned-by .sg-strong { color: var(--text); }
+.org-pinned-unpin { flex-shrink: 0; }
+.org-pinned-text { margin-top: 8px; font: 400 var(--fs-lg)/1.55 var(--font); white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.org-pinned-text a { color: var(--text); font-weight: 600; }
+.org-pinned-foot { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; }
+.org-agenda-head { margin-bottom: 4px; }
+.org-agenda-empty { margin: 8px 0 0; }
+.org-agenda-above { margin: 8px 0 0; }
+.org-agenda .space-agenda-row:last-child { padding-bottom: 0; }
+.org-officer-mini .org-mini-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.org-mini-stat { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.org-mini-stat strong { font: 400 var(--fs-display)/1 var(--font-serif); letter-spacing: -.02em; }
+.org-mini-stat span { font: 400 var(--fs-sm)/1.35 var(--font); color: var(--text-dim); overflow-wrap: anywhere; }
+.org-mini-see { margin-top: 12px; }
+.org-officer-faces { display: flex; flex-direction: column; }
+.org-officer-face { display: flex; align-items: center; gap: 12px; padding: 8px 0; min-width: 0; }
+.org-officer-face-text { display: flex; flex-direction: column; min-width: 0; }
+.org-officer-face-name { font: 500 var(--fs-lg)/1.3 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-officer-face-title { font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.org-linkcards { display: flex; flex-direction: column; gap: 8px; }
+.org-linkcard { display: grid; grid-template-columns: 32px minmax(0, 1fr) 14px; align-items: center; column-gap: 12px; min-height: 52px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-mid); color: var(--text); text-decoration: none; transition: border-color var(--dur-1), background var(--dur-1); }
+.org-linkcard:hover { border-color: var(--line-strong); background: var(--fill-hover); }
+.org-linkcard-tile { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-tight); background: var(--space-wash, var(--surface-2)); color: var(--space-text, var(--text-dim)); }
+.org-linkcard-text { display: flex; flex-direction: column; min-width: 0; }
+.org-linkcard-label { font: 600 var(--fs-md)/1.3 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-linkcard-host { font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-linkcard-go { display: inline-flex; color: var(--text-faint); }
+@media (max-width: 1100px) {
+  .org-admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .org-admin-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .org-admin-stats { gap: 12px; }
+  .org-pinned { padding: 12px 16px; }
+  .org-needs-request { grid-template-columns: 44px minmax(0, 1fr); }
+  .org-needs-request .btn { grid-column: 2; justify-self: start; margin-top: 8px; }
+  .org-needs-acts { justify-content: flex-start; }
+  .org-rail-links, .org-rail-files { display: none; }
+  .org-agenda .space-tag.is-cat { display: none; }
+}
+@media (max-width: 640px) {
+  .org-rsvp-table { display: none; }
+  .org-rsvp-cards { display: block; }
+}
 
 /* ── Clubs & teams ─────────────────────────────────────────────── */
 .org-crest { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; background: var(--org-fill, var(--org, var(--accent))); color: var(--on-org, var(--accent-text)); flex-shrink: 0; font: 600 var(--fs-md)/1 var(--font); letter-spacing: .02em; }
 .org-crest.large { width: 56px; height: 56px; border-radius: var(--r-mid); font: 400 var(--fs-heading)/1 var(--font-serif); }
-.org-next .sg-next-date { background: var(--org-fill, var(--org)); color: var(--on-org, var(--accent-text)); }
 .org-required { display: inline-block; font: 600 var(--fs-sm)/1.3 var(--font); padding: 0 6px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--danger) 10%, var(--surface)); color: var(--danger-text); vertical-align: 1px; }
 .org-event-row.is-past { opacity: 1; }
 .org-event-row.is-past .sg-strong { color: var(--text-dim); }
@@ -26,7 +146,6 @@
 .org-ann-text { font-size: 14px; line-height: 1.5; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .org-ann-text a { color: var(--text); font-weight: 600; }
 .org-pin { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim); }
-.org-cal-toggle { padding: 0 4px; color: var(--bg-text-dim); }
 .org-member .row-title { display: flex; flex-direction: column; }
 .org-counts { white-space: nowrap; }
 .org-going-link { gap: 8px; }
@@ -62,8 +181,6 @@
 }
 .org-link-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
 .org-cat { display: inline-flex; align-items: center; gap: 4px; }
-.org-need-answer .list-row { margin-bottom: 8px; }
-.org-need-answer .list-row:last-child { margin-bottom: 0; }
 /* members: search + sections */
 .org-member-search { max-width: 420px; }
 .org-member-head { display: flex; align-items: center; gap: 8px; margin: 16px 0 4px; }
@@ -73,17 +190,17 @@
 .org-att th, .org-att td { padding: 8px; text-align: center; border-bottom: 1px solid var(--hairline); white-space: nowrap; vertical-align: middle; }
 .org-att thead th { vertical-align: bottom; font-weight: 600; color: var(--text-dim); }
 .org-att tfoot td { border-bottom: none; font-size: var(--fs-sm); padding-top: 8px; }
-.org-att .org-att-name { text-align: left; position: sticky; left: 0; background: var(--surface); z-index: 1; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
-.org-att .org-att-total { font-weight: 600; text-align: right; }
+.org-att .org-att-name { text-align: left; position: sticky; left: 0; background: var(--surface); z-index: 1; width: 200px; min-width: 200px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.org-att td.org-att-cell { width: 36px; min-width: 36px; padding: 8px 4px; }
+.org-att th.is-upcoming .org-att-date { color: var(--space-text, var(--text-dim)); }
+.org-att-req { font: 500 var(--fs-xs)/1.2 var(--font); color: var(--text-dim); }
+.org-att .org-att-total { font-weight: 600; text-align: left; padding-right: 16px; }
+.org-att thead .org-att-total { color: var(--text-dim); }
 .org-att-ev { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 64px; max-width: 96px; }
 .org-att-ev:hover .org-att-title { text-decoration: underline; }
 .org-att-date { font: 600 var(--fs-xs)/1.2 var(--font); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); }
 .org-att-title { font-size: var(--fs-sm); font-weight: 600; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.org-att-ev .org-required { font-size: var(--fs-xs); padding: 0 6px; }
-.org-att-cell.is-upcoming { background: color-mix(in srgb, var(--org, var(--accent)) 5%, transparent); }
-.org-att-yes { color: var(--success); display: inline-flex; }
-.org-att-no { color: var(--text-faint); display: inline-flex; }
-.org-att-none { color: var(--text-faint); }
+.org-att-cell.is-upcoming { background: color-mix(in srgb, var(--space, var(--accent)) 5%, transparent); }
 @media (max-width: 760px) {
   .org-link-row { grid-template-columns: 1fr auto; }
   .org-link-row .input[type=url] { grid-column: 1 / -1; }

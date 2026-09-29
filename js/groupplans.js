@@ -134,7 +134,8 @@ function ensureGroupMine() {
   if (!_fbUser || !checkoutEnabled() || window._groupMine || window._groupMineLoading) return;
   window._groupMineLoading = true;
   groupApi('mine')
-    .then(data => { window._groupMine = data; if (typeof render === 'function' && state.route === 'settings') render(); })
+    // Settings and a club's Officer home both show what this returns.
+    .then(data => { window._groupMine = data; if (typeof render === 'function' && (state.route === 'settings' || state.route === 'orgs')) render(); })
     .catch(() => { window._groupMine = { plans: [], seat: null, error: true }; })
     .finally(() => { window._groupMineLoading = false; });
 }
@@ -234,8 +235,10 @@ function orgPlanAdminCard(o, plan) {
     : 'Canceled.';
   return `<div class="card card-pad">
     <h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} ${esc(plan.name || o.name)} group plan</h3>
-    <div class="small muted mb-8">${esc(statusLine)}${plan.cancelAtPeriodEnd ? ' Ends at the close of this billing period.' : ''}</div>
-    ${plan.status === 'active' ? `<div class="progress mb-8"><div style="width:${plan.seats ? Math.min(100, Math.round((plan.memberCount / plan.seats) * 100)) : 0}%"></div></div>` : ''}
+    ${plan.status === 'active' ? `<div class="org-plan-seats mb-8">
+      <span class="org-plan-ring" style="--p:${plan.seats ? Math.min(100, Math.round((plan.memberCount / plan.seats) * 100)) : 0}" role="img" aria-label="${plan.memberCount} of ${plan.seats} seats claimed"><strong>${plan.memberCount}</strong></span>
+      <div class="small muted">${esc(statusLine)}. Covering your members’ Semester HQ.${plan.cancelAtPeriodEnd ? ' Ends at the close of this billing period.' : ''}</div>
+    </div>` : `<div class="small muted mb-8">${esc(statusLine)}${plan.cancelAtPeriodEnd ? ' Ends at the close of this billing period.' : ''}</div>`}
     ${live && plan.inviteUrl ? `<div class="field"><label for="oa-plan-link">Link members use to claim a seat</label>
       <div class="sg-invite-row"><input class="input" id="oa-plan-link" value="${esc(plan.inviteUrl)}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyText('${esc(plan.inviteUrl)}','Seat link copied')">${icon('copy', 13, 1.8)} Copy</button></div>
       <div class="small muted mt-8">Anyone in the ${esc(kindWord)} who opens it and signs in is covered. Members can also join with the ${esc(o.name)} code.</div>

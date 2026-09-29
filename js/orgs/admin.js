@@ -1,6 +1,6 @@
 /* ── Clubs & teams: running a club ───────────────────────────────
-   Officer tools: quick links, attendance and the roster CSV, the Admin
-   tab, titles, member roles, and the settings sheet (leave, delete).
+   Officer tools: quick links, the RSVPs grid and the roster CSV, Officer
+   home (the Admin tab), titles, member roles, and the settings sheet (leave, delete).
    Loaded right after js/orgs.js, which holds the data and the pages.
 ──────────────────────────────────────────────────────────────── */
 /* ── Quick links (officers edit them) ─────────────────────────── */
@@ -39,31 +39,104 @@ async function saveOrgLinks(code) {
   if (await orgWrite(code, { links: links.slice(0, ORG_LINKS_MAX) })) { closeModal(); toast(links.length ? 'Links saved' : 'Links cleared'); }
   else setBtnLoading($('#ol-save'), false, 'Save');
 }
-/* ── Attendance: who said they'd come, across events ─────────────
-   The per-event popup answers "who's coming Tuesday". This answers the
-   question officers of a team or chapter actually ask at the end of the
-   month: who keeps skipping the required ones. Rows are members, columns
-   are the last few events plus what's next, and it exports as a CSV. */
-function orgAttendanceEvents(o, { past = 6, upcoming = 2 } = {}) {
-  // Dues and deadlines aren't attended, so they aren't columns here. The
-  // roster CSV below still lists them, with any answers given before.
+/* ── RSVPs: who answered, across events ──────────────────────────
+   Named for what it is: answers to Going or Can't, not a check-in. The
+   per-event sheet answers "who's coming Tuesday"; this answers what an
+   officer asks at the end of the month: who keeps not answering. Rows
+   are members, columns are the events in the chosen range plus the next
+   two, and the whole roster exports as a CSV.
+   Every number covers current members only (removing someone or leaving
+   deletes their answers), and a member only counts toward events on or
+   after the day they joined. People from before joinedAt existed (0)
+   count everywhere. */
+const ORG_RSVP_RANGES = [['30', 'Last 30 days'], ['term', 'This term'], ['all', 'All']];
+let _orgRsvpRange = '30';
+function orgSetRsvpRange(range) {
+  if (!ORG_RSVP_RANGES.some(r => r[0] === range) || range === _orgRsvpRange) return;
+  _orgRsvpRange = range;
+  render();
+}
+function orgJoinedBy(p, e) { return !p.joinedAt || iso(new Date(p.joinedAt)) <= e.date; }
+function orgAnswerOf(o, memberUid, e) { const v = o.rsvp?.[memberUid]?.[e.id]; return v === 'yes' || v === 'no' ? v : ''; }
+// Answered (Going or Can't) out of the answers that were asked for.
+function orgRsvpRate(o, events, people = orgPeople(o)) {
+  let asked = 0, answered = 0;
+  events.forEach(e => people.forEach(p => { if (!orgJoinedBy(p, e)) return; asked++; if (orgAnswerOf(o, p.uid, e)) answered++; }));
+  return { asked, answered, rate: asked ? answered / asked : null };
+}
+// This term, from your own semester dates. Without them: since Aug 1
+// in the fall, since Jan 1 in the spring.
+function orgTermStart() {
+  const s = typeof currentSemester === 'function' ? currentSemester() : null;
+  if (s && /^\d{4}-\d{2}-\d{2}$/.test(s.startDate || '') && s.startDate <= todayIso()) return s.startDate;
+  const t = todayIso();
+  return +t.slice(5, 7) >= 8 ? `${t.slice(0, 4)}-08-01` : `${t.slice(0, 4)}-01-01`;
+}
+function orgRsvpRangeStart(range = _orgRsvpRange) { return range === 'all' ? '' : range === 'term' ? orgTermStart() : addDays(todayIso(), -30); }
+// Dues and deadlines aren't attended, so they aren't columns here. The
+// roster CSV below still lists them, with any answers given before.
+function orgRsvpGridEvents(o, range = _orgRsvpRange) {
+  const from = orgRsvpRangeStart(range);
   const all = orgEventList(o).filter(e => !orgIsDuesEvent(e));
-  return [...all.filter(orgEventPast).slice(-past), ...all.filter(e => !orgEventPast(e)).slice(0, upcoming)];
+  const past = all.filter(e => orgEventPast(e) && (!from || e.date >= from));
+  const upcoming = all.filter(e => !orgEventPast(e)).slice(0, 2);
+  return { past, upcoming, events: [...past, ...upcoming] };
+}
+// The four numbers at the top of Officer home.
+function orgHealth(o) {
+  const people = orgPeople(o);
+  const last = orgEventList(o).filter(e => !orgIsDuesEvent(e) && orgEventPast(e)).slice(-4);
+  const rate = orgRsvpRate(o, last, people);
+  const required = orgRsvpGridEvents(o).past.filter(e => e.required);
+  let every = 0, counted = 0;
+  people.forEach(p => {
+    const mine = required.filter(e => orgJoinedBy(p, e));
+    if (!mine.length) return;
+    counted++;
+    if (mine.every(e => orgAnswerOf(o, p.uid, e))) every++;
+  });
+  const monthStart = `${todayIso().slice(0, 8)}01`;
+  const joined = people.filter(p => p.joinedAt && iso(new Date(p.joinedAt)) >= monthStart).length;
+  return { people, last, rate, required, every, counted, monthStart, joined };
+}
+function orgRsvpMark(v, { small = false } = {}) {
+  const label = { yes: 'Going', no: 'Can’t', none: 'No answer', na: 'Not in the club yet' }[v];
+  return `<span class="org-rsvp-mark is-${v}${small ? ' is-small' : ''}" title="${label}"><span class="sr-only">${label}</span></span>`;
 }
 function orgAttendanceHtml_officer(o) {
-  const events = orgAttendanceEvents(o);
+  const { past, events } = orgRsvpGridEvents(o);
   const people = orgPeople(o);
-  if (!events.length) return `<p class="small muted">Once there are events, this shows who said they’d come to each one.</p>`;
-  const answer = (p, e) => o.rsvp?.[p.uid]?.[e.id] || '';
-  const cell = (v) => v === 'yes' ? `<span class="org-att-yes">${icon('check', 12)}<span class="sr-only">Going</span></span>` : v === 'no' ? `<span class="org-att-no">${icon('x', 12)}<span class="sr-only">Can’t</span></span>` : `<span class="org-att-none"><span aria-hidden="true">·</span><span class="sr-only">No answer</span></span>`;
-  const score = (p) => events.filter(e => answer(p, e) === 'yes').length;
-  const rows = [...people].sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
+  if (!events.length) return `<p class="small muted">${_orgRsvpRange === 'all' ? 'Once there are events, this shows who answered each one.' : 'No events in this range. Try All.'}</p>`;
+  const faces = orgFaceColors(o);
+  const me = myOrgUid(o);
+  const mark = (p, e, opts) => orgRsvpMark(!orgJoinedBy(p, e) ? 'na' : orgAnswerOf(o, p.uid, e) || 'none', opts);
+  const stats = new Map(people.map(p => [p.uid, orgRsvpRate(o, past, [p])]));
+  const rows = [...people].sort((a, b) => (stats.get(b.uid).rate ?? -1) - (stats.get(a.uid).rate ?? -1) || a.name.localeCompare(b.name));
+  const nameOf = (p) => `${esc(p.name)}${p.uid === me && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}`;
+  const rateHtml = (s) => s.asked
+    ? `<span class="org-rsvp-rate"><span class="org-rsvp-rate-n">${s.answered} of ${s.asked}</span><span class="org-rsvp-rate-bar" aria-hidden="true"><i style="width:${Math.round(s.rate * 100)}%"></i></span></span>`
+    : `<span class="org-rsvp-rate is-new">New</span>`;
+  const DOTS = 12;
   return `
-    <div class="org-att"><table>
-      <thead><tr><th class="org-att-name">Member</th>${events.map(e => `<th title="${esc(e.title)} · ${esc(fmtDate(e.date))}"><button class="org-att-ev" onclick="showOrgEventModal('${o.code}','${e.id}')"><span class="org-att-date">${esc(fmtDate(e.date, { month: 'short', day: 'numeric' }))}</span><span class="org-att-title">${esc(e.title)}</span>${e.required ? `<span class="org-required">Req</span>` : ''}</button></th>`).join('')}<th class="org-att-total">Going</th></tr></thead>
-      <tbody>${rows.map(p => `<tr><td class="org-att-name"><span class="sg-strong">${esc(p.name)}</span>${p.title ? ` <span class="muted">· ${esc(p.title)}</span>` : ''}</td>${events.map(e => `<td class="org-att-cell ${orgEventPast(e) ? '' : 'is-upcoming'}">${cell(answer(p, e))}</td>`).join('')}<td class="org-att-total">${score(p)}<span class="muted">/${events.length}</span></td></tr>`).join('')}</tbody>
-      <tfoot><tr><td class="org-att-name muted">Going</td>${events.map(e => { const c = orgRsvpCounts(o, e.id); return `<td class="org-att-cell muted" title="${c.yes} going, ${c.no} can’t, ${c.none} no answer">${c.yes}</td>`; }).join('')}<td></td></tr></tfoot>
-    </table></div>`;
+    <div class="org-att org-rsvp-table"><table>
+      <thead><tr><th class="org-att-name" scope="col">Member</th><th class="org-att-total" scope="col">Answered</th>${events.map(e => `<th scope="col" class="${orgEventPast(e) ? '' : 'is-upcoming'}" title="${esc(e.title)} · ${esc(fmtDate(e.date))}"><button class="org-att-ev" onclick="showOrgEventModal('${o.code}','${e.id}')" aria-label="${esc(e.title)}, ${esc(fmtDate(e.date, { month: 'short', day: 'numeric' }))}"><span class="org-att-date">${esc(fmtDate(e.date, { month: 'short', day: 'numeric' }))}</span><span class="org-att-title">${esc(e.title)}</span>${e.required ? `<span class="org-att-req">Required</span>` : ''}</button></th>`).join('')}</tr></thead>
+      <tbody>${rows.map(p => `<tr><th class="org-att-name" scope="row"><span class="sg-strong">${nameOf(p)}</span>${p.title ? ` <span class="muted">· ${esc(p.title)}</span>` : ''}</th><td class="org-att-total">${rateHtml(stats.get(p.uid))}</td>${events.map(e => `<td class="org-att-cell${orgEventPast(e) ? '' : ' is-upcoming'}">${mark(p, e)}</td>`).join('')}</tr>`).join('')}</tbody>
+      <tfoot><tr><th class="org-att-name muted" scope="row">Going</th><td></td>${events.map(e => { const c = orgRsvpCounts(o, e.id); return `<td class="org-att-cell muted" title="${c.yes} going, ${c.no} can’t, ${c.none} no answer">${c.yes}</td>`; }).join('')}</tr></tfoot>
+    </table></div>
+    <div class="org-rsvp-cards" role="list">${rows.map(p => {
+      const s = stats.get(p.uid);
+      const shownEvents = events.slice(-DOTS);
+      const earlier = events.length - shownEvents.length;
+      return `
+      <div class="org-rsvp-card" role="listitem">
+        ${personAvatar(p.uid, p.name, 28, faces[p.uid] || orgColor(o))}
+        <div class="org-rsvp-card-main">
+          <div class="org-rsvp-card-top"><span class="sg-strong">${nameOf(p)}</span><span class="org-rsvp-card-n">${s.asked ? `${s.answered} of ${s.asked} answered` : 'New'}</span></div>
+          <div class="org-rsvp-dots">${earlier ? `<span class="org-rsvp-earlier">+${earlier} earlier</span>` : ''}${shownEvents.map(e => mark(p, e, { small: true })).join('')}</div>
+        </div>
+      </div>`;
+    }).join('')}</div>
+    <div class="org-rsvp-key small muted" aria-hidden="true">${orgRsvpMark('yes', { small: true })} Going ${orgRsvpMark('no', { small: true })} Can’t ${orgRsvpMark('none', { small: true })} No answer</div>`;
 }
 // Roster + every event's RSVPs, one member per row. What a treasurer pastes
 // into the sheet they already keep.
@@ -78,88 +151,154 @@ function downloadOrgRosterCsv(code) {
   toast(`Exported ${people.length} member${people.length === 1 ? '' : 's'}`);
 }
 
-/* ── Admin: one page for running a club or team ───────────────────
-   Officers had to hunt: the join link lived in a popup, roles in the
-   members list, club details behind a gear, and paying for everyone's
-   Semester HQ in a sentence inside the invite modal. This gathers all
-   of it, including a direct link an officer can bookmark or hand to a
-   co-officer, and it's only ever shown to officers. */
+/* ── Admin: Officer home ─────────────────────────────────────────
+   The screen an officer shows their board: four numbers, what needs
+   them, the RSVPs grid, then the running-the-club sections in two
+   columns. Only ever shown to officers. */
+const ORG_NEEDS_SHOW = 4;
+function orgAdminNeedsCard(o) {
+  const people = orgPeople(o);
+  const requests = isOrgOwner(o) ? people.filter(p => p.title && !p.officer && !p.reviewed) : [];
+  const silent = upcomingOrgEvents(o).filter(e => e.required && !orgIsDuesEvent(e))
+    .map(e => ({ e, n: orgRsvpPeople(o, e).none.length })).filter(x => x.n);
+  const count = (requests.length ? 1 : 0) + silent.length;
+  const row = ({ e, n }) => spaceAgendaRow({
+    date: e.date, title: e.title,
+    metaHtml: `${esc(fmtDate(e.date, { weekday: 'short', month: 'short', day: 'numeric' }))}${e.start ? ` · ${esc(fmtTime(e.start))}` : ''} · <span class="em">${n} ${n === 1 ? 'hasn’t' : 'haven’t'} answered</span>`,
+    trailingHtml: `<div class="org-needs-acts"><button class="btn btn-sm" onclick="showOrgEventModal('${o.code}','${e.id}')">See who</button><button class="btn btn-sm" onclick="remindToRsvp('${o.code}','${e.id}')">${icon('megaphone', 14)} Post a nudge</button></div>`,
+    onclick: `showOrgEventModal('${o.code}','${e.id}')`,
+    label: `${e.title}: ${n} haven’t answered`,
+  });
+  const extra = silent.slice(ORG_NEEDS_SHOW);
+  return `
+    <div class="card card-pad org-admin-needs">
+      <div class="flex-between mb-8"><h3 class="sg-h3">Needs you${count ? ` <span class="org-admin-count">${count}</span>` : ''}</h3></div>
+      ${count ? `<div class="org-needs-rows">
+        ${requests.length ? `<div class="org-needs-request">
+          <span class="org-needs-ic" aria-hidden="true">${icon('shield', 16)}</span>
+          <div class="org-needs-request-text"><div class="sg-strong">${requests.length === 1 ? `${esc(requests[0].name)} joined as ${esc(requests[0].title)}` : `${requests.length} people joined with a position`}</div><div class="small muted">Waiting on you for officer access.</div></div>
+          <button class="btn btn-sm" onclick="setState({orgTab:'members'})">Review</button>
+        </div>` : ''}
+        ${silent.slice(0, ORG_NEEDS_SHOW).map(row).join('')}
+        ${extra.length ? `<details class="org-needs-more"><summary class="sg-link">${icon('chevron-right', 12)} ${extra.length} more required event${extra.length === 1 ? '' : 's'}</summary>${extra.map(row).join('')}</details>` : ''}
+      </div>` : `<p class="org-needs-clear"><span class="org-needs-check" aria-hidden="true">${icon('check', 14, 2.4)}</span>Everyone has answered what’s coming up.</p>`}
+    </div>`;
+}
+function orgAdminStats(o) {
+  const h = orgHealth(o);
+  const plan = typeof orgGroupPlan === 'function' ? orgGroupPlan(o) : null;
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  const officers = h.people.filter(p => p.officer).length;
+  return `
+    <div class="org-admin-stats">
+      ${spaceStatTile(h.rate.rate === null
+        ? { value: '–', label: 'Answer rate', sub: 'No past events yet' }
+        : { value: pct(h.rate.rate), label: 'Answer rate', sub: h.last.length < 4 ? `Last ${h.last.length} event${h.last.length === 1 ? '' : 's'} (all there are)` : 'Last 4 events', bar: h.rate.rate })}
+      ${spaceStatTile(h.counted
+        ? { value: `${h.every} of ${h.counted}`, label: 'Answered every required event', sub: ORG_RSVP_RANGES.find(r => r[0] === _orgRsvpRange)[1], bar: h.every / h.counted }
+        : { value: '–', label: 'Answered every required event', sub: 'No required events yet' })}
+      ${spaceStatTile({ value: String(h.joined), label: `New member${h.joined === 1 ? '' : 's'} this month`, sub: `Since ${fmtDate(h.monthStart, { month: 'short', day: 'numeric' })}` })}
+      ${plan && plan.status === 'active'
+        ? spaceStatTile({ value: `${plan.memberCount} of ${plan.seats}`, label: 'Seats claimed', sub: 'Your group plan', bar: plan.seats ? plan.memberCount / plan.seats : 0 })
+        : spaceStatTile({ value: String(h.people.length), label: `Member${h.people.length === 1 ? '' : 's'}`, sub: `${officers} officer${officers === 1 ? '' : 's'}` })}
+    </div>`;
+}
+// Color picked in Club details but not saved yet: survives a re-render,
+// saved with everything else by Save details.
+let _orgPendingColor = null;
+function orgPickDetailsColor(code, color, btn) {
+  if (!ORG_COLORS.includes(color)) return;
+  _orgPendingColor = { code, color };
+  const group = btn?.closest('.org-colors');
+  group?.querySelectorAll('.page-color').forEach(b => { const on = b.dataset.color === color; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on); });
+  const preview = document.getElementById('oa-preview');
+  if (preview) preview.setAttribute('style', spaceVars(color));
+}
+function orgDetailsColor(o) { return _orgPendingColor?.code === o.code ? _orgPendingColor.color : orgColor(o); }
 function orgAdminTab(o) {
   if (!isOrgOfficer(o)) return `<div class="card card-pad"><p class="small muted">Officers run ${esc(o.name)}. Ask the founder for officer access if you should have it.</p></div>`;
   const people = orgPeople(o);
   const officers = people.filter(p => p.officer);
-  const requests = isOrgOwner(o) ? people.filter(p => p.title && !p.officer && !p.reviewed) : [];
   const noEvents = !upcomingOrgEvents(o).length;
   const plan = typeof orgGroupPlan === 'function' ? orgGroupPlan(o) : null;
+  const color = orgDetailsColor(o);
+  const faces = orgFaceColors(o);
   return `
     <div class="org-admin">
-      ${requests.length ? `<div class="sg-callout org-request mb-8"><span>${icon('shield', 14)}</span>
-        <div class="small" style="flex:1">${requests.length} ${requests.length === 1 ? 'person' : 'people'} joined with a position and ${requests.length === 1 ? 'is' : 'are'} waiting on officer access.</div>
-        <button class="btn btn-sm" onclick="setState({orgTab:'members'})">Review</button></div>` : ''}
-
-      <div class="card card-pad">
-        <h3 class="sg-h3 mb-8">${icon('user-plus', 14)} Getting people in</h3>
-        <p class="small muted mb-8">One link, one code. Members who join see every event on their own calendar.${o.sample ? ' This is a sample, so these links are just for show.' : ''}</p>
-        <div class="field"><label for="oa-invite">Invite link</label>
-          <div class="sg-invite-row"><input class="input" id="oa-invite" value="${esc(orgInviteLink(o.code))}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyText(orgInviteMessage('${o.code}'),'Invite copied')">${icon('copy', 14)} Copy</button></div>
-        </div>
-        <div class="field" style="margin-bottom:0"><label for="oa-direct">Direct link to this page</label>
-          <div class="sg-invite-row"><input class="input" id="oa-direct" value="${esc(orgAdminLink(o.code))}" readonly onclick="this.select()"><button class="btn" onclick="copyText(orgAdminLink('${o.code}'),'Link copied')">${icon('copy', 14)} Copy</button></div>
-          <div class="small muted mt-8">Bookmark it, or send it to a co-officer. It opens ${esc(o.name)} straight to this Admin page (officers only).</div>
-        </div>
+      <div class="org-admin-head">
+        <h2 class="org-admin-title">Officer home</h2>
+        <p class="small muted">Only officers see this. Numbers cover current members.</p>
       </div>
+      ${orgAdminStats(o)}
+      ${orgAdminNeedsCard(o)}
+      <div class="org-admin-grid">
+        <div class="org-admin-col">
+          <div class="card card-pad" id="org-attendance">
+            <div class="flex-between mb-8 wrap org-rsvp-head"><h3 class="sg-h3">${icon('check-square', 16)} RSVPs</h3>${orgEventList(o).length ? `<button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 14)} Export CSV</button>` : ''}</div>
+            <div class="segmented org-rsvp-range" role="group" aria-label="Which events">${ORG_RSVP_RANGES.map(([k, l]) => `<button type="button" aria-pressed="${_orgRsvpRange === k}" class="${_orgRsvpRange === k ? 'active' : ''}" onclick="orgSetRsvpRange('${k}')">${l}</button>`).join('')}</div>
+            <p class="small muted org-rsvp-help">Who answered Going or Can’t, plus the next two events. Tap an event to see the full list or post a nudge.</p>
+            ${orgAttendanceHtml_officer(o)}
+          </div>
 
-      <div class="card card-pad">
-        <h3 class="sg-h3 mb-8">${icon('users', 14)} Who's who</h3>
-        <div class="small muted mb-8">${people.length} member${people.length === 1 ? '' : 's'} · ${officers.length} officer${officers.length === 1 ? '' : 's'}</div>
-        ${officers.map(p => `<div class="sg-person">
-          ${personAvatar(p.uid, p.name, 26, orgColor(o))}
-          <div class="row-title small"><span class="sg-strong">${esc(p.name)}</span>${p.uid === myOrgUid(o) && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''} <span class="muted">· ${esc(orgRoleLabel(o, p))}</span></div>
-          ${o.local && !o.sample ? '' : `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>`}
-        </div>`).join('')}
-        <div class="flex-gap wrap mt-8">
-          <button class="btn btn-sm" onclick="setState({orgTab:'members'})">All ${people.length} member${people.length === 1 ? '' : 's'}</button>
-          ${isOrgOwner(o) ? '' : `<span class="small muted">Only the founder can add officers.</span>`}
+          <div class="card card-pad">
+            <h3 class="sg-h3 mb-8">${icon('user-plus', 16)} Getting people in</h3>
+            <p class="small muted mb-8">One link, one code. Members who join see every event on their own calendar.${o.sample ? ' This is a sample, so these links are just for show.' : ''}</p>
+            <div class="field"><label for="oa-invite">Invite link</label>
+              <div class="sg-invite-row"><input class="input" id="oa-invite" value="${esc(orgInviteLink(o.code))}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyText(orgInviteMessage('${o.code}'),'Invite copied')">${icon('copy', 14)} Copy</button></div>
+            </div>
+            <div class="field"><label for="oa-direct">Direct link to this page</label>
+              <div class="sg-invite-row"><input class="input" id="oa-direct" value="${esc(orgAdminLink(o.code))}" readonly onclick="this.select()"><button class="btn" onclick="copyText(orgAdminLink('${o.code}'),'Link copied')">${icon('copy', 14)} Copy</button></div>
+              <div class="small muted mt-8">Bookmark it, or send it to a co-officer. It opens ${esc(o.name)} straight to Officer home (officers only).</div>
+            </div>
+            <div class="divider"></div>
+            <div class="small sg-strong mb-8">Post to everyone</div>
+            <div class="flex-gap wrap">
+              <button class="btn btn-sm" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 14)} Invite</button>
+              <button class="btn btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('calendar', 14)} Add an event</button>
+              <button class="btn btn-sm" onclick="openAnnouncementModal('${o.code}')">${icon('megaphone', 14)} Post an announcement</button>
+              <button class="btn btn-sm" onclick="openOrgFileModal('${o.code}')">${icon('upload', 14)} Share a file</button>
+            </div>
+            ${noEvents ? `<p class="small muted mt-8">Nothing on the calendar yet. The first meeting or practice you add shows up for every member.</p>` : ''}
+          </div>
         </div>
-      </div>
 
-      <div class="card card-pad">
-        <h3 class="sg-h3 mb-8">${icon('megaphone', 14)} What officers can post</h3>
-        <div class="flex-gap wrap">
-          <button class="btn btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('calendar', 14)} Add an event</button>
-          <button class="btn btn-sm" onclick="openAnnouncementModal('${o.code}')">${icon('megaphone', 14)} Post an announcement</button>
-          <button class="btn btn-sm" onclick="openOrgFileModal('${o.code}')">${icon('upload', 14)} Share a file</button>
-        </div>
-        ${noEvents ? `<p class="small muted mt-8">Nothing on the calendar yet. The first meeting or practice you add shows up for every member.</p>` : ''}
-      </div>
+        <div class="org-admin-col">
+          ${orgPlanAdminCard(o, plan)}
 
-      <div class="card card-pad" id="org-attendance">
-        <div class="flex-between mb-8 wrap" style="gap:8px"><h3 class="sg-h3">${icon('check-square', 14)} Attendance</h3>${orgEventList(o).length ? `<button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 14)} Export CSV</button>` : ''}</div>
-        <p class="small muted mb-8">Who said they’d come, across the last few events and what’s next. Tap an event to see the full list or remind people to answer.</p>
-        ${orgAttendanceHtml_officer(o)}
-      </div>
+          <div class="card card-pad">
+            <div class="flex-between mb-8"><h3 class="sg-h3">${icon('users', 16)} Who’s who</h3><button class="sg-link" onclick="setState({orgTab:'members'})">All ${people.length} ${icon('chevron-right', 12)}</button></div>
+            <div class="small muted mb-8">${people.length} member${people.length === 1 ? '' : 's'} · ${officers.length} officer${officers.length === 1 ? '' : 's'}${isOrgOwner(o) ? '' : ' · Only the founder can add officers.'}</div>
+            ${officers.map(p => `<div class="sg-person org-whos-row">
+              ${personAvatar(p.uid, p.name, 28, faces[p.uid] || orgColor(o))}
+              <div class="row-title small"><span class="sg-strong">${esc(p.name)}</span>${p.uid === myOrgUid(o) && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}<div class="muted">${esc(orgRoleLabel(o, p))}</div></div>
+              ${o.local && !o.sample ? '' : `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>`}
+            </div>`).join('')}
+          </div>
 
-      ${orgPlanAdminCard(o, plan)}
+          <div class="card card-pad">
+            <h3 class="sg-h3 mb-8">${icon('settings', 16)} ${esc(o.name)} details</h3>
+            <div class="org-details-preview space" id="oa-preview" style="${spaceVars(color)}" aria-hidden="true">
+              <div class="space-cover org-details-cover" data-pattern="${spacePattern(o.code)}">${spaceCrest({ text: orgMonogram(o) }, 'md')}<span class="org-details-name">${esc(o.name)}</span></div>
+            </div>
+            <div class="field"><label for="oa-name">Name</label><input class="input" id="oa-name" maxlength="80" value="${esc(o.name)}"></div>
+            <div class="field-row">
+              <div class="field"><label for="oa-kind">Kind</label><select class="select" id="oa-kind">${ORG_KINDS.map(([k, l]) => `<option value="${k}" ${o.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+              <div class="field"><label for="oa-school">School</label><input class="input" id="oa-school" maxlength="80" value="${esc(o.school || '')}"></div>
+            </div>
+            <div class="field"><label for="oa-desc">Description</label><input class="input" id="oa-desc" maxlength="200" value="${esc(o.description || '')}"></div>
+            <div class="field"><label>Links <span class="muted">(GroupMe, Instagram, where dues go)</span></label>${orgLinksHtml(o, { editable: true })}</div>
+            <div class="field"><label>Color</label><div class="org-colors" role="group" aria-label="Color">${ORG_COLORS.map((c, i) => `<button type="button" class="page-color ${color === c ? 'active' : ''}" data-color="${c}" style="background:${c}" aria-label="Color ${i + 1}" aria-pressed="${color === c}" onclick="orgPickDetailsColor('${o.code}','${c}',this)"></button>`).join('')}</div></div>
+            <button class="btn btn-primary btn-sm" id="oa-save" onclick="saveOrgAdminDetails('${o.code}')">Save details</button>
+          </div>
 
-      <div class="card card-pad">
-        <h3 class="sg-h3 mb-8">${icon('settings', 14)} ${esc(o.name)} details</h3>
-        <div class="field"><label for="oa-name">Name</label><input class="input" id="oa-name" maxlength="80" value="${esc(o.name)}"></div>
-        <div class="field-row">
-          <div class="field"><label for="oa-kind">Kind</label><select class="select" id="oa-kind">${ORG_KINDS.map(([k, l]) => `<option value="${k}" ${o.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-          <div class="field"><label for="oa-school">School</label><input class="input" id="oa-school" maxlength="80" value="${esc(o.school || '')}"></div>
-        </div>
-        <div class="field"><label for="oa-desc">Description</label><input class="input" id="oa-desc" maxlength="200" value="${esc(o.description || '')}"></div>
-        <div class="field"><label>Links <span class="muted">(GroupMe, Instagram, where dues go)</span></label>${orgLinksHtml(o, { editable: true })}</div>
-        <div class="field"><label>Color</label><div class="org-colors" role="group" aria-label="Color">${ORG_COLORS.map((c, i) => `<button type="button" class="page-color ${orgColor(o) === c ? 'active' : ''}" style="background:${c}" aria-label="Color ${i + 1}" aria-pressed="${orgColor(o) === c}" onclick="orgWrite('${o.code}',{color:'${c}'})"></button>`).join('')}</div></div>
-        <button class="btn btn-primary btn-sm" onclick="saveOrgAdminDetails('${o.code}')">Save details</button>
-      </div>
-
-      <div class="card card-pad">
-        <h3 class="sg-h3 mb-8">${icon('log-out', 14)} Leaving and closing</h3>
-        <p class="small muted mb-8">${isOrgOwner(o) ? 'As founder, make someone else an officer before you leave so the club still has someone running it.' : 'Leaving takes this club’s events off your calendar. Other members keep theirs.'}</p>
-        <div class="sg-danger">
-          <button class="btn btn-sm" onclick="confirmLeaveOrg('${o.code}')">${icon('log-out', 14)} ${o.sample ? 'Remove sample' : 'Leave ' + esc(o.name)}</button>
-          ${isOrgOwner(o) && !o.local ? `<button class="btn btn-danger btn-sm" onclick="confirmDeleteOrg('${o.code}')">${icon('trash', 14)} Delete for everyone</button>` : ''}
+          <div class="card card-pad">
+            <h3 class="sg-h3 mb-8">${icon('log-out', 16)} Leaving and closing</h3>
+            <p class="small muted mb-8">${o.local ? 'Removing it clears it from this tab.' : isOrgOwner(o) ? 'As founder, you pick who takes over when you leave.' : 'Leaving takes this club’s events off your calendar. Other members keep theirs.'}</p>
+            <div class="sg-danger">
+              <button class="btn btn-sm" onclick="confirmLeaveOrg('${o.code}')">${icon('log-out', 14)} ${o.sample ? 'Remove sample' : 'Leave ' + esc(o.name)}</button>
+              ${isOrgOwner(o) && !o.local ? `<button class="btn btn-danger btn-sm" onclick="confirmDeleteOrg('${o.code}')">${icon('trash', 14)} Delete for everyone</button>` : ''}
+            </div>
+          </div>
         </div>
       </div>
     </div>`;
@@ -167,14 +306,19 @@ function orgAdminTab(o) {
 // A link straight to a club's Admin page, for bookmarking or handing to a
 // co-officer. Non-officers who open it land on the club's Overview instead.
 function orgAdminLink(code) { return `${location.origin}${location.pathname.replace(/[^/]*$/, '')}?org=${code}&tab=admin`; }
+// Everything in Club details in one write, the color included, so a
+// re-render can't drop a field that wasn't saved yet.
 async function saveOrgAdminDetails(code) {
   const name = $('#oa-name').value.trim();
   if (!name) { toast('It needs a name', 'error'); return; }
+  const o = findOrg(code);
   const school = $('#oa-school').value.trim().slice(0, 80);
   const ops = { name: name.slice(0, 80), kind: $('#oa-kind').value, school, schoolKey: normKey(school), description: $('#oa-desc').value.trim().slice(0, 200) };
+  const color = o ? orgDetailsColor(o) : '';
+  if (o && color !== orgColor(o)) ops.color = color;
   const entry = orgEntry(code);
   if (entry?.cloud) entry.name = ops.name;
-  if (await orgWrite(code, ops)) toast('Saved');
+  if (await orgWrite(code, ops)) { if (_orgPendingColor?.code === code) _orgPendingColor = null; toast('Saved'); }
 }
 
 async function reviewOrgRole(code, memberUid, makeOfficer) {
@@ -245,10 +389,10 @@ function openMemberRoleModal(code, memberUid) {
     <div class="modal-head"><h3>${esc(p.name)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field"><label for="mr-title">Title <span class="muted">(shown next to their name)</span></label><input class="input" id="mr-title" maxlength="${ORG_TITLE_MAX}" value="${esc(p.title)}" placeholder="President, Captain, Treasurer…"><div class="small muted mt-4">Leave it blank to list them as ${esc(orgGeneralLabel(o).toLowerCase())}.</div></div>
-      ${isOrgOwner(o) && !p.owner ? `<label class="checkbox-row small"><input type="checkbox" id="mr-officer" ${p.officer ? 'checked' : ''}><span>Officer: can add events, post announcements, share files, and manage members</span></label>` : `<p class="small muted">${p.owner ? 'Founder of this club.' : p.officer ? 'Officer.' : esc(orgGeneralLabel(o)) + '.'} ${isOrgOwner(o) ? '' : 'Only the founder can make someone an officer.'}</p>`}
+      ${isOrgOwner(o) && !p.owner ? `<label class="checkbox-row small"><input type="checkbox" id="mr-officer" ${p.officer ? 'checked' : ''}><span>Officer: can add events, post announcements, share files, and manage members</span></label>` : `<p class="small muted">${p.owner ? 'Founder of this club.' : p.officer ? 'Officer.' : esc(orgGeneralLabel(o)) + '.'} ${isOrgOwner(o) ? '' : p.officer && p.uid !== me ? 'Only the founder can change or remove an officer.' : 'Only the founder can make someone an officer.'}</p>`}
     </div>
     <div class="modal-foot">
-      ${!p.owner && p.uid !== me ? `<button class="btn btn-danger" style="margin-right:auto" onclick="removeOrgMember('${code}','${esc(p.uid)}')">Remove</button>` : ''}
+      ${!p.owner && p.uid !== me && (!p.officer || isOrgOwner(o)) ? `<button class="btn btn-danger" style="margin-right:auto" onclick="removeOrgMember('${code}','${esc(p.uid)}')">Remove</button>` : ''}
       <button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveMemberRole('${code}','${esc(p.uid)}')">Save</button>
     </div>
   `);
@@ -284,7 +428,7 @@ function openOrgSettingsModal(code) {
           <div class="field"><label for="os-school">School</label><input class="input" id="os-school" maxlength="80" value="${esc(o.school || '')}"></div>
         </div>
         <div class="field"><label for="os-desc">Description</label><input class="input" id="os-desc" maxlength="200" value="${esc(o.description || '')}"></div>
-        <div class="field"><label>Color</label><div class="org-colors" role="group" aria-label="Color">${ORG_COLORS.map((c, i) => `<button type="button" class="page-color ${orgColor(o) === c ? 'active' : ''}" style="background:${c}" aria-label="Color ${i + 1}" aria-pressed="${orgColor(o) === c}" onclick="orgWrite('${code}',{color:'${c}'}).then(()=>openOrgSettingsModal('${code}'))"></button>`).join('')}</div></div>
+        <div class="field"><label>Color</label><div class="org-colors" role="group" aria-label="Color">${ORG_COLORS.map((c, i) => `<button type="button" class="page-color ${orgDetailsColor(o) === c ? 'active' : ''}" style="background:${c}" aria-label="Color ${i + 1}" aria-pressed="${orgDetailsColor(o) === c}" data-color="${c}" onclick="orgPickDetailsColor('${code}','${c}',this)"></button>`).join('')}</div></div>
       ` : `<p class="small muted mb-8">Officers manage the details. You can leave any time.</p>`}
       <div class="flex-between small mb-8"><span>Your title: <span class="sg-strong">${esc(orgTitleOf(o, myOrgUid(o)) || (isOrgOwner(o) ? 'Founder' : isOrgOfficer(o) ? 'Officer' : orgGeneralLabel(o)))}</span></span><button class="sg-link" onclick="openMyOrgTitleModal('${code}')">Change</button></div>
       <label class="checkbox-row small"><input type="checkbox" ${o.hideCalendar ? '' : 'checked'} onchange="setOrgOnCalendar('${code}',this.checked)"><span>Show events on my calendar</span></label>
@@ -302,10 +446,12 @@ async function saveOrgSettings(code) {
   if (!name) { toast('It needs a name', 'error'); return; }
   const school = $('#os-school').value.trim().slice(0, 80);
   const ops = { name: name.slice(0, 80), kind: $('#os-kind').value, school, schoolKey: normKey(school), description: $('#os-desc').value.trim().slice(0, 200) };
+  const o = findOrg(code);
+  if (o && orgDetailsColor(o) !== orgColor(o)) ops.color = orgDetailsColor(o);
   closeModal();
   const entry = orgEntry(code);
   if (entry?.cloud) entry.name = ops.name;
-  if (await orgWrite(code, ops)) toast('Saved');
+  if (await orgWrite(code, ops)) { if (_orgPendingColor?.code === code) _orgPendingColor = null; toast('Saved'); }
 }
 function confirmLeaveOrg(code) {
   const o = findOrg(code);
@@ -316,17 +462,54 @@ function confirmLeaveOrg(code) {
   }
   const others = orgPeople(o).filter(p => p.uid !== myOrgUid(o));
   if (!others.length) { confirmDialog(`You’re the only member, so leaving deletes “${o.name}”.`, () => deleteOrgEverywhere(code), 'Leave and delete'); return; }
-  if (isOrgOwner(o) && !others.some(p => p.officer)) { toast('Make someone else an officer before you leave, so the club still has someone running it.', 'error', 5500); return; }
+  if (isOrgOwner(o)) { openOrgHeirModal(code); return; }
   confirmDialog(`Leave “${o.name}”? Its events come off your calendar.`, () => leaveOrg(code), 'Leave');
 }
-async function leaveOrg(code) {
+// Who can take over from the founder: officers first, then everyone
+// else, each oldest member first. The earliest-joined officer (or member,
+// with no other officers) is preselected, the same person the account
+// deletion on the server picks (worker/src/account.js).
+function orgHeirCandidates(o) {
+  const me = myOrgUid(o);
+  const byJoined = (a, b) => (a.joinedAt || 0) - (b.joinedAt || 0) || a.name.localeCompare(b.name);
+  const others = orgPeople(o).filter(p => p.uid !== me);
+  return [...others.filter(p => p.officer).sort(byJoined), ...others.filter(p => !p.officer).sort(byJoined)];
+}
+function openOrgHeirModal(code) {
+  const o = findOrg(code);
+  if (!o || !isOrgOwner(o)) return;
+  const list = orgHeirCandidates(o);
+  if (!list.length) return;
+  const faces = orgFaceColors(o);
+  openModal(`
+    <div class="modal-head"><h3>Who takes over ${esc(o.name)}?</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
+    <div class="modal-body">
+      <p class="small muted mb-8">They become the founder: the one who adds officers. If they aren’t an officer yet, they become one. Then you leave.</p>
+      <div class="org-heir-list" role="radiogroup" aria-label="New founder">${list.map((p, i) => `
+        <label class="org-heir">
+          <input type="radio" name="org-heir" value="${esc(p.uid)}" ${i === 0 ? 'checked' : ''}>
+          ${personAvatar(p.uid, p.name, 28, faces[p.uid] || orgColor(o))}
+          <span class="org-heir-text"><span class="sg-strong">${esc(p.name)}</span><span class="small muted">${esc(orgRoleLabel(o, p))}${p.joinedAt ? ` · joined ${esc(fmtDate(iso(new Date(p.joinedAt)), { month: 'short', year: 'numeric' }))}` : ''}</span></span>
+        </label>`).join('')}
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-danger" id="oh-leave" onclick="leaveOrg('${code}', document.querySelector('#modal input[name=org-heir]:checked')?.value)">Hand off and leave</button></div>
+  `);
+}
+async function leaveOrg(code, heirUid) {
   const o = findOrg(code);
   const me = _fbUser?.uid;
   if (!o || !me) return;
   if (isOrgOwner(o)) {
-    // Hand the club to another officer first (a founder-only change), then leave as a regular officer.
-    const heir = orgPeople(o).find(p => p.officer && p.uid !== me);
-    if (!heir || !(await orgWrite(code, { createdBy: heir.uid }))) return;
+    // Hand the club over first (a founder-only change), then leave as a
+    // regular officer. If the second write fails, the handoff stands.
+    const heir = orgHeirCandidates(o).find(p => p.uid === heirUid) || orgHeirCandidates(o)[0];
+    if (!heir) return;
+    setBtnLoading($('#oh-leave'), true);
+    const handoff = { createdBy: heir.uid };
+    if (!heir.officer) handoff.officerUids = gwUnion(heir.uid);
+    if (!(await orgWrite(code, handoff, { denied: 'Only the founder can hand the club over.' }))) { setBtnLoading($('#oh-leave'), false, 'Hand off and leave'); return; }
+    closeModal();
   }
   const ops = { memberUids: gwRemove(me), [`people.${me}`]: GW_DELETE, [`rsvp.${me}`]: GW_DELETE };
   if (o.officerUids.includes(me)) ops.officerUids = gwRemove(me);

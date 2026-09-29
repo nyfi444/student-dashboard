@@ -230,57 +230,244 @@ function groupFirstStepsHtml(g) {
   });
 }
 
+/* ── Group home (Overview) ─────────────────────────────────────────
+   One path top to bottom: what needs you, the next session (or the best
+   time to meet when nothing is scheduled), the week, your tasks. The rail
+   holds your exam for this class, who's in, the chat and recent activity.
+   Every session renders once. The hero and the Coming up rows carry their
+   own RSVP, so the needs strip here leaves out the sessions they show; the
+   ask moves onto that session as a "Needs your answer" badge instead. */
+const GROUP_HOME_AGENDA_MAX = 5;
+// The day picked in the week strip lives on the window, not in state: it
+// is a view filter, and it only applies to the group it was picked in.
+function groupHomeAgendaDay(g) {
+  const d = window._groupAgendaDay, t = todayIso();
+  return d && d.code === g.code && d.date >= t && d.date <= addDays(t, 6) ? d.date : '';
+}
+function pickGroupAgendaDay(code, dateIso) {
+  const d = window._groupAgendaDay;
+  window._groupAgendaDay = d && d.code === code && d.date === dateIso ? null : { code, date: dateIso };
+  renderPreservingInput();
+}
 function groupOverviewTab(g) {
   const u = myUidFor(g);
-  const next = upcomingSessions(g)[0];
+  const upcoming = upcomingSessions(g);
+  const next = upcoming[0];
+  const rest = upcoming.slice(1);
+  const day = groupHomeAgendaDay(g);
+  const needs = spaceNeeds('group', g);
+  const needIds = new Set(needs.items.filter(it => it.type === 'session').map(it => it.id));
+  // Sessions the page already shows with their own RSVP stay out of the strip.
+  const shown = new Set([next?.id, ...rest.slice(0, GROUP_HOME_AGENDA_MAX).map(s => s.id)].filter(Boolean));
+  const stripItems = needs.items.filter(it => !(it.type === 'session' && shown.has(it.id)));
+  const stripTaskIds = new Set(stripItems.filter(it => it.type === 'task' || it.type === 'claim').map(it => it.id));
   const best = groupBestTimes(g)[0];
   const contributors = Object.values(g.avail || {}).filter(availHasAny).length;
-  const mineAdded = availHasAny(g.avail?.[u]);
-  const openTasks = taskList(g).filter(t => !t.done);
-  const myTasks = openTasks.filter(t => t.assignee === u).sort(byDueThenCreated).slice(0, 4);
-  const people = groupPeople(g);
-  const knownNames = new Set(people.map(p => p.name));
-  const legacyNames = (g.members || []).filter(n => n && !knownNames.has(n) && n !== myGroupName());
-  const msgs = groupMessages(g).slice(-3);
-  const activity = groupActivity(g).slice(0, 6);
+  const bestReady = !!best && contributors >= 2;
   return `
-    ${spaceNeedsStrip('group', g)}
-    <div class="sg-overview">
+    ${spaceNeedsStrip('group', g, { needs: { ...needs, items: stripItems, count: stripItems.length } })}
+    <div class="sg-overview sg-home">
       <div class="sg-col">
-        ${next ? nextSessionHero(g, next) : `
-          <div class="card card-pad sg-next-empty">
-            <div class="sg-eyebrow">Next session</div>
-            <div class="sg-next-title">Nothing scheduled yet</div>
-            <p class="small muted mb-16">Pick a time from everyone’s availability, or just put one on the calendar.</p>
-            <div class="flex-gap wrap"><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} Schedule a session</button><button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 14)} Find a time</button></div>
-          </div>`}
-        <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Best time to meet</h3><button class="sg-link" onclick="setGroupTab('availability')">Open planner ${icon('chevron-right', 12)}</button></div>
-          ${best && contributors >= 2 ? bestTimeRow(g, best) : `
-            <p class="small muted mb-8">${contributors === 0 ? 'No one has added their weekly availability yet.' : contributors === 1 ? `${mineAdded ? 'You’re' : '1 person is'} the only one who’s added availability so far. Once someone else does, the best overlap shows up here.` : 'No overlapping free time yet. Try adding a few more open blocks.'}</p>
-            ${!mineAdded ? `<button class="btn btn-sm" onclick="setGroupTab('availability')">Add my availability</button>` : ''}`}
-        </div>
-        <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Your tasks</h3><button class="sg-link" onclick="setGroupTab('tasks')">${openTasks.length} open in group ${icon('chevron-right', 12)}</button></div>
-          ${myTasks.length ? myTasks.map(t => groupTaskRow(g, t, { compact: true })).join('') : `<p class="small muted">Nothing assigned to you${openTasks.some(t => !t.assignee) ? ' yet. Up for grabs:' : '.'}</p>`}
-          ${!myTasks.length && openTasks.some(t => !t.assignee) ? openTasks.filter(t => !t.assignee).sort(byDueThenCreated).slice(0, 3).map(t => `<div class="list-row sg-task compact"><div class="row-title"><div>${esc(t.title)}</div>${t.due ? `<div class="row-meta">Due ${fmtSessionDay(t.due)}</div>` : ''}</div><button class="btn btn-sm sg-claim" onclick="setGroupTaskAssignee('${g.code}','${t.id}','${esc(u)}')">${icon('user-plus', 12)} I’ll take it</button></div>`).join('') : ''}
-        </div>
+        ${next ? nextSessionHero(g, next, { need: needIds.has(next.id) }) : bestReady ? groupBestHero(g, best) : groupHomeEmptyHero(g)}
+        ${next && bestReady ? groupHomeBest(g, best) : ''}
+        ${rest.length ? groupHomeComing(g, upcoming, rest, day, needIds) : ''}
+        ${groupHomeTasks(g, u, stripTaskIds, needs.items)}
       </div>
-      <div class="sg-col">
-        <div class="card card-pad">
-          <h3 class="sg-h3 mb-8">Members</h3>
-          ${people.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, personColor(g, p.uid))}<div class="row-title">${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' <span class="small muted">(you)</span>' : ''}</div>${p.role === 'owner' ? '<span class="small muted">Owner</span>' : ''}</div>`).join('')}
-          ${legacyNames.length ? `<div class="small muted mt-8">From before the update: ${legacyNames.map(esc).join(', ')}. They’ll appear here once they open the group.</div>` : ''}
-        </div>
-        <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Chat</h3><button class="sg-link" onclick="setGroupTab('chat')">Open chat ${icon('chevron-right', 12)}</button></div>
-          ${msgs.length ? msgs.map(m => `<div class="sg-mini-msg">${personAvatar(m.uid, m.name, 22, personColor(g, m.uid))}<div class="small"><span class="sg-strong">${esc(m.uid === u ? 'You' : m.name)}</span> <span class="muted">${fmtRelativeTime(m.at)}</span><div class="sg-mini-text">${esc(m.text)}</div></div></div>`).join('') : `<p class="small muted">No messages yet. <button class="sg-link" onclick="setGroupTab('chat')">Say hi</button></p>`}
-        </div>
-        <div class="card card-pad">
-          <h3 class="sg-h3 mb-8">Recent activity</h3>
-          ${activity.length ? activity.map(a => `<div class="sg-activity"><span class="sg-activity-ic">${icon(a.icon, 14)}</span><div class="small">${esc(a.text)} <span class="muted">· ${fmtRelativeTime(a.at)}</span></div></div>`).join('') : `<p class="small muted">Nothing yet.</p>`}
-        </div>
+      <div class="sg-col sg-home-rail">
+        ${groupHomeExam(g)}
+        ${groupHomeWho(g, u)}
+        ${groupHomeChat(g, u)}
+        ${groupHomeActivity(g)}
       </div>
+    </div>`;
+}
+function groupHomeEmptyHero(g) {
+  return `
+    <div class="card card-pad sg-next-empty">
+      <div class="eyebrow">Next session</div>
+      <div class="sg-next-title">Nothing scheduled yet</div>
+      <p class="small muted mb-16">Pick a time from everyone’s availability, or just put one on the calendar.</p>
+      <div class="flex-gap wrap"><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} Schedule a session</button><button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 14)} Find a time</button></div>
+    </div>`;
+}
+function groupBestLine(g, w) {
+  const people = groupPeople(g).length;
+  const n = w.uids.length;
+  return {
+    when: `${AVAIL_DAYS_LONG[w.day]}, ${fmtTime(slotTime(w.start))} to ${fmtTime(slotTime(w.end))}`,
+    who: n >= people ? `works for all ${n}` : `works for ${n} of ${people}`,
+    schedule: `scheduleFromBestTime('${g.code}',${w.day},${w.start},${w.end})`,
+  };
+}
+// Nothing on the calendar, but two or more people have added their week:
+// the answer to "when can we meet?" is the most useful thing on the page.
+function groupBestHero(g, w) {
+  const b = groupBestLine(g, w);
+  const free = w.uids.map(id => ({ uid: id, name: personName(g, id) }));
+  return `
+    <div class="card sg-besthero">
+      <div class="sg-besthero-top"><span class="eyebrow">Best time to meet</span><span class="space-chip">Nothing scheduled yet</span></div>
+      <div class="sg-besthero-title">${esc(b.when)} <span class="sg-besthero-who">${esc(b.who)}</span></div>
+      <div class="sg-besthero-faces">${avatarStackHtml(free, 6, 26, (id) => personColor(g, id))}<span>${esc(spaceFaceCaption(free, myUidFor(g), 'free'))}</span></div>
+      <div class="sg-besthero-foot">
+        <button class="btn btn-primary" onclick="${b.schedule}">${icon('calendar', 14)} Schedule it</button>
+        <button class="btn btn-ghost btn-sm" onclick="setGroupTab('availability')">${icon('grid', 14)} See every time</button>
+      </div>
+    </div>`;
+}
+// One line under the hero: the next time most people are free.
+function groupHomeBest(g, w) {
+  const b = groupBestLine(g, w);
+  return `
+    <div class="card card-sm sg-home-best">
+      <span class="sg-home-best-ic" aria-hidden="true">${icon('grid', 14)}</span>
+      <button class="sg-home-best-text" onclick="setGroupTab('availability')"><span class="sg-home-best-label">Best time to meet</span><span class="sg-home-best-when">${esc(b.when)}</span> <span class="sg-home-best-who">${esc(b.who)}</span></button>
+      <button class="btn btn-sm" onclick="${b.schedule}">Schedule</button>
+    </div>`;
+}
+// A place as plain row text: a meeting link reads as "Video call" or its
+// host, not a long URL (the sheet shows the real link).
+function groupWhereShort(where) {
+  const w = String(where || '').trim();
+  if (!(typeof isHttpUrl === 'function' ? isHttpUrl(w) : /^https?:\/\//i.test(w))) return w;
+  return SPACE_VIDEO_HOSTS.test(w) ? 'Video call' : (hostOf(w) || 'Link');
+}
+// A session as a flat row: time and place, Weekly and Needs your answer
+// badges, who's going, and the compact RSVP.
+function groupAgendaRow(g, s, need) {
+  const range = s.start ? `${fmtTime(s.start)}${s.end ? ` to ${fmtTime(s.end)}` : ''}` : 'Any time';
+  const going = sessionRsvpPeople(g, s).yes.length;
+  const tags = [
+    need ? spaceTag('need', 'Needs your answer') : '',
+    s.seriesId ? spaceTag('weekly', 'Weekly') : '',
+    going ? groupFacePile(g, s, { size: 20 }) : '',
+  ].join('');
+  return spaceAgendaRow({
+    date: s.date, title: s.title,
+    metaHtml: `${esc(fmtSessionDay(s.date))} · ${esc(range)}${s.where ? ` · ${esc(groupWhereShort(s.where))}` : ''}`,
+    tags,
+    trailingHtml: rsvpControl(g, s),
+    onclick: `showGroupSessionModal('${g.code}','${s.id}')`,
+    label: `${s.title}, ${fmtSessionWhen(s)}`,
+  });
+}
+function groupHomeComing(g, upcoming, rest, day, needIds) {
+  const t = todayIso(), end = addDays(t, 6);
+  const counts = {};
+  upcoming.forEach(s => { if (s.date <= end) counts[s.date] = (counts[s.date] || 0) + 1; });
+  const hasWeek = Object.keys(counts).length > 0;
+  const list = day ? rest.filter(s => s.date === day) : rest.slice(0, GROUP_HOME_AGENDA_MAX);
+  const dayName = day ? fmtDate(day, { weekday: 'long' }) : '';
+  const empty = day
+    ? `<p class="sg-home-empty">${upcoming[0]?.date === day ? `Just the next session on ${esc(dayName)}. It’s up top.` : `Nothing on ${esc(dayName)}.`} <button class="sg-link" onclick="pickGroupAgendaDay('${g.code}','${day}')">Show all</button></p>`
+    : '';
+  const more = !day && rest.length > GROUP_HOME_AGENDA_MAX ? rest.length - GROUP_HOME_AGENDA_MAX : 0;
+  return `
+    <section class="sg-home-coming" aria-label="Coming up">
+      <div class="sg-home-head"><h3 class="sg-h3">${day ? esc(dayName) : 'Coming up'}</h3><button class="sg-link" onclick="setGroupTab('schedule')">${more ? `All ${upcoming.length} sessions` : 'All sessions'} ${icon('chevron-right', 12)}</button></div>
+      ${hasWeek ? spaceWeekStrip({ start: t, selected: day, counts, label: 'Pick a day to see its sessions', onPick: (d) => `pickGroupAgendaDay('${g.code}','${d}')` }) : ''}
+      <div class="card sg-home-agenda">${list.length ? list.map(s => groupAgendaRow(g, s, needIds.has(s.id))).join('') : empty}</div>
+    </section>`;
+}
+// Your open tasks, minus the ones the needs strip already asks about, and
+// who has finished what so far.
+function groupHomeTasks(g, u, stripTaskIds, needItems) {
+  const all = taskList(g);
+  const open = all.filter(t => !t.done);
+  const mine = open.filter(t => t.assignee === u);
+  const rows = mine.filter(t => !stripTaskIds.has(t.id)).sort(byDueThenCreated).slice(0, 4);
+  const upTop = needItems.some(it => it.type === 'task' || it.type === 'claim');
+  const emptyLine = !all.length ? `No tasks yet. <button class="sg-link" onclick="setGroupTab('tasks')">Add one</button>`
+    : mine.length ? 'Your tasks due this week are up top.'
+    : upTop ? 'Nothing assigned to you. Up for grabs is up top.'
+    : 'Nothing assigned to you.';
+  return `
+    <div class="card card-pad sg-home-tasks">
+      <div class="sg-home-head"><h3 class="sg-h3">Your tasks</h3><button class="sg-link" onclick="setGroupTab('tasks')">${open.length} open in group ${icon('chevron-right', 12)}</button></div>
+      ${rows.length ? rows.map(t => groupTaskRow(g, t, { compact: true })).join('') : `<p class="sg-home-empty">${emptyLine}</p>`}
+      ${groupHomeContrib(g, u, all)}
+    </div>`;
+}
+function groupHomeContrib(g, u, all) {
+  const done = all.filter(t => t.done);
+  if (!done.length) return '';
+  const by = new Map();
+  done.forEach(t => {
+    const key = t.doneBy || `name:${t.doneByName || 'Someone'}`;
+    const cur = by.get(key) || { uid: t.doneBy || key, name: t.doneBy ? personName(g, t.doneBy) : (t.doneByName || 'Someone'), n: 0 };
+    cur.n++; by.set(key, cur);
+  });
+  const people = [...by.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  const shownPeople = people.slice(0, 4);
+  const extra = people.length - shownPeople.length;
+  return `
+    <div class="sg-home-contrib" aria-label="Tasks finished so far">
+      <span class="sg-home-contrib-lead">${done.length} of ${all.length} done</span>
+      ${shownPeople.map(p => `<span class="sg-home-contrib-p">${personAvatar(p.uid, p.name, 18, personColor(g, p.uid))}${esc(p.uid === u ? 'You' : String(p.name).split(' ')[0])} ${p.n}</span>`).join('')}
+      ${extra ? `<span>+${extra} more</span>` : ''}
+    </div>`;
+}
+// The viewer's own next exam for this group's class, from their planner.
+// Groups have no shared exam date, so it only shows when the class matches.
+function groupHomeExam(g) {
+  const c = groupCourse(g);
+  if (!c || typeof examList !== 'function') return '';
+  const t = todayIso();
+  const a = examList().find(x => x.courseId === c.id && x.dueDate && x.dueDate >= t);
+  if (!a) return '';
+  const d = daysBetween(a.dueDate);
+  const when = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : `in ${d} days`;
+  const prep = typeof examPrep === 'function' ? examPrep(a) : null;
+  const sub = ['Your exam', fmtDate(a.dueDate, { weekday: 'short', month: 'short', day: 'numeric' }) + (a.dueTime ? `, ${fmtTime(a.dueTime)}` : ''), prep == null ? '' : `${prep}% prepped`].filter(Boolean).join(' · ');
+  return `
+    <button class="card sg-home-exam" onclick="openExamPrep('${esc(a.id)}')" aria-label="${esc(`${a.title}, ${when}. Open exam prep`)}">
+      <span class="eyebrow">${esc(a.title)}</span>
+      <span class="sg-home-exam-when">${esc(when)}</span>
+      <span class="sg-home-exam-sub">${esc(sub)}</span>
+      ${prep == null ? '' : `<span class="sg-home-exam-bar" aria-hidden="true"><i style="width:${prep}%"></i></span>`}
+    </button>`;
+}
+// Faces, not a list. The legacy note stays: people from before the update
+// only show up once they open the group.
+function groupHomeWho(g, u) {
+  const people = groupPeople(g);
+  const known = new Set(people.map(p => p.name));
+  const legacy = (g.members || []).filter(n => n && !known.has(n) && n !== myGroupName());
+  return `
+    <div class="card card-pad sg-home-who${legacy.length ? ' has-legacy' : ''}">
+      <div class="sg-home-head"><h3 class="sg-h3">Who’s in <span class="sg-home-n">${people.length}</span></h3><button class="sg-link" onclick="openInviteModal('${g.code}')">${icon('user-plus', 12)} Invite</button></div>
+      <div class="sg-home-faces" role="list">
+        ${people.map(p => {
+          const name = p.uid === u && p.name !== 'You' ? `${p.name} (you)` : p.name;
+          const label = `${name}${p.role === 'owner' ? ', started the group' : ''}`;
+          return `<span class="sg-home-face" role="listitem" title="${esc(label)}" aria-label="${esc(label)}">${personAvatar(p.uid, p.name, 32, personColor(g, p.uid))}<span class="sg-home-face-name" aria-hidden="true">${esc(p.uid === u ? 'You' : String(p.name).split(' ')[0])}</span></span>`;
+        }).join('')}
+      </div>
+      ${legacy.length ? `<div class="small muted mt-8">From before the update: ${legacy.map(esc).join(', ')}. They’ll appear here once they open the group.</div>` : ''}
+    </div>`;
+}
+// The last three messages and a reply box. It reuses #sg-chat-input (the
+// Chat tab never renders at the same time), so sendGroupMessage and the
+// draft-keeping remote re-render both work unchanged.
+function groupHomeChat(g, u) {
+  const msgs = groupMessages(g).slice(-3);
+  const unread = groupUnreadCount(g);
+  return `
+    <div class="card card-pad sg-home-chat">
+      <div class="sg-home-head"><h3 class="sg-h3">Chat${unread ? ` <span class="sg-home-unread" aria-label="${unread} new">${unread}</span>` : ''}</h3><button class="sg-link" onclick="setGroupTab('chat')">Open chat ${icon('chevron-right', 12)}</button></div>
+      ${msgs.length ? msgs.map(m => `<div class="sg-mini-msg">${personAvatar(m.uid, m.name, 22, personColor(g, m.uid))}<div class="small"><span class="sg-strong">${esc(m.uid === u ? 'You' : m.name)}</span> <span class="muted">${fmtRelativeTime(m.at)}</span><div class="sg-mini-text">${esc(m.text)}</div></div></div>`).join('') : `<p class="sg-home-empty">No messages yet.</p>`}
+      <div class="sg-home-reply">
+        <input class="input" id="sg-chat-input" maxlength="${GROUP_MESSAGE_MAX}" autocomplete="off" aria-label="Reply to ${esc(g.name)}" placeholder="${msgs.length ? 'Reply to the group' : 'Say hi to the group'}" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendGroupMessage('${g.code}')}">
+        <button class="btn btn-icon btn-sm" aria-label="Send reply" data-tip="Send" onclick="sendGroupMessage('${g.code}')">${icon('send', 14)}</button>
+      </div>
+    </div>`;
+}
+function groupHomeActivity(g) {
+  const activity = groupActivity(g).slice(0, 8);
+  return `
+    <div class="card card-pad sg-home-activity">
+      <h3 class="sg-h3 mb-8">Recent activity</h3>
+      ${activity.length ? activity.map(a => `<div class="sg-activity"><span class="sg-activity-ic">${icon(a.icon, 14)}</span><div class="small">${esc(a.text)} <span class="muted">· ${fmtRelativeTime(a.at)}</span></div></div>`).join('') : `<p class="sg-home-empty">Nothing yet.</p>`}
     </div>`;
 }
 function groupActivity(g) {
@@ -375,12 +562,14 @@ function copyRsvpNudge(code, sid) {
   if (!s) return;
   copyText(`Can everyone RSVP for “${s.title}” (${fmtSessionWhen(s)}) in Semester HQ? Open “${g.name}” → Sessions and tap Going, Maybe, or Can’t. ${groupInviteLink(code)}`, 'Reminder copied. Paste it in your group chat.');
 }
-function nextSessionHero(g, s) {
+// need: the session is one the needs strip would ask about; the home leaves
+// it out of the strip and badges it here instead.
+function nextSessionHero(g, s, { need = false } = {}) {
   // The countdown chip (or the Happening now strip) carries the when.
   return spaceEventHero({
     date: s.date, start: s.start, end: s.end, where: s.where, notes: s.notes,
     eyebrow: 'Next session',
-    tags: s.seriesId ? spaceTag('weekly', 'Weekly') : '',
+    tags: `${need ? spaceTag('need', 'Needs your answer') : ''}${s.seriesId ? spaceTag('weekly', 'Weekly') : ''}`,
     title: s.title,
     onOpen: `showGroupSessionModal('${g.code}','${s.id}')`,
     rsvpHtml: rsvpControl(g, s, { size: 'hero', stillComing: true }),

@@ -502,6 +502,42 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
   const heads = run(`attentionItems().filter(i => /Bio review|Kestrel House/.test(i.sub) || /Kestrel House|Bio review/.test(i.title)).map(i => i.group + '|' + i.title + '|' + /needs your RSVP/.test(i.sub))`);
   check('needs: Heads up gets your tasks by due date and unanswered sessions and events, not the rest', heads.sort(),
     ['Coming up|Chapter meeting|true', 'Coming up|Task t1|false', 'Overdue|Task t3|false', 'Today|Pinned announcement and 1 more|false', 'Tomorrow|Tomorrow|true'].sort());
+
+  /* ── 9. Officer home numbers (js/orgs/admin.js) ──────────────────
+     A member counts toward an event only from the day they joined, dues
+     are never asked, and no required events reads as none, not 100%. */
+  run(`
+    globalThis.__r = (required = true) => ({
+      code: 'RSV', name: 'Rates', memberUids: ['a', 'b', 'c'], officerUids: ['a'], createdBy: 'a', titles: {}, files: {}, announcements: {},
+      people: { a: { name: 'A' }, b: { name: 'B', joinedAt: new Date(__d(-5) + 'T12:00:00').getTime() }, c: { name: 'C' } },
+      events: {
+        p1: { id: 'p1', title: 'Old', date: __d(-10), start: '10:00', required, category: 'meeting' },
+        p2: { id: 'p2', title: 'Recent', date: __d(-2), start: '10:00', required, category: 'meeting' },
+        d1: { id: 'd1', title: 'Dues', date: __d(-3), required: true, category: 'deadline' },
+      },
+      rsvp: { a: { p1: 'yes', p2: 'no' }, b: { p2: 'yes' }, c: { p1: 'yes' } },
+    });
+  `);
+  check('officer home: the answer rate skips events from before someone joined, and dues', run(`(() => { const o = __r(); const r = orgRsvpRate(o, orgEventList(o).filter(e => !orgIsDuesEvent(e))); return [r.asked, r.answered]; })()`), [5, 4]);
+  check('officer home: answered every required event counts only events after each person joined', run(`(() => { const h = orgHealth(__r()); return [h.last.length, Math.round(h.rate.rate * 100), h.every, h.counted, h.joined === (__d(-5).slice(0, 7) === todayIso().slice(0, 7) ? 1 : 0)]; })()`), [2, 80, 2, 3, true]);
+  check('officer home: no required events reads as none, not 100%', run(`orgHealth(__r(false)).counted`), 0);
+  check('officer home: the RSVPs grid marks a not-yet-member differently from no answer', run(`(() => { const h = orgAttendanceHtml_officer(__r()); return [/org-rsvp-mark is-na/.test(h), /org-rsvp-mark is-none/.test(h), /1 of 1 answered/.test(h)]; })()`), [true, true, true]);
+  check('officer home: the heir picker lists officers first, oldest first', run(`(() => { const o = { ...__r(), memberUids: ['a', 'b', 'c', myOrgUid()], officerUids: ['c', myOrgUid()], createdBy: myOrgUid(), people: { a: { name: 'A', joinedAt: 5 }, b: { name: 'B', joinedAt: 1 }, c: { name: 'C', joinedAt: 9 } } }; return orgHeirCandidates(o).map(p => p.uid); })()`), ['c', 'b', 'a']);
+  const denied = run(`(() => {
+    const saved = findOrg, me = myOrgUid();
+    const orgs = { DNY: { code: 'DNY', memberUids: [me, 'z'], officerUids: ['z'], createdBy: 'z' }, OUT: { code: 'OUT', memberUids: ['z'], officerUids: ['z'], createdBy: 'z' } };
+    findOrg = (c) => orgs[c] || null;
+    const out = [
+      orgWriteDeniedMessage('DNY', { officerUids: gwRemove('z') }),
+      orgWriteDeniedMessage('DNY', { name: 'New name' }),
+      orgWriteDeniedMessage('DNY', { ['rsvp.' + me + '.e1']: 'yes' }, 'Fallback'),
+      orgWriteDeniedMessage('OUT', { name: 'x' }),
+      orgWriteDeniedMessage('GONE', { name: 'x' }),
+    ];
+    findOrg = saved;
+    return out;
+  })()`);
+  check('club writes: a refused write says why', denied, ['Only the founder can change who’s an officer.', 'Only officers can change that.', 'Fallback', 'You’re no longer in this club.', 'This club was deleted.']);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

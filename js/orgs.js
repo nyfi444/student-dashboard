@@ -126,7 +126,7 @@ const ORG_LINK_GLYPHS = [[/instagram|tiktok/i, 'camera'], [/groupme|discord|slac
 const ORG_DUES_LINK = /venmo|paypal|cash\.app|cashapp|zelle|\bdues\b|\bpay\b/i;
 function orgDuesLink(o) { return orgLinkList(o).find(l => ORG_DUES_LINK.test(`${hostOf(l.url)} ${l.label}`)) || null; }
 // "Deadline or dues" events aren't something you attend, so they never ask
-// Going or Can't. They leave the needs-your-answer lists, the attendance
+// Going or Can't. They leave the needs-your-answer lists, the RSVPs
 // grid and the RSVP reminders; answers already given stay in the data and
 // in the roster CSV (downloadOrgRosterCsv), untouched.
 function orgIsDuesEvent(e) { return e?.category === 'deadline'; }
@@ -159,7 +159,23 @@ function orgUnreadCount(o) { const seen = orgSeen()[o.code] || 0; return orgAnno
 function markOrgSeen(code) { const o = findOrg(code); if (!o) return; const latest = Math.max(0, ...orgAnnouncementList(o).map(a => a.at || 0)); if (latest > (orgSeen()[code] || 0)) { orgSeen()[code] = latest; save(); } }
 
 /* ── Writes ────────────────────────────────────────────────────── */
-async function orgWrite(code, ops) {
+// Firestore only says "permission-denied", so the toast works out the
+// likely reason from what was written and who you are in the club.
+function orgWriteDeniedMessage(code, ops, fallback) {
+  const o = findOrg(code);
+  if (!o) return 'This club was deleted.';
+  const me = myOrgUid(o);
+  if (!o.memberUids.includes(me)) return 'You’re no longer in this club.';
+  const roles = ops.officerUids;
+  const rolesChange = 'createdBy' in ops || (roles && (roles.__op === 'union' || (roles.v || []).some(u => u !== me && o.officerUids.includes(u))));
+  if (rolesChange && !isOrgOwner(o)) return 'Only the founder can change who’s an officer.';
+  const ownOnly = Object.keys(ops).every(k => k.startsWith(`rsvp.${me}`) || k.startsWith(`people.${me}.`) || (k === 'officerUids' || k === 'memberUids'));
+  if (!isOrgOfficer(o) && !ownOnly) return 'Only officers can change that.';
+  return fallback || 'That change wasn’t allowed. Reload the page and try again.';
+}
+// opts.denied: what to say when the rules refuse it and nothing more
+// specific applies.
+async function orgWrite(code, ops, opts = {}) {
   const entry = orgEntry(code);
   if (!entry) return false;
   if (entry.local) {
@@ -179,7 +195,10 @@ async function orgWrite(code, ops) {
     return true;
   } catch (e) {
     diag.error('clubs', 'Club write failed', e);
-    toast(e.code === 'permission-denied' ? 'Only officers can change that.' : 'Couldn’t save that. Check your connection and try again.', 'error', 4500);
+    const msg = e.code === 'permission-denied' ? orgWriteDeniedMessage(code, ops, opts.denied)
+      : e.code === 'not-found' ? 'This club was deleted.'
+      : 'Couldn’t save that. Check your connection and try again.';
+    toast(msg, 'error', 4500);
     return false;
   }
 }
@@ -478,7 +497,7 @@ function orgNextHero(o, e) {
   return spaceEventHero({
     date: e.date, start: e.start, end: e.end, where: e.location, notes: e.notes,
     eyebrow: dues ? 'Next up · Due' : 'Next up',
-    tags: `${e.required && !dues ? spaceTag('required', 'Required') : ''}${e.seriesId ? spaceTag('weekly', 'Weekly') : ''}`,
+    tags: orgEventTags(o, e),
     title: e.title,
     onOpen: `showOrgEventModal('${o.code}','${e.id}')`,
     rsvpHtml: orgRsvpControl(o, e, myOrgRsvp(o, e.id), { size: 'hero', stillComing: true }),
@@ -564,49 +583,196 @@ function orgFirstStepsHtml(o) {
     actions: [{ label: 'Invite members', onclick: `openOrgInviteModal('${o.code}')`, icon: 'user-plus' }, ...(officer ? [{ label: 'Add an event', onclick: `openOrgEventModal('${o.code}')`, icon: 'plus' }] : [])],
   });
 }
+/* ── Overview: one path, top to bottom ────────────────────────────
+   What needs you, the pinned announcement, one Next up hero, a week
+   strip, and a flat Coming up agenda. Every event renders once: the
+   hero's event leaves the needs strip (the hero asks for the answer
+   itself), and the agenda skips anything the hero or the strip shows. */
+// The day the week strip filtered the agenda to. A view choice on this
+// tab only, so it lives here rather than in state, and a different club
+// or a day outside this week resets it.
+let _orgAgendaDay = null;
+function orgAgendaDay(o) {
+  const d = _orgAgendaDay, t = todayIso();
+  return d && d.code === o.code && d.date >= t && d.date <= addDays(t, 6) ? d.date : '';
+}
+// Tapping the selected day again goes back to everything coming up.
+function orgPickAgendaDay(code, dateIso) {
+  const same = _orgAgendaDay?.code === code && _orgAgendaDay.date === dateIso;
+  _orgAgendaDay = same ? null : { code, date: dateIso };
+  render();
+  const i = daysBetween(dateIso);
+  requestAnimationFrame(() => $$('#content .space-weekstrip .space-week-daybtn')[i]?.focus({ preventScroll: true }));
+}
+// Required, Weekly, the category (agenda rows only) and Needs your answer.
+function orgEventTags(o, e, { cat = false } = {}) {
+  const dues = orgIsDuesEvent(e);
+  const c = orgCat(e);
+  return [
+    e.required && !dues ? spaceTag('required', 'Required') : '',
+    e.seriesId ? spaceTag('weekly', 'Weekly') : '',
+    cat && !dues && c[0] !== 'other' ? spaceTag('cat', c[1], c[2]) : '',
+    e.required && !dues && !orgEventPast(e) && !myOrgRsvp(o, e.id) ? spaceTag('need', 'Needs your answer') : '',
+  ].join('');
+}
+// One flat agenda row: date tile, title, when and where, tags, and the
+// compact RSVP (or the dues button) at the end.
+function orgAgendaRow(o, e) {
+  const past = orgEventPast(e);
+  const dues = orgIsDuesEvent(e);
+  const counts = orgRsvpCounts(o, e.id);
+  // Members never see "0 going"; officers count heads.
+  const going = dues ? '' : past ? `${counts.yes} said they’d go` : counts.yes || isOrgOfficer(o) ? `${counts.yes} going` : '';
+  const when = e.start ? `${fmtTime(e.start)}${e.end ? ` to ${fmtTime(e.end)}` : ''}` : dues ? 'Due' : 'All day';
+  return spaceAgendaRow({
+    date: e.date, title: e.title, past,
+    metaHtml: [esc(when), e.location ? esc(e.location) : '', going ? `<span class="org-row-going">${going}</span>` : ''].filter(Boolean).join(' · '),
+    tags: orgEventTags(o, e, { cat: true }),
+    trailingHtml: past ? '' : orgRsvpControl(o, e),
+    onclick: `showOrgEventModal('${o.code}','${e.id}')`,
+    label: `${e.title}, ${fmtDate(e.date, { weekday: 'long', month: 'short', day: 'numeric' })}`,
+  });
+}
+// The pinned announcement, under the tabs. An unread one is already a
+// "Read it" card in the needs strip, so the banner takes the first pinned
+// announcement the strip isn't showing.
+function orgPinnedBanner(o, skip) {
+  const pinned = orgAnnouncementList(o).filter(a => a.pinned && !skip.has(a.id));
+  const a = pinned[0];
+  if (!a) return '';
+  const more = pinned.length - 1;
+  const text = a.text.length > 220 ? a.text.slice(0, 220) + '…' : a.text;
+  const faces = orgFaceColors(o);
+  return `
+    <section class="org-pinned" aria-label="Pinned announcement">
+      <div class="org-pinned-top">
+        <span class="org-pinned-pin" aria-hidden="true">${icon('pin', 14)}</span>
+        ${personAvatar(a.uid || a.name, a.name, 22, faces[a.uid] || orgColor(o))}
+        <span class="org-pinned-by">Pinned by <span class="sg-strong">${esc(a.name)}</span> · ${esc(fmtRelativeTime(a.at))}</span>
+        ${isOrgOfficer(o) && !(o.local && !o.sample) ? `<button class="btn btn-ghost btn-sm org-pinned-unpin" onclick="pinAnnouncement('${o.code}','${a.id}',false)" aria-label="Unpin this announcement">Unpin</button>` : ''}
+      </div>
+      <div class="org-pinned-text">${linkifyText(text)}</div>
+      <div class="org-pinned-foot">
+        <button class="sg-link" onclick="spaceNeedsReadPinned('${o.code}','${a.id}',null)">Read ${icon('chevron-right', 12)}</button>
+        ${more ? `<button class="sg-link" onclick="setState({orgTab:'announcements'})">+${more} more pinned</button>` : ''}
+      </div>
+    </section>`;
+}
+// Officers only: how much of the next two weeks is answered, and who's
+// still silent on the next required event, with the way into Admin.
+function orgOfficerMiniCard(o) {
+  if (!isOrgOfficer(o)) return '';
+  const end = addDays(todayIso(), 14);
+  const soon = upcomingOrgEvents(o).filter(e => !orgIsDuesEvent(e) && e.date <= end);
+  const r = orgRsvpRate(o, soon);
+  const req = upcomingOrgEvents(o).find(e => e.required && !orgIsDuesEvent(e));
+  const silent = req ? orgRsvpPeople(o, req).none.length : 0;
+  const stat = (value, label) => `<div class="org-mini-stat"><strong>${esc(value)}</strong><span>${label}</span></div>`;
+  return `
+    <div class="card card-pad org-officer-mini">
+      <div class="flex-between mb-8"><h3 class="sg-h3">${icon('shield', 16)} Officer view</h3><button class="sg-link" onclick="setState({orgTab:'admin'})">Open Admin ${icon('chevron-right', 12)}</button></div>
+      <div class="org-mini-stats">
+        ${stat(r.rate === null ? '–' : `${Math.round(r.rate * 100)}%`, soon.length ? `answered, next 2 weeks` : 'Nothing in the next 2 weeks')}
+        ${req ? stat(String(silent), `haven’t answered ${esc(req.title)}, ${esc(fmtDate(req.date, { weekday: 'short' }))}`) : stat('–', 'No required events coming up')}
+      </div>
+      ${req && silent ? `<button class="btn btn-sm org-mini-see" onclick="showOrgEventModal('${o.code}','${req.id}')">${icon('users', 14)} See who</button>` : ''}
+    </div>`;
+}
+// Quick links as cards in the rail. The dues link reads "Pay dues". Phones
+// skip this card and the Files card: the band's link row and the Files tab
+// are a tap away, and the Overview stays short.
+function orgQuickLinksCard(o) {
+  const links = orgLinkList(o);
+  if (!links.length) return '';
+  const duesId = orgDuesLink(o)?.id;
+  const glyph = (l) => (ORG_LINK_GLYPHS.find(([re]) => re.test(`${l.url} ${l.label}`)) || [0, 'link'])[1];
+  return `
+    <div class="card card-pad org-rail-links">
+      <div class="flex-between mb-8"><h3 class="sg-h3">Quick links</h3>${isOrgOfficer(o) && !o.local ? `<button class="sg-link" onclick="openOrgLinksModal('${o.code}')">${icon('pencil', 12)} Edit</button>` : ''}</div>
+      <div class="org-linkcards">${links.map(l => `
+        <a class="org-linkcard" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+          <span class="org-linkcard-tile" aria-hidden="true">${icon(l.id === duesId ? 'check-square' : glyph(l), 16)}</span>
+          <span class="org-linkcard-text"><span class="org-linkcard-label">${l.id === duesId ? 'Pay dues' : esc(l.label)}</span><span class="org-linkcard-host">${esc(l.id === duesId ? l.label : hostOf(l.url))}</span></span>
+          <span class="org-linkcard-go" aria-hidden="true">${icon('arrow-up-right', 14)}</span>
+        </a>`).join('')}
+      </div>
+    </div>`;
+}
 function orgOverviewTab(o) {
+  const officer = isOrgOfficer(o);
   const upcoming = upcomingOrgEvents(o);
   const next = upcoming[0];
-  const anns = orgAnnouncementList(o).slice(0, 3);
+  // The strip, minus the hero's event: the hero carries its own Needs
+  // your answer tag and the full-size buttons.
+  const all = spaceNeeds('club', o);
+  const items = all.items.filter(i => !(next && i.type === 'event' && i.id === next.id));
+  const needs = { ...all, items, count: items.length };
+  const shown = new Set([...(next ? [next.id] : []), ...items.filter(i => i.type === 'event').map(i => i.id)]);
+  const stripPinned = new Set(items.filter(i => i.type === 'pinned').map(i => i.id));
+  // Only the hero needed you: no strip, rather than "all caught up".
+  const strip = needs.count || !all.count ? spaceNeedsStrip('club', o, { needs }) : '';
+  const banner = orgPinnedBanner(o, stripPinned);
+  const bannerId = orgAnnouncementList(o).find(a => a.pinned && !stripPinned.has(a.id))?.id;
+
+  // Week strip: today and the six days after, dots from every event.
+  const t = todayIso();
+  const day = orgAgendaDay(o);
+  const counts = {};
+  orgEventList(o).forEach(e => { if (e.date >= t && e.date <= addDays(t, 6)) counts[e.date] = (counts[e.date] || 0) + 1; });
+  const dayEvents = day ? orgEventList(o).filter(e => e.date === day) : [];
+  const agenda = day ? dayEvents.filter(e => !shown.has(e.id)) : upcoming.filter(e => !shown.has(e.id)).slice(0, 6);
+  const above = day ? dayEvents.length - agenda.length : 0;
+  const dayLabel = day ? fmtDate(day, { weekday: 'long', month: 'short', day: 'numeric' }) : '';
+  const agendaEmpty = day
+    ? (above ? `Nothing else on ${esc(dayLabel)}.` : `Nothing on ${esc(dayLabel)}.`)
+    : next ? 'Nothing else scheduled.' : '';
+
+  const anns = orgAnnouncementList(o).filter(a => a.id !== bannerId && !stripPinned.has(a.id)).slice(0, 3);
   const officers = orgPeople(o).filter(p => p.officer);
-  const unanswered = isOrgOfficer(o) ? upcoming.filter(e => e.required && !orgIsDuesEvent(e)).slice(0, 3).map(e => ({ e, c: orgRsvpCounts(o, e.id) })).filter(x => x.c.none) : [];
-  // What needs you comes first (spaceNeedsStrip, js/spaces/needs.js):
-  // required events this week you haven't answered and a pinned
-  // announcement you haven't read. Coming up skips the events it lists.
-  const needs = spaceNeeds('club', o);
-  const needIds = new Set(needs.items.filter(i => i.type === 'event').map(i => i.id));
+  const faces = orgFaceColors(o);
+  const me = myOrgUid(o);
+  const files = orgFileList(o);
   return `
-    ${spaceNeedsStrip('club', o, { needs })}
-    <div class="sg-overview">
+    ${strip}
+    ${banner}
+    <div class="sg-overview org-overview">
       <div class="sg-col">
         ${next ? orgNextHero(o, next) : `
           <div class="card card-pad sg-next-empty">
             <div class="sg-eyebrow">Calendar</div>
             <div class="sg-next-title">Nothing scheduled yet</div>
-            <p class="small muted">${isOrgOfficer(o) ? 'Add your first meeting or practice and it shows up on every member’s calendar.' : 'When officers add events, they’ll show up here and on your calendar.'}</p>
-            ${isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm mt-8" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Add an event</button>` : ''}
+            <p class="small muted">${officer ? 'Add your first meeting or practice and it shows up on every member’s calendar.' : 'When officers add events, they’ll show up here and on your calendar.'}</p>
+            ${officer ? `<button class="btn btn-primary btn-sm mt-8" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Add an event</button>` : ''}
           </div>`}
-        <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Coming up</h3><button class="sg-link" onclick="setState({orgTab:'events'})">Full calendar ${icon('chevron-right', 12)}</button></div>
-          ${upcoming.slice(1).filter(e => !needIds.has(e.id)).slice(0, 5).map(e => orgEventRow(o, e)).join('') || '<p class="small muted">Nothing else scheduled.</p>'}
-        </div>
+        ${next ? spaceWeekStrip({ start: t, selected: day, counts, onPick: (d) => `orgPickAgendaDay('${o.code}','${d}')`, label: `Pick a day to see ${o.name} events` }) : ''}
+        ${next || day ? `
+        <div class="card card-pad org-agenda">
+          <div class="flex-between org-agenda-head">
+            <h3 class="sg-h3">${day ? esc(dayLabel) : 'Coming up'}</h3>
+            ${day ? `<button class="sg-link" onclick="orgPickAgendaDay('${o.code}','${day}')">Show all ${icon('chevron-right', 12)}</button>` : `<button class="sg-link" onclick="setState({orgTab:'events'})">Full calendar ${icon('chevron-right', 12)}</button>`}
+          </div>
+          ${agenda.length ? `<div class="org-agenda-rows">${agenda.map(e => orgAgendaRow(o, e)).join('')}</div>` : `<p class="small muted org-agenda-empty">${agendaEmpty}</p>`}
+          ${above ? `<p class="small muted org-agenda-above">${above === 1 ? 'One more this day is' : `${above} more this day are`} shown above.</p>` : ''}
+        </div>` : ''}
       </div>
       <div class="sg-col">
-        ${unanswered.length ? `<div class="card card-pad org-officer-card"><div class="sg-eyebrow">${icon('shield', 12)} Officer view</div>${unanswered.map(({ e, c }) => `<div class="small mt-8"><span class="sg-strong">${esc(e.title)}</span>: ${c.none} haven’t RSVPed. <button class="sg-link" onclick="showOrgEventModal('${o.code}','${e.id}')">See who</button></div>`).join('')}</div>` : ''}
+        ${orgOfficerMiniCard(o)}
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Announcements</h3>${isOrgOfficer(o) ? `<button class="sg-link" onclick="openAnnouncementModal('${o.code}')">${icon('plus', 12)} Post</button>` : `<button class="sg-link" onclick="setState({orgTab:'announcements'})">All ${icon('chevron-right', 12)}</button>`}</div>
-          ${anns.length ? anns.map(a => orgAnnouncementHtml(o, a, { compact: true })).join('') : '<p class="small muted">No announcements yet.</p>'}
+          <div class="flex-between mb-8"><h3 class="sg-h3">Announcements</h3>${officer ? `<button class="sg-link" onclick="openAnnouncementModal('${o.code}')">${icon('plus', 12)} Post</button>` : `<button class="sg-link" onclick="setState({orgTab:'announcements'})">All ${icon('chevron-right', 12)}</button>`}</div>
+          ${anns.length ? anns.map(a => orgAnnouncementHtml(o, a, { compact: true })).join('') : `<p class="small muted">${bannerId || stripPinned.size ? 'Nothing else yet.' : 'No announcements yet.'}</p>`}
         </div>
-        ${(() => { const files = orgFileList(o).slice(0, 3); return files.length ? `
         <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Files</h3><button class="sg-link" onclick="setState({orgTab:'files'})">All ${orgFileList(o).length} ${icon('chevron-right', 12)}</button></div>
-          ${files.map(f => orgFileRow(o, f, { compact: true })).join('')}
-        </div>` : ''; })()}
-        <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Officers</h3><button class="sg-link" onclick="setState({orgTab:'members'})">${o.memberUids.length} members ${icon('chevron-right', 12)}</button></div>
-          ${officers.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 28, orgColor(o))}<div class="row-title small">${esc(p.name)}${p.uid === myOrgUid(o) && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div><span class="small muted">${esc(orgRoleLabel(o, p))}</span></div>`).join('')}
+          <div class="flex-between mb-8"><h3 class="sg-h3">Officers</h3><button class="sg-link" onclick="setState({orgTab:'members'})">${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'} ${icon('chevron-right', 12)}</button></div>
+          <div class="org-officer-faces">${officers.map(p => `
+            <div class="org-officer-face">${personAvatar(p.uid, p.name, 32, faces[p.uid] || orgColor(o))}<div class="org-officer-face-text"><span class="org-officer-face-name">${esc(p.name)}${p.uid === me && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</span><span class="org-officer-face-title">${esc(orgRoleLabel(o, p))}</span></div></div>`).join('')}
+          </div>
         </div>
-        <label class="checkbox-row small org-cal-toggle"><input type="checkbox" ${o.hideCalendar ? '' : 'checked'} onchange="setOrgOnCalendar('${o.code}',this.checked)"><span>Show ${esc(o.name)} events on my calendar</span></label>
+        ${orgQuickLinksCard(o)}
+        ${files.length ? `
+        <div class="card card-pad org-rail-files">
+          <div class="flex-between mb-8"><h3 class="sg-h3">Files</h3><button class="sg-link" onclick="setState({orgTab:'files'})">All ${files.length} ${icon('chevron-right', 12)}</button></div>
+          ${files.slice(0, 3).map(f => orgFileRow(o, f, { compact: true })).join('')}
+        </div>` : ''}
       </div>
     </div>`;
 }
@@ -666,7 +832,7 @@ function orgMembersTab(o) {
     <div class="sg-toolbar">
       <div class="small muted">${people.length} member${people.length === 1 ? '' : 's'} · ${officerCount} officer${officerCount === 1 ? '' : 's'}</div>
       <div class="flex-gap wrap">
-        ${officer ? `<button class="btn btn-sm" onclick="setState({orgTab:'admin'});setTimeout(()=>document.getElementById('org-attendance')?.scrollIntoView({block:'start'}),80)">${icon('check-square', 14)} Attendance</button><button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 14)} Export roster</button>` : ''}
+        ${officer ? `<button class="btn btn-sm" onclick="setState({orgTab:'admin'});setTimeout(()=>document.getElementById('org-attendance')?.scrollIntoView({block:'start'}),80)">${icon('check-square', 14)} RSVPs</button><button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 14)} Export roster</button>` : ''}
       </div>
     </div>
     ${people.length >= 8 ? `<input class="input org-member-search mb-8" id="org-member-search" placeholder="Search ${people.length} members by name or title" aria-label="Search members" autocomplete="off" oninput="filterOrgMembers(this.value)">` : ''}
@@ -1194,8 +1360,8 @@ function sampleOrgKind(o) { return !o?.sample ? '' : o.sample === true ? 'club' 
 function sampleOrgMeta(kind) { return SAMPLE_ORG_KINDS.find(k => k[0] === kind) || SAMPLE_ORG_KINDS[0]; }
 
 // The content of each sample. Dates are relative to today, so there are
-// always a few past events with answers (the Admin attendance grid shows
-// the last six) and a few coming up, one of them required and not yet
+// always a few past events with answers (the Admin RSVPs grid shows
+// the last 30 days) and a few coming up, one of them required and not yet
 // answered by everyone.
 function sampleOrgTemplate(kind) {
   const t = todayIso();
