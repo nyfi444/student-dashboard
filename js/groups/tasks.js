@@ -90,9 +90,11 @@ function groupTaskContribRow(g, total) {
   const credits = groupTaskCredits(g, { since: Date.now() - TASK_WEEK_MS });
   if (!credits.length) return total ? `<p class="sg-tcontrib is-quiet">Nothing checked off yet this week.</p>` : '';
   const label = `Done this week: ${credits.map(c => `${taskFirstName(g, c.uid)} ${c.n}`).join(', ')}`;
+  // Faces with counts, ringed like a face pile, then the words.
   return `
-    <p class="sg-tcontrib" aria-label="${esc(label)}">
-      ${credits.map(c => `<span class="sg-tcontrib-p" aria-hidden="true">${personAvatar(c.uid, c.name, 22, personColor(g, c.uid))}<span>${esc(taskFirstName(g, c.uid))}</span><span class="sg-tcontrib-n">${c.n}</span></span>`).join('')}
+    <p class="sg-tcontrib">
+      <span class="sr-only">${esc(label)}</span>
+      ${credits.map(c => `<span class="sg-tcontrib-p" aria-hidden="true" title="${esc(`${taskFirstName(g, c.uid)}: ${c.n}`)}">${personAvatar(c.uid, c.name, 22, personColor(g, c.uid))}<span class="sg-tcontrib-n">${c.n}</span></span>`).join('')}
       <span class="sg-tcontrib-label" aria-hidden="true">done this week</span>
     </p>`;
 }
@@ -138,13 +140,13 @@ function groupTasksTab(g) {
   const list = all.length ? `
     <div class="sg-toolbar sg-ttools">
       <div class="segmented" role="group" aria-label="Show tasks">${[['all', 'All'], ['mine', 'Mine'], ['unassigned', 'Unassigned']].map(([k, l]) => `<button class="${filter === k ? 'active' : ''}" aria-pressed="${filter === k}" onclick="setState({groupTaskFilter:'${k}'})">${l}</button>`).join('')}</div>
-      <div class="sg-tprogress">${taskRing(doneCount, all.length)}<span>${doneCount} of ${all.length} done</span></div>
+      <div class="sg-tprogress">${taskRing(doneCount, all.length)}<span class="sg-tprogress-n">${doneCount} of ${all.length} done</span></div>
     </div>
     ${groupTaskContribRow(g, all.length)}
     ${open.length ? `<div class="card sg-tlist">${open.map(t => groupTaskRow(g, t)).join('')}</div>` : `<div class="card sg-tlist sg-tlist-empty"><p>${filteredEmpty}</p></div>`}
     ${done.length ? `
-      <details class="sg-tdone" ${_taskDoneOpen[g.code] ? 'open' : ''} ontoggle="_taskDoneOpen['${g.code}']=this.open">
-        <summary>Done (${done.length})</summary>
+      <details class="space-disclosure sg-tdone" ${_taskDoneOpen[g.code] ? 'open' : ''} ontoggle="_taskDoneOpen['${g.code}']=this.open">
+        <summary>Done <span class="space-disclosure-n">· ${done.length}</span></summary>
         <div class="card sg-tlist">${done.map(t => groupTaskRow(g, t)).join('')}</div>
       </details>` : ''}`
     : emptyStateHtml({ icon: 'check-square', title: 'Split up the work', body: 'Add the first task above. Type a day like fri and @name to hand it to someone.' });
@@ -152,7 +154,7 @@ function groupTasksTab(g) {
   return `<div class="sg-tasks">${taskQuickAdd(g)}${list}</div>`;
 }
 function taskRing(done, total) {
-  const r = 8, c = 2 * Math.PI * r, p = total ? done / total : 0;
+  const r = 8.5, c = 2 * Math.PI * r, p = total ? done / total : 0;
   return `<svg class="sg-tring" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle class="sg-tring-track" cx="10" cy="10" r="${r}"/><circle class="sg-tring-fill" cx="10" cy="10" r="${r}" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - p)).toFixed(2)}" transform="rotate(-90 10 10)"/></svg>`;
 }
 
@@ -181,16 +183,20 @@ function groupTaskRow(g, t, { compact = false } = {}) {
     !t.done && !owner ? `<span class="sg-tchip is-grabs">Up for grabs</span>` : '',
   ].filter(Boolean).join('');
   const ownerName = owner ? (owner === u ? 'you' : personName(g, owner)) : '';
+  // The edit button's name is its own words ("Edit Write 5 questions,
+  // Tomorrow, Maya"), so the due chip, Overdue, the label, Up for grabs
+  // and Done by are all heard; the commas are for screen readers only.
+  const sep = '<span class="sr-only">, </span>';
+  const ownerWords = owner && !t.done ? `${sep}<span class="sr-only">${esc(owner === u ? 'Yours' : taskFirstName(g, owner))}</span>` : '';
   return `
     <div class="sg-trow${t.done ? ' is-done' : ''}${_taskJustAdded === t.id ? ' is-new' : ''}" data-task="${esc(t.id)}">
-      <button type="button" class="row-check sg-tcheck ${t.done ? 'checked' : ''}" role="checkbox" aria-checked="${!!t.done}" aria-label="Mark ${esc(t.title)} as ${t.done ? 'not done' : 'done'}" onclick="checkGroupTask('${code}','${t.id}',this)">${t.done ? checkGlyph(true, 14) : ''}</button>
-      <button type="button" class="sg-tmain" onclick="openGroupTaskSheet('${code}','${t.id}')" aria-label="Edit ${esc(t.title)}">
-        <span class="sg-ttitle">${esc(t.title)}</span>
-        ${chips ? `<span class="sg-tmeta">${chips}</span>` : ''}
+      <button type="button" class="row-check sg-tcheck ${t.done ? 'checked' : ''}" data-fk="tcheck:${esc(t.id)}:${t.done ? 'done' : 'open'}" role="checkbox" aria-checked="${!!t.done}" aria-label="Mark ${esc(t.title)} as ${t.done ? 'not done' : 'done'}" onclick="checkGroupTask('${code}','${t.id}',this)">${t.done ? checkGlyph(true, 14) : ''}</button>
+      <button type="button" class="sg-tmain" onclick="openGroupTaskSheet('${code}','${t.id}')">
+        <span class="sg-ttitle"><span class="sr-only">Edit </span>${esc(t.title)}</span>${chips ? `<span class="sg-tmeta">${sep}${chips.split('</span><span class="sg-tchip').join(`</span>${sep}<span class="sg-tchip`)}</span>` : ''}${ownerWords}
       </button>
       <div class="sg-tactions">
-        ${!t.done && !owner ? `<button type="button" class="btn btn-sm sg-claim" onclick="setGroupTaskAssignee('${code}','${t.id}','${esc(u)}')">I’ll take it</button>` : ''}
-        <button type="button" class="sg-tface" data-assignee="${esc(owner || '')}" aria-haspopup="menu" aria-expanded="false" aria-label="Assign ${esc(t.title)}${owner ? `, now ${esc(ownerName)}` : ', nobody yet'}" data-tip="${owner ? esc(owner === u ? 'Yours' : personName(g, owner)) : 'Assign'}" onclick="openTaskAssignMenu(this,'${code}','${t.id}')">${taskFace(g, owner, 28)}</button>
+        ${!t.done && !owner ? `<button type="button" class="btn btn-sm sg-claim" data-fk="tclaim:${esc(t.id)}" onclick="taskFocusAfter('${t.id}','claim');setGroupTaskAssignee('${code}','${t.id}','${esc(u)}')">I’ll take it</button>` : ''}
+        <button type="button" class="sg-tface" data-fk="tface:${esc(t.id)}" data-assignee="${esc(owner || '')}" aria-haspopup="menu" aria-expanded="false" aria-label="Assign ${esc(t.title)}${owner ? `, now ${esc(ownerName)}` : ', nobody yet'}" data-tip="${owner ? esc(owner === u ? 'Yours' : personName(g, owner)) : 'Assign'}" onclick="openTaskAssignMenu(this,'${code}','${t.id}')">${taskFace(g, owner, 28)}</button>
       </div>
     </div>`;
 }
@@ -225,7 +231,10 @@ function taskQaChipsHtml(g, text) {
     parts.push(`<span class="qa-chip sg-qa-who">${personAvatar(p.uid, p.name, 16, personColor(g, p.uid))}<span>${esc(who)}</span>${x('who', who)}</span>`);
   } else if (p.ambiguous) parts.push(`<span class="qa-chip is-default">${icon('user-plus', 12, 1.9)}<span>More than one ${esc(p.token.slice(1))}, pick after adding</span></span>`);
   else parts.push(`<span class="qa-chip is-default">${icon('user-plus', 12, 1.9)}<span>Up for grabs</span></span>`);
-  return `${p.title ? `<span class="qa-title">${esc(p.title)}</span>` : ''}${parts.join('')}`;
+  // Visually hidden commas, so a screen reader hears "Fri, Oct 2, Maya",
+  // not "Fri, Oct 2MMaya".
+  const sep = '<span class="sr-only">, </span>';
+  return `${p.title ? `<span class="qa-title">${esc(p.title)}</span>${sep}` : ''}${parts.join(sep)}`;
 }
 function taskQaPreview(code) {
   const g = findGroup(code), input = $('#sg-task-title'), box = $('#sg-tqa-chips');
@@ -254,6 +263,25 @@ function addGroupTask(code) {
   setTimeout(() => { $('#sg-task-title')?.focus(); taskQaPreview(code); }, 40);
 }
 
+/* ── Where focus goes (sgFocusAfter, js/groups/sync.js) ───────────
+   Checking a task off or claiming it: the next row's check, else the
+   quick add. Unchecking: the same task's check, now in the open list.
+   Picking an owner: that row's face (the next row's check, or the quick
+   add, if a filter hides the row now). */
+function taskFocusAfter(id, why) {
+  if (typeof sgFocusAfter !== 'function') return;
+  const q = (v) => (window.CSS && CSS.escape ? CSS.escape(v) : v);
+  const row = document.querySelector(`.sg-trow[data-task="${q(id)}"]`);
+  let next = row?.nextElementSibling;
+  while (next && !next.matches('.sg-trow')) next = next.nextElementSibling;
+  const nextCheck = next ? `[data-fk="${next.querySelector('.sg-tcheck')?.dataset.fk || ''}"]` : '';
+  const quick = '#sg-task-title';
+  if (why === 'check') sgFocusAfter([nextCheck, quick], `[data-fk="tcheck:${q(id)}:open"]`);
+  else if (why === 'uncheck') sgFocusAfter([`[data-fk="tcheck:${q(id)}:open"]`, quick], `[data-fk="tcheck:${q(id)}:done"]`);
+  else if (why === 'claim') sgFocusAfter([nextCheck, quick], `[data-fk="tclaim:${q(id)}"]`);
+  else if (why === 'pick') sgFocusAfter([`[data-fk="tface:${q(id)}"]`, nextCheck, quick], '', null);
+}
+
 /* ── Checking off ──────────────────────────────────────────────── */
 // The board's check: a small burst and a strike-through, then the row
 // slides out and the write lands (the write re-renders the tab, so the
@@ -263,6 +291,7 @@ function checkGroupTask(code, id, btn) {
   const g = findGroup(code);
   const t = g?.taskItems?.[id];
   if (!t || _taskPending.has(id)) return;
+  taskFocusAfter(id, t.done ? 'uncheck' : 'check');
   if (t.done) { setGroupTaskDone(code, id, false); return; }
   const row = btn?.closest?.('.sg-trow');
   const still = typeof availReducedMotion === 'function' ? availReducedMotion() : false;
@@ -296,7 +325,7 @@ function openTaskAssignMenu(btn, code, id) {
   if (!t) return;
   const owner = taskOwner(g, t) || '';
   const html = `<div class="menu-label">Who’s on it</div>${taskAssignOptions(g).map(o => `
-    <button type="button" class="menu-item sg-tpick-item" role="menuitemradio" aria-checked="${o.uid === owner}" data-uid="${esc(o.uid)}" onclick="setGroupTaskAssignee('${code}','${id}','${esc(o.uid)}')">
+    <button type="button" class="menu-item sg-tpick-item" role="menuitemradio" aria-checked="${o.uid === owner}" data-uid="${esc(o.uid)}" onclick="taskFocusAfter('${id}','pick');setGroupTaskAssignee('${code}','${id}','${esc(o.uid)}')">
       ${taskFace(g, o.uid, 22)}<span class="sg-tpick-name">${esc(o.label)}</span>${o.uid === owner ? icon('check', 14, 2.2) : ''}
     </button>`).join('')}`;
   const el = openMenu(btn, html);

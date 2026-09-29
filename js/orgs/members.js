@@ -92,7 +92,7 @@ function orgMemberRow(o, p, ctx) {
   const owe = officer && owed[p.uid] ? owed[p.uid] : null;
   const canManage = officer && (!o.local || o.sample);
   const action = canManage
-    ? `<button type="button" class="btn btn-ghost btn-sm btn-icon org-dir-more" aria-label="Manage ${esc(p.name)}" aria-haspopup="menu" aria-expanded="false" onclick="openOrgMemberMenu(this,'${o.code}','${esc(p.uid)}')">${icon('more-horizontal', 16)}</button>`
+    ? `<button type="button" class="btn btn-ghost btn-sm btn-icon org-dir-more" aria-label="${p.uid === me ? 'Edit your title' : `Manage ${esc(p.name)}`}" aria-haspopup="menu" aria-expanded="false" onclick="openOrgMemberMenu(this,'${o.code}','${esc(p.uid)}')">${icon('more-horizontal', 16)}</button>`
     : p.uid === me ? `<button type="button" class="btn btn-ghost btn-sm org-dir-edit" onclick="openMyOrgTitleModal('${o.code}')">Edit title</button>` : '';
   return `
         <div class="org-dir-row" data-tags="${tags.join(' ')}" data-search="${esc(hay)}"${orgMemberMatch(tags, hay, _orgMemberView) ? '' : ' hidden'}>
@@ -132,7 +132,7 @@ function orgMembersTab(o) {
     return orgMemberMatch(tags, `${p.name} ${orgRoleLabel(o, p)}`.toLowerCase(), st);
   }).length;
   const leadShown = shownIn(leaders, true), otherShown = shownIn(others, false);
-  const chip = ([k, label]) => `<button type="button" class="chip org-dir-chip" data-filter="${k}" aria-pressed="${st.filter === k}" onclick="setOrgMemberFilter('${o.code}','${k}')">${esc(label)}<span class="org-dir-chip-n">${counts[k]}</span></button>`;
+  const chip = ([k, label]) => `<button type="button" class="chip org-dir-chip" data-filter="${k}" aria-pressed="${st.filter === k}" onclick="setOrgMemberFilter('${o.code}','${k}')">${esc(label)}<span class="sr-only">, </span><span class="org-dir-chip-n">${counts[k]}</span></button>`;
   const section = (key, title, note, list, leader, shown) => `
     <section class="org-dir-sec" data-sec="${key}"${shown ? '' : ' hidden'} aria-labelledby="org-dir-h-${key}">
       <div class="org-dir-head"><h3 class="org-dir-title" id="org-dir-h-${key}">${esc(title)} <span class="org-dir-n">${list.length}</span></h3>${note ? `<p class="org-dir-note">${note}</p>` : ''}</div>
@@ -145,7 +145,7 @@ function orgMembersTab(o) {
         <div class="org-dir-count">${people.length} member${people.length === 1 ? '' : 's'} · ${leaders.length} in leadership</div>
         <div class="org-dir-actions">
           ${officer ? `<button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 14)} Export roster</button>` : ''}
-          <button class="btn btn-primary btn-sm" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 14)} Invite</button>
+          <button class="btn btn-primary btn-sm org-dir-invite" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 14)} Invite</button>
         </div>
       </div>
       <div class="org-dir-tools">

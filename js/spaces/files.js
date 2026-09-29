@@ -250,7 +250,7 @@ function spaceLibrary(kind, sp) {
   const args = `'${kind}','${code}'`;
   return `<div class="lib" data-lib="${id}">
     <div class="lib-toolbar">
-      ${showChips ? `<div class="chip-row lib-chips" role="group" aria-label="Show">${chips.map(([c, label]) => `<button type="button" class="chip lib-chip" data-lib-chip="${c}" aria-pressed="${st.chip === c}" onclick="libSetChip(${args},'${c}')">${label}<span class="lib-chip-n">${c === 'all' ? items.length : counts[c]}</span></button>`).join('')}</div>`
+      ${showChips ? `<div class="chip-row lib-chips" role="group" aria-label="Show">${chips.map(([c, label]) => `<button type="button" class="chip lib-chip" data-lib-chip="${c}" aria-pressed="${st.chip === c}" onclick="libSetChip(${args},'${c}')">${label}<span class="sr-only">, </span><span class="lib-chip-n">${c === 'all' ? items.length : counts[c]}</span></button>`).join('')}</div>`
         : `<p class="lib-intro">${esc(A.intro(sp))}</p>`}
       <div class="lib-tools">
         ${search ? `<label class="lib-search">${icon('search', 14)}<input class="input" type="search" id="lib-q-${id}" value="${esc(st.q)}" placeholder="Search" aria-label="Search files" autocomplete="off" oninput="libSearch(${args},this.value)"></label>` : ''}
@@ -259,7 +259,8 @@ function spaceLibrary(kind, sp) {
       </div>
     </div>
     <div class="lib-grid" id="lib-grid-${id}">${sorted.map(it => libCard(kind, code, sp, it, st)).join('')}</div>
-    <p class="lib-none" id="lib-none-${id}" aria-live="polite"${shown ? ' hidden' : ''}>Nothing matches. <button type="button" class="sg-link" onclick="libClear(${args})">Show everything</button></p>
+    <p class="sr-only" id="lib-status-${id}" aria-live="polite"></p>
+    <p class="lib-none" id="lib-none-${id}"${shown ? ' hidden' : ''}>Nothing matches. <button type="button" class="sg-link" onclick="libClear(${args})">Show everything</button></p>
   </div>`;
 }
 
@@ -279,6 +280,10 @@ function libApply(kind, code, { reorder = false } = {}) {
   cards.forEach(el => { const on = libMatch(el.dataset.libChip, el.dataset.libQ || '', st); el.hidden = !on; if (on) shown++; });
   const none = document.getElementById(`lib-none-${id}`);
   if (none) none.hidden = shown > 0;
+  // Said once per change, from a node the filter never redraws.
+  const status = document.getElementById(`lib-status-${id}`);
+  const filtered = st.chip !== 'all' || String(st.q || '').trim();
+  if (status && !reorder) status.textContent = filtered ? (shown ? `${shown} ${shown === 1 ? 'file' : 'files'} shown` : 'Nothing matches') : `All ${cards.length} ${cards.length === 1 ? 'file' : 'files'} shown`;
   const root = grid.closest('.lib');
   root?.querySelectorAll('.lib-chip').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.libChip === st.chip)));
 }

@@ -441,6 +441,39 @@ function afterGroupPageRender() {
   // Scroll, the "new" line, composer height and the seen marker: js/spaces/chat.js.
   if (document.getElementById('sg-chat-log')) chatAfterRender('group', code);
   else chatForget('group', state.groupTab);
+  sgFocusApply();
+}
+
+/* ── Where focus goes when its control goes away ─────────────────
+   render() (js/app.js) finds the control that had focus again by its
+   onclick. When that control is gone for good (a task checked off into
+   a closed Done, a time you removed, the recap card after Not now),
+   sgFocusAfter says where focus goes instead. targets: selectors tried
+   in order (data-fk keys and ids). from: the control that is going away;
+   while it is still on the page the plan waits, since a cloud write
+   lands a render or two later. key: the onclick of what had focus, so a
+   plan is dropped once focus has moved on (null skips that check). A
+   plan older than 6 seconds is dropped too. */
+let _sgFocusPlan = null;
+function sgFocusAfter(targets, from = '', key) {
+  const a = document.activeElement;
+  _sgFocusPlan = { targets: targets.filter(Boolean), from, key: key === undefined ? (a && a !== document.body ? a.getAttribute('onclick') || '' : '') : key, until: Date.now() + 6000 };
+}
+function sgFocusApply() {
+  const p = _sgFocusPlan;
+  if (!p) return;
+  if (Date.now() > p.until) { _sgFocusPlan = null; return; }
+  const had = window._renderFocusKey;
+  if (p.key && had && had.onclick !== p.key) { _sgFocusPlan = null; return; }
+  const now = document.activeElement;
+  if (now && now !== document.body) return;
+  const shown = (x) => !!x && x.getClientRects().length > 0 && (typeof x.checkVisibility !== 'function' || x.checkVisibility());
+  if (p.from && shown(document.querySelector(p.from))) return;
+  _sgFocusPlan = null;
+  for (const sel of p.targets) {
+    const x = document.querySelector(sel);
+    if (shown(x)) { try { x.focus({ preventScroll: true }); } catch {} return; }
+  }
 }
 
 /* ── Invite links: ?join=CODE survives login, checkout, and paywall ─ */

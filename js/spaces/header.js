@@ -12,7 +12,8 @@
      Officer | Member" (onOfficer and onMember are onclick JS), and
      others: [{ label, icon, onclick }] as chips for the other samples.
    spaceBand({ kind, code, crest, eyebrow, title, desc, back, linksHtml,
-               stackHtml, actionsHtml, invite, menu, menuLabel })
+               stackHtml, actionsHtml, invite, menu, menuLabel, compact })
+     compact (spaceShell sets it on the Chat tab): the one-row band.
      crest: { text, sub } as trusted, already escaped HTML (orgMonogram is).
      eyebrow and linksHtml, stackHtml, actionsHtml are trusted HTML; title
      and desc are plain text. back: { label, onclick }. invite: { onclick,
@@ -59,6 +60,28 @@ function spaceBand(o) {
   const more = (o.menu || []).length || o.actionsHtml
     ? `<button type="button" class="btn btn-ghost btn-icon head-more space-more" aria-label="${esc(o.menuLabel || 'More')}" aria-haspopup="true" data-tip="More" onclick="openHeadMore(this)">${icon('more-horizontal', 18)}</button>`
     : '';
+  // compact (the Chat tab on a desktop): one row, so the chat gets the height.
+  // Crest, name, faces, Invite, ···; officer buttons move into the ··· menu.
+  if (o.compact) {
+    const t = document.createElement('template');
+    t.innerHTML = o.actionsHtml || '';
+    [...t.content.children].forEach(b => { if (b.classList.contains('space-phone-sheet')) b.classList.add('head-menu'); });
+    return `
+    <header class="space-band space-cover is-compact" data-pattern="${spacePattern(o.code)}">
+      <div class="space-id">
+        ${spaceCrest(o.crest, 'md')}
+        <div class="space-id-text"><h2 class="space-title">${esc(o.title)}</h2></div>
+      </div>
+      <div class="space-actions">
+        ${o.stackHtml || ''}
+        ${signInHeaderButton()}
+        ${t.innerHTML}
+        ${inviteBtn}
+        ${spaceMenuItemsHtml(o.menu)}
+        ${more}
+      </div>
+    </header>`;
+  }
   return `
     <header class="space-band space-cover" data-pattern="${spacePattern(o.code)}">
       <button type="button" class="space-back" onclick="${o.back.onclick}">${icon('arrow-left', 14)} ${esc(o.back.label)}</button>
@@ -170,9 +193,10 @@ function spaceSampleStrip(s) {
 }
 
 function spaceShell(o) {
+  const chat = o.tabs?.active === 'chat';
   return `
-    <div class="space space-${o.kind}${o.className ? ' ' + o.className : ''}" style="${spaceVars(o.color)}${o.rootStyle ? ';' + o.rootStyle : ''}">
-      ${spaceBand(o.band)}
+    <div class="space space-${o.kind}${chat ? ' is-chat-tab' : ''}${o.className ? ' ' + o.className : ''}" style="${spaceVars(o.color)}${o.rootStyle ? ';' + o.rootStyle : ''}">
+      ${spaceBand(chat ? { ...o.band, compact: true } : o.band)}
       ${spaceSampleStrip(o.sample)}
       ${o.notice || ''}
       ${spaceTabs({ kind: o.kind, ...o.tabs })}
@@ -235,7 +259,7 @@ function spaceCard(o) {
       : `<div class="space-card-line is-bare" id="${id}-line"><span class="space-card-unread" aria-hidden="true"></span><span class="space-card-unread-text">${esc(unreadText.charAt(0).toUpperCase() + unreadText.slice(1).toLowerCase())}</span></div>`)
     : (o.lineHtml ? `<div class="space-card-line" id="${id}-line">${o.lineHtml}</div>` : '');
   const describedBy = [o.nextHtml ? `${id}-next` : '', unread ? `${id}-line` : '', need ? `${id}-need` : ''].filter(Boolean).join(' ');
-  const foot = String(o.footHtml || '').replace('<span class="sg-stack">', '<span class="sg-stack" aria-hidden="true">');
+  const foot = String(o.footHtml || '').replace('<span class="sg-stack space-stack"', '<span class="sg-stack space-stack" aria-hidden="true"');
   return `
     <div class="card sg-card space space-card" style="${spaceVars(o.color)}${o.style ? ';' + o.style : ''}" role="button" tabindex="0" onclick="${o.onclick}" aria-labelledby="${id}-name"${describedBy ? ` aria-describedby="${describedBy}"` : ''}>
       <div class="space-card-cover space-cover" data-pattern="${spacePattern(o.code)}">

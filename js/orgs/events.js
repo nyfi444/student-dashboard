@@ -9,7 +9,10 @@
    Extend this series) is js/orgs/calendar.js; orgAgendaRow and the sheets
    stay here.
 
-   Rows carry spaceWhenChip (today, tomorrow, Happening now). Once an
+   Rows, the hero and the Month day list show at most two tags
+   (orgEventTags with a budget): the time chip (spaceWhenChip: tonight,
+   Happening now), Required, then Weekly only if there is room. The
+   category is a glyph in the meta line (orgMetaCat). Once an
    event ends, officers get Post a recap on the sheet, the rows and the
    Overview's "just ended" card:
      postOrgRecap(code, eventId) opens openAnnouncementModal with a
@@ -107,7 +110,7 @@ function orgNextHero(o, e, need = null) {
   return spaceEventHero({
     date: e.date, start: e.start, end: e.end, where: e.location, notes: e.notes,
     eyebrow: dues ? 'Next up · Due' : eventTimeState(e).phase === 'now' ? 'On now' : 'Next up',
-    tags: orgEventTags(o, e, { need }),
+    tags: orgEventTags(o, e, { budget: 2, used: 1, need }),
     title: e.title,
     onOpen: `showOrgEventModal('${o.code}','${e.id}')`,
     rsvpHtml: orgRsvpControl(o, e, myOrgRsvp(o, e.id), { size: 'hero', stillComing: true }),
@@ -137,19 +140,43 @@ function orgPickAgendaDay(code, dateIso) {
 }
 // The events that ask for your answer: exactly the 'event' items of
 // spaceNeeds, so a weekly series asks once and every count agrees.
-function orgNeedIds(o) { return new Set(spaceNeeds('club', o).items.filter(i => i.type === 'event').map(i => i.id)); }
-// Required, Weekly, the category (agenda rows only) and Needs your answer.
-// need: a Set from orgNeedIds (pass it when tagging many rows).
-function orgEventTags(o, e, { cat = false, need = null } = {}) {
+// An event that has started or ended never asks.
+function orgNeedIds(o) {
+  const byId = new Map(orgEventList(o).map(e => [e.id, e]));
+  return new Set(spaceNeeds('club', o).items.filter(i => i.type === 'event' && byId.has(i.id) && eventTimeState(byId.get(i.id)).phase === 'before').map(i => i.id));
+}
+// The event's tags. need: a Set from orgNeedIds (pass it when tagging many rows).
+// Full set (budget 0): Required, Weekly, the category (cat) and Needs your answer.
+// With a budget (rows, the hero, the Month day list) it shows at most that
+// many, in this order: the time chip (when: Tonight, Happening now),
+// Required, then the Weekly or series label only while fewer than two are
+// shown. used counts a slot already spent elsewhere (the hero's eyebrow
+// says On now or Next up, and its chip carries the countdown). No
+// category (rows put its glyph in the meta line) and no Needs your answer
+// (the unanswered RSVP already asks).
+function orgEventTags(o, e, { cat = false, need = null, budget = 0, when = false, used = 0 } = {}) {
   const dues = orgIsDuesEvent(e);
+  const req = e.required && !dues ? spaceTag('required', 'Required') : '';
+  const series = e.seriesId ? spaceTag('weekly', orgSeriesLabel(o, e)) : '';
+  if (budget) {
+    const out = [when ? spaceWhenChip(e) : '', req].filter(Boolean);
+    if (series && used + out.length < 2) out.push(series);
+    return out.slice(0, Math.max(0, budget - used)).join('');
+  }
   const c = orgCat(e);
-  const asks = (need || orgNeedIds(o)).has(e.id);
+  const asks = eventTimeState(e).phase === 'before' && (need || orgNeedIds(o)).has(e.id);
   return [
-    e.required && !dues ? spaceTag('required', 'Required') : '',
-    e.seriesId ? spaceTag('weekly', orgSeriesLabel(o, e)) : '',
+    req, series,
     cat && !dues && c[0] !== 'other' ? spaceTag('cat', c[1], c[2]) : '',
     asks ? spaceTag('need', 'Needs your answer') : '',
   ].join('');
+}
+// The category as a 13px glyph at the start of a row's meta line; the
+// name is read, not shown.
+function orgMetaCat(e) {
+  const c = orgCat(e);
+  if (orgIsDuesEvent(e) || c[0] === 'other') return '';
+  return `<span class="org-meta-cat">${icon(c[2], 13)}<span class="sr-only">${esc(c[1])}, </span></span>`;
 }
 // One flat agenda row: date tile, title, when and where, tags, and the
 // compact RSVP (or the dues button) at the end. The Calendar tab
@@ -167,8 +194,8 @@ function orgAgendaRow(o, e, need = null, { className = '', facesHtml = '' } = {}
   return spaceAgendaRow({
     date: e.date, title: e.title, past, className,
     // A dues row says Due beside a flag, where others have their time.
-    metaHtml: [dues && !e.start ? `<span class="org-cat">${icon('flag', 12)} Due</span>` : esc(when), e.location ? esc(e.location) : '', going ? `<span class="org-row-going">${going}</span>` : ''].filter(Boolean).join(' · '),
-    tags: `${past ? '' : spaceWhenChip(e)}${orgEventTags(o, e, { cat: true, need })}${facesHtml ? `<span class="org-cal-faces">${facesHtml}</span>` : ''}`,
+    metaHtml: [dues && !e.start ? `<span class="org-cat">${icon('flag', 12)} Due</span>` : `${orgMetaCat(e)}${esc(when)}`, e.location ? esc(e.location) : '', going ? `<span class="org-row-going">${going}</span>` : ''].filter(Boolean).join(' · '),
+    tags: `${orgEventTags(o, e, { budget: 2, when: !past, need })}${facesHtml ? `<span class="org-cal-faces">${facesHtml}</span>` : ''}`,
     trailingHtml: past ? orgRecapLink(o, e) : orgRsvpControl(o, e),
     onclick: `showOrgEventModal('${o.code}','${e.id}')`,
   });
@@ -201,7 +228,7 @@ function showOrgEventModal(code, eventId) {
 }
 // opts (new events only):
 //   prefill: an event to copy (Duplicate). Everything but the date and the
-//     series comes along; the date moves a week on, past today.
+//     series comes along; the caller picks the date (orgDuplicateDate).
 //   date: an ISO date to start on (Add an event on this day, Month view).
 function openOrgEventModal(code, eventId, { prefill = null, date = '' } = {}) {
   const o = findOrg(code);
@@ -209,7 +236,7 @@ function openOrgEventModal(code, eventId, { prefill = null, date = '' } = {}) {
   const e = eventId ? orgEventList(o).find(x => x.id === eventId) : null;
   const later = e?.seriesId ? orgEventList(o).filter(x => x.seriesId === e.seriesId && x.date > e.date).length : 0;
   const blank = { title: '', category: 'meeting', date: todayIso(), start: '19:00', end: '20:00', location: '', required: false, notes: '' };
-  const v = e || (prefill ? { ...blank, ...prefill, date: orgDuplicateDate(prefill.date) } : blank);
+  const v = e || (prefill ? { ...blank, ...prefill, date: prefill.date || todayIso() } : blank);
   if (!e && /^\d{4}-\d{2}-\d{2}$/.test(date || '')) v.date = date;
   openModal(`
     <div class="modal-head"><h3>${e ? 'Edit event' : prefill ? 'Duplicate event' : `New event for ${esc(o.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>

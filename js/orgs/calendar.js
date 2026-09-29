@@ -18,7 +18,8 @@
    orgEventsTab(o) -> the tab.
    orgSeriesStep(o, seriesId) -> 7 | 14. orgSeriesLabel(o, e) ->
      'Weekly' | 'Every other week'. ORG_SERIES_LABELS[7 | 14].
-   orgDuplicateDate(dateIso) -> a week on, moved past today.
+   orgDuplicateDate(o, e) -> a week on, moved past today and past any
+     date this event (its series, or its title) already has.
    orgRepeatFieldsHtml() / orgRepeatToggle(on): the new-event modal's
      "Repeat [every week] [8 times]" row (#oe-repeat, #oe-step, #oe-weeks).
    orgEventOfficerActions(o, e) -> Duplicate and Extend this series
@@ -57,12 +58,15 @@ function orgSeriesStep(o, seriesId) {
   return tally[14] > tally[7] ? 14 : 7;
 }
 function orgSeriesLabel(o, e) { return ORG_SERIES_LABELS[orgSeriesStep(o, e?.seriesId)]; }
-// Duplicate lands a week after the original, and never in the past.
-function orgDuplicateDate(dateIso) {
+// Duplicate lands a week after the original, then a week at a time past
+// today and past any date that already has this event: the same series,
+// or (with no series) the same title. Saving it never doubles a day.
+function orgDuplicateDate(o, e) {
   const t = todayIso();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso || '')) return t;
-  let d = addDays(dateIso, 7);
-  for (let i = 0; d < t && i < 1000; i++) d = addDays(d, 7);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(e?.date || '')) return t;
+  const taken = new Set(orgEventList(o).filter(x => (e.seriesId ? x.seriesId === e.seriesId : x.title === e.title)).map(x => x.date));
+  let d = addDays(e.date, 7);
+  for (let i = 0; (d < t || taken.has(d)) && i < 1000; i++) d = addDays(d, 7);
   return d < t ? t : d;
 }
 // The next n dates after the series' last one, at its cadence.
@@ -99,8 +103,8 @@ function duplicateOrgEvent(code, eventId) {
   const o = findOrg(code);
   const e = o && orgEventList(o).find(x => x.id === eventId);
   if (!e || !isOrgOfficer(o)) return;
-  const { title, category, start, end, location, notes, required, date } = e;
-  openOrgEventModal(code, null, { prefill: { title, category, start, end, location, notes, required: !!required, date } });
+  const { title, category, start, end, location, notes, required } = e;
+  openOrgEventModal(code, null, { prefill: { title, category, start, end, location, notes, required: !!required, date: orgDuplicateDate(o, e) } });
 }
 function orgExtendPreviewText(o, seriesId, n) {
   const { dates, step } = orgSeriesNext(o, seriesId, n);
@@ -239,7 +243,7 @@ function orgCalAgenda(o, st, events, need) {
     : orgCalNone(o, st, orgCalFiltered(st) ? 'Nothing coming up that matches.' : 'Nothing coming up yet.');
   return `
     ${body}
-    ${past.length ? `<details class="sg-past org-cal-past"><summary class="small muted">Past events (${past.length})</summary><div class="card card-pad">${past.slice(0, 40).map(e => orgCalRow(o, e, need)).join('')}</div></details>` : ''}`;
+    ${past.length ? `<details class="space-disclosure org-cal-past"><summary>Past events <span class="space-disclosure-n">· ${past.length}</span></summary><div class="card card-pad">${past.slice(0, 40).map(e => orgCalRow(o, e, need)).join('')}</div></details>` : ''}`;
 }
 
 /* ── Month ─────────────────────────────────────────────────────── */
@@ -264,13 +268,13 @@ function orgMonthGrid(o, st, events, need) {
     const isToday = d === today;
     const sel = d === day;
     const cls = ['org-month-cell', out ? 'is-out' : '', d < today ? 'is-past' : '', isToday ? 'is-today' : '', sel ? 'is-selected' : ''].filter(Boolean).join(' ');
-    const label = `${fmtDateLong(d)}${isToday ? ', today' : ''}${list.length ? `, ${list.length} event${list.length === 1 ? '' : 's'}: ${list.map(e => e.title).join(', ')}` : ', nothing planned'}`;
+    const label = `${fmtDateLong(d)}${isToday ? ', today' : ''}${list.length ? `, ${list.length} event${list.length === 1 ? '' : 's'}: ${list.map(e => `${e.title}${e.required && !orgIsDuesEvent(e) ? ', required' : ''}`).join('; ')}` : ', nothing planned'}`;
     const slivers = list.slice(0, 3).map(e => {
       const past = orgEventPast(e);
       return `<span class="org-sliver${e.required && !orgIsDuesEvent(e) ? ' is-required' : ''}${past ? ' is-past' : ''}">${e.start ? `<span class="org-sliver-time">${calShortTime(e.start)}</span>` : ''}${esc(e.title)}</span>`;
     }).join('');
     const dots = list.slice(0, 3).map(e => `<i class="${orgEventPast(e) ? 'is-past' : ''}"></i>`).join('');
-    return `<button type="button" class="${cls}" data-day="${d}" aria-pressed="${sel}"${isToday ? ' aria-current="date"' : ''} tabindex="${sel ? 0 : -1}" aria-label="${esc(label)}" onclick="pickOrgCalDay('${code}','${d}')" onkeydown="orgCalKey(event,'${code}','${d}')">
+    return `<button type="button" class="${cls}" data-day="${d}" aria-pressed="${sel}"${isToday ? ' aria-current="date"' : ''} tabindex="${sel ? 0 : -1}" aria-label="${esc(label)}" onclick="pickOrgCalDay('${code}','${d}',true)" onkeydown="orgCalKey(event,'${code}','${d}')">
         <span class="org-month-num">${Number(d.slice(8))}</span>
         <span class="org-month-evs" aria-hidden="true">${slivers}${list.length > 3 ? `<span class="org-month-more">+${list.length - 3}</span>` : ''}</span>
         <span class="org-month-dots" aria-hidden="true">${dots}</span>

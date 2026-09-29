@@ -24,12 +24,14 @@ let _modalReturnFocus = null;
 let _modalReturnKey = null;
 function modalFocusKey(el) {
   if (!el || el === document.body || !el.getAttribute) return null;
-  return { id: el.id || '', rsvp: el.closest?.('[data-rsvp-key]')?.getAttribute('data-rsvp-key') || '', onclick: el.getAttribute('onclick') || '', cls: String(el.getAttribute('class') || '') };
+  return { id: el.id || '', rsvp: el.closest?.('[data-rsvp-key]')?.getAttribute('data-rsvp-key') || '', onclick: el.getAttribute('onclick') || '', cls: String(el.getAttribute('class') || ''), chat: !!el.closest?.('.chat-card'), tag: el.tagName, text: String(el.textContent || '').trim().slice(0, 80) };
 }
 function modalRefindFocus(k) {
   if (!k) return null;
   const scope = document.getElementById('content') || document.body;
-  const shown = (x) => x && x.isConnected && x.getClientRects().length && !x.closest('[hidden]');
+  // Rendered and on screen. checkVisibility, not closest('[hidden]'): a
+  // panel may carry hidden while its CSS still shows it.
+  const shown = (x) => x && x.isConnected && x.getClientRects().length > 0 && (typeof x.checkVisibility === 'function' ? x.checkVisibility() : !x.closest('[hidden]'));
   if (k.id) { const x = document.getElementById(k.id); if (shown(x) && !x.closest('#modal')) return x; }
   if (k.onclick) {
     const same = [...scope.querySelectorAll('[onclick]')].filter(x => x.getAttribute('onclick') === k.onclick && shown(x));
@@ -41,9 +43,23 @@ function modalRefindFocus(k) {
     const t = ctl && [ctl.querySelector('.space-rsvp-change'), ctl.querySelector('button.space-rsvp-pill'), ctl.querySelector('.space-rsvp-btn[aria-pressed="true"]'), ctl.querySelector('.space-rsvp-btn')].find(shown);
     if (t) return t;
   }
+  // A toggle whose onclick flips with its state (a legend chip): the same
+  // kind of control with the same words.
+  const cls0 = String(k.cls || '').split(/\s+/).find(c => c && c !== 'active' && /^[a-z][\w-]*$/i.test(c));
+  if (cls0 && k.tag && k.text) {
+    const twin = [...scope.querySelectorAll(`${k.tag.toLowerCase()}.${cls0}`)].find(x => shown(x) && String(x.textContent || '').trim().slice(0, 80) === k.text);
+    if (twin) return twin;
+  }
   // The event the sheet was about: its face pile or its row title.
   const m = /show(?:GroupSession|OrgEvent)Modal\('[^']*','[^']*'\)/.exec(k.onclick || '');
   if (m) { const x = [...scope.querySelectorAll('[onclick]')].find(el => el.getAttribute('onclick').includes(m[0]) && shown(el)); if (x) return x; }
+  // A control in the chat that went away (a deleted message): the composer,
+  // or the sheet's back button on a touch phone so no keyboard pops up.
+  if (k.chat) {
+    const touch = typeof chatTouchKeyboard === 'function' && chatTouchKeyboard();
+    const c = scope.querySelector(touch ? '.chat-sheet-back' : '.chat-card .chat-input');
+    if (shown(c)) return c;
+  }
   const tab = scope.querySelector('[role="tab"][aria-selected="true"]');
   return shown(tab) ? tab : null;
 }
@@ -51,7 +67,14 @@ function openModal(html, { wide = false, onClose } = {}) {
   _modalGen++;
   const modal = $('#modal');
   const wasOpen = $('#modal-wrap').classList.contains('show');
-  if (!wasOpen) { _modalReturnFocus = document.activeElement; _modalReturnKey = modalFocusKey(document.activeElement); }
+  if (!wasOpen) {
+    // A ··· menu item closes its menu before its onclick opens this dialog,
+    // so focus is on <body> by now: go back to the ··· button instead.
+    let from = document.activeElement;
+    if ((!from || from === document.body) && window._menuReturn?.isConnected) from = window._menuReturn;
+    _modalReturnFocus = from; _modalReturnKey = modalFocusKey(from);
+  }
+  window._menuReturn = null;
   modal.className = 'modal' + (wide ? ' wide' : '');
   modal.innerHTML = html;
   modal.scrollTop = 0; // .is-scrolled is cleared by the className reset above
@@ -276,6 +299,7 @@ function closeMenu(returnFocus = true) {
   _menu = null;
   cleanup();
   el.remove();
+  if (returnFocus) window._menuReturn = null;
   if (anchor) { anchor.setAttribute('aria-expanded', 'false'); if (returnFocus && document.contains(anchor)) { try { anchor.focus({ preventScroll: true }); } catch {} } }
 }
 function openMenu(anchorEl, html, { align = 'end' } = {}) {
@@ -318,7 +342,14 @@ function openMenu(anchorEl, html, { align = 'end' } = {}) {
   const onScroll = e => { if (!el.contains(e.target)) closeMenu(false); };
   const onResize = () => closeMenu(false);
   // An item closes the menu first, then its own onclick runs (capture phase).
-  el.addEventListener('click', e => { if (e.target.closest('.menu-item')) closeMenu(false); }, true);
+  // The ··· button is remembered for a moment, so a dialog the item opens
+  // (openModal) or a redraw it causes (render) can hand focus back to it.
+  el.addEventListener('click', e => {
+    if (!e.target.closest('.menu-item')) return;
+    window._menuReturn = anchorEl;
+    closeMenu(false);
+    setTimeout(() => { if (window._menuReturn === anchorEl) window._menuReturn = null; }, 400);
+  }, true);
   document.addEventListener('keydown', onKey, true);
   document.addEventListener('pointerdown', onDown, true);
   window.addEventListener('scroll', onScroll, true);

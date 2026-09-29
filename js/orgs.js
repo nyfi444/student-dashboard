@@ -662,8 +662,8 @@ function sampleOrgTemplate(kind) {
     ],
     announcements: [['Dues are due next week. Payment plans are fine, just message Grace before the deadline.', 'grace', 20, true], ['Thank you to everyone who came to the river cleanup! That’s 33 more service hours for the chapter.', 'mei', 70]],
     messages: [['camila', 'Does anyone have a ride to the blood drive?', 30], ['zoe', 'I can take two people, I’m leaving at 9:45', 29], ['olivia', 'Reminder that chapter is at 6 on Sunday. Dinner right after!', 4]],
-    files: [{ kind: 'link', title: 'Chapter bylaws', url: 'https://example.com/bylaws', by: 'olivia', hours: 400 }, { kind: 'link', title: 'Service hours log', url: 'https://example.com/service-log', by: 'mei', hours: 60 }],
-    links: [['GroupMe', 'https://groupme.com/'], ['Dues portal', 'https://example.com/dues'], ['Instagram', 'https://instagram.com/']],
+    files: [{ kind: 'link', title: 'Chapter bylaws', url: 'https://docs.google.com/document/d/chapter-bylaws', by: 'olivia', hours: 400 }, { kind: 'link', title: 'Service hours log', url: 'https://docs.google.com/spreadsheets/d/service-hours-log', by: 'mei', hours: 60 }],
+    links: [['GroupMe', 'https://groupme.com/'], ['Dues portal', 'https://venmo.com/u/sample-chapter-dues'], ['Instagram', 'https://instagram.com/']],
   };
   if (kind === 'team') return {
     name: 'Club Volleyball', kind: 'team', color: ORG_COLORS[4],
@@ -680,7 +680,7 @@ function sampleOrgTemplate(kind) {
     ],
     announcements: [['Tournament roster is up in Files. If you can’t travel, tell Marcus by Friday so we can bring a sub.', 'marcus', 16, true], ['Great win at the home match! Film is in Files if you want to see your serves.', 'dani', 110]],
     messages: [['owen', 'Is practice still on if it’s raining?', 26], ['dani', 'Yep, it’s indoors!', 25.5], ['yuki', 'Can I borrow someone’s spare knee pads for Wednesday?', 6], ['jasmine', 'I have an extra pair, I’ll bring them', 5]],
-    files: [{ kind: 'link', title: 'Tournament roster', url: 'https://example.com/roster', by: 'marcus', hours: 16 }, { kind: 'link', title: 'Match film', url: 'https://example.com/film', by: 'dani', hours: 110 }],
+    files: [{ kind: 'link', title: 'Tournament roster', url: 'https://docs.google.com/spreadsheets/d/tournament-roster', by: 'marcus', hours: 16 }, { kind: 'link', title: 'Match film', url: 'https://drive.google.com/drive/folders/match-film', by: 'dani', hours: 110 }],
     links: [['Instagram', 'https://instagram.com/'], ['Venmo for fees', 'https://venmo.com/']],
   };
   if (kind === 'honor') return {
@@ -699,7 +699,7 @@ function sampleOrgTemplate(kind) {
     ],
     announcements: [['Induction is in two weeks. New members, please send Omar the name you want on your certificate.', 'omar', 30, true], ['We’re at 212 service hours this semester. Thank you, everyone!', 'rachel', 140]],
     messages: [['sana', 'Is tutoring still on this week?', 50], ['lucy', 'Yes! Same time, 3:30 to 5', 49], ['hannah', 'The kids at tutoring made us a thank-you card today', 3]],
-    files: [{ kind: 'link', title: 'Service hours form', url: 'https://example.com/hours', by: 'omar', hours: 300 }, { kind: 'link', title: 'Induction program', url: 'https://example.com/program', by: 'rachel', hours: 30 }],
+    files: [{ kind: 'link', title: 'Service hours form', url: 'https://forms.gle/service-hours', by: 'omar', hours: 300 }, { kind: 'link', title: 'Induction program', url: 'https://docs.google.com/document/d/induction-program', by: 'rachel', hours: 30 }],
     links: [['Service hours form', 'https://forms.google.com/'], ['Instagram', 'https://instagram.com/']],
   };
   return {
@@ -717,9 +717,9 @@ function sampleOrgTemplate(kind) {
       { title: 'Networking night with alumni', category: 'social', date: addDays(t, 9), start: '18:30', end: '20:30', location: 'Business School atrium', notes: 'Business casual. Bring a few copies of your resume.' },
       { title: 'Food bank volunteering', category: 'service', date: addDays(t, 12), start: '10:00', end: '13:00', location: 'Downtown food bank' },
     ],
-    announcements: [['Dues are coming up. $40 for the semester, Venmo @noah-treasurer with your name in the note.', 'noah', 20, true], ['Huge thank you to everyone who came to the resume workshop! Slides are in the drive: https://example.com/slides', 'ava', 72]],
+    announcements: [['Dues are coming up. $40 for the semester, Venmo @noah-treasurer with your name in the note.', 'noah', 20, true], ['Huge thank you to everyone who came to the resume workshop! Slides are in Files.', 'ava', 72]],
     messages: [['lena', 'Is the networking night business casual or business formal?', 27], ['ava', 'Business casual! Bring a few copies of your resume.', 26.5], ['jade', 'I can drive 3 people to the food bank on Saturday.', 5], ['lena', '@Jade can I grab one of those seats?\nI can meet you at the student center.', 4.8], ['noah', 'Reminder that dues are coming up. The details are in Files.', 2]],
-    files: [{ kind: 'file', title: 'Spring dues', text: 'Spring dues\n\n$40 for the semester.\nVenmo @noah-treasurer and put your name in the note.\nQuestions? Ask Noah in chat.\n', by: 'noah', hours: 20 }, { kind: 'link', title: 'Resume workshop slides', url: 'https://example.com/slides', by: 'ava', hours: 72 }],
+    files: [{ kind: 'file', title: 'Spring dues', text: 'Spring dues\n\n$40 for the semester.\nVenmo @noah-treasurer and put your name in the note.\nQuestions? Ask Noah in chat.\n', by: 'noah', hours: 20 }, { kind: 'pdf', title: 'Resume workshop slides', lines: ['What we covered', 'Lead each bullet with a strong verb: led, built, grew.', 'Put a number on your impact: 40 members, $2,000 raised.', 'Keep it to one page and one clean font.', 'Tailor the top third to the role you want.', 'Save it as a PDF with your name in the file name.', 'Bring three printed copies to networking night.'], by: 'ava', hours: 72 }],
     links: [['GroupMe', 'https://groupme.com/'], ['Instagram', 'https://instagram.com/'], ['Venmo for dues', 'https://venmo.com/']],
   };
 }
@@ -781,7 +781,9 @@ function createSampleOrg(kind = 'club') {
   orgChatSeen()[code] = now - 12 * H;
   const last = messages[messages.length - 1];
   const files = Object.fromEntries(tpl.files.map((f, i) => {
-    const id = uid() + i, base = { id, kind: f.kind, title: f.title, uid: idOf(f.by), name: nameOf(f.by), at: now - f.hours * H };
+    const id = uid() + i, base = { id, kind: f.kind === 'pdf' ? 'file' : f.kind, title: f.title, uid: idOf(f.by), name: nameOf(f.by), at: now - f.hours * H };
+    // kind 'pdf': a real one-page PDF of lines (libSamplePdf, js/spaces/files.js).
+    if (f.kind === 'pdf') { const d = libSamplePdf(f.title, f.lines); return [id, { ...base, fileName: `${f.title}.pdf`, size: d.size, url: d.dataUrl }]; }
     return [id, f.kind === 'file'
       ? { ...base, fileName: `${f.title}.txt`, size: f.text.length, url: 'data:text/plain;base64,' + btoa(f.text) }
       : { ...base, url: f.url }];

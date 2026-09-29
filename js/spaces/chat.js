@@ -394,14 +394,14 @@ function chatView(o) {
         <div class="chat-sheet-head">
           <button type="button" class="chat-sheet-back" aria-label="Close chat" onclick="chatCloseSheet('${kind}')">${icon('chevron-left', 20)}</button>
           ${o.crest ? spaceCrest(o.crest, 'md') : ''}
-          <span class="chat-sheet-title"><span class="chat-sheet-name">${esc(o.title || '')}</span>${o.sub ? `<span class="chat-sheet-sub">${esc(o.sub)}</span>` : ''}</span>
+          <span class="chat-sheet-title"><span class="chat-sheet-name" id="chat-sheet-name-${kind}">${esc(o.title || '')}</span>${o.sub ? `<span class="chat-sheet-sub">${esc(o.sub)}</span>` : ''}</span>
         </div>
         <div class="chat-log" id="${a.logId}" data-keep-scroll="bottom" role="log" aria-label="Messages">${logBody}</div>
         <div class="chat-compose">
-          <textarea class="input chat-input" id="${a.inputId}" rows="1" maxlength="${GROUP_MESSAGE_MAX}" autocomplete="off" enterkeyhint="enter" aria-label="${esc(o.placeholder || 'Message')}" placeholder="${esc(o.placeholder || 'Message')}" oninput="chatGrow(this)" onkeydown="if(chatEnterSends(event)){event.preventDefault();${sendArgs}}"></textarea>
+          <textarea class="input chat-input" id="${a.inputId}" aria-describedby="${a.inputId}-hint" rows="1" maxlength="${GROUP_MESSAGE_MAX}" autocomplete="off" enterkeyhint="enter" aria-label="${esc(o.placeholder || 'Message')}" placeholder="${esc(o.placeholder || 'Message')}" oninput="chatGrow(this)" onkeydown="if(chatEnterSends(event)){event.preventDefault();${sendArgs}}"></textarea>
           <button type="button" class="chat-send" aria-label="Send message" data-tip="Send" onclick="${sendArgs}">${icon('send', 16)}</button>
         </div>
-        <div class="chat-hint" aria-hidden="true">Enter to send · Shift+Enter for a new line</div>
+        <div class="chat-hint" id="${a.inputId}-hint">${chatTouchKeyboard() ? 'Tap send to post. Return adds a new line.' : 'Enter to send · Shift+Enter for a new line'}</div>
       </div>
     </div>`;
 }
@@ -455,9 +455,15 @@ function chatFit() {
     root.style.setProperty('--chat-bottom', `${kb > 40 ? kb : nav}px`);
     return;
   }
+  // Desktop: the card fills the window under the compact band, 24px from
+  // the bottom, so only the log scrolls. Whatever sits below the card (the
+  // page's bottom padding) is taken off too, so the page itself doesn't.
+  chatReleaseInert();
   const top = card.getBoundingClientRect().top + window.scrollY;
-  const h = Math.max(420, Math.min(720, window.innerHeight - top - 24));
+  let h = Math.max(420, window.innerHeight - top - 24);
   card.style.height = `${Math.round(h)}px`;
+  const over = document.documentElement.scrollHeight - window.innerHeight;
+  if (over > 0 && h > 420) card.style.height = `${Math.round(Math.max(420, h - over))}px`;
 }
 let _chatWired = false;
 function _chatWire() {
@@ -471,14 +477,59 @@ function _chatWire() {
   }
 }
 
+/* ── The phone sheet is a dialog ──
+   On a phone the chat covers the page, so it is a modal dialog: everything
+   it covers goes inert (out of the Tab and screen reader order) and focus
+   starts on its back button, which hands focus back to whatever opened it.
+   The bottom tab bar stays live: it is not covered, and tapping it leaves
+   the chat. render() releases the inert first thing (chatReleaseInert). */
+const CHAT_INERT_KEEP = new Set(['modal-wrap', 'overlay', 'toast-stack', 'focus-layer', 'print-area', 'hidden-file-input', 'sidebar']);
+const _chatSheetOpen = {};   // kind -> true while the phone sheet is up
+const _chatOpener = {};      // kind -> modalFocusKey of what opened it
+function chatReleaseInert() {
+  document.querySelectorAll('[data-chat-inert]').forEach(el => { el.inert = false; el.removeAttribute('data-chat-inert'); });
+}
+function _chatHoldInert(view) {
+  let node = view;
+  while (node && node.parentElement && node !== document.body) {
+    for (const sib of node.parentElement.children) {
+      if (sib === node || sib.inert || CHAT_INERT_KEEP.has(sib.id) || /^(SCRIPT|STYLE|TEMPLATE|LINK)$/.test(sib.tagName)) continue;
+      sib.inert = true;
+      sib.setAttribute('data-chat-inert', '');
+    }
+    node = node.parentElement;
+  }
+}
+function _chatSheetRole(kind, card, phone) {
+  if (phone) {
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    card.setAttribute('aria-labelledby', `chat-sheet-name-${kind}`);
+  } else {
+    card.removeAttribute('role'); card.removeAttribute('aria-modal'); card.removeAttribute('aria-labelledby');
+  }
+}
+
 /* ── After render ── */
 function chatAfterRender(kind, code) {
   const a = CHAT_ADAPTERS[kind];
   const log = a && document.getElementById(a.logId);
-  if (!log) { chatForget(kind); return; }
+  if (!log) { chatForget(kind); _chatSheetOpen[kind] = false; return; }
   _chatWire();
   const v = chatViewState(kind, code);
   chatFit();
+  const card = log.closest('.chat-card');
+  const phone = chatIsPhone();
+  if (card) _chatSheetRole(kind, card, phone);
+  if (phone && card) {
+    _chatHoldInert(card.closest('.chat-view') || card);
+    if (!_chatSheetOpen[kind]) {
+      _chatSheetOpen[kind] = true;
+      _chatOpener[kind] = window._renderFocusKey || null;
+      const back = card.querySelector('.chat-sheet-back');
+      if (back) { try { back.focus({ preventScroll: true }); } catch {} }
+    }
+  } else _chatSheetOpen[kind] = false;
   const input = document.getElementById(a.inputId);
   if (input) {
     chatGrow(input);
@@ -516,7 +567,13 @@ function chatForget(kind, tab) {
 }
 function chatCloseSheet(kind) {
   const back = _chatPrevTab[kind] || 'overview';
+  const opener = _chatOpener[kind];
+  _chatOpener[kind] = null;
   spaceGoToTab(kind, back);
+  // Back to the tab or chat button that opened the sheet, else the active tab.
+  const k = opener || { onclick: '', id: '' };
+  const el = modalRefindFocus(k);
+  if (el) { try { el.focus({ preventScroll: true }); } catch {} }
 }
 
 /* ── Share to chat (session and event sheets) ── */
@@ -529,5 +586,8 @@ async function shareToSpaceChat(kind, code, id) {
   if (typeof closeModal === 'function') closeModal();
   a.open(code);
   chatPinBottom(kind, code);
+  // Focus lands in the composer (the phone sheet puts it on its back button).
+  const input = document.getElementById(a.inputId);
+  if (input && !chatIsPhone()) { try { input.focus({ preventScroll: true }); } catch {} }
   await a.send(code, a.link(code, id));
 }

@@ -68,12 +68,13 @@ function groupHomeEmptyHero(g) {
       <div class="flex-gap wrap"><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} Schedule a session</button><button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 14)} Find a time</button></div>
     </div>`;
 }
+// The same words Find a time's answer card uses (availWhenText, availWho),
+// so the home and the tab never answer the question two ways.
 function groupBestLine(g, w) {
-  const people = groupPeople(g).length;
-  const n = w.uids.length;
+  const added = availContributors(g).length;
   return {
-    when: `${AVAIL_DAYS_LONG[w.day]}, ${fmtTime(slotTime(w.start))} to ${fmtTime(slotTime(w.end))}`,
-    who: n >= people ? `works for all ${n}` : `works for ${n} of ${people}`,
+    when: availWhenText(w),
+    who: availWho(w, added, Math.max(groupPeople(g).length, added)).text,
     schedule: `scheduleFromBestTime('${g.code}',${w.day},${w.start},${w.end})`,
   };
 }

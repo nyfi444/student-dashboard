@@ -16,6 +16,14 @@
                           "Edit my times". Mouse and pen always paint.
    - window._availFillAnim the group code whose next render plays the fill
    - _availOpen[code]     "See the details" opened on a phone
+   - _availAdd[code]      the Add a time row's day, from and to picks
+
+   Without a pointer: "Add a time" (a day and two half-hour selects) and
+   the list of your saved times under Your week write the same d0..d6
+   strings the painter does, and a per-day text summary follows the
+   Everyone grid for screen readers (the grids themselves are role=img).
+   Painted runs are drawn as one element each (.sg-run, .sg-prun) placed
+   on the grid's rows, so every shape has the same radius on all corners.
 ──────────────────────────────────────────────────────────────── */
 const AVAIL_START_HOUR = 7;
 const AVAIL_SLOT_MIN = 30;
@@ -28,6 +36,7 @@ const AVAIL_AUTO_END = '21:00';
 const AVAIL_STALE_DAYS = 21;       // older than this, a person's grid says "updated Aug 30"
 const AVAIL_SCHEDULE_SLOTS = 4;    // "Schedule it" pre-fills up to 2 hours
 const _availOpen = {};
+const _availAdd = {};
 
 /* ── Availability grid encoding: one '0'/'1' string per weekday ─── */
 function emptyDayStr() { return '0'.repeat(AVAIL_SLOTS); }
@@ -89,6 +98,20 @@ function availReducedMotion() { try { return window.matchMedia('(prefers-reduced
 function availRange(startSlot, endSlot) {
   const a = fmtTime(slotTime(startSlot)), b = fmtTime(slotTime(endSlot));
   return a.slice(-2) === b.slice(-2) ? `${a.slice(0, -3)} to ${b}` : `${a} to ${b}`;
+}
+// "Wednesdays, 5:00 to 7:30 PM". The answer card and the group home both
+// use it, so the two places say the best time the same way.
+function availWhenText(w) { return `${AVAIL_DAYS_LONG[w.day]}s, ${availRange(w.start, w.end)}`; }
+// [start, end) half-hour runs of '1' in one day string.
+function availRuns(dayStr) {
+  const out = [];
+  let s = -1;
+  for (let i = 0; i <= AVAIL_SLOTS; i++) {
+    const on = i < AVAIL_SLOTS && dayStr[i] === '1';
+    if (on && s < 0) s = i;
+    if (!on && s >= 0) { out.push([s, i]); s = -1; }
+  }
+  return out;
 }
 // Half-hour slots as words: "30 min", "1 hour", "2½ hours".
 function availSpan(slots) {
@@ -170,8 +193,8 @@ function groupAvailabilityTab(g) {
       ${availProgressRow(g, ctx)}
       ${availAnswerCard(g, ctx)}
       <div class="sg-details ${open ? 'is-open' : ''}">
-        <button type="button" class="sg-details-toggle" aria-expanded="${open}" aria-controls="sg-details-body" onclick="availToggleDetails('${g.code}')"><span>${open ? 'Hide the details' : 'See the details'}</span><span class="sg-details-sub">Your week and everyone’s</span>${icon('chevron-down', 16)}</button>
-        <div class="sg-avail-wrap" id="sg-details-body" ${open ? '' : 'hidden'}>
+        <button type="button" class="sg-details-toggle" aria-expanded="${open}" aria-controls="sg-details-body" onclick="availToggleDetails('${g.code}')"><span class="sg-details-label">See the details</span><span class="sg-details-sub">Your week, everyone’s, and your times as a list</span></button>
+        <div class="sg-avail-wrap" id="sg-details-body">
           ${availMyWeekCard(g, ctx)}
           ${availEveryoneCard(g, ctx, contributors)}
         </div>
@@ -229,7 +252,7 @@ function availAnswerCard(g, ctx) {
       <section class="card sg-answer${alts.length ? '' : ' is-solo'}" aria-label="Best time to meet">
         <div class="sg-answer-main">
           <div class="eyebrow">Best time</div>
-          <h3 class="sg-answer-line">${AVAIL_DAYS_LONG[w.day]}s, ${esc(availRange(w.start, w.end))} <span class="sg-answer-who">${who.html}</span></h3>
+          <h3 class="sg-answer-line">${esc(availWhenText(w))} <span class="sg-answer-who">${who.html}</span></h3>
           <div class="sg-answer-sub">${availSpan(slots)} open · every ${AVAIL_DAYS_LONG[w.day]}</div>
           <div class="sg-answer-faces">${spaceFacePile({ people: free, meUid: u, verb: 'free', size: 26, max: 6, colorOf: (id) => personColor(g, id) })}</div>
           ${availExamNote(w)}
@@ -246,11 +269,11 @@ function availAnswerCard(g, ctx) {
             return `
             <div class="sg-alt">
               <div class="sg-alt-text">
-                <div class="sg-alt-when">${AVAIL_DAYS_LONG[a.day]}s, ${esc(availRange(a.start, a.end))}</div>
+                <div class="sg-alt-when">${esc(availWhenText(a))}</div>
                 <div class="sg-alt-meta">${avatarStack(g, 4, 22, a.uids)}<span>${esc(aw.short)} · ${availSpan(a.end - a.start)}</span></div>
                 ${availExamNote(a)}
               </div>
-              <button type="button" class="btn btn-sm" aria-label="Schedule ${esc(`${AVAIL_DAYS_LONG[a.day]}s, ${availRange(a.start, a.end)}`)}" onclick="scheduleFromBestTime('${g.code}',${a.day},${a.start},${a.end})">Schedule</button>
+              <button type="button" class="btn btn-sm" aria-label="Schedule ${esc(availWhenText(a))}" onclick="scheduleFromBestTime('${g.code}',${a.day},${a.start},${a.end})">Schedule</button>
             </div>`;
           }).join('')}
         </div>` : ''}
@@ -284,7 +307,9 @@ function availAnswerCard(g, ctx) {
       </div>
     </section>`;
 }
-// 3. Your week: fill from your schedule, paint, pick your color.
+// 3. Your week: the grid first (so its hours line up with Everyone's),
+// then fill from your schedule, and the keyboard route: Add a time and
+// your saved times as a list.
 function availMyWeekCard(g, ctx) {
   const { u, mineAdded, busy, editing, added } = ctx;
   const color = personColor(g, u);
@@ -297,16 +322,66 @@ function availMyWeekCard(g, ctx) {
         <h3 class="sg-h3">Your week</h3>
         <button type="button" class="sg-me-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Your color in this group" onclick="availColorMenu(this,'${g.code}')">${personAvatar(u, 'You', 22, color)}<span>Your color</span>${icon('chevron-down', 14)}</button>
       </div>
-      <div class="sg-avail-actions">
-        ${editing ? '' : `<button type="button" class="btn btn-sm sg-edit-times" onclick="availStartEditing('${g.code}')">${icon('pencil', 14)} Edit my times</button>`}
-        ${fill}
-        ${mineAdded ? `<button type="button" class="btn btn-ghost btn-sm" onclick="clearMyAvailability('${g.code}')">Clear</button>` : ''}
-      </div>
-      <p class="sg-avail-hint"><span class="sg-hint-mouse">Drag to paint the times you’re free.</span><span class="sg-hint-touch">${editing ? 'Tap or drag to paint the times you’re free.' : 'Scrolling is safe. Tap Edit my times to paint.'}</span> The group sees free or busy, never your classes.</p>
       ${availGrid(g, availDayOrder(), 'mine', null, { editing })}
+      <div class="sg-week-tools">
+        <div class="sg-avail-actions">
+          ${editing ? '' : `<button type="button" class="btn btn-sm sg-edit-times" onclick="availStartEditing('${g.code}')">${icon('pencil', 14)} Edit my times</button>`}
+          ${fill}
+          ${mineAdded ? `<button type="button" class="btn btn-ghost btn-sm" onclick="clearMyAvailability('${g.code}')">Clear</button>` : ''}
+        </div>
+        <p class="sg-avail-hint"><span class="sg-hint-mouse">Drag to paint the times you’re free.</span><span class="sg-hint-touch">${editing ? 'Tap or drag to paint the times you’re free.' : 'Scrolling is safe. Tap Edit my times to paint.'}</span> The group sees free or busy, never your classes.</p>
+      </div>
+      ${availAddTimeRow(g)}
+      ${availMyTimesList(g, u)}
     </section>`;
 }
-// 4. Everyone: the heatmap (or one stripe per person), with who's free on hover or tap.
+// Add a time: a day and a half-hour range, merged into the same d0..d6
+// string the painter writes. The route for a keyboard or screen reader,
+// and the bigger target for the 14px cells on a phone.
+function availAddTimeRow(g) {
+  const code = g.code;
+  const pick = availAddPick(code);
+  const opt = (v, label, on) => `<option value="${v}"${on ? ' selected' : ''}>${esc(label)}</option>`;
+  const days = availDayOrder().map(d => opt(d, AVAIL_DAYS_LONG[d], d === pick.day)).join('');
+  const froms = Array.from({ length: AVAIL_SLOTS }, (_, i) => opt(i, fmtTime(slotTime(i)), i === pick.from)).join('');
+  const tos = Array.from({ length: AVAIL_SLOTS }, (_, i) => opt(i + 1, fmtTime(slotTime(i + 1)), i + 1 === pick.to)).join('');
+  const change = `onchange="availAddChange('${code}')"`;
+  return `
+    <div class="sg-addtime" role="group" aria-labelledby="sg-addtime-h">
+      <div class="sg-addtime-h" id="sg-addtime-h">Add a time</div>
+      <div class="sg-addtime-row">
+        <label class="sr-only" for="sg-at-day">Day</label>
+        <select class="select sg-at-day" id="sg-at-day" ${change}>${days}</select>
+        <span class="sg-addtime-range">
+          <label class="sr-only" for="sg-at-from">From</label>
+          <select class="select sg-at-time" id="sg-at-from" ${change}>${froms}</select>
+          <span class="sg-addtime-to" aria-hidden="true">to</span>
+          <label class="sr-only" for="sg-at-to">To</label>
+          <select class="select sg-at-time" id="sg-at-to" ${change}>${tos}</select>
+        </span>
+        <button type="button" class="btn btn-sm sg-addtime-add" onclick="availAddRange('${code}')">${icon('plus', 14)} Add</button>
+      </div>
+    </div>`;
+}
+// Your saved times as text, one line per day, each stretch with its own
+// Remove. "Remove Wednesday 5:00 to 7:30 PM" is the button's name.
+function availMyTimesList(g, u) {
+  const mine = g.avail?.[u];
+  const rows = availDayOrder().map(d => {
+    const runs = availRuns(availDay(mine, d));
+    if (!runs.length) return '';
+    const chips = runs.map(([s, e]) => `
+      <li class="sg-mytime"><span>${esc(availRange(s, e))}</span><button type="button" class="sg-mytime-x" data-fk="avrm:${d}:${s}" aria-label="Remove ${esc(`${AVAIL_DAYS_LONG[d]} ${availRange(s, e)}`)}" onclick="availRemoveRange('${g.code}',${d},${s},${e},this)">${icon('x', 12, 2.2)}</button></li>`).join('');
+    return `<div class="sg-mytimes-day"><span class="sg-mytimes-d">${AVAIL_DAYS[d]}</span><ul class="sg-mytimes-runs" aria-label="${AVAIL_DAYS_LONG[d]}">${chips}</ul></div>`;
+  }).join('');
+  return `
+    <div class="sg-mytimes">
+      <h4 class="sg-mytimes-h">Your times</h4>
+      ${rows || '<p class="sg-mytimes-none">None yet. Paint the grid or add a time above.</p>'}
+    </div>`;
+}
+// 4. Everyone: the heatmap (or one stripe per person), with who's free on
+// hover or tap, and the same answer as text for screen readers.
 function availEveryoneCard(g, ctx, contributors) {
   const { u } = ctx;
   const K = contributors.length;
@@ -314,12 +389,15 @@ function availEveryoneCard(g, ctx, contributors) {
   const view = K > 8 ? 'heat' : picked || (K > 3 ? 'heat' : 'people');
   const focus = contributors.some(([id]) => id === window._availFocus) ? window._availFocus : null;
   const touch = availIsTouch();
+  const steps = availHeatSteps(K);
   return `
     <section class="card sg-week-card sg-week-all" aria-label="Everyone’s week">
       <div class="sg-avail-head">
         <h3 class="sg-h3">Everyone</h3>
-        ${K <= 8 ? `<div class="segmented sg-view-toggle"><button type="button" class="${view === 'people' ? 'active' : ''}" aria-pressed="${view === 'people'}" onclick="window._availView='people';render()">People</button><button type="button" class="${view === 'heat' ? 'active' : ''}" aria-pressed="${view === 'heat'}" onclick="window._availView='heat';render()">Heatmap</button></div>` : `<span class="sg-avail-count">${K} added</span>`}
+        ${K <= 8 ? `<div class="segmented sg-view-toggle" role="group" aria-label="Show as"><button type="button" class="${view === 'people' ? 'active' : ''}" aria-pressed="${view === 'people'}" onclick="window._availView='people';render()">People</button><button type="button" class="${view === 'heat' ? 'active' : ''}" aria-pressed="${view === 'heat'}" onclick="window._availView='heat';render()">Heatmap</button></div>` : `<span class="sg-avail-count">${K} added</span>`}
       </div>
+      ${availGrid(g, availDayOrder(), view, focus)}
+      ${availEveryoneSummary(g, contributors)}
       ${view === 'people' ? `
         <div class="sg-legend-people" role="group" aria-label="Highlight one person">
           ${K ? contributors.map(([id, a]) => {
@@ -327,12 +405,47 @@ function availEveryoneCard(g, ctx, contributors) {
             return `<button type="button" class="sg-legend-person ${focus === id ? 'active' : ''} ${focus && focus !== id ? 'dim' : ''}" style="--p:${personColor(g, id)}" aria-pressed="${focus === id}" onclick="window._availFocus=${focus === id ? 'null' : `'${id}'`};render()"><span class="sg-legend-dot"></span>${esc(id === u ? 'You' : personName(g, id))}${stale ? `<span class="sg-legend-stale">updated ${esc(stale)}</span>` : ''}</button>`;
           }).join('') : '<span class="sg-avail-none">No one has added their times yet.</span>'}
         </div>` : ''}
-      ${availGrid(g, availDayOrder(), view, focus)}
       <div class="sg-grid-foot">
         <div class="sg-grid-readout" aria-live="polite" data-rest="${touch ? 'Tap a time to see who’s free.' : 'Point at a time to see who’s free.'}">${focus ? `Showing only ${esc(focus === u ? 'you' : personName(g, focus))}. ${touch ? 'Tap' : 'Click'} the name again for everyone.` : touch ? 'Tap a time to see who’s free.' : 'Point at a time to see who’s free.'}</div>
-        ${view === 'heat' ? `<div class="sg-legend"><span>Fewer</span><span class="sg-legend-bar"></span><span>Everyone</span></div>` : ''}
+        ${view === 'heat' && steps.length ? `<div class="sg-legend" role="list" aria-label="People free"><span class="sg-legend-lead" aria-hidden="true">Free</span>${steps.map(st => `<span class="sg-legend-step" role="listitem"><i style="--heat:${st.pct}%"${st.all ? ' class="is-all"' : ''}></i>${esc(st.label)}</span>`).join('')}</div>` : ''}
       </div>
     </section>`;
+}
+// The heat scale in steps, so the legend can say each step's count in
+// words: '1', '2-3', '4+' and 'All', dropping steps a small group can't
+// reach (three people: '1', '2', 'All').
+function availHeatSteps(K) {
+  if (K < 1) return [];
+  const steps = [];
+  const add = (min, max, label) => { if (min <= max) steps.push({ min, max, label }); };
+  add(1, Math.min(1, K - 1), '1');
+  add(2, Math.min(3, K - 1), Math.min(3, K - 1) > 2 ? '2-3' : '2');
+  add(4, K - 1, K - 1 > 4 ? '4+' : '4');
+  steps.push({ min: K, max: K, label: 'All', all: true });
+  return steps.map((st, j) => ({ ...st, pct: Math.round(18 + 82 * (j + 1) / steps.length) }));
+}
+function availHeatPct(steps, n) {
+  if (!n) return 0;
+  const st = steps.find(x => n >= x.min && n <= x.max);
+  return st ? st.pct : 0;
+}
+// Everyone's grid as text, one line per day, for screen readers (the grid
+// is an image to them): "Wednesday: 5:00 to 7:30 PM, 5 free; 7:30 to
+// 9:00 PM, 3 free". Visually hidden; the answer card says it for everyone.
+function availEveryoneSummary(g, contributors) {
+  if (!contributors.length) return '';
+  const lines = availDayOrder().map(d => {
+    const counts = Array.from({ length: AVAIL_SLOTS }, (_, i) => contributors.filter(([, a]) => availDay(a, d)[i] === '1').length);
+    const segs = [];
+    let s = 0;
+    for (let i = 1; i <= AVAIL_SLOTS; i++) {
+      if (i < AVAIL_SLOTS && counts[i] === counts[s]) continue;
+      if (counts[s] > 0) segs.push(`${availRange(s, i)}, ${counts[s]} free`);
+      s = i;
+    }
+    return `<li>${AVAIL_DAYS_LONG[d]}: ${esc(segs.length ? segs.join('; ') : 'nobody free yet')}</li>`;
+  }).join('');
+  return `<div class="sr-only" id="sg-avail-summary"><h4>Everyone’s free times, by day. ${contributors.length} of ${Math.max(groupPeople(g).length, contributors.length)} have added theirs.</h4><ul>${lines}</ul></div>`;
 }
 function availToggleDetails(code) {
   _availOpen[code] = !_availOpen[code];
@@ -381,10 +494,18 @@ function availColorMenu(btn, code) {
 }
 
 /* ── The grids ─────────────────────────────────────────────────── */
+// A painted stretch, placed on the grid's own rows and columns (row 1 is
+// the day names, column 1 the hours). It is absolutely positioned, so it
+// sits over the cells without taking part in their auto-placement. Both
+// ends are spelled out: an absolutely placed item with an auto end line
+// stretches to the edge of the grid.
+function availRunStyle(col, s, e) { return `grid-column:${col + 2} / span 1;grid-row:${s + 2} / span ${e - s}`; }
 function availGrid(g, days, mode, focus = null, { editing = false } = {}) {
   const u = myUidFor(g);
   const contributors = availContributors(g);
+  const K = contributors.length;
   const mine = g.avail?.[u];
+  const steps = mode === 'heat' ? availHeatSteps(K) : [];
   // The one render after "Fill from my class schedule" plays the fill.
   const filling = mode === 'mine' && window._availFillAnim === g.code && !availReducedMotion();
   const rows = [];
@@ -395,48 +516,47 @@ function availGrid(g, days, mode, focus = null, { editing = false } = {}) {
     rows.push(days.map(d => {
       const col = days.indexOf(d);
       if (mode === 'mine') {
-        const day = availDay(mine, d), on = day[i] === '1';
-        const run = on ? `${day[i - 1] === '1' ? '' : 'run-start'} ${day[i + 1] === '1' ? '' : 'run-end'}` : '';
-        const delay = filling && on ? ` style="--d:${col * 70 + i * 8}ms"` : '';
-        return `<div class="sg-cell ${hourRow ? 'hr' : ''} ${on ? 'on' : ''} ${run}" data-day="${d}" data-col="${col}" data-slot="${i}"${delay}></div>`;
+        const on = availDay(mine, d)[i] === '1';
+        return `<div class="sg-cell ${hourRow ? 'hr' : ''} ${on ? 'on' : ''}" data-day="${d}" data-col="${col}" data-slot="${i}"></div>`;
       }
       const free = contributors.filter(([, a]) => availDay(a, d)[i] === '1').map(([id]) => id);
-      const allAt = (slot) => contributors.length >= 2 && contributors.every(([, a]) => availDay(a, d)[slot] === '1');
+      const allAt = (slot) => K >= 2 && contributors.every(([, a]) => availDay(a, d)[slot] === '1');
       const everyone = allAt(i);
       const allRun = everyone ? `${allAt(i - 1) ? '' : 'all-start'} ${allAt(i + 1) ? '' : 'all-end'}` : '';
       const mineFirst = [...free.filter(id => id === u), ...free.filter(id => id !== u)];
       const label = `${AVAIL_DAYS[d]} ${fmtTime(slotTime(i))} · ${free.length ? `${mineFirst.map(id => availFirstName(g, id)).join(', ')} free` : 'Nobody free'}`;
-      if (mode === 'people') {
-        // One thin stripe per person, in the same order in every cell, so each
-        // person's free time lines up into a colored column you can follow.
-        const stripes = contributors.map(([id, a]) => {
-          const on = free.includes(id) && (!focus || focus === id);
-          if (!on) return '<i></i>';
-          const day = availDay(a, d);
-          return `<i class="${day[i - 1] === '1' ? '' : 'rs'} ${day[i + 1] === '1' ? '' : 're'}" style="background:${personColor(g, id)}"></i>`;
-        }).join('');
-        return `<div class="sg-cell sg-cell-people ${hourRow ? 'hr' : ''} ${everyone && !focus ? `all ${allRun}` : ''}" data-free="${esc(label)}">${stripes}</div>`;
-      }
-      // One person free still reads as a tint, not as nearly blank.
-      const pct = contributors.length && free.length ? Math.round(18 + (free.length / contributors.length) * 82) : 0;
-      return `<div class="sg-cell ${hourRow ? 'hr' : ''} ${everyone ? `all ${allRun}` : ''}" style="--heat:${pct}%" data-free="${esc(label)}"></div>`;
+      if (mode === 'people') return `<div class="sg-cell sg-cell-people ${hourRow ? 'hr' : ''} ${everyone && !focus ? `all ${allRun}` : ''}" data-free="${esc(label)}"></div>`;
+      return `<div class="sg-cell ${hourRow ? 'hr' : ''} ${everyone ? `all ${allRun}` : ''}" style="--heat:${availHeatPct(steps, free.length)}%" data-free="${esc(label)}"></div>`;
     }).join(''));
   }
+  // Painted time as one element per stretch: yours in Your week; in People,
+  // one thin stripe per person, in the same order in every column, so each
+  // person's free time reads as one bar you can follow down the day.
+  let runs = '';
+  if (mode === 'mine') {
+    runs = days.map((d, col) => availRuns(availDay(mine, d)).map(([s, e]) => `<i class="sg-run" style="${availRunStyle(col, s, e)}${filling ? `;--d:${col * 70 + s * 8}ms` : ''}"></i>`).join('')).join('');
+  } else if (mode === 'people') {
+    runs = contributors.map(([id, a], k) => focus && focus !== id ? '' : days.map((d, col) => availRuns(availDay(a, d)).map(([s, e]) => `<i class="sg-prun" style="${availRunStyle(col, s, e)};--k:${k};--n:${K};background:${personColor(g, id)}"></i>`).join('')).join('')).join('');
+  }
+  // To assistive tech each grid is one image with a name: yours points to
+  // Add a time, Everyone's to the text summary right after it.
   const attrs = mode === 'mine'
-    ? `id="sg-avail-mine" data-code="${g.code}" aria-label="Your weekly availability. ${editing ? 'Tap or drag' : 'Click and drag'} to mark free time."`
-    : `aria-label="Everyone’s availability, ${mode === 'people' ? 'one color per person' : 'heatmap'}"`;
+    ? `id="sg-avail-mine" data-code="${g.code}" role="img" aria-label="Your week as a grid, painted with a mouse or finger. To add or remove times with the keyboard, use Add a time and Your times below."`
+    : `role="img" aria-label="Everyone’s availability as a ${mode === 'people' ? 'grid with one color per person' : 'heatmap'}. The same times are listed by day right after it."`;
   const cls = mode === 'mine' ? `sg-grid-mine${editing ? ' is-editing' : ''}${filling ? ' is-filling' : ''}` : `sg-grid-view ${mode === 'people' ? 'sg-grid-people' : 'sg-grid-heat'}`;
-  return `<div class="sg-grid-scroll"><div class="sg-grid ${cls}" ${attrs} style="--sg-cols:${days.length}">${rows.join('')}</div></div>`;
+  return `<div class="sg-grid-scroll"><div class="sg-grid ${cls}" ${attrs} style="--sg-cols:${days.length}">${rows.join('')}${runs}</div></div>`;
 }
 let _availPaint = null;
-// Round only the first and last painted slot of each run in a day column.
-function markAvailRuns(cells) {
-  const on = new Set(cells.filter(c => c.classList.contains('on')).map(c => `${c.dataset.col}:${c.dataset.slot}`));
-  cells.forEach(c => {
-    const col = c.dataset.col, slot = Number(c.dataset.slot), isOn = on.has(`${col}:${slot}`);
-    c.classList.toggle('run-start', isOn && !on.has(`${col}:${slot - 1}`));
-    c.classList.toggle('run-end', isOn && !on.has(`${col}:${slot + 1}`));
-  });
+// Redraws Your week's runs from the cells while you drag.
+function markAvailRuns(grid) {
+  grid.querySelectorAll('.sg-run').forEach(r => r.remove());
+  const cols = {};
+  grid.querySelectorAll('.sg-cell.on').forEach(c => { (cols[c.dataset.col] = cols[c.dataset.col] || new Set()).add(Number(c.dataset.slot)); });
+  const html = Object.entries(cols).map(([col, set]) => {
+    const str = Array.from({ length: AVAIL_SLOTS }, (_, i) => set.has(i) ? '1' : '0').join('');
+    return availRuns(str).map(([s, e]) => `<i class="sg-run" style="${availRunStyle(Number(col), s, e)}"></i>`).join('');
+  }).join('');
+  grid.insertAdjacentHTML('beforeend', html);
 }
 // Hover (mouse) or tap (touch) a cell in Everyone: the line under the grid
 // says who's free then. Nothing paints there, so taps are free to use.
@@ -485,7 +605,7 @@ function bindAvailabilityPainting() {
       const inside = p.col >= c0 && p.col <= c1 && p.slot >= s0 && p.slot <= s1;
       c.classList.toggle('on', inside ? _availPaint.turnOn : _availPaint.before[i]);
     });
-    markAvailRuns(cells);
+    markAvailRuns(grid);
   };
   const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.classList.contains('sg-cell') && grid.contains(el) ? el : null; };
   grid.addEventListener('pointerdown', (ev) => {
@@ -497,6 +617,8 @@ function bindAvailabilityPainting() {
     if (ev.pointerType === 'touch' && window._availEditing !== code) return;
     ev.preventDefault();
     _availPaint = { code, turnOn: !cell.classList.contains('on'), anchor: pos(cell), before: cells.map(c => c.classList.contains('on')) };
+    // Full strength while you drag; the saved week settles to a tint.
+    grid.classList.add('is-painting');
     paintTo(cell);
     try { grid.setPointerCapture(ev.pointerId); } catch {}
   });
@@ -505,6 +627,7 @@ function bindAvailabilityPainting() {
     if (!_availPaint) return;
     const p = _availPaint;
     _availPaint = null;
+    grid.classList.remove('is-painting');
     commitMyAvailability(p.code, grid);
   };
   grid.addEventListener('pointerup', finish);
@@ -512,16 +635,74 @@ function bindAvailabilityPainting() {
   grid.addEventListener('lostpointercapture', finish);
 }
 function commitMyAvailability(code, grid) {
-  const g = findGroup(code);
-  if (!g) return;
   const days = {};
   for (let d = 0; d < 7; d++) days['d' + d] = emptyDayStr().split('');
   grid.querySelectorAll('.sg-cell.on').forEach(c => { days['d' + c.dataset.day][Number(c.dataset.slot)] = '1'; });
   Object.keys(days).forEach(k => { days[k] = days[k].join(''); });
+  availSaveMine(code, days);
+}
+// The one write for your week: the painter, Add a time and Remove all
+// save the same avail.{uid} shape, { d0..d6, name, updatedAt }. Returns
+// false when nothing changed.
+function availSaveMine(code, days) {
+  const g = findGroup(code);
+  if (!g) return false;
   const u = myUidFor(g);
   const before = g.avail?.[u];
-  if (before && [0, 1, 2, 3, 4, 5, 6].every(d => availDay(before, d) === days['d' + d])) return;
+  if (before && [0, 1, 2, 3, 4, 5, 6].every(d => availDay(before, d) === days['d' + d])) return false;
+  if (!before && ![0, 1, 2, 3, 4, 5, 6].some(d => days['d' + d].includes('1'))) return false;
   groupWrite(code, { [`avail.${u}`]: { ...days, name: myGroupName(), updatedAt: Date.now() } });
+  return true;
+}
+function availMineDays(g) {
+  const mine = g.avail?.[myUidFor(g)];
+  const days = {};
+  for (let d = 0; d < 7; d++) days['d' + d] = availDay(mine, d);
+  return days;
+}
+// Add a time's picks, kept per group for this visit: today's weekday,
+// 5:00 to 7:00 PM until you change them.
+function availAddPick(code) {
+  const p = _availAdd[code];
+  if (p) return p;
+  return (_availAdd[code] = { day: new Date().getDay(), from: slotOf('17:00'), to: slotOf('19:00') });
+}
+function availAddChange(code) {
+  const p = availAddPick(code);
+  const num = (id, v) => { const n = Number($(id)?.value); return Number.isInteger(n) ? n : v; };
+  p.day = clamp(num('#sg-at-day', p.day), 0, 6);
+  p.from = clamp(num('#sg-at-from', p.from), 0, AVAIL_SLOTS - 1);
+  p.to = clamp(num('#sg-at-to', p.to), 1, AVAIL_SLOTS);
+  // Moving From past To carries To along, so the range always reads forward.
+  if (document.activeElement?.id === 'sg-at-from' && p.to <= p.from) { p.to = Math.min(AVAIL_SLOTS, p.from + 2); const to = $('#sg-at-to'); if (to) to.value = String(p.to); }
+}
+function availAddRange(code) {
+  const g = findGroup(code);
+  if (!g) return;
+  availAddChange(code);
+  const { day, from, to } = availAddPick(code);
+  const when = `${AVAIL_DAYS_LONG[day]} ${availRange(from, Math.max(to, from + 1))}`;
+  if (to <= from) { toast('The end time needs to be after the start time.', 'error'); $('#sg-at-to')?.focus(); return; }
+  const days = availMineDays(g);
+  const arr = days['d' + day].split('');
+  for (let i = from; i < to; i++) arr[i] = '1';
+  days['d' + day] = arr.join('');
+  if (availSaveMine(code, days)) toast(`Added ${when}.`, 'success');
+  else toast(`You’re already free ${when}.`);
+}
+function availRemoveRange(code, day, start, end, btn) {
+  const g = findGroup(code);
+  if (!g || !(day >= 0 && day <= 6)) return;
+  // Focus goes to the next Remove (or the one before), else Add a time's day.
+  const all = [...document.querySelectorAll('.sg-mytime-x')];
+  const i = all.indexOf(btn);
+  const next = all[i + 1] || all[i - 1];
+  if (typeof sgFocusAfter === 'function') sgFocusAfter([next ? `[data-fk="${next.dataset.fk}"]` : '', '#sg-at-day'], `[data-fk="avrm:${day}:${start}"]`);
+  const days = availMineDays(g);
+  const arr = days['d' + day].split('');
+  for (let s = start; s < end; s++) arr[s] = '0';
+  days['d' + day] = arr.join('');
+  if (availSaveMine(code, days)) toast(`Removed ${AVAIL_DAYS_LONG[day]} ${availRange(start, end)}.`);
 }
 function clearMyAvailability(code) {
   const g = findGroup(code);

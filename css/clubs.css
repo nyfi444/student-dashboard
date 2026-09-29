@@ -123,7 +123,6 @@
   .org-needs-request .btn { grid-column: 2; justify-self: start; margin-top: 8px; }
   .org-needs-acts { justify-content: flex-start; }
   .org-rail-files { display: none; }
-  .org-agenda .space-tag.is-cat { display: none; }
 }
 @media (max-width: 640px) {
   .org-rsvp-table { display: none; }
@@ -181,6 +180,9 @@
 }
 .org-link-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
 .org-cat { display: inline-flex; align-items: center; gap: 4px; }
+/* A row's category: its 13px glyph leads the meta line, the name is read only. */
+.org-meta-cat { position: relative; display: inline-flex; vertical-align: -2px; margin-right: 6px; color: var(--text-dim); }
+.org-meta-cat .i { width: 13px; height: 13px; }
 /* attendance grid: sticky member column, one narrow column per event */
 .org-att { position: relative; overflow-x: auto; margin: 0 -20px; padding: 0 20px; }
 /* More columns off to the right: the edge fades until the last one shows. */
@@ -269,6 +271,11 @@
 .org-cal-none { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
 .org-cal-none p { margin: 0; font: 400 var(--fs-lg)/1.45 var(--font); color: var(--text-dim); }
 .org-cal-past { margin-top: 24px; }
+/* The disclosure sits on the page, not a card, so it takes the page's text colors. */
+.space-disclosure.org-cal-past > summary { color: var(--bg-text); }
+.space-disclosure.org-cal-past > summary::before { background: var(--bg-text-dim); }
+.space-disclosure.org-cal-past > summary:hover { background: color-mix(in srgb, var(--bg-text) 7%, transparent); }
+.org-cal-past .space-disclosure-n { color: var(--bg-text-dim); }
 .org-cal-past .card { margin-top: 8px; }
 /* Social: a taller row on the club's wash, a faint dot grid, and faces. */
 .space-agenda-row.org-cal-social {
@@ -281,6 +288,13 @@
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Ccircle cx='7' cy='7' r='1' fill='%23000'/%3E%3C/svg%3E") repeat;
 }
 html.dark .org-cal-social::before { opacity: .16; }
+/* Dark: the plain wash sinks into the card, so the row takes the strong
+   wash, and a Going pill (itself a wash) takes the card's surface and the
+   control edge, which keeps at least 4.5:1 against the row in every theme
+   and space color (--space-line only reached 1.3:1). */
+html.dark .space-agenda-row.org-cal-social { background: var(--space-wash-strong); }
+html.dark .org-cal-social .space-stack { --stack-ring: var(--space-wash-strong); }
+html.dark .org-cal-social .space-rsvp.is-row .space-rsvp-pill.is-yes { background: var(--surface); border-color: var(--control-border); }
 .org-cal-social + .space-agenda-row { border-top: 0; }
 .org-cal-social .space-date-tile { background: var(--surface); }
 .org-cal-faces { display: flex; flex-basis: 100%; min-width: 0; margin-top: 4px; }
@@ -300,6 +314,8 @@ html.dark .org-cal-social::before { opacity: .16; }
   border: 0; border-radius: 0; background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
   transition: background var(--dur-1);
 }
+/* Days from the months either side sit on a faint wash; past days in this month keep the plain cell. */
+.org-month-cell.is-out { background: color-mix(in srgb, var(--surface-2) 50%, var(--surface)); }
 .org-month-cell:hover { background: color-mix(in srgb, var(--text) 3%, var(--surface)); }
 .org-month-cell.is-selected { background: var(--fill-selected); box-shadow: inset 0 0 0 1px var(--control-border); }
 .org-month-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus-edge); }
@@ -309,13 +325,16 @@ html.dark .org-cal-social::before { opacity: .16; }
 }
 .org-month-cell.is-past .org-month-num, .org-month-cell.is-out .org-month-num { color: var(--text-faint); }
 .org-month-cell.is-today .org-month-num { background: var(--space-fill); color: var(--space-on); font-weight: 600; }
+/* In dark the fill sits close to the cell, so a ring draws its edge. */
+html.dark .org-month-cell.is-today .org-month-num { box-shadow: 0 0 0 1px var(--control-border); }
 .org-month-evs { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .org-sliver {
   display: block; height: 20px; padding: 0 6px; border-radius: var(--r-mark); background: var(--space-wash-strong); color: var(--text);
   font: 500 var(--fs-sm)/20px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .org-sliver-time { margin-right: 4px; color: var(--space-text); font-weight: 600; }
-.org-sliver.is-required { padding-left: 9px; box-shadow: inset 3px 0 0 var(--text); }
+/* Required: a 1px outline on the same shape, never a side bar. */
+.org-sliver.is-required { box-shadow: inset 0 0 0 1px var(--text); }
 .org-sliver.is-past { background: color-mix(in srgb, var(--space-wash-strong) 50%, var(--surface)); color: var(--text-faint); font-weight: 400; }
 .org-sliver.is-past .org-sliver-time { color: inherit; font-weight: 400; }
 .org-month-cell.is-out .org-sliver:not(.is-past) { background: color-mix(in srgb, var(--space-wash-strong) 60%, var(--surface)); color: var(--text-dim); }
@@ -346,6 +365,9 @@ html.dark .org-cal-social::before { opacity: .16; }
 }
 @media (max-width: 760px) {
   .org-cal-card { padding: 8px 16px; }
+  /* Agenda | Month: 40px buttons, and a 44px tall hit area on the row. */
+  .org-cal-views button { position: relative; min-height: 40px; }
+  .org-cal-views button::after { content: ''; position: absolute; inset: -4px 0; }
   .space-agenda-row.org-cal-social { margin-inline: -8px; padding-inline: 8px; }
   .org-month-head { margin-top: 12px; align-items: center; }
   .org-month-dow span { padding: 8px 0 6px; text-align: center; }
@@ -371,6 +393,8 @@ html.dark .org-cal-social::before { opacity: .16; }
 .org-dir-search .input { width: 100%; min-height: 40px; padding-left: 34px; font-size: var(--fs-lg); }
 .org-dir-search .input::-webkit-search-cancel-button { filter: grayscale(1); opacity: .6; cursor: pointer; }
 .org-dir-chips { min-width: 0; }
+/* relative: holds the sr-only comma inside the chip, so a phone never scrolls sideways. */
+.org-dir-chip { position: relative; }
 .org-dir-chip-n { font: 500 var(--fs-sm)/1 var(--font); color: var(--text-faint); }
 .org-dir-chip[aria-pressed='true'] .org-dir-chip-n { color: var(--text-dim); }
 .org-dir .org-request { margin-bottom: 16px; }
@@ -424,6 +448,8 @@ html.dark .org-cal-social::before { opacity: .16; }
   .org-dir-card { padding: 0 12px; }
   .org-dir-row { column-gap: 10px; }
   .org-dir-actions .btn { min-height: 40px; }
+  /* The cover band's Invite is on the same screen; officers keep Export roster. */
+  .org-dir-invite { display: none; }
 }
 @media (max-width: 760px), (pointer: coarse) {
   .org-dir-more { width: 44px; min-width: 44px; min-height: 44px; }

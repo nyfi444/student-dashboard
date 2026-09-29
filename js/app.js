@@ -19,7 +19,22 @@ const PAGES = {
 };
 
 let _lastViewKey = '';
+let _lastPageKey = '';
 function render() {
+  // Rebuilding #content drops keyboard focus to <body>. Remember what had it
+  // (or the ··· button whose menu item caused this redraw) and find it again
+  // afterwards, unless this is a different page.
+  const pageKey = `${state.route}|${state.subRoute || ''}`;
+  const had = document.activeElement;
+  const from = had && had !== document.body ? had : (window._menuReturn?.isConnected ? window._menuReturn : null);
+  const content = document.getElementById('content');
+  const focusKey = from && content && content.contains(from) && typeof modalFocusKey === 'function' ? modalFocusKey(from) : null;
+  const samePage = pageKey === _lastPageKey;
+  _lastPageKey = pageKey;
+  // What had focus, for code that runs during the rebuild (the phone chat
+  // sheet remembers its opener with it).
+  window._renderFocusKey = focusKey;
+  if (typeof chatReleaseInert === 'function') chatReleaseInert();
   renderSidebar();
   document.getElementById('app').classList.toggle('sidebar-collapsed', !!state.settings.sidebarCollapsed);
   if (typeof shouldShowPaywall === 'function' && shouldShowPaywall()) {
@@ -48,6 +63,11 @@ function render() {
   if (typeof afterGroupPageRender === 'function') afterGroupPageRender();
   if (typeof afterOrgPageRender === 'function') afterOrgPageRender();
   if (typeof updateTimerChrome === 'function') updateTimerChrome();
+  const now = document.activeElement;
+  if (focusKey && samePage && (!now || now === document.body) && !$('#modal-wrap')?.classList.contains('show')) {
+    const back = modalRefindFocus(focusKey);
+    if (back) { try { back.focus({ preventScroll: true }); } catch {} }
+  }
 }
 function bellButton(cls) {
   const n = typeof attentionCount === 'function' ? attentionCount() : 0;

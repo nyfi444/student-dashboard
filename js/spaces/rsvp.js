@@ -273,21 +273,50 @@ function spaceRsvpLists(o) {
         </div>`).join('')}
     </div>`;
 }
+// The sheet's action row never wraps: a join-call link and Share to chat
+// stay visible; everything else the caller passed (Add to calendar app,
+// Duplicate, Extend this series...) moves into a ··· menu. The menu's items
+// ride along in a <template> so spaceSheetMore can open them later.
+function _spaceSheetActions(html) {
+  if (!html) return '';
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  const all = [...t.content.children];
+  if (all.length <= 1) return html;
+  const primary = (el) => el.tagName === 'A' || /^(shareToSpaceChat|postOrgRecap|openSessionRecapModal)/.test(el.getAttribute('onclick') || '');
+  let keep = all.filter(primary);
+  let more = all.filter(el => !primary(el));
+  if (!keep.length) { keep = more.slice(0, 1); more = more.slice(1); }
+  if (!more.length) return html;
+  const items = more.map(el => {
+    const ic = el.querySelector('svg, .i');
+    const label = el.textContent.trim();
+    return `<button type="button" class="menu-item" onclick="${esc(el.getAttribute('onclick') || '')}">${ic ? ic.outerHTML : ''}<span>${esc(label)}</span></button>`;
+  }).join('');
+  return `${keep.map(el => el.outerHTML).join('')}<button type="button" class="btn btn-ghost btn-sm btn-icon space-sheet-more" aria-label="More actions" aria-haspopup="menu" aria-expanded="false" onclick="spaceSheetMore(this)">${icon('more-horizontal', 16)}</button><template class="space-sheet-more-items">${items}</template>`;
+}
+function spaceSheetMore(btn) {
+  const tpl = btn.parentElement?.querySelector('template.space-sheet-more-items');
+  if (tpl) openMenu(btn, tpl.innerHTML);
+}
 function spaceEventSheet(o) {
   const st = eventTimeState(o);
   const range = _evTimeRange(o.start, o.end);
+  // Before and after, the when is a chip at the top right of the header;
+  // Happening now keeps its strip under the meta line.
+  const chip = st.phase === 'after'
+    ? '<span class="space-chip space-sheet-when is-ended">Ended</span>'
+    : st.phase === 'now' ? '' : `<span class="space-chip space-sheet-when"${spaceLiveAttrs(o)}><span class="space-live-text">${esc(_evCap(st.label))}</span></span>`;
   const state = st.phase === 'now'
     ? `<div class="space-sheet-state is-now"><span class="space-now-dot" aria-hidden="true"></span>Happening now${st.allDay ? ' · all day' : ` · until ${esc(fmtTime(st.endsAt))}`}</div>`
-    : st.phase === 'after'
-      ? '<div class="space-sheet-state is-after">Ended</div>'
-      : `<div class="space-sheet-state"><span class="space-chip"${spaceLiveAttrs(o)}><span class="space-live-text">${esc(_evCap(st.label))}</span></span>${st.days > 1 ? `<span class="small muted">${esc(fmtDate(o.date, { weekday: 'long' }))}</span>` : ''}</div>`;
+    : '';
   return `
     <div class="space space-sheet" style="${spaceVars(o.color)}">
       <div class="space-sheet-cover space-cover" data-pattern="${spacePattern(o.code)}">
         <span class="space-sheet-glyph">${icon(o.glyph || 'calendar', 18)}</span>
         <span class="space-sheet-space">${esc(o.spaceName || '')}</span>
       </div>
-      <div class="modal-head"><h3 class="space-sheet-title">${esc(o.title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
+      <div class="modal-head"><h3 class="space-sheet-title">${esc(o.title)}</h3>${chip}<button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
       <div class="modal-body">
         ${o.tags ? `<div class="space-sheet-tags">${o.tags}</div>` : ''}
         <div class="space-hero-meta space-sheet-meta">
@@ -299,7 +328,7 @@ function spaceEventSheet(o) {
         ${o.notes ? `<div class="space-hero-notes">${linkifyText(o.notes)}</div>` : ''}
         ${st.phase === 'after' && o.recapHtml ? `<div class="space-sheet-recap">${o.recapHtml}</div>` : ''}
         ${o.rsvpHtml || o.facesHtml ? `<div class="space-sheet-rsvp">${o.rsvpHtml || ''}${o.facesHtml || ''}</div>` : ''}
-        ${o.actionsHtml ? `<div class="space-sheet-actions">${o.actionsHtml}</div>` : ''}
+        ${o.actionsHtml ? `<div class="space-sheet-actions">${_spaceSheetActions(o.actionsHtml)}</div>` : ''}
         ${o.listsHtml ? `<div class="divider"></div>${o.listsHtml}` : ''}
       </div>
       ${o.footHtml ? `<div class="modal-foot">${o.footHtml}</div>` : ''}

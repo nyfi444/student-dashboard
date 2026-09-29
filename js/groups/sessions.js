@@ -93,9 +93,11 @@ function showGroupSessionModal(code, sid) {
     rsvpHtml: past ? '' : rsvpControl(g, s, { size: 'hero', stillComing: true, clearable: true }),
     facesHtml: groupFacePile(g, s, { size: 24, past }),
     recapHtml: sessionRecapBlock(g, s, { back: true }),
-    actionsHtml: past ? '' : `${joinLinkButton(s.where)}${chatShareButton('group', g.code, s.id)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`,
+    // Join and Share to chat stay out; Add to calendar app and Edit go in
+    // the sheet's ··· menu (spaceEventSheet), off the Sessions rows.
+    actionsHtml: `${past ? '' : `${joinLinkButton(s.where)}${chatShareButton('group', g.code, s.id)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`}<button class="btn btn-ghost btn-sm" onclick="openSessionModal('${g.code}','${s.id}')">${icon('pencil', 14)} Edit</button>`,
     listsHtml: spaceRsvpLists({ key: spaceRsvpKey('group', g.code, s.id), lists }),
-    footHtml: `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteSession('${g.code}','${s.id}')">Delete</button><button class="btn" onclick="openSessionModal('${g.code}','${s.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button>`,
+    footHtml: `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteSession('${g.code}','${s.id}')">Delete</button><button class="btn btn-primary" onclick="closeModal()">Done</button>`,
   }), { onClose: () => { window._groupSessionModal = null; } });
 }
 function copyRsvpNudge(code, sid) {
@@ -121,66 +123,163 @@ function nextSessionHero(g, s, { need = false } = {}) {
     className: 'sg-next-hero',
   });
 }
+/* ── The Sessions tab ──────────────────────────────────────────────
+   Upcoming | Past, a ··· menu (Add all to calendar app, Find a time) and
+   New session. Sessions are grouped by week under serif headings that
+   stick below the tab row ("This week", "Next week", "Oct 12 to 18"),
+   each week one flat card of rows, like the club Calendar. Past runs
+   newest first, and each row shows its recap or "Add a recap".
+   At 1100px and up a sticky 380px panel beside the list shows the picked
+   session as a hero (the next one, or the latest past one, by default);
+   a row then picks instead of opening the sheet, and the panel's title
+   opens the sheet. Per visit, in memory only (no settings key):
+   _sgSched = { code, view: 'upcoming' | 'past', pick: session id }. */
+const SG_SCHED_WIDE = '(min-width: 1100px)';
+const SG_SCHED_PAST_MAX = 40;
+let _sgSched = { code: '', view: 'upcoming', pick: '' };
+function sgSchedState(code) {
+  if (_sgSched.code !== code) _sgSched = { code, view: 'upcoming', pick: '' };
+  return _sgSched;
+}
+function sgSchedWide() { try { return window.matchMedia(SG_SCHED_WIDE).matches; } catch { return false; } }
+function setGroupSchedView(code, view) {
+  const st = sgSchedState(code);
+  st.view = view === 'past' ? 'past' : 'upcoming';
+  st.pick = '';
+  render();
+}
+// A row's title (or a click on the row): the panel on a wide screen, the
+// sheet everywhere else.
+function pickGroupSession(code, sid) {
+  if (!sgSchedWide() || state.route !== 'studygroups' || state.groupTab !== 'schedule' || !findGroup(code)?.sessions?.[sid]) { showGroupSessionModal(code, sid); return; }
+  sgSchedState(code).pick = sid;
+  render();
+}
+// "Add a recap" on a past row: the session's sheet, on its recap field.
+function openSessionRecapFromRow(code, sid) {
+  showGroupSessionModal(code, sid);
+  setTimeout(() => { const f = $('#modal .space-sheet-recap .space-recap-field'); if (f) { f.focus({ preventScroll: true }); f.scrollIntoView({ block: 'nearest' }); } }, 80);
+}
+function openGroupSchedMenu(btn, code) {
+  const g = findGroup(code);
+  if (!g) return;
+  const any = upcomingSessions(g).length > 0;
+  openMenu(btn, `
+    <button class="menu-item" ${any ? '' : 'disabled'} onclick="downloadSessionIcs('${code}')">${icon('download', 16)}<span>Add all to calendar app</span></button>
+    <button class="menu-item" onclick="setGroupTab('availability')">${icon('grid', 16)}<span>Find a time</span></button>`);
+}
+// "This week", "Next week", "Last week", else "Oct 12 to 18" (or
+// "Sep 27 to Oct 3" across a month, with the year when it isn't this one).
+function sgWeekLabel(weekIso) {
+  const days = Math.round((new Date(`${weekIso}T00:00:00`) - new Date(`${startOfWeek(todayIso())}T00:00:00`)) / 86400000);
+  const w = Math.round(days / 7);
+  if (w === 0) return 'This week';
+  if (w === 1) return 'Next week';
+  if (w === -1) return 'Last week';
+  const a = new Date(`${weekIso}T00:00:00`), b = new Date(`${addDays(weekIso, 6)}T00:00:00`);
+  const mon = (d) => d.toLocaleDateString('en-US', { month: 'short' });
+  const year = b.getFullYear() !== new Date().getFullYear() ? `, ${b.getFullYear()}` : '';
+  return `${mon(a)} ${a.getDate()} to ${a.getMonth() === b.getMonth() ? '' : `${mon(b)} `}${b.getDate()}${year}`;
+}
+function sgSessionWeeks(list) {
+  const weeks = [];
+  list.forEach(s => {
+    const key = startOfWeek(s.date);
+    let w = weeks[weeks.length - 1];
+    if (!w || w.key !== key) weeks.push(w = { key, items: [] });
+    w.items.push(s);
+  });
+  return weeks;
+}
 function groupScheduleTab(g) {
+  const st = sgSchedState(g.code);
   const upcoming = upcomingSessions(g);
-  const past = sessionList(g).filter(sessionIsPast).reverse();
+  const pastAll = sessionList(g).filter(sessionIsPast).reverse();
+  const past = st.view === 'past';
+  const list = past ? pastAll.slice(0, SG_SCHED_PAST_MAX) : upcoming;
+  if (!list.some(s => s.id === st.pick)) st.pick = list[0]?.id || '';
+  const picked = list.find(s => s.id === st.pick);
   // The sessions that count toward the home's "need you" number get the
   // same "Needs your answer" tag here.
   const needIds = new Set(spaceNeeds('group', g).items.filter(i => i.type === 'session').map(i => i.id));
-  const allIcs = upcoming.length > 1;
-  // On phones the toolbar button hides and the quiet link under the list
-  // takes its place, so New session and Find a time share one row.
+  const views = [['upcoming', 'Upcoming', upcoming.length], ['past', 'Past', pastAll.length]].map(([k, label, n]) =>
+    `<button type="button" aria-pressed="${st.view === k}" onclick="setGroupSchedView('${g.code}','${k}')">${label}${n ? `<span class="sg-sched-n">${n}</span>` : ''}</button>`).join('');
+  const body = list.length
+    ? sgSessionWeeks(list).map(w => `
+      <section class="sg-sched-week" aria-labelledby="sg-wk-${w.key}">
+        <h3 class="sg-sched-weekh" id="sg-wk-${w.key}">${esc(sgWeekLabel(w.key))}</h3>
+        <div class="card sg-sessions">${w.items.map(s => sessionCard(g, s, { past, needIds, picked: s.id === st.pick })).join('')}</div>
+      </section>`).join('')
+    : past
+      ? `<div class="card card-pad sg-sched-none"><p>No past sessions yet. After each one, its recap lives here.</p></div>`
+      : `<div class="card card-pad sg-sched-none"><p>Nothing scheduled yet. Find a time shows when everyone is free.</p><div class="sg-sched-none-actions"><button class="btn btn-sm" onclick="setGroupTab('availability')">${icon('grid', 14)} Find a time</button><button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} Schedule one</button></div></div>`;
   return `
-    <div class="sg-toolbar">
-      <div class="small muted">Sessions show up on every member’s Semester HQ calendar.</div>
-      <div class="flex-gap wrap sg-sched-actions">${allIcs ? `<button class="btn btn-sm sg-ics-all" onclick="downloadSessionIcs('${g.code}')">${icon('download', 14)} Add all to calendar app</button>` : ''}<button class="btn btn-sm sg-find-time" onclick="setGroupTab('availability')">${icon('grid', 14)} Find a time</button><button class="btn btn-primary btn-sm sg-new-session" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} New session</button></div>
-    </div>
-    ${upcoming.length ? `<div class="card sg-sessions">${upcoming.map(s => sessionCard(g, s, { needIds })).join('')}</div>` : emptyState(icon('calendar', 24), 'No upcoming sessions', `<button class="btn btn-primary btn-sm mt-8" onclick="openSessionModal('${g.code}')">Schedule one</button>`, 'Not sure when? Find a time shows when everyone is free.')}
-    ${allIcs ? `<button type="button" class="sg-link sg-ics-all-link" onclick="downloadSessionIcs('${g.code}')">${icon('download', 14)} Add all to calendar app</button>` : ''}
-    ${past.length ? `<details class="sg-past"><summary class="small muted">Past sessions (${past.length})</summary><div class="card sg-sessions">${past.slice(0, 30).map(s => sessionCard(g, s, { past: true })).join('')}</div></details>` : ''}
-  `;
+    <div class="sg-sched">
+      <div class="sg-sched-bar">
+        <div class="segmented sg-sched-views" role="group" aria-label="Show sessions">${views}</div>
+        <div class="sg-sched-bar-end">
+          <button type="button" class="btn btn-ghost btn-sm btn-icon sg-sched-more" aria-label="Session options" aria-haspopup="menu" aria-expanded="false" onclick="openGroupSchedMenu(this,'${g.code}')">${icon('more-horizontal', 16)}</button>
+          <button type="button" class="btn btn-primary btn-sm sg-new-session" onclick="openSessionModal('${g.code}')">${icon('plus', 14)} New session</button>
+        </div>
+      </div>
+      <div class="sg-sched-body${picked ? ' has-panel' : ''}">
+        <div class="sg-sched-list">${body}</div>
+        ${picked ? `<aside class="sg-sched-panel" aria-label="${esc(`Picked session: ${picked.title}`)}">${sessionPanelHero(g, picked, { next: !past && picked.id === upcoming[0]?.id, need: needIds.has(picked.id) })}</aside>` : ''}
+      </div>
+      <p class="sg-sched-foot">Sessions show up on every member’s Semester HQ calendar.</p>
+    </div>`;
 }
-// One session as an agenda row, like the ones on the group home: date
-// tile, title, when and where, the notes as a quote, Weekly and who's
-// going, then the compact RSVP and the calendar-file and edit buttons.
-// The title is the one tab stop that opens the sheet; the rest of the row
-// is a mouse-only click, as in spaceAgendaRow.
+// The panel: the event hero for the picked session.
+function sessionPanelHero(g, s, { next = false, need = false } = {}) {
+  const phase = eventTimeState(s).phase;
+  const past = phase === 'after';
+  return spaceEventHero({
+    date: s.date, start: s.start, end: s.end, where: s.where, notes: s.notes,
+    eyebrow: phase === 'now' ? 'In session' : past ? 'Past session' : next ? 'Next session' : 'Session',
+    tags: `${need ? spaceTag('need', 'Needs your answer') : ''}${s.seriesId ? spaceTag('weekly', 'Weekly') : ''}`,
+    title: s.title,
+    onOpen: `showGroupSessionModal('${g.code}','${s.id}')`,
+    rsvpHtml: past ? '' : rsvpControl(g, s, { size: 'hero', stillComing: true }),
+    facesHtml: groupFacePile(g, s, { past }),
+    afterHtml: sessionRecapBlock(g, s),
+    className: 'sg-panel-hero',
+  });
+}
+// One session as an agenda row: date tile, title, a meta line, then
+// Needs your answer, Weekly and who's going; the compact RSVP at the end.
+// Past rows carry their recap (two lines) or "Add a recap" instead.
+// The title is the row's one tab stop; the rest of the row is a mouse-only
+// click, as in spaceAgendaRow. Edit and Add to calendar app live in the
+// session sheet's ··· menu.
 let _sgSessionRowSeq = 0;
-function sessionCard(g, s, { past = false, needIds = null } = {}) {
+function sessionCard(g, s, { past = false, needIds = null, picked = false } = {}) {
   const id = `sg-sess-${++_sgSessionRowSeq}`;
-  const open = `showGroupSessionModal('${g.code}','${s.id}')`;
+  const open = `pickGroupSession('${g.code}','${s.id}')`;
   const going = sessionRsvpPeople(g, s).yes.length;
+  const range = _evTimeRange(s.start, s.end) || 'Any time';
   const meta = [
-    esc(fmtSessionDay(s.date)),
-    esc(_evTimeRange(s.start, s.end) || 'Any time'),
-    s.where ? spaceWhereHtml(s.where) : '',
+    esc(past ? fmtDate(s.date, { weekday: 'long' }) : fmtSessionDay(s.date)),
+    esc(range),
+    s.where ? esc(groupWhereShort(s.where)) : '',
     past && going ? `${going} said they’d go` : '',
   ].filter(Boolean).join(' · ');
-  const tags = [
-    past ? '' : spaceWhenChip(s),
-    !past && needIds?.has(s.id) ? spaceTag('need', 'Needs your answer') : '',
+  const tags = past ? (s.seriesId ? spaceTag('weekly', 'Weekly') : '') : [
+    spaceWhenChip(s),
+    needIds?.has(s.id) ? spaceTag('need', 'Needs your answer') : '',
     s.seriesId ? spaceTag('weekly', 'Weekly') : '',
-    !past && going ? groupFacePile(g, s, { size: 20 }) : '',
+    going ? groupFacePile(g, s, { size: 20 }) : '',
   ].join('');
-  const recap = past ? sessionRecapSnippet(g, s) : '';
   const describedBy = [`${id}-d`, `${id}-m`, tags ? `${id}-t` : ''].filter(Boolean).join(' ');
   return `
-    <div class="space-agenda-row sg-session${past ? ' is-past' : ''}" data-row-click tabindex="-1" onclick="${open}">
+    <div class="space-agenda-row sg-session${past ? ' is-past' : ''}${picked ? ' is-picked' : ''}" data-row-click tabindex="-1" onclick="${open}">
       ${spaceDateBlock(s.date, { size: 'tile', id: `${id}-d` })}
       <div class="space-agenda-main">
-        <button type="button" class="space-agenda-title" onclick="event.stopPropagation();${open}" aria-describedby="${describedBy}">${esc(s.title)}</button>
+        <button type="button" class="space-agenda-title" onclick="event.stopPropagation();${open}" aria-describedby="${describedBy}"${picked ? ' aria-current="true"' : ''}>${esc(s.title)}</button>
         <div class="space-agenda-meta" id="${id}-m">${meta}</div>
-        ${s.notes ? `<div class="sg-session-notes" onclick="if(event.target.closest('a'))event.stopPropagation()">${linkifyText(s.notes)}</div>` : ''}
         ${tags ? `<div class="space-agenda-tags" id="${id}-t">${tags}</div>` : ''}
-        ${recap}
+        ${past ? sessionRecapSnippet(g, s) : ''}
       </div>
-      <div class="space-agenda-end sg-session-end" onclick="event.stopPropagation()">
-        ${past ? '' : rsvpControl(g, s)}
-        <span class="sg-session-tools">
-          ${!past ? `<button class="btn btn-ghost btn-icon btn-sm" data-tip="Add to your calendar app (.ics)" aria-label="Download ${esc(s.title)} as a calendar file" onclick="event.stopPropagation();downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)}</button>` : ''}
-          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit ${esc(s.title)}" data-tip="Edit" onclick="event.stopPropagation();openSessionModal('${g.code}','${s.id}')">${icon('pencil', 14)}</button>
-        </span>
-      </div>
+      ${past ? '' : `<div class="space-agenda-end sg-session-end" onclick="event.stopPropagation()">${rsvpControl(g, s)}</div>`}
     </div>`;
 }
 function openSessionModal(code, sid, prefill = {}) {
@@ -337,25 +436,28 @@ function _sessionRecapBy(g, it) {
 // Past rows: the newest recap in two lines, or a quiet Add a recap.
 function sessionRecapSnippet(g, s) {
   const list = sessionRecaps(g, s);
-  if (!list.length) return `<button type="button" class="sg-link sg-recap-add" onclick="event.stopPropagation();openSessionRecapModal('${g.code}','${s.id}')">${icon('pencil', 12)} Add a recap</button>`;
+  if (!list.length) return `<button type="button" class="sg-link sg-recap-add" onclick="event.stopPropagation();openSessionRecapFromRow('${g.code}','${s.id}')">${icon('pencil', 12)} Add a recap</button>`;
   const text = spaceRecapText(list[0].content);
-  return `<div class="sg-recap-snippet"><span class="sg-recap-by">${icon('file-text', 12)} Recap by ${_sessionRecapBy(g, list[0])}${list.length > 1 ? ` and ${list.length - 1} more` : ''}</span>${text ? `<span class="sg-recap-text">${esc(text)}</span>` : ''}</div>`;
+  const by = `Recap by ${_sessionRecapBy(g, list[0])}${list.length > 1 ? ` and ${list.length - 1} more` : ''}`;
+  return `<p class="sg-sched-recap"><span class="sg-sched-recap-by">${by}${text ? ':' : ''}</span>${text ? ` ${esc(text)}` : ''}</p>`;
 }
 // The sheet (and the hero, once it ends): every recap in full, then the
 // field for another. back: the field reopens this sheet after saving.
 function sessionRecapBlock(g, s, { back = false } = {}) {
   const list = sessionRecaps(g, s);
   const open = `openSessionRecapModal('${g.code}','${s.id}',${back})`;
+  // Saved recaps are flat text on the sheet (author and time, then the
+  // body, a hairline between them); the field-shaped button only shows
+  // while there is no recap yet, so nothing looks like a second, empty one.
   const notes = list.map(it => `
-    <article class="space-recap-note">
-      <div class="space-recap-note-by">${personAvatar(it.sharedByUid || '', it.sharedBy || 'Someone', 20, personColor(g, it.sharedByUid))}<span>${_sessionRecapBy(g, it)}</span></div>
+    <article class="sg-recap-note">
+      <div class="sg-recap-note-by">${personAvatar(it.sharedByUid || '', it.sharedBy || 'Someone', 18, personColor(g, it.sharedByUid))}<span>${_sessionRecapBy(g, it)}</span></div>
       <div class="space-recap-note-body">${sanitizeHtml(String(it.content || ''))}</div>
     </article>`).join('');
   return `
-    <div class="space-recap">
+    <div class="space-recap sg-recap${list.length ? ' has-notes' : ''}">
       <div class="space-recap-head"><span class="sg-h3">${list.length ? 'Recap' : 'What did we cover?'}</span><span class="small muted">Saved to Files</span></div>
-      ${notes}
-      ${spaceRecapField(open, list.length ? 'Add to the recap' : 'A few lines for anyone who missed it')}
+      ${list.length ? `<div class="sg-recap-notes">${notes}</div><button type="button" class="sg-link sg-recap-more" onclick="${open}">${icon('plus', 14)} Add to the recap</button>` : spaceRecapField(open, 'A few lines for anyone who missed it')}
     </div>`;
 }
 function openSessionRecapModal(code, sid, back = false) {
@@ -401,6 +503,7 @@ function groupRecapPrompt(g) {
     date: s.date, start: s.start, end: s.end, title: s.title,
     facesHtml: groupFacePile(g, s, { size: 22, past: true }),
     bodyHtml: `${spaceRecapField(`openSessionRecapModal('${g.code}','${s.id}')`)}<p class="space-recap-hint">It saves to Files, so anyone who missed it can catch up.</p>`,
-    dismissJs: `spaceRecapDismiss('${key}')`,
+    // Not now takes the card away: focus goes to the hero's title.
+    dismissJs: `sgFocusAfter(['.sg-next-hero .space-hero-title','.sg-besthero .btn-primary','.sg-next-empty .btn-primary'],'.sg-home .space-recap-card');spaceRecapDismiss('${key}')`,
   });
 }

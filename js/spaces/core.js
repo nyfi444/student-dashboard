@@ -87,16 +87,30 @@ function colorVars(name, hex) {
   const { fill, on } = readablePair(hex);
   return `--${name}:${esc(hex)};--${name}-fill:${esc(fill)};--on-${name}:${on}`;
 }
-function personAvatar(id, name, size = 26, color = '#6b6b6b') {
+// The initial is decoration: the name always sits next to it or in a caption,
+// so screen readers skip it. Pass { label } where the face is the only name.
+function personAvatar(id, name, size = 26, color = '#6b6b6b', opts = {}) {
   const initial = esc((String(name || '?').trim()[0] || '?').toUpperCase());
   const { fill, on } = readablePair(HEX_COLOR.test(color) ? color : '#6b6b6b');
-  return `<span class="avatar sg-avatar" style="width:${size}px;height:${size}px;font-size:${Math.max(12, Math.round(size * 0.42))}px;--shade:${fill};color:${on}" title="${esc(name)}">${initial}</span>`;
+  const a11y = opts.label ? `role="img" aria-label="${esc(opts.label)}"` : 'aria-hidden="true"';
+  const extra = opts.style || '';
+  return `<span class="avatar sg-avatar" ${a11y} style="width:${size}px;height:${size}px;font-size:${opts.fontSize || Math.max(12, Math.round(size * 0.42))}px;--shade:${fill};color:${on}${extra}" title="${esc(name)}">${initial}</span>`;
 }
 // The overlapping face pile, render only: list is [{ uid, name }] and
 // colorOf(uid) gives each face its color. avatarStack (study groups) feeds it.
+// One geometry everywhere (css/spaces.css "Face piles"): faces overlap by a
+// quarter of their size, each wears a 2px ring in the surface it sits on, and
+// earlier faces sit on top so the first one ("You") shows its whole initial.
+// At 22px and below the pile stops at 3 faces plus "+N".
 function avatarStackHtml(list, max = 4, size = 26, colorOf = () => '#6b6b6b') {
   if (!list.length) return '';
-  return `<span class="sg-stack">${list.slice(0, max).map(p => personAvatar(p.uid, p.name, size, colorOf(p.uid))).join('')}${list.length > max ? `<span class="avatar sg-avatar sg-avatar-more" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.38)}px">+${list.length - max}</span>` : ''}</span>`;
+  if (size <= 22) max = Math.min(max, 3);
+  const shown = list.slice(0, max);
+  const more = list.length - shown.length;
+  const n = shown.length + (more > 0 ? 1 : 0);
+  const faces = shown.map((p, i) => personAvatar(p.uid, p.name, size, colorOf(p.uid), { style: `;z-index:${n - i}`, fontSize: size <= 24 ? 11 : 0 })).join('');
+  const plus = more > 0 ? `<span class="avatar sg-avatar sg-avatar-more" aria-hidden="true" style="width:${size}px;height:${size}px;font-size:11px;z-index:1">+${more}</span>` : '';
+  return `<span class="sg-stack space-stack" style="--stack-ov:-${Math.round(size * 0.25)}px;--stack-size:${size}px">${faces}${plus}</span>`;
 }
 /* ── Field-level write ops (groupWrite and orgWrite both apply them) ─ */
 const GW_DELETE = { __op: 'delete' };
