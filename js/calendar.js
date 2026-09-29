@@ -204,9 +204,11 @@ function todosOnDate(dateIso) { return state.todos.filter(x => !x.done && x.dueD
 function calDueStart(it) { return it.start === '23:59' && !it.end ? { ...it, start: null } : it; }
 function itemsOnDate(dateIso) {
   return [...meetingsOnDate(dateIso), ...customEventsOnDate(dateIso), ...examsOnDate(dateIso), ...deadlinesOnDate(dateIso), ...todosOnDate(dateIso), ...groupSessionsOnDate(dateIso), ...careerItemsOnDate(dateIso),
-    ...officeHoursOnDate(dateIso), ...projectMilestonesOnDate(dateIso), ...orgEventsOnDate(dateIso)].map(calDueStart).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+    ...officeHoursOnDate(dateIso), ...projectMilestonesOnDate(dateIso), ...orgEventsOnDate(dateIso),
+    // Group tasks assigned to you, on their due dates in the group's color (js/spaces/needs.js).
+    ...(typeof groupTasksOnDate === 'function' ? groupTasksOnDate(dateIso) : [])].map(calDueStart).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 }
-const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list', todo: 'check-square', group: 'users', career: 'briefcase', office: 'clock', milestone: 'folder', org: 'shield' };
+const KIND_ICON = { exam: 'flag', deadline: 'clipboard-list', todo: 'check-square', group: 'users', career: 'briefcase', office: 'clock', milestone: 'folder', org: 'shield', grouptask: 'check-square' };
 
 // The year is one sheet holding twelve small months. Each month keeps a
 // six-week grid so the rows line up, but only its own days are drawn:
@@ -254,7 +256,7 @@ function calKey(ev, fn) { if (ev.key === 'Enter' || ev.key === ' ') { ev.prevent
 // Monday is the least news on any given day, so the three shown are the
 // most important: exams, then deadlines, then to-dos and the rest, then
 // class meetings, each in time order.
-const CAL_RANK = { exam: 0, deadline: 1, todo: 2, class: 4 };
+const CAL_RANK = { exam: 0, deadline: 1, todo: 2, grouptask: 2, class: 4 };
 const calRank = it => CAL_RANK[it.kind] ?? 3;
 function calShortTime(t) {
   if (!t) return '';

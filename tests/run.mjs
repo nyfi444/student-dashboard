@@ -396,6 +396,112 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
   check('index.html: every local script loads in order in one context, app boot included', failedAt, null);
   const loaded = (names) => names.filter(n => { try { return vm.runInContext(`typeof ${n}`, box) === 'undefined'; } catch { return true; } });
   check('study groups and clubs: their entry points exist after load', loaded(['pageStudyGroups', 'pageGroupDetail', 'groupWrite', 'groupAvailabilityTab', 'groupResourcesTab', 'pageOrgs', 'pageOrgDetail', 'orgWrite', 'orgAdminTab', 'orgFilesTab', 'copyText', 'SAFE_ID', 'GROUP_COLORS', 'ORG_COLORS', 'downloadCsv']), []);
+  check('spaces: the shared RSVP and event pieces exist after load', loaded(['spaceRsvp', 'setSpaceRsvp', 'spaceRsvpNextValue', 'spaceStillComingDue', 'spaceEventSheet', 'spaceRsvpLists', 'eventTimeState', 'countdownLabel', 'spaceEventHero', 'spaceAgendaRow', 'spaceWeekStrip', 'spaceStatTile', 'spaceFacePile', 'spaceDateBlock', 'rsvpControl', 'orgRsvpControl', 'orgDuesLink', 'orgIsDuesEvent']), []);
+
+  /* ── 7. RSVP and event time, on the loaded scripts ───────────────
+     The shared control passes toggle=false on every button, so tapping
+     the answer you already gave ("Still coming? Yes", or Change and then
+     the same answer) must never clear it. Only the old toggle clears. */
+  const run = (code) => vm.runInContext(code, box);
+  check('rsvp: toggle=false keeps the same answer', run(`spaceRsvpNextValue('yes', 'yes', false)`), 'yes');
+  check('rsvp: toggle=true on the same answer clears it', run(`spaceRsvpNextValue('yes', 'yes', true)`), null);
+  check('rsvp: a new answer is written either way', run(`[spaceRsvpNextValue('no', 'yes', true), spaceRsvpNextValue('', 'maybe', false)]`), ['yes', 'maybe']);
+  run(`
+    globalThis.__writes = [];
+    findGroup = () => ({ code: 'GRP', sessions: { s1: { id: 's1', rsvp: { me: 'yes' } } } });
+    myUidFor = () => 'me';
+    groupWrite = async (code, ops) => { __writes.push(Object.values(ops)[0]); return true; };
+    findOrg = () => ({ code: 'CLB' });
+    myOrgUid = () => 'me';
+    myOrgRsvp = () => 'yes';
+    orgWrite = async (code, ops) => { __writes.push(Object.values(ops)[0]); return true; };
+  `);
+  await run(`(async () => {
+    await setSpaceRsvp('group', 'GRP', 's1', 'yes', { toggle: false });
+    await setSpaceRsvp('club', 'CLB', 'e1', 'yes', { toggle: false });
+    await spaceStillComing('group', 'GRP', 's1', true);
+    await setSessionRsvp('GRP', 's1', 'yes');
+  })()`);
+  const writes = run(`__writes.map(v => v === GW_DELETE ? 'DELETE' : v)`);
+  check('rsvp: "Going" again and "Still coming? Yes" never write a delete; the old toggle still can', writes, ['yes', 'yes', 'yes', 'DELETE']);
+
+  // A fixed Tuesday, 29 Sep 2026, 10:00.
+  const at = (h, m = 0) => `new Date(2026, 8, 29, ${h}, ${m})`;
+  const st = (ev, h, m) => run(`(() => { const s = eventTimeState(${JSON.stringify(ev)}, ${at(h, m)}); return [s.phase, s.label]; })()`);
+  check('event time: 20 minutes before', st({ date: '2026-09-29', start: '10:20', end: '11:00' }, 10), ['before', 'in 20 min']);
+  check('event time: during', st({ date: '2026-09-29', start: '09:30', end: '11:00' }, 10), ['now', 'Happening now']);
+  check('event time: no end counts as an hour', st({ date: '2026-09-29', start: '09:30' }, 10, 29), ['now', 'Happening now']);
+  check('event time: an hour after a start with no end, it ended', st({ date: '2026-09-29', start: '09:00' }, 10, 1), ['after', 'Ended']);
+  check('event time: a late start with no end stops at 23:59', run(`eventTimeState({ date: '2026-09-29', start: '23:30' }, ${at(23, 45)}).endsAt`), '23:59');
+  check('event time: a deadline with no time is now all day', st({ date: '2026-09-29' }, 23, 50), ['now', 'Happening now']);
+  check('event time: yesterday is over', st({ date: '2026-09-28', start: '18:00' }, 10), ['after', 'Ended']);
+  check('event time: this evening reads tonight', st({ date: '2026-09-29', start: '19:00' }, 10), ['before', 'tonight']);
+  check('event time: this afternoon counts hours', st({ date: '2026-09-29', start: '13:00' }, 10), ['before', 'in 3 hours']);
+  check('event time: tomorrow', st({ date: '2026-09-30', start: '09:00' }, 10), ['before', 'tomorrow']);
+  check('event time: two days out', st({ date: '2026-10-01', start: '09:00' }, 10), ['before', 'in 2 days']);
+  check('event time: a deadline later today reads today', run(`countdownLabel({ date: '2026-09-29' }, ${at(10)})`), 'today');
+
+  /* ── 8. What needs you (js/spaces/needs.js), on the loaded scripts ──
+     One list feeds the strip, the index and dashboard counts, Heads up
+     and the calendar, so its windows are pinned here: sessions, events
+     and tasks within 7 days, overdue tasks for 14 days at most, three
+     open tasks to claim, availability once two others have added theirs,
+     required events only (never dues), pinned announcements not yet read. */
+  run(`
+    myOrgRsvp = (o, id) => { const v = o.rsvp?.[myOrgUid(o)]?.[id]; return v === 'yes' || v === 'no' ? v : ''; };
+    globalThis.__d = (n) => addDays(todayIso(), n);
+    globalThis.__g = (mineAvail, others) => {
+      const on = { d1: '1'.repeat(AVAIL_SLOTS) };
+      const avail = {};
+      ['a', 'b', 'c'].slice(0, others).forEach(u => { avail[u] = on; });
+      if (mineAvail) avail.me = on;
+      const task = (id, extra) => [id, { id, title: 'Task ' + id, done: false, assignee: null, due: null, createdAt: 1, ...extra }];
+      return {
+        code: 'GRP', name: 'Bio review', memberUids: ['me', 'a', 'b', 'c'], people: {}, avail,
+        sessions: {
+          s1: { id: 's1', title: 'Tomorrow', date: __d(1), start: '17:00', rsvp: {} },
+          s2: { id: 's2', title: 'Answered', date: __d(3), start: '17:00', rsvp: { me: 'yes' } },
+          s3: { id: 's3', title: 'Too far', date: __d(10), start: '17:00', rsvp: {} },
+        },
+        taskItems: Object.fromEntries([
+          task('t1', { assignee: 'me', due: __d(2) }), task('t2', { assignee: 'me', due: __d(-20) }), task('t3', { assignee: 'me', due: __d(-3) }),
+          task('t5', { assignee: 'me', due: __d(1), done: true }), task('t6', { assignee: 'me' }), task('t7', { assignee: 'a', due: __d(1) }),
+          task('u1', { due: __d(4) }), task('u2', { due: __d(5) }), task('u3'), task('u4'),
+        ]),
+      };
+    };
+    globalThis.__o = () => ({
+      code: 'CLB', name: 'Kestrel House', memberUids: ['me', 'x'], officerUids: ['x'], people: {}, color: '#1F5F6B',
+      events: {
+        e1: { id: 'e1', title: 'Chapter meeting', date: __d(2), start: '19:00', required: true, category: 'meeting' },
+        e2: { id: 'e2', title: 'Spring dues', date: __d(2), required: true, category: 'deadline' },
+        e3: { id: 'e3', title: 'Far away', date: __d(9), start: '19:00', required: true, category: 'meeting' },
+        e4: { id: 'e4', title: 'Optional social', date: __d(1), start: '19:00', required: false, category: 'social' },
+        e5: { id: 'e5', title: 'Said no', date: __d(1), start: '19:00', required: true, category: 'meeting' },
+      },
+      rsvp: { me: { e5: 'no' } },
+      announcements: {
+        p1: { id: 'p1', text: 'Formal is Friday', pinned: true, at: 100, uid: 'x', name: 'Noah' },
+        p2: { id: 'p2', text: 'Mine', pinned: true, at: 120, uid: 'me', name: 'You' },
+        p3: { id: 'p3', text: 'Not pinned', pinned: false, at: 130, uid: 'x', name: 'Noah' },
+      },
+    });
+    state.settings.orgSeen = { CLB: 50 };
+  `);
+  check('needs: a group lists the unanswered session, your tasks (overdue first), 3 to claim and availability', run(`spaceNeeds('group', __g(false, 2)).items.map(i => i.key)`),
+    ['session:s1', 'task:t3', 'task:t1', 'claim:u1', 'claim:u2', 'claim:u3', 'avail']);
+  check('needs: availability waits for two others, and stops once yours is in', run(`[spaceNeeds('group', __g(false, 1)).items.some(i => i.type === 'avail'), spaceNeeds('group', __g(true, 3)).items.some(i => i.type === 'avail')]`), [false, false]);
+  check('needs: a weekly series asks once, for its next session', run(`(() => { const g = __g(false, 2); g.sessions.s1.seriesId = 'w'; g.sessions.s4 = { id: 's4', title: 'Next week', date: __d(6), start: '17:00', rsvp: {}, seriesId: 'w' }; return spaceNeeds('group', g).items.filter(i => i.type === 'session').map(i => i.id); })()`), ['s1']);
+  check('needs: an overdue task is marked overdue', run(`spaceNeeds('group', __g(false, 2)).items.find(i => i.key === 'task:t3').overdue`), true);
+  check('needs: a club lists required events this week (never dues) and an unread pinned announcement', run(`spaceNeeds('club', __o()).items.map(i => i.key)`), ['event:e1', 'pinned:p1']);
+  check('needs: reading up to the pinned announcement clears it', run(`(() => { state.settings.orgSeen = { CLB: 100 }; const n = spaceNeeds('club', __o()).count; state.settings.orgSeen = { CLB: 50 }; return n; })()`), 1);
+  check('needs: the strip lists each item with a one-tap action and a labelled title', run(`(() => { const h = spaceNeedsStrip('club', __o()); return [/What needs you · 2/.test(h), (h.match(/class="card card-sm space-need /g) || []).length, /aria-label="Going to Chapter meeting"/.test(h), /Read it/.test(h)]; })()`), [true, 2, true, true]);
+  check('needs: an empty space is all caught up', run(`spaceNeedsStrip('club', { ...__o(), events: {}, announcements: {} }).includes('You’re all caught up in Kestrel House.')`), true);
+  run(`allGroups = () => [__g(false, 2)]; allOrgs = () => [__o()]; _groupTaskIdx = null;`);
+  check('needs: the calendar shows your open group tasks on their due dates', run(`[groupTasksOnDate(__d(2)).map(x => x.kind + ':' + x.id), groupTasksOnDate(__d(1)).length, groupTasksOnDate(__d(-20)).length]`), [['grouptask:t1'], 0, 1]);
+  const heads = run(`attentionItems().filter(i => /Bio review|Kestrel House/.test(i.sub) || /Kestrel House|Bio review/.test(i.title)).map(i => i.group + '|' + i.title + '|' + /needs your RSVP/.test(i.sub))`);
+  check('needs: Heads up gets your tasks by due date and unanswered sessions and events, not the rest', heads.sort(),
+    ['Coming up|Chapter meeting|true', 'Coming up|Task t1|false', 'Overdue|Task t3|false', 'Today|Pinned announcement and 1 more|false', 'Tomorrow|Tomorrow|true'].sort());
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

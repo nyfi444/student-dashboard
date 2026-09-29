@@ -45,7 +45,9 @@ async function saveOrgLinks(code) {
    month: who keeps skipping the required ones. Rows are members, columns
    are the last few events plus what's next, and it exports as a CSV. */
 function orgAttendanceEvents(o, { past = 6, upcoming = 2 } = {}) {
-  const all = orgEventList(o);
+  // Dues and deadlines aren't attended, so they aren't columns here. The
+  // roster CSV below still lists them, with any answers given before.
+  const all = orgEventList(o).filter(e => !orgIsDuesEvent(e));
   return [...all.filter(orgEventPast).slice(-past), ...all.filter(e => !orgEventPast(e)).slice(0, upcoming)];
 }
 function orgAttendanceHtml_officer(o) {

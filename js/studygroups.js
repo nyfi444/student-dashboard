@@ -126,12 +126,9 @@ function groupsThisWeek(groups) {
     })),
   });
 }
-// What a group needs from you: your open tasks, plus upcoming sessions you
-// haven't answered yet.
-function groupIndexNeedCount(g) {
-  const u = myUidFor(g);
-  return taskList(g).filter(t => !t.done && t.assignee === u).length + upcomingSessions(g).filter(s => !s.rsvp?.[u]).length;
-}
+// What a group needs from you: the same count as its "What needs you"
+// strip (spaceNeeds in js/spaces/needs.js).
+function groupIndexNeedCount(g) { return spaceNeeds('group', g).count; }
 function groupIndexCard(g) {
   const next = upcomingSessions(g)[0];
   const unread = groupHasUnread(g);
@@ -247,6 +244,7 @@ function groupOverviewTab(g) {
   const msgs = groupMessages(g).slice(-3);
   const activity = groupActivity(g).slice(0, 6);
   return `
+    ${spaceNeedsStrip('group', g)}
     <div class="sg-overview">
       <div class="sg-col">
         ${next ? nextSessionHero(g, next) : `
@@ -295,70 +293,81 @@ function groupActivity(g) {
 }
 
 /* ── Sessions ──────────────────────────────────────────────────── */
-function rsvpControl(g, s) {
+// The shared control (js/spaces/rsvp.js) with a group's answers: Going,
+// Maybe, Can't. size 'row' everywhere a list shows sessions, 'hero' in the
+// next-session card and the session sheet.
+function rsvpControl(g, s, { size = 'row', stillComing = false, clearable = false } = {}) {
   const mine = s.rsvp?.[myUidFor(g)] || '';
-  const opt = (val, label) => `<button class="${mine === val ? 'active' : ''}" aria-pressed="${mine === val}" onclick="event.stopPropagation();setSessionRsvp('${g.code}','${s.id}','${val}')">${label}</button>`;
-  return `<div class="segmented sg-rsvp" role="group" aria-label="RSVP">${opt('yes', 'Going')}${opt('maybe', 'Maybe')}${opt('no', 'Can’t')}</div>`;
+  return spaceRsvp({ kind: 'group', code: g.code, id: s.id, title: s.title, mine, size, clearable,
+    stillComing: stillComing && spaceStillComingDue('group', g.code, s.id, s, mine) });
 }
-async function setSessionRsvp(code, sid, val) {
+// toggle (default true, the old behavior) clears your answer when you tap
+// the one you already gave. The shared control always passes false, so
+// "Still coming? Yes" and "Change, same answer" can never un-RSVP you.
+async function setSessionRsvp(code, sid, val, toggle = true) {
   const g = findGroup(code);
-  if (!g?.sessions?.[sid]) return;
+  if (!g?.sessions?.[sid] || !['yes', 'maybe', 'no'].includes(val)) return false;
   const u = myUidFor(g);
   const current = g.sessions[sid].rsvp?.[u];
-  if (val === 'yes' && current !== 'yes' && typeof playUiSound === 'function') playUiSound('tap');
-  const ok = await groupWrite(code, { [`sessions.${sid}.rsvp.${u}`]: current === val ? GW_DELETE : val });
-  // Answering from inside the session's popup: refresh it so you land in the right list.
+  const next = spaceRsvpNextValue(current, val, toggle);
+  if (next === 'yes' && current !== 'yes' && typeof playUiSound === 'function') playUiSound('tap');
+  const ok = await groupWrite(code, { [`sessions.${sid}.rsvp.${u}`]: next === null ? GW_DELETE : next });
+  // Answering from inside the session's sheet: refresh it so you land in the right list.
   const open = window._groupSessionModal;
-  if (ok && open?.code === code && open.sid === sid && $('#modal .org-rsvp-group')) showGroupSessionModal(code, sid);
+  if (ok && open?.code === code && open.sid === sid && $('#modal .space-sheet')) showGroupSessionModal(code, sid);
+  return ok;
 }
-/* ── Session popup: the details, who's coming, and who hasn't said ──
+// Who gave which answer, current members only: someone who left keeps a
+// key in s.rsvp, but shouldn't be counted or shown as "Former member".
+function sessionRsvpPeople(g, s) {
+  const out = { yes: [], maybe: [], no: [], none: [] };
+  groupPeople(g).forEach(p => { const v = s.rsvp?.[p.uid]; (out[v === 'yes' || v === 'maybe' || v === 'no' ? v : 'none']).push(p); });
+  return out;
+}
+// "You, Maya and 3 others are going". Groups have no officers, so everyone
+// sees the counts; only the empty hero line changes.
+function groupFacePile(g, s, { size = 26, zero = true } = {}) {
+  const who = sessionRsvpPeople(g, s);
+  return spaceFacePile({
+    people: who.yes, meUid: myUidFor(g), size, colorOf: (uid) => personColor(g, uid),
+    zeroText: zero ? 'Be the first to say you’re going' : '0 going',
+    detail: who.maybe.length ? `${who.maybe.length} maybe` : '',
+    onclick: `showGroupSessionModal('${g.code}','${s.id}')`,
+    label: `See who’s going to ${s.title}`,
+  });
+}
+/* ── Session sheet: the details, who's coming, and who hasn't said ──
    Session cards used to hide the RSVP names in a tooltip. This is the
-   same shape as a club event's popup, so calendar blocks, dashboard rows
-   and "coming up" lists all open the same thing. */
+   same sheet as a club event's (spaceEventSheet), so calendar blocks,
+   dashboard rows and "coming up" lists all open the same thing. */
 function showGroupSessionModal(code, sid) {
   const g = findGroup(code);
   const s = g?.sessions?.[sid];
   if (!g || !s || !safeId(sid)) return;
   const u = myUidFor(g);
   const past = sessionIsPast(s);
-  const people = groupPeople(g);
-  const answer = (p) => s.rsvp?.[p.uid] || '';
-  const same = window._groupSessionModal?.code === code && window._groupSessionModal.sid === sid;
-  const openGroups = same ? $$('#modal .org-rsvp-group').map(d => d.open) : null;
+  const who = sessionRsvpPeople(g, s);
   window._groupSessionModal = { code, sid };
-  const person = (p) => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, personColor(g, p.uid))}<div class="row-title small">${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div></div>`;
-  const group = (label, list, open) => `
-    <details class="org-rsvp-group" ${open ? 'open' : ''}>
-      <summary><span class="sg-strong">${label}</span><span class="assign-count">${list.length}</span></summary>
-      ${list.length ? `<div class="org-rsvp-list">${list.map(person).join('')}</div>` : '<div class="small muted org-rsvp-empty">No one yet.</div>'}
-    </details>`;
-  const going = people.filter(p => answer(p) === 'yes'), maybe = people.filter(p => answer(p) === 'maybe'), cant = people.filter(p => answer(p) === 'no'), none = people.filter(p => !answer(p));
   const later = s.seriesId ? sessionList(g).filter(x => x.seriesId === s.seriesId && x.date > s.date).length : 0;
-  openModal(`
-    <div class="modal-head"><h3>${esc(s.title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
-    <div class="modal-body">
-      <div class="sg-eyebrow">${esc(g.name)}${s.seriesId ? ` · Weekly${later ? `, ${later} more after this` : ''}` : ''}${past ? ' · Past' : ''}</div>
-      <div class="small sg-meta-line mt-8">
-        <span>${icon('calendar', 12)} ${esc(fmtDateLong(s.date))}</span>
-        ${s.start ? `<span>${icon('clock', 12)} ${fmtTime(s.start)}${s.end ? `–${fmtTime(s.end)}` : ''}</span>` : ''}
-        ${s.where ? `<span>${icon('map-pin', 12)} ${linkifyWhere(s.where)}</span>` : ''}
-      </div>
-      ${s.notes ? `<div class="small sg-notes mt-8">${linkifyText(s.notes)}</div>` : ''}
-      ${!past ? `<div class="flex-gap wrap mt-16" style="align-items:center">${rsvpControl(g, s)}${joinLinkButton(s.where)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button></div>` : ''}
-      <div class="divider"></div>
-      ${group(past ? 'Said they’d go' : 'Going', going, true)}
-      ${group('Maybe', maybe, maybe.length > 0)}
-      ${group('Can’t make it', cant, cant.length > 0 && cant.length <= 8)}
-      ${group('Haven’t answered', none, false)}
-      ${none.length && !past && !g.local ? `<button class="btn btn-sm mt-8" onclick="copyRsvpNudge('${g.code}','${s.id}')">${icon('copy', 14)} Copy a reminder for them</button>` : ''}
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-danger" style="margin-right:auto" onclick="deleteSession('${g.code}','${s.id}')">Delete</button>
-      <button class="btn" onclick="openSessionModal('${g.code}','${s.id}')">Edit</button>
-      <button class="btn btn-primary" onclick="closeModal()">Done</button>
-    </div>
-  `, { onClose: () => { window._groupSessionModal = null; } });
-  if (openGroups) $$('#modal .org-rsvp-group').forEach((d, i) => { if (openGroups[i] != null) d.open = openGroups[i]; });
+  const colorOf = (uid) => personColor(g, uid);
+  const nameOf = (p) => ({ ...p, name: p.uid === u && p.name !== 'You' ? `${p.name} (you)` : p.name });
+  const lists = [
+    { key: 'yes', label: past ? 'Said they’d go' : 'Going', short: past ? 'Went' : 'Going', people: who.yes.map(nameOf), colorOf, empty: past ? 'No one said they’d go.' : 'No one yet. Be the first.' },
+    { key: 'maybe', label: 'Maybe', people: who.maybe.map(nameOf), colorOf },
+    { key: 'no', label: 'Can’t make it', short: 'Can’t', people: who.no.map(nameOf), colorOf },
+    { key: 'none', label: 'Haven’t answered', short: 'No answer', people: who.none.map(nameOf), colorOf, empty: 'Everyone has answered.',
+      footHtml: who.none.length && !past && !g.local ? `<button class="btn btn-sm mt-8" onclick="copyRsvpNudge('${g.code}','${s.id}')">${icon('copy', 14)} Copy a reminder for them</button>` : '' },
+  ];
+  openModal(spaceEventSheet({
+    kind: 'group', code: g.code, id: s.id, color: groupColor(g), glyph: 'book-open', spaceName: g.name,
+    title: s.title, date: s.date, start: s.start, end: s.end, where: s.where, notes: s.notes,
+    tags: s.seriesId ? spaceTag('weekly', `Weekly${later ? `, ${later} more after this` : ''}`) : '',
+    rsvpHtml: past ? '' : rsvpControl(g, s, { size: 'hero', stillComing: true, clearable: true }),
+    facesHtml: past ? '' : groupFacePile(g, s, { size: 24 }),
+    actionsHtml: past ? '' : `${joinLinkButton(s.where)}<button class="btn btn-ghost btn-sm" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`,
+    listsHtml: spaceRsvpLists({ key: spaceRsvpKey('group', g.code, s.id), lists }),
+    footHtml: `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteSession('${g.code}','${s.id}')">Delete</button><button class="btn" onclick="openSessionModal('${g.code}','${s.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button>`,
+  }), { onClose: () => { window._groupSessionModal = null; } });
 }
 function copyRsvpNudge(code, sid) {
   const g = findGroup(code);
@@ -367,28 +376,18 @@ function copyRsvpNudge(code, sid) {
   copyText(`Can everyone RSVP for “${s.title}” (${fmtSessionWhen(s)}) in Semester HQ? Open “${g.name}” → Sessions and tap Going, Maybe, or Can’t. ${groupInviteLink(code)}`, 'Reminder copied. Paste it in your group chat.');
 }
 function nextSessionHero(g, s) {
-  const c = rsvpCounts(s);
-  const going = Object.entries(s.rsvp || {}).filter(([, v]) => v === 'yes').map(([id]) => id);
-  const d = new Date(s.date + 'T00:00:00');
-  return `
-    <div class="card sg-next">
-      <div class="sg-next-date"><span>${d.toLocaleDateString('en-US', { weekday: 'short' })}</span><strong>${d.getDate()}</strong><span>${d.toLocaleDateString('en-US', { month: 'short' })}</span></div>
-      <div class="sg-next-body">
-        <div class="sg-eyebrow">Next session · ${fmtSessionDay(s.date)}${s.seriesId ? ' · Weekly' : ''}</div>
-        <button class="sg-next-title sg-title-btn" onclick="showGroupSessionModal('${g.code}','${s.id}')">${esc(s.title)}</button>
-        <div class="small muted sg-meta-line">
-          ${s.start ? `<span>${icon('clock', 12)} ${fmtTime(s.start)}${s.end ? '–' + fmtTime(s.end) : ''}</span>` : ''}
-          ${s.where ? `<span>${icon('map-pin', 12)} ${linkifyWhere(s.where)}</span>` : ''}
-        </div>
-        ${s.notes ? `<div class="small sg-notes">${linkifyText(s.notes)}</div>` : ''}
-        <div class="sg-next-foot">
-          ${rsvpControl(g, s)}
-          ${joinLinkButton(s.where)}
-          <button class="sg-link sg-going" onclick="showGroupSessionModal('${g.code}','${s.id}')" aria-label="See who’s going to ${esc(s.title)}">${going.length ? `${avatarStack(g, 4, 22, going)} ${c.yes} going` : 'No RSVPs yet'}${c.maybe ? ` · ${c.maybe} maybe` : ''} · See who</button>
-          <button class="btn btn-ghost btn-sm sg-ics" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>
-        </div>
-      </div>
-    </div>`;
+  // The countdown chip (or the Happening now strip) carries the when.
+  return spaceEventHero({
+    date: s.date, start: s.start, end: s.end, where: s.where, notes: s.notes,
+    eyebrow: 'Next session',
+    tags: s.seriesId ? spaceTag('weekly', 'Weekly') : '',
+    title: s.title,
+    onOpen: `showGroupSessionModal('${g.code}','${s.id}')`,
+    rsvpHtml: rsvpControl(g, s, { size: 'hero', stillComing: true }),
+    facesHtml: groupFacePile(g, s),
+    actionsHtml: `<button class="btn btn-ghost btn-sm sg-ics" onclick="downloadSessionIcs('${g.code}','${s.id}')">${icon('download', 14)} Add to calendar app</button>`,
+    className: 'sg-next-hero',
+  });
 }
 function groupScheduleTab(g) {
   const upcoming = upcomingSessions(g);
@@ -403,9 +402,9 @@ function groupScheduleTab(g) {
   `;
 }
 function sessionCard(g, s, { past = false } = {}) {
-  const c = rsvpCounts(s);
-  const names = (v) => Object.entries(s.rsvp || {}).filter(([, x]) => x === v).map(([id]) => personName(g, id));
-  const who = [...names('yes').map(n => `${n} (going)`), ...names('maybe').map(n => `${n} (maybe)`), ...names('no').map(n => `${n} (can’t)`)].join(', ');
+  const r = sessionRsvpPeople(g, s);
+  const c = { yes: r.yes.length, maybe: r.maybe.length, no: r.no.length };
+  const who = [...r.yes.map(p => `${p.name} (going)`), ...r.maybe.map(p => `${p.name} (maybe)`), ...r.no.map(p => `${p.name} (can’t)`)].join(', ');
   return `
     <div class="card sg-session ${past ? 'past' : ''}" onclick="showGroupSessionModal('${g.code}','${s.id}')">
       ${dateTile(s.date)}
@@ -424,7 +423,7 @@ function sessionCard(g, s, { past = false } = {}) {
         <div class="sg-session-foot">
           ${!past ? rsvpControl(g, s) : ''}
           ${!past ? joinLinkButton(s.where) : ''}
-          <span class="small muted" title="${esc(who)}">${c.yes} going${c.maybe ? ` · ${c.maybe} maybe` : ''}${c.no ? ` · ${c.no} can’t` : ''}</span>
+          <span class="small muted sg-session-count" title="${esc(who)}">${past ? `${c.yes} said they’d go` : `${c.yes} going${c.maybe ? ` · ${c.maybe} maybe` : ''}${c.no ? ` · ${c.no} can’t` : ''}`}</span>
         </div>
       </div>
     </div>`;
@@ -974,7 +973,7 @@ async function deleteGroupEverywhere(code) {
 function groupSessionsOnDate(dateIso) {
   return allGroups().flatMap(g => sessionList(g)
     .filter(s => s.date === dateIso && s.rsvp?.[myUidFor(g)] !== 'no')
-    .map(s => ({ id: s.id, code: g.code, title: s.title, start: s.start || null, end: s.end || null, color: groupColor(g) || '#6b6b6b', kind: 'group', groupName: g.name, action: `showGroupSessionModal('${g.code}','${s.id}')` })));
+    .map(s => ({ id: s.id, code: g.code, title: s.title, start: s.start || null, end: s.end || null, color: groupColor(g) || '#6b6b6b', kind: 'group', groupName: g.name, action: `showGroupSessionModal('${g.code}','${s.id}')`, date: s.date, mine: s.rsvp?.[myUidFor(g)] || '', rsvpKind: 'group' })));
 }
 function dashboardGroupsWidget() {
   const groups = allGroups();
@@ -996,10 +995,11 @@ function dashboardGroupsWidget() {
   return `
     <div class="card card-pad mb-16">
       <div class="flex-between mb-8"><h3 class="sg-h3">Study groups</h3><button class="sg-link" onclick="setState({route:'studygroups',subRoute:null})">All groups ${icon('chevron-right', 12)}</button></div>
+      ${spaceNeedsPills('group', groups)}
       ${unread.length ? `<div class="sg-dash-unread">${unread.map(g => `<button class="pill sg-unread-pill" onclick="openGroup('${g.code}','chat')"><span class="sg-unread-dot"></span>${esc(g.name)}</button>`).join('')}</div>` : ''}
       ${sessions.length ? sessions.map(({ g, s }) => `
-        <div class="list-row sg-session-row" style="--course:${esc(groupColor(g) || '#6b6b6b')}" onclick="showGroupSessionModal('${g.code}','${s.id}')">
-          ${dateTile(s.date)}
+        <div class="list-row sg-session-row space" style="--course:${esc(groupColor(g) || '#6b6b6b')};${spaceVars(groupColor(g))}" onclick="showGroupSessionModal('${g.code}','${s.id}')">
+          ${spaceDateBlock(s.date, { size: 'tile' })}
           <div class="row-title"><div class="sg-strong">${esc(s.title)}</div><div class="row-meta">${esc(g.name)} · ${fmtSessionWhen(s)}</div></div>
           ${rsvpControl(g, s)}
         </div>`).join('') : `<p class="small muted">No group sessions in the next 7 days.</p>`}

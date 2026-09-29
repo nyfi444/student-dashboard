@@ -121,11 +121,31 @@ function orgLinkList(o) {
 // A small glyph for the service a link goes to, and "Pay dues" for the first
 // link that goes to a payment app, so members find it without reading labels.
 const ORG_LINK_GLYPHS = [[/instagram|tiktok/i, 'camera'], [/groupme|discord|slack|whatsapp|messenger|telegram/i, 'message-circle'], [/drive\.google|docs\.google|dropbox|onedrive|notion/i, 'folder'], [/calendar/i, 'calendar']];
-const ORG_DUES_LINK = /venmo|paypal|cash\.app|cashapp|zelle|\bdues\b/i;
+// Matched against the link's host and label, never its path or query, so a
+// random URL with "pay" in it doesn't become the dues button.
+const ORG_DUES_LINK = /venmo|paypal|cash\.app|cashapp|zelle|\bdues\b|\bpay\b/i;
+function orgDuesLink(o) { return orgLinkList(o).find(l => ORG_DUES_LINK.test(`${hostOf(l.url)} ${l.label}`)) || null; }
+// "Deadline or dues" events aren't something you attend, so they never ask
+// Going or Can't. They leave the needs-your-answer lists, the attendance
+// grid and the RSVP reminders; answers already given stay in the data and
+// in the roster CSV (downloadOrgRosterCsv), untouched.
+function orgIsDuesEvent(e) { return e?.category === 'deadline'; }
+// What a dues event shows instead of RSVP buttons: the club's pay link when
+// the event is about paying, "Add a dues link" for an officer without one.
+function orgDuesAction(o, e, { size = 'row' } = {}) {
+  const payish = /dues|fee|pay/i.test(e.title || '');
+  if (!payish) return '';
+  const link = orgDuesLink(o);
+  if (link) {
+    const label = /dues/i.test(e.title) ? 'Pay dues' : /fee/i.test(e.title) ? 'Pay the fee' : 'Pay now';
+    return `<a class="btn ${size === 'hero' ? 'space-dues-btn is-hero' : 'btn-sm space-dues-btn'}" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer" title="${esc(link.label)}" onclick="event.stopPropagation()">${label} ${icon('arrow-up-right', 14)}</a>`;
+  }
+  return isOrgOfficer(o) ? `<button class="btn btn-ghost btn-sm space-dues-add" onclick="event.stopPropagation();openOrgLinksModal('${o.code}')">${icon('plus', 14)} Add a dues link</button>` : '';
+}
 function orgLinksHtml(o, { editable = false } = {}) {
   const links = orgLinkList(o);
   if (!links.length && !editable) return '';
-  const duesId = links.find(l => ORG_DUES_LINK.test(`${l.url} ${l.label}`))?.id;
+  const duesId = orgDuesLink(o)?.id;
   const glyph = (l) => (ORG_LINK_GLYPHS.find(([re]) => re.test(`${l.url} ${l.label}`)) || [0, 'link'])[1];
   return `<div class="org-links">${links.map(l => `<a class="org-link-pill" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"${l.id === duesId ? ` title="${esc(l.label)}"` : ''}>${icon(l.id === duesId ? 'check-square' : glyph(l), 12)} ${l.id === duesId ? 'Pay dues' : esc(l.label)}</a>`).join('')}${editable ? `<button class="org-link-pill is-edit" onclick="openOrgLinksModal('${o.code}')">${icon('pencil', 11)} ${links.length ? 'Edit links' : 'Add links'}</button>` : ''}</div>`;
 }
@@ -258,7 +278,7 @@ function orgEventsOnDate(dateIso) {
   if (typeof allOrgs !== 'function') return [];
   return allOrgs().filter(o => !o.hideCalendar).flatMap(o => orgEventList(o).filter(e => e.date === dateIso && myOrgRsvp(o, e.id) !== 'no').map(e => ({
     id: e.id, code: o.code, title: e.title, start: e.start || null, end: e.end || null, color: orgColor(o), kind: 'org', orgName: o.name, required: !!e.required, category: e.category,
-    action: `openOrgEvent('${o.code}','${e.id}')`,
+    action: `openOrgEvent('${o.code}','${e.id}')`, date: e.date, mine: orgIsDuesEvent(e) ? '' : myOrgRsvp(o, e.id), rsvpKind: 'club',
   })));
 }
 function orgUpcomingForMe(days = 7) {
@@ -274,11 +294,13 @@ function dashboardOrgsWidget() {
   return `
     <div class="card card-pad">
       <div class="flex-between mb-8"><h3 class="sg-h3">Clubs & teams</h3><button class="sg-link" onclick="setState({route:'orgs',subRoute:null})">All ${icon('chevron-right', 12)}</button></div>
+      ${spaceNeedsPills('club', orgs)}
       ${unread.length ? `<div class="sg-dash-unread">${unread.map(([o, n]) => `<button class="pill sg-unread-pill" onclick="openOrg('${o.code}','announcements')"><span class="sg-unread-dot"></span>${esc(o.name)} · ${n} new</button>`).join('')}</div>` : ''}
       ${rows.length ? rows.map(({ o, e }) => `
-        <div class="list-row sg-session-row" style="--course:${esc(orgColor(o))}" onclick="openOrgEvent('${o.code}','${e.id}')">
-          ${dateTile(e.date)}
+        <div class="list-row sg-session-row space" style="--course:${esc(orgColor(o))};${spaceVars(orgColor(o))}" onclick="openOrgEvent('${o.code}','${e.id}')">
+          ${spaceDateBlock(e.date, { size: 'tile' })}
           <div class="row-title"><div class="sg-strong">${esc(e.title)}${e.required ? ' <span class="org-required">Required</span>' : ''}</div><div class="row-meta">${esc(o.name)}${e.start ? ` · ${fmtTime(e.start)}` : ''}</div></div>
+          ${orgRsvpControl(o, e)}
         </div>`).join('') : '<p class="small muted">Nothing on the calendar in the next 10 days.</p>'}
     </div>`;
 }
@@ -338,8 +360,9 @@ function orgFaceColors(o) {
   orgPeople(o).forEach((p, i) => { map[p.uid] = p.officer ? color : spaceTint(color, (i % 3) + 1); });
   return map;
 }
-// What a club needs from you: required upcoming events you haven't answered.
-function orgIndexNeedCount(o) { return upcomingOrgEvents(o).filter(e => e.required && !myOrgRsvp(o, e.id)).length; }
+// What a club needs from you: the same count as its "What needs you"
+// strip (spaceNeeds in js/spaces/needs.js).
+function orgIndexNeedCount(o) { return spaceNeeds('club', o).count; }
 function orgIndexCard(o) {
   const next = upcomingOrgEvents(o)[0];
   const unread = orgUnreadCount(o);
@@ -365,58 +388,104 @@ function orgIndexCard(o) {
   });
 }
 function orgEventRow(o, e, { showOrg = false } = {}) {
-  const mine = myOrgRsvp(o, e.id);
   const counts = orgRsvpCounts(o, e.id);
   const past = orgEventPast(e);
+  const dues = orgIsDuesEvent(e);
+  // Count text only (no faces in rows). Members never see "0 going".
+  const count = dues ? '' : past ? `${counts.yes} said they’d go` : counts.yes || isOrgOfficer(o) ? `${counts.yes} going` : '';
+  const trailing = past ? '' : dues ? orgDuesAction(o, e) : orgRsvpControl(o, e);
   return `
     <div class="list-row sg-session-row org-event-row ${past ? 'is-past' : ''}" style="--course:${esc(orgColor(o))}" onclick="showOrgEventModal('${o.code}','${e.id}')">
-      ${dateTile(e.date)}
+      ${spaceDateBlock(e.date, { size: 'tile' })}
       <div class="row-title">
-        <div class="sg-strong">${esc(e.title)}${e.required ? ' <span class="org-required">Required</span>' : ''}</div>
-        <div class="row-meta">${[showOrg ? esc(o.name) : '', orgCatHtml(e), e.start ? `${fmtTime(e.start)}${e.end ? `–${fmtTime(e.end)}` : ''}` : '', e.location ? esc(e.location) : ''].filter(Boolean).join(' · ')}</div>
+        <div class="sg-strong">${esc(e.title)}${e.required && !dues ? ' <span class="org-required">Required</span>' : ''}</div>
+        <div class="row-meta">${[showOrg ? esc(o.name) : '', orgCatHtml(e), e.start ? `${fmtTime(e.start)}${e.end ? `–${fmtTime(e.end)}` : ''}` : '', e.location ? esc(e.location) : '', count ? `<span class="org-row-going">${count}</span>` : ''].filter(Boolean).join(' · ')}</div>
       </div>
-      ${past
-        ? `<span class="small muted org-counts">${counts.yes} said they’d go</span>`
-        : `<span class="small org-row-answer ${mine ? '' : 'muted'}">${mine === 'yes' ? 'Going' : mine === 'no' ? 'Can’t go' : 'Not answered'}<span class="org-row-count muted"> · ${counts.yes} going</span></span>`}
+      ${trailing}
     </div>`;
 }
-// Who's going, who can't, and (for officers, who follow up) who hasn't answered.
-function orgAttendanceHtml(o, e) {
-  const people = orgPeople(o);
-  const answer = (p) => o.rsvp?.[p.uid]?.[e.id] || '';
-  const group = (label, list, open = true) => `
-    <details class="org-rsvp-group" ${open ? 'open' : ''}>
-      <summary><span class="sg-strong">${label}</span><span class="assign-count">${list.length}</span></summary>
-      ${list.length ? `<div class="org-rsvp-list">${list.map(p => `<div class="sg-person">${personAvatar(p.uid, p.name, 24, p.officer ? orgColor(o) : '#6b6b6b')}<div class="row-title small">${esc(p.name)}${p.uid === myOrgUid(o) && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div><span class="small muted">${esc(orgRoleLabel(o, p))}</span></div>`).join('')}</div>` : '<div class="small muted org-rsvp-empty">No one yet.</div>'}
-    </details>`;
-  const going = people.filter(p => answer(p) === 'yes'), cant = people.filter(p => answer(p) === 'no'), none = people.filter(p => !answer(p));
-  return `
-    ${group(orgEventPast(e) ? 'Said they’d go' : 'Going', going)}
-    ${group('Can’t make it', cant, cant.length <= 8)}
-    ${isOrgOfficer(o)
-      ? `${group('Haven’t answered', none, false)}${none.length && !orgEventPast(e) ? `<button class="btn btn-sm mt-8" onclick="remindToRsvp('${o.code}','${e.id}')">${icon('megaphone', 14)} Remind them to RSVP</button>` : ''}`
-      : none.length ? `<div class="small muted mt-8">${none.length} ${none.length === 1 ? 'person hasn’t' : 'people haven’t'} answered yet.</div>` : ''}`;
+// Who gave which answer, current members only.
+function orgRsvpPeople(o, e) {
+  const out = { yes: [], no: [], none: [] };
+  orgPeople(o).forEach(p => { const v = o.rsvp?.[p.uid]?.[e.id]; out[v === 'yes' || v === 'no' ? v : 'none'].push(p); });
+  return out;
+}
+// "You, Maya and 3 others are going". Officers, who count heads, see the
+// real numbers; members at zero see an invitation instead of "0 going".
+function orgFacePile(o, e, { size = 26 } = {}) {
+  const who = orgRsvpPeople(o, e);
+  const faces = orgFaceColors(o);
+  const officer = isOrgOfficer(o);
+  return spaceFacePile({
+    people: who.yes, meUid: myOrgUid(o), size, colorOf: (uid) => faces[uid] || orgColor(o),
+    zeroText: officer ? '0 going' : 'Be the first to say you’re going',
+    detail: officer && who.none.length ? `${who.none.length} haven’t answered` : '',
+    onclick: `showOrgEventModal('${o.code}','${e.id}')`,
+    label: `See who’s going to ${e.title}`,
+  });
+}
+// The sheet's lists: Going, Can't, and (officers only, since they follow
+// up) Haven't answered. Members get a one-line count instead.
+function orgAttendanceLists(o, e) {
+  const past = orgEventPast(e);
+  const who = orgRsvpPeople(o, e);
+  const faces = orgFaceColors(o);
+  const colorOf = (uid) => faces[uid] || orgColor(o);
+  const u = myOrgUid(o);
+  const row = (p) => ({ uid: p.uid, name: p.uid === u && p.name !== 'You' ? `${p.name} (you)` : p.name, sub: orgRoleLabel(o, p) });
+  const officer = isOrgOfficer(o);
+  const lists = [
+    { key: 'yes', label: past ? 'Said they’d go' : 'Going', short: past ? 'Went' : 'Going', people: who.yes.map(row), colorOf, empty: past ? 'No one said they’d go.' : 'No one yet. Be the first.' },
+    { key: 'no', label: 'Can’t make it', short: 'Can’t', people: who.no.map(row), colorOf,
+      footHtml: !officer && who.none.length ? `<div class="small muted mt-8">${who.none.length} ${who.none.length === 1 ? 'person hasn’t' : 'people haven’t'} answered yet.</div>` : '' },
+  ];
+  if (officer) lists.push({ key: 'none', label: 'Haven’t answered', short: 'No answer', people: who.none.map(row), colorOf, empty: 'Everyone has answered.',
+    footHtml: who.none.length && !past && !orgIsDuesEvent(e) ? `<button class="btn btn-sm mt-8" onclick="remindToRsvp('${o.code}','${e.id}')">${icon('megaphone', 14)} Remind them to RSVP</button>` : '' });
+  return spaceRsvpLists({ key: spaceRsvpKey('club', o.code, e.id), lists });
 }
 function remindToRsvp(code, eventId) {
   const o = findOrg(code);
   const e = o && orgEventList(o).find(x => x.id === eventId);
-  if (!e) return;
+  if (!e || orgIsDuesEvent(e)) return;
   openAnnouncementModal(code, `Please RSVP for ${e.title} on ${fmtDate(e.date, { weekday: 'long', month: 'short', day: 'numeric' })}${e.start ? ` at ${fmtTime(e.start)}` : ''}. Open Clubs & Teams in Semester HQ and tap Going or Can’t.`);
 }
-function orgRsvpControl(o, e, mine = myOrgRsvp(o, e.id)) {
-  const opt = (val, label) => `<button class="${mine === val ? 'active' : ''}" aria-pressed="${mine === val}" onclick="event.stopPropagation();setOrgRsvp('${o.code}','${e.id}','${val}')">${label}</button>`;
-  return `<div class="segmented sg-rsvp" role="group" aria-label="RSVP to ${esc(e.title)}">${opt('yes', 'Going')}${opt('no', 'Can’t')}</div>`;
+// The shared control (js/spaces/rsvp.js) with a club's answers: Going and
+// Can't. A dues event gets its pay button instead.
+function orgRsvpControl(o, e, mine = myOrgRsvp(o, e.id), { size = 'row', stillComing = false, clearable = false } = {}) {
+  if (orgIsDuesEvent(e)) return orgDuesAction(o, e, { size });
+  return spaceRsvp({ kind: 'club', code: o.code, id: e.id, title: e.title, mine, size, clearable,
+    stillComing: stillComing && spaceStillComingDue('club', o.code, e.id, e, mine) });
 }
-async function setOrgRsvp(code, eventId, val) {
+// toggle (default true) clears your answer when you tap the one you already
+// gave; the shared control always passes false.
+async function setOrgRsvp(code, eventId, val, toggle = true) {
   const o = findOrg(code);
-  if (!o || !safeId(eventId)) return;
+  if (!o || !safeId(eventId) || !['yes', 'no'].includes(val)) return false;
   const u = myOrgUid(o);
   const current = myOrgRsvp(o, eventId);
-  if (val === 'yes' && current !== 'yes') playUiSound('tap');
-  const ok = await orgWrite(code, { [`rsvp.${u}.${eventId}`]: current === val ? GW_DELETE : val });
-  // Answering from inside the event's popup: refresh it so you show up in the right list.
+  const next = spaceRsvpNextValue(current, val, toggle);
+  if (next === 'yes' && current !== 'yes') playUiSound('tap');
+  const ok = await orgWrite(code, { [`rsvp.${u}.${eventId}`]: next === null ? GW_DELETE : next });
+  // Answering from inside the event's sheet: refresh it so you show up in the right list.
   const open = window._orgEventModal;
-  if (ok && open?.code === code && open.eventId === eventId && $('#modal .org-rsvp-group')) showOrgEventModal(code, eventId);
+  if (ok && open?.code === code && open.eventId === eventId && $('#modal .space-sheet')) showOrgEventModal(code, eventId);
+  return ok;
+}
+// The club's next event as the Overview hero.
+function orgNextHero(o, e) {
+  const dues = orgIsDuesEvent(e);
+  // The countdown chip (or the Happening now strip) carries the when.
+  return spaceEventHero({
+    date: e.date, start: e.start, end: e.end, where: e.location, notes: e.notes,
+    eyebrow: dues ? 'Next up · Due' : 'Next up',
+    tags: `${e.required && !dues ? spaceTag('required', 'Required') : ''}${e.seriesId ? spaceTag('weekly', 'Weekly') : ''}`,
+    title: e.title,
+    onOpen: `showOrgEventModal('${o.code}','${e.id}')`,
+    rsvpHtml: orgRsvpControl(o, e, myOrgRsvp(o, e.id), { size: 'hero', stillComing: true }),
+    facesHtml: dues ? '' : orgFacePile(o, e),
+    actionsHtml: `<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button>`,
+    className: 'org-next-hero',
+  });
 }
 
 /* ── Org page ──────────────────────────────────────────────────── */
@@ -500,29 +569,17 @@ function orgOverviewTab(o) {
   const next = upcoming[0];
   const anns = orgAnnouncementList(o).slice(0, 3);
   const officers = orgPeople(o).filter(p => p.officer);
-  const unanswered = isOrgOfficer(o) ? upcoming.filter(e => e.required).slice(0, 3).map(e => ({ e, c: orgRsvpCounts(o, e.id) })).filter(x => x.c.none) : [];
-  // Required events you haven't answered, before anything else: officers
-  // are counting on it (see orgAttendanceHtml), and it's one tap.
-  const needMine = upcoming.filter(e => e.required && !myOrgRsvp(o, e.id)).slice(0, 4);
+  const unanswered = isOrgOfficer(o) ? upcoming.filter(e => e.required && !orgIsDuesEvent(e)).slice(0, 3).map(e => ({ e, c: orgRsvpCounts(o, e.id) })).filter(x => x.c.none) : [];
+  // What needs you comes first (spaceNeedsStrip, js/spaces/needs.js):
+  // required events this week you haven't answered and a pinned
+  // announcement you haven't read. Coming up skips the events it lists.
+  const needs = spaceNeeds('club', o);
+  const needIds = new Set(needs.items.filter(i => i.type === 'event').map(i => i.id));
   return `
+    ${spaceNeedsStrip('club', o, { needs })}
     <div class="sg-overview">
       <div class="sg-col">
-        ${needMine.length ? `
-          <div class="card card-pad org-need-answer">
-            <div class="flex-between mb-8"><h3 class="sg-h3">${icon('bell', 14)} ${needMine.length === 1 ? 'One required event needs your answer' : `${needMine.length} required events need your answer`}</h3></div>
-            ${needMine.map(e => `<div class="list-row sg-session-row org-event-row" onclick="showOrgEventModal('${o.code}','${e.id}')">${dateTile(e.date)}<div class="row-title"><div class="sg-strong">${esc(e.title)}</div><div class="row-meta">${fmtSessionDay(e.date)}${e.start ? ` · ${fmtTime(e.start)}` : ''}${e.location ? ` · ${esc(e.location)}` : ''}</div></div>${orgRsvpControl(o, e)}</div>`).join('')}
-          </div>` : ''}
-        ${next ? `
-          <div class="card sg-next org-next">
-            ${(() => { const d = new Date(next.date + 'T00:00:00'); return `<div class="sg-next-date"><span>${d.toLocaleDateString('en-US', { weekday: 'short' })}</span><strong>${d.getDate()}</strong><span>${d.toLocaleDateString('en-US', { month: 'short' })}</span></div>`; })()}
-            <div class="sg-next-body">
-              <div class="sg-eyebrow">Next up · ${fmtSessionDay(next.date)}${next.required ? ' · <span class="org-required">Required</span>' : ''}</div>
-              <div class="sg-next-title">${esc(next.title)}</div>
-              <div class="small muted sg-meta-line">${next.start ? `<span>${icon('clock', 12)} ${fmtTime(next.start)}${next.end ? `–${fmtTime(next.end)}` : ''}</span>` : ''}${next.location ? `<span>${icon('map-pin', 12)} ${linkifyWhere(next.location)}</span>` : ''}</div>
-              ${next.notes ? `<div class="small sg-notes">${linkifyText(next.notes)}</div>` : ''}
-              <div class="sg-next-foot">${orgRsvpControl(o, next)}${joinLinkButton(next.location)}${(() => { const goingUids = orgPeople(o).filter(p => o.rsvp?.[p.uid]?.[next.id] === 'yes'); return `<button class="sg-link org-going-link" onclick="showOrgEventModal('${o.code}','${next.id}')" aria-label="See who’s going to ${esc(next.title)}">${goingUids.length ? `<span class="sg-stack">${goingUids.slice(0, 4).map(p => personAvatar(p.uid, p.name, 22, p.officer ? orgColor(o) : '#6b6b6b')).join('')}</span>` : ''}${goingUids.length} going · See who</button>`; })()}</div>
-            </div>
-          </div>` : `
+        ${next ? orgNextHero(o, next) : `
           <div class="card card-pad sg-next-empty">
             <div class="sg-eyebrow">Calendar</div>
             <div class="sg-next-title">Nothing scheduled yet</div>
@@ -531,7 +588,7 @@ function orgOverviewTab(o) {
           </div>`}
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Coming up</h3><button class="sg-link" onclick="setState({orgTab:'events'})">Full calendar ${icon('chevron-right', 12)}</button></div>
-          ${upcoming.slice(1).filter(e => !needMine.includes(e)).slice(0, 5).map(e => orgEventRow(o, e)).join('') || '<p class="small muted">Nothing else scheduled.</p>'}
+          ${upcoming.slice(1).filter(e => !needIds.has(e.id)).slice(0, 5).map(e => orgEventRow(o, e)).join('') || '<p class="small muted">Nothing else scheduled.</p>'}
         </div>
       </div>
       <div class="sg-col">
@@ -650,26 +707,24 @@ function showOrgEventModal(code, eventId) {
   const e = o && orgEventList(o).find(x => x.id === eventId);
   if (!e) return;
   const past = orgEventPast(e);
-  const same = window._orgEventModal?.code === code && window._orgEventModal.eventId === eventId;
-  const openGroups = same ? $$('#modal .org-rsvp-group').map(d => d.open) : null;
+  const dues = orgIsDuesEvent(e);
+  const officer = isOrgOfficer(o);
   window._orgEventModal = { code, eventId };
-  openModal(`
-    <div class="modal-head"><h3>${esc(e.title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
-    <div class="modal-body">
-      <div class="sg-eyebrow">${esc(o.name)} · ${orgCatHtml(e)}${e.seriesId ? ' · Weekly' : ''}${e.required ? ' · <span class="org-required">Required</span>' : ''}</div>
-      <div class="small sg-meta-line mt-8">
-        <span>${icon('calendar', 12)} ${esc(fmtDateLong(e.date))}</span>
-        ${e.start ? `<span>${icon('clock', 12)} ${fmtTime(e.start)}${e.end ? `–${fmtTime(e.end)}` : ''}</span>` : ''}
-        ${e.location ? `<span>${icon('map-pin', 12)} ${linkifyWhere(e.location)}</span>` : ''}
-      </div>
-      ${e.notes ? `<div class="small sg-notes mt-8">${linkifyText(e.notes)}</div>` : ''}
-      ${!past ? `<div class="flex-gap wrap mt-16" style="align-items:center">${orgRsvpControl(o, e)}${joinLinkButton(e.location)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button></div>` : ''}
-      <div class="divider"></div>
-      ${orgAttendanceHtml(o, e)}
-    </div>
-    ${isOrgOfficer(o) ? `<div class="modal-foot"><button class="btn btn-danger" style="margin-right:auto" onclick="deleteOrgEvent('${o.code}','${e.id}')">Delete</button><button class="btn" onclick="openOrgEventModal('${o.code}','${e.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button></div>` : ''}
-  `, { onClose: () => { window._orgEventModal = null; } });
-  if (openGroups) $$('#modal .org-rsvp-group').forEach((d, i) => { if (openGroups[i] != null) d.open = openGroups[i]; });
+  const cat = orgCat(e);
+  const later = e.seriesId ? orgEventList(o).filter(x => x.seriesId === e.seriesId && x.date > e.date).length : 0;
+  // A dues event has no lists, unless someone answered before it became one:
+  // officers still see those answers rather than losing them.
+  const anyAnswers = orgRsvpCounts(o, e.id).yes + orgRsvpCounts(o, e.id).no > 0;
+  openModal(spaceEventSheet({
+    kind: 'club', code: o.code, id: e.id, color: orgColor(o), glyph: cat[2], spaceName: o.name,
+    title: e.title, date: e.date, start: e.start, end: e.end, where: e.location, notes: e.notes,
+    tags: `${spaceTag('cat', cat[1], cat[2])}${e.required && !dues ? spaceTag('required', 'Required') : ''}${e.seriesId ? spaceTag('weekly', `Weekly${later ? `, ${later} more after this` : ''}`) : ''}`,
+    rsvpHtml: past ? '' : orgRsvpControl(o, e, myOrgRsvp(o, e.id), { size: 'hero', stillComing: true, clearable: true }),
+    facesHtml: past || dues ? '' : orgFacePile(o, e, { size: 24 }),
+    actionsHtml: past ? '' : `${joinLinkButton(e.location)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button>`,
+    listsHtml: dues && !(officer && anyAnswers) ? '' : orgAttendanceLists(o, e),
+    footHtml: officer ? `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteOrgEvent('${o.code}','${e.id}')">Delete</button><button class="btn" onclick="openOrgEventModal('${o.code}','${e.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button>` : '',
+  }), { onClose: () => { window._orgEventModal = null; } });
 }
 function openOrgEventModal(code, eventId) {
   const o = findOrg(code);
@@ -1253,12 +1308,12 @@ function createSampleOrg(kind = 'club') {
     const id = uid() + i;
     const past = e.date < t;
     events[id] = { id, title: e.title, category: e.category, date: e.date, start: e.start, end: e.end, location: e.location, notes: e.notes || '', required: !!e.required, createdBy: officers[i % officers.length], createdAt: now - (past ? 40 : 6) * D, ...(e.series ? { seriesId: `sample-${key}-${e.series}` } : {}) };
-    memberUids.forEach(u => {
+    if (!orgIsDuesEvent(e)) memberUids.forEach(u => {
       let v;
       if (u === me) {
         // You answer your past events, and one required event ahead is
         // left for you to answer, so the "needs your answer" card shows.
-        if (!past && e.required && firstRequiredAhead) { firstRequiredAhead = false; return; }
+        if (!past && e.required && !orgIsDuesEvent(e) && firstRequiredAhead) { firstRequiredAhead = false; return; }
         v = roll(`${u}|${e.title}|${e.date}`) < (past ? 82 : 70) ? 'yes' : past ? 'no' : '';
       } else {
         const r = roll(`${u}|${e.title}|${e.date}`);

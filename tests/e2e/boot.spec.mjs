@@ -161,6 +161,40 @@ test('every sample club opens, and Previewing as switches officer and member', a
   console_.expectClean();
 });
 
+/* RSVP (js/spaces/rsvp.js) on the local sample club: answering collapses
+   the buttons into a pill, Change reopens them, and choosing the same
+   answer again never clears it. A dues event asks for payment instead. */
+test('the RSVP control answers, changes, never un-answers, and dues events ask for payment', async ({ page }) => {
+  const console_ = await openApp(page);
+  await navTo(page, 'orgs');
+  const tabs = page.locator('#content [role="tab"]:visible');
+  await openSample(page, 'Club', tabs);
+  const ctl = page.locator('#content .space-hero .space-rsvp');
+  await expect(ctl).toHaveCount(1);
+  const change = ctl.getByRole('button', { name: /^Change your answer/ });
+  if (await change.isVisible()) await change.click();
+  await ctl.getByRole('button', { name: 'Going', exact: true }).click();
+  await expect(ctl.locator('.space-rsvp-pill')).toHaveText('You’re going');
+  await ctl.getByRole('button', { name: /^Change your answer/ }).click();
+  await ctl.getByRole('button', { name: 'Can’t', exact: true }).click();
+  await expect(ctl.locator('.space-rsvp-pill')).toHaveText('Can’t make it');
+  await ctl.getByRole('button', { name: /^Change your answer/ }).click();
+  await ctl.getByRole('button', { name: 'Going', exact: true }).click();
+  await ctl.getByRole('button', { name: /^Change your answer/ }).click();
+  await ctl.getByRole('button', { name: 'Going', exact: true }).click();
+  await expect(ctl.locator('.space-rsvp-pill')).toHaveText('You’re going');
+  const dues = await page.evaluate(() => {
+    const o = findOrg(state.subRoute);
+    const e = upcomingOrgEvents(o).find(x => x.category === 'deadline');
+    showOrgEventModal(o.code, e.id);
+    return e.title;
+  });
+  await expect(page.locator('#modal')).toContainText(dues);
+  await expect(page.locator('#modal').getByRole('button', { name: 'Going', exact: true })).toHaveCount(0);
+  await expect(page.locator('#modal').getByRole('link', { name: /Pay dues/ })).toHaveCount(1);
+  console_.expectClean();
+});
+
 test('on a phone, a group or club page fits the screen and its chat button opens chat', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'phone', 'the floating chat button is phone only');
   const console_ = await openApp(page);
