@@ -148,12 +148,10 @@
 .org-ann-text.is-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .org-ann-text .org-ann-host { font-weight: 400; color: var(--space-text, var(--text)); text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .org-pin { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim); }
-.org-member .row-title { display: flex; flex-direction: column; }
 .org-counts { white-space: nowrap; }
 .org-going-link { gap: 8px; }
 .org-going-link .sg-stack { margin-right: 2px; }
 .org-msg-role { font-weight: 500; color: var(--text-dim); background: var(--surface-2); border-radius: var(--r-pill); padding: 0 6px; font-size: var(--fs-sm); margin-left: 2px; }
-.org-officer-tag { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); font-weight: 600; }
 .org-request { align-items: center; flex-wrap: wrap; }
 .org-roles-help > summary { display: flex; align-items: center; gap: 6px; min-height: 32px; list-style: none; cursor: pointer; }
 .org-roles-help > summary::-webkit-details-marker { display: none; }
@@ -183,9 +181,6 @@
 }
 .org-link-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
 .org-cat { display: inline-flex; align-items: center; gap: 4px; }
-/* members: search + sections */
-.org-member-search { max-width: 420px; }
-.org-member-head { display: flex; align-items: center; gap: 8px; margin: 16px 0 4px; }
 /* attendance grid: sticky member column, one narrow column per event */
 .org-att { position: relative; overflow-x: auto; margin: 0 -20px; padding: 0 20px; }
 /* More columns off to the right: the edge fades until the last one shows. */
@@ -241,4 +236,195 @@
   .org-plan-pitch-act { align-items: flex-start; max-width: none; }
   .org-plan-pitch-act .small { text-align: left; }
   .org-needs-done { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── Club Calendar (js/orgs/calendar.js, Tier A item 10) ─────────────
+   Toolbar, Agenda (sticky serif month headings, social rows with faces),
+   Month (slivers on a desktop, dots on a phone, the picked day's events
+   beside or below the grid). Every radius is symmetric. */
+.org-cal-bar { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+.org-cal-bar-end { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.org-cal-views { background: color-mix(in srgb, var(--bg-text) 7%, transparent); }
+.org-cal-views button { display: inline-flex; align-items: center; gap: 6px; color: var(--bg-text-dim); }
+.org-cal-views button:hover { color: var(--bg-text); }
+.org-cal-views button[aria-pressed='true'] { color: var(--text); }
+.org-cal-views button .i { width: 14px; height: 14px; }
+.org-cal-more { color: var(--bg-text-dim); }
+.org-cal-more:hover { color: var(--bg-text); }
+.org-cal-chips { align-items: center; margin: 0 0 8px; }
+.org-cal-chip-sep { flex-shrink: 0; width: 1px; height: 20px; background: var(--border); }
+.org-cal-mine .i { width: 14px; height: 14px; color: var(--text-faint); }
+.org-cal-mine[aria-pressed='true'] .i { color: var(--text); }
+.org-cal-foot { margin: 24px 0 0; font: 400 var(--fs-sm)/1.4 var(--font); color: var(--bg-text-dim); }
+/* Agenda: the month heading sticks just under the stuck tab row. */
+.org-cal-group { margin-top: 12px; }
+.org-cal-month {
+  position: sticky; top: calc(44px + env(safe-area-inset-top, 0px)); z-index: 6;
+  margin: 0; padding: 12px 0 10px; background: var(--bg);
+  font: 400 var(--fs-heading)/1.15 var(--font-serif); letter-spacing: -.01em; color: var(--bg-text); text-wrap: balance;
+}
+.org-cal-year { color: var(--bg-text-faint); }
+.org-cal-card, .org-cal-none { margin: 0; }
+.org-cal-card { padding: 8px 20px; }
+.org-cal-none { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.org-cal-none p { margin: 0; font: 400 var(--fs-lg)/1.45 var(--font); color: var(--text-dim); }
+.org-cal-past { margin-top: 24px; }
+.org-cal-past .card { margin-top: 8px; }
+/* Social: a taller row on the club's wash, a faint dot grid, and faces. */
+.space-agenda-row.org-cal-social {
+  position: relative; isolation: isolate; min-height: 88px; margin: 4px -12px; padding: 16px 12px;
+  border-top: 0; border-radius: var(--r-mid); background: var(--space-wash); overflow: hidden;
+}
+.org-cal-social::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: var(--space-fill); opacity: .08;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Ccircle cx='7' cy='7' r='1' fill='%23000'/%3E%3C/svg%3E") repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Ccircle cx='7' cy='7' r='1' fill='%23000'/%3E%3C/svg%3E") repeat;
+}
+html.dark .org-cal-social::before { opacity: .16; }
+.org-cal-social + .space-agenda-row { border-top: 0; }
+.org-cal-social .space-date-tile { background: var(--surface); }
+.org-cal-faces { display: flex; flex-basis: 100%; min-width: 0; margin-top: 4px; }
+/* Month */
+.org-month-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 16px 0 12px; }
+.org-month-titles { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; min-width: 0; }
+.org-month-title { margin: 0; font: 400 var(--fs-heading)/1.15 var(--font-serif); letter-spacing: -.01em; color: var(--bg-text); }
+.org-month-count { font: 400 var(--fs-sm)/1.4 var(--font); color: var(--bg-text-dim); }
+.org-month-stepper { flex-shrink: 0; }
+.org-month-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.org-month-card { margin: 0; padding: 0; overflow: clip; }
+.org-month-dow { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--hairline); }
+.org-month-dow span { padding: 10px 8px 8px; font: 600 var(--fs-xs)/1.2 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+.org-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--hairline); }
+.org-month-cell {
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; min-height: 104px; margin: 0; padding: 6px;
+  border: 0; border-radius: 0; background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  transition: background var(--dur-1);
+}
+.org-month-cell:hover { background: color-mix(in srgb, var(--text) 3%, var(--surface)); }
+.org-month-cell.is-selected { background: var(--fill-selected); box-shadow: inset 0 0 0 1px var(--control-border); }
+.org-month-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus-edge); }
+.org-month-num {
+  align-self: flex-start; display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px;
+  border-radius: var(--r-pill); font: 500 var(--fs-md)/1 var(--font); color: var(--text);
+}
+.org-month-cell.is-past .org-month-num, .org-month-cell.is-out .org-month-num { color: var(--text-faint); }
+.org-month-cell.is-today .org-month-num { background: var(--space-fill); color: var(--space-on); font-weight: 600; }
+.org-month-evs { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.org-sliver {
+  display: block; height: 20px; padding: 0 6px; border-radius: var(--r-mark); background: var(--space-wash-strong); color: var(--text);
+  font: 500 var(--fs-sm)/20px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.org-sliver-time { margin-right: 4px; color: var(--space-text); font-weight: 600; }
+.org-sliver.is-required { padding-left: 9px; box-shadow: inset 3px 0 0 var(--text); }
+.org-sliver.is-past { background: color-mix(in srgb, var(--space-wash-strong) 50%, var(--surface)); color: var(--text-faint); font-weight: 400; }
+.org-sliver.is-past .org-sliver-time { color: inherit; font-weight: 400; }
+.org-month-cell.is-out .org-sliver:not(.is-past) { background: color-mix(in srgb, var(--space-wash-strong) 60%, var(--surface)); color: var(--text-dim); }
+.org-month-more { padding-left: 6px; font: 500 var(--fs-xs)/1.2 var(--font); color: var(--text-dim); }
+.org-month-dots { display: none; }
+.org-month-day { margin: 0; min-width: 0; }
+.org-month-day-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.org-month-day-head .sg-h3 { margin: 0; }
+.org-month-day-none { margin: 8px 0 0; font: 400 var(--fs-md)/1.45 var(--font); color: var(--text-dim); }
+.org-month-day-rows { margin-top: 4px; }
+.org-month-day .space-agenda-row.org-cal-social { margin-inline: -8px; padding-inline: 8px; }
+/* Narrow list: faces on one line, the caption under them. */
+.org-month-day .org-cal-faces .space-facepile { flex-wrap: wrap; row-gap: 4px; }
+.org-month-day .org-cal-faces .space-facepile-text { flex-basis: 100%; margin-left: 0; }
+/* Beside the grid the list is narrow, so the answer sits under the title. */
+@media (min-width: 1101px) {
+  .org-month-day .space-agenda-row { grid-template-columns: 44px minmax(0, 1fr); }
+  .org-month-day .space-agenda-end { grid-column: 2; justify-content: flex-start; margin-top: 8px; }
+}
+/* New event: Repeat [every week] [8 times]. Extend this series. */
+.org-repeat { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.org-repeat .checkbox-row { margin: 0; }
+.org-repeat .select { width: auto; max-width: 190px; }
+.org-extend-lead { margin: 0 0 16px; font: 400 var(--fs-lg)/1.55 var(--font); color: var(--text); }
+@media (max-width: 1100px) {
+  .org-month-wrap { grid-template-columns: minmax(0, 1fr); }
+  .org-sliver { font-size: var(--fs-xs); }
+}
+@media (max-width: 760px) {
+  .org-cal-card { padding: 8px 16px; }
+  .space-agenda-row.org-cal-social { margin-inline: -8px; padding-inline: 8px; }
+  .org-month-head { margin-top: 12px; align-items: center; }
+  .org-month-dow span { padding: 8px 0 6px; text-align: center; }
+  .org-month-cell { align-items: center; min-height: 48px; padding: 6px 0; }
+  .org-month-num { align-self: center; }
+  .org-month-evs { display: none; }
+  .org-month-dots { display: flex; justify-content: center; gap: 3px; height: 5px; }
+  .org-month-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--space-mark); }
+  .org-month-dots i.is-past { background: color-mix(in srgb, var(--space-mark) 45%, var(--surface)); }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Members directory (Tier A item 12, js/orgs/members.js): count line,
+   search, chips, Leadership then Members in flat cards, rows with a
+   36px face, pills, joined date, the officers-only answer rate, and ···.
+   ══════════════════════════════════════════════════════════════════ */
+.org-dir-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.org-dir-count { font: 500 var(--fs-md)/1.3 var(--font); color: var(--text-dim); }
+.org-dir-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.org-dir-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.org-dir-search { position: relative; display: flex; align-items: center; width: 280px; min-width: 0; margin: 0; }
+.org-dir-search > .i { position: absolute; left: 12px; width: 14px; height: 14px; color: var(--text-faint); pointer-events: none; }
+.org-dir-search .input { width: 100%; min-height: 40px; padding-left: 34px; font-size: var(--fs-lg); }
+.org-dir-search .input::-webkit-search-cancel-button { filter: grayscale(1); opacity: .6; cursor: pointer; }
+.org-dir-chips { min-width: 0; }
+.org-dir-chip-n { font: 500 var(--fs-sm)/1 var(--font); color: var(--text-faint); }
+.org-dir-chip[aria-pressed='true'] .org-dir-chip-n { color: var(--text-dim); }
+.org-dir .org-request { margin-bottom: 16px; }
+
+.org-dir-sec + .org-dir-sec { margin-top: 24px; }
+.org-dir-head { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.org-dir-title { margin: 0; font: 600 var(--fs-lg)/1.3 var(--font); color: var(--text); }
+.org-dir-n { margin-left: 4px; font-weight: 500; color: var(--text-faint); }
+.org-dir-note { margin: 0; font: 400 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); }
+.org-dir-card { padding: 0 16px; }
+/* Rows share hairlines: each row draws its top line one pixel up, and the
+   grid clips the first row's, so a hidden (filtered) row never leaves a
+   double or missing line in either column. */
+.org-dir-grid { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 32px; overflow: hidden; }
+@media (min-width: 1100px) { .org-dir-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.org-dir-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px; min-width: 0; min-height: 64px; padding: 10px 0; margin-top: -1px; border-top: 1px solid var(--hairline); }
+.org-dir-row[hidden] { display: none; }
+.org-dir-row > .sg-avatar { flex: none; }
+.org-dir-text { min-width: 0; }
+.org-dir-name { font: 600 var(--fs-lg)/1.3 var(--font); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-dir-you { font-weight: 400; color: var(--text-dim); }
+.org-dir-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 8px; margin-top: 2px; min-width: 0; }
+.org-dir-role { font: 400 var(--fs-md)/1.35 var(--font); color: var(--text-dim); min-width: 0; overflow-wrap: anywhere; }
+.org-dir-joined { font: 400 var(--fs-sm)/1.35 var(--font); color: var(--text-faint); white-space: nowrap; }
+.org-dir-pill { display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 0 8px; border-radius: var(--r-pill); font: 500 var(--fs-sm)/1 var(--font); white-space: nowrap; }
+.org-dir-pill .i { width: 11px; height: 11px; }
+.org-dir-pill.is-founder { box-shadow: inset 0 0 0 1px var(--text); color: var(--text); }
+.org-dir-pill.is-officer { background: var(--space-wash-strong, var(--surface-2)); color: var(--space-text, var(--text)); }
+.org-dir-pill.is-waiting { background: var(--surface-2); color: var(--text-dim); }
+.org-dir-owe { display: none; margin-top: 2px; font: 500 var(--fs-sm)/1.35 var(--font); color: var(--text); }
+.org-dir.is-owe .org-dir-owe { display: block; }
+/* Officers only: "8 of 9" over a 40px bar. */
+.org-dir-rate { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 48px; cursor: default; }
+.org-dir-rate-n { font: 500 var(--fs-sm)/1 var(--font); color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.org-dir-meter { display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--track, var(--surface-2)); overflow: hidden; }
+.org-dir-meter > span { display: block; height: 100%; border-radius: 2px; background: var(--space-fill, var(--accent)); }
+.org-dir-act { display: flex; justify-content: flex-end; }
+.org-dir-more { color: var(--text-dim); }
+.org-dir-more:hover, .org-dir-more[aria-expanded='true'] { color: var(--text); background: var(--fill-hover, var(--surface-2)); }
+.org-dir-none { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 24px 0; }
+.org-dir-none[hidden] { display: none; }
+.org-dir-none p { margin: 0; }
+.org-dir-empty { margin: 12px 0 0; }
+.org-dir-foot { display: flex; align-items: flex-start; gap: 8px; margin: 16px 0 0; font: 400 var(--fs-sm)/1.45 var(--font); color: var(--text-dim); }
+.org-dir-foot > .i { flex: none; width: 14px; height: 14px; margin-top: 2px; color: var(--text-faint); }
+.org-dir-foot .sg-link { font-size: inherit; }
+@media (max-width: 760px) {
+  .org-dir-tools { gap: 12px; }
+  .org-dir-search { flex: 1 1 100%; width: auto; }
+  .org-dir-search .input { min-height: 44px; font-size: var(--fs-xl); }
+  .org-dir-card { padding: 0 12px; }
+  .org-dir-row { column-gap: 10px; }
+  .org-dir-actions .btn { min-height: 40px; }
+}
+@media (max-width: 760px), (pointer: coarse) {
+  .org-dir-more { width: 44px; min-width: 44px; min-height: 44px; }
 }

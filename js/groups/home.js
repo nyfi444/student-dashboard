@@ -182,13 +182,9 @@ function groupHomeTasks(g, u, stripTaskIds, needItems, { contrib = true } = {}) 
 function groupHomeContrib(g, u, all) {
   const done = all.filter(t => t.done);
   if (!done.length) return '';
-  const by = new Map();
-  done.forEach(t => {
-    const key = t.doneBy || `name:${t.doneByName || 'Someone'}`;
-    const cur = by.get(key) || { uid: t.doneBy || key, name: t.doneBy ? personName(g, t.doneBy) : (t.doneByName || 'Someone'), n: 0 };
-    cur.n++; by.set(key, cur);
-  });
-  const people = [...by.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  // Credit and order come from js/groups/tasks.js: the owner first, current
+  // members only, in member order, so the line never reads as a ranking.
+  const people = groupTaskCredits(g);
   const shownPeople = people.slice(0, 4);
   const extra = people.length - shownPeople.length;
   const first = (p) => p.uid === u ? 'You' : String(p.name).split(' ')[0];

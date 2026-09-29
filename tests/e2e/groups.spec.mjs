@@ -137,13 +137,17 @@ test('a student starts a study group, a classmate joins with the code, and they 
   await expect(a.locator('#content')).toContainText('Outline the lab report');
   // She hands it to Bob from the task's own row (setting the same person
   // twice changes nothing, so this one can be retried).
+  // (the face button opens a picker; each face carries data-uid).
   await expect(async () => {
-    const pick = a.getByRole('combobox', { name: 'Assign Outline the lab report' });
-    if (await pick.inputValue() !== bob.uid) await pick.selectOption(bob.uid);
+    const pick = a.getByRole('button', { name: /^Assign Outline the lab report/ });
+    if (await pick.getAttribute('data-assignee') !== bob.uid) {
+      await pick.click();
+      await a.locator(`.sg-tpick [data-uid="${bob.uid}"]`).click();
+    }
     expect((await tasks()).map(t => t.assignee)).toEqual([bob.uid]);
   }).toPass({ timeout: 45_000 });
   await tab(b, 'Tasks');
-  await expect(b.getByRole('combobox', { name: 'Assign Outline the lab report' })).toHaveValue(bob.uid, POLL);
+  await expect(b.getByRole('button', { name: /^Assign Outline the lab report/ })).toHaveAttribute('data-assignee', bob.uid, POLL);
   await b.getByRole('checkbox', { name: 'Mark Outline the lab report as done', exact: true }).click();
   await expect.poll(async () => (await tasks()).map(t => [t.title, t.assignee, t.done, t.doneBy]), POLL)
     .toEqual([['Outline the lab report', bob.uid, true, bob.uid]]);

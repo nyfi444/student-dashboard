@@ -74,10 +74,11 @@ function avatarStack(g, max = 4, size = 26, uids) {
 
 /* ── Navigation ────────────────────────────────────────────────── */
 function openGroup(code, tab) {
+  window._availEditing = null; // Find a time's touch painting starts off on every visit
   setState({ route: 'studygroups', subRoute: code, groupTab: tab || 'overview' });
   window.scrollTo(0, 0);
 }
-function closeGroup() { setState({ subRoute: null }); window.scrollTo(0, 0); }
+function closeGroup() { window._availEditing = null; setState({ subRoute: null }); window.scrollTo(0, 0); }
 function setGroupTab(tab) { setState({ groupTab: tab }); }
 function openGroupSession(code, sid) { openGroup(code, 'schedule'); if (sid) setTimeout(() => showGroupSessionModal(code, sid), 60); }
 
@@ -233,81 +234,7 @@ function groupFirstStepsHtml(g) {
 }
 
 /* ── Tasks ─────────────────────────────────────────────────────── */
-function groupTasksTab(g) {
-  const u = myUidFor(g);
-  const filter = ['all', 'mine', 'unassigned'].includes(state.groupTaskFilter) ? state.groupTaskFilter : 'all';
-  const all = taskList(g);
-  const match = t => filter === 'mine' ? t.assignee === u : filter === 'unassigned' ? !t.assignee : true;
-  const open = all.filter(t => !t.done && match(t)).sort(byDueThenCreated);
-  const done = all.filter(t => t.done && match(t)).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
-  const doneCount = all.filter(t => t.done).length;
-  const pct = all.length ? Math.round((doneCount / all.length) * 100) : 0;
-  const people = groupPeople(g);
-  return `
-    <div class="card card-pad mb-16">
-      <div class="sg-task-add">
-        <input class="input" id="sg-task-title" maxlength="200" placeholder="Add a task, like “outline the intro” or “make a practice quiz”" onkeydown="if(event.key==='Enter')addGroupTask('${g.code}')">
-        <input class="input" type="date" id="sg-task-due" aria-label="Due date (optional)" title="Due date (optional)">
-        <select class="select" id="sg-task-assignee" aria-label="Assign to"><option value="">Unassigned</option>${people.map(p => `<option value="${esc(p.uid)}">${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' (you)' : ''}</option>`).join('')}</select>
-        <button class="btn btn-primary" onclick="addGroupTask('${g.code}')">Add</button>
-      </div>
-    </div>
-    <div class="sg-toolbar">
-      <div class="segmented">${[['all', 'All'], ['mine', 'Mine'], ['unassigned', 'Unassigned']].map(([k, l]) => `<button class="${filter === k ? 'active' : ''}" aria-pressed="${filter === k}" onclick="setState({groupTaskFilter:'${k}'})">${l}</button>`).join('')}</div>
-      ${all.length ? `<div class="sg-task-progress"><span class="small muted">${doneCount} of ${all.length} done</span><div class="progress"><div style="width:${pct}%"></div></div></div>` : ''}
-    </div>
-    ${open.length ? open.map(t => groupTaskRow(g, t)).join('') : emptyState(icon('check-square', 24), filter === 'mine' ? 'Nothing assigned to you' : filter === 'unassigned' ? 'Every task has an owner' : 'No open tasks', '', filter === 'all' ? 'Break the work into pieces and give each one an owner.' : '')}
-    ${done.length ? `<details class="sg-past"><summary class="small muted">Completed (${done.length})</summary>${done.map(t => groupTaskRow(g, t)).join('')}</details>` : ''}
-  `;
-}
-function groupTaskRow(g, t, { compact = false } = {}) {
-  const u = myUidFor(g);
-  const overdue = !t.done && t.due && t.due < todayIso();
-  const meta = [
-    t.due ? `<span class="${overdue ? 'sg-overdue' : ''}">${overdue ? 'Overdue, was due' : 'Due'} ${fmtSessionDay(t.due)}</span>` : '',
-    t.done ? `Done by ${esc(t.doneBy ? personName(g, t.doneBy) : (t.doneByName || 'someone'))}` : '',
-    compact || t.assignee || !t.assigneeName ? '' : `Was assigned to ${esc(t.assigneeName)}`,
-  ].filter(Boolean).join(' · ');
-  return `
-    <div class="list-row sg-task ${compact ? 'compact' : ''}">
-      <button type="button" class="row-check ${t.done ? 'checked' : ''}" role="checkbox" aria-checked="${!!t.done}" aria-label="Mark ${esc(t.title)} as ${t.done ? 'not done' : 'done'}" onclick="toggleGroupTask('${g.code}','${t.id}')">${t.done ? checkGlyph(true) : ''}</button>
-      <div class="row-title">
-        <div class="${t.done ? 'sg-done' : ''}">${esc(t.title)}${t.label ? ` <span class="tag sg-tag">${esc(t.label)}</span>` : ''}</div>
-        ${meta ? `<div class="row-meta">${meta}</div>` : ''}
-      </div>
-      ${compact ? '' : `
-        ${!t.done && !t.assignee ? `<button class="btn btn-sm sg-claim" onclick="setGroupTaskAssignee('${g.code}','${t.id}','${esc(u)}')">${icon('user-plus', 12)} I’ll take it</button>` : ''}
-        <select class="select sg-assignee" aria-label="Assign ${esc(t.title)}" onchange="setGroupTaskAssignee('${g.code}','${t.id}',this.value)">
-          <option value="">Unassigned</option>${groupPeople(g).map(p => `<option value="${esc(p.uid)}" ${p.uid === t.assignee ? 'selected' : ''}>${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' (you)' : ''}</option>`).join('')}
-        </select>
-        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete ${esc(t.title)}" data-tip="Delete" onclick="deleteGroupTask('${g.code}','${t.id}')">${icon('trash', 14)}</button>`}
-    </div>`;
-}
-function addGroupTask(code) {
-  const titleEl = $('#sg-task-title');
-  const title = titleEl?.value.trim();
-  if (!title) { titleEl?.focus(); return; }
-  const due = $('#sg-task-due').value || null;
-  const assignee = $('#sg-task-assignee').value || null;
-  titleEl.value = ''; $('#sg-task-due').value = '';
-  const g = findGroup(code);
-  const id = uid();
-  groupWrite(code, { [`taskItems.${id}`]: { id, title, label: '', due, assignee, done: false, doneBy: null, doneAt: null, createdBy: myUidFor(g), createdAt: Date.now() } });
-  setTimeout(() => $('#sg-task-title')?.focus(), 40);
-}
-function toggleGroupTask(code, id) {
-  const g = findGroup(code);
-  const t = g?.taskItems?.[id];
-  if (!t) return;
-  const done = !t.done;
-  groupWrite(code, { [`taskItems.${id}.done`]: done, [`taskItems.${id}.doneBy`]: done ? myUidFor(g) : null, [`taskItems.${id}.doneAt`]: done ? Date.now() : null });
-}
-async function setGroupTaskAssignee(code, id, assignee) {
-  const g = findGroup(code);
-  const claimed = assignee && assignee === myUidFor(g) && g?.taskItems?.[id] && !g.taskItems[id].assignee;
-  if (await groupWrite(code, { [`taskItems.${id}.assignee`]: assignee || null, [`taskItems.${id}.assigneeName`]: '' }) && claimed) toast(`“${g.taskItems[id].title}” is yours`);
-}
-function deleteGroupTask(code, id) { groupWrite(code, { [`taskItems.${id}`]: GW_DELETE }); }
+// The board, quick add, the edit sheet and every task write: js/groups/tasks.js.
 
 /* ── Chat ──────────────────────────────────────────────────────── */
 // Drawn by chatView (js/spaces/chat.js); the data and writes stay here.
@@ -613,7 +540,7 @@ async function saveGroupSettings(code) {
 function confirmRemoveMember(code, memberUid) {
   const g = findGroup(code);
   confirmDialog(`Remove ${personName(g, memberUid)} from ${g.name}? They can rejoin only if someone shares the code again.`, () => {
-    groupWrite(code, { memberUids: gwRemove(memberUid), [`people.${memberUid}`]: GW_DELETE, [`avail.${memberUid}`]: GW_DELETE });
+    groupWrite(code, { memberUids: gwRemove(memberUid), [`people.${memberUid}`]: GW_DELETE, [`avail.${memberUid}`]: GW_DELETE, ...groupDepartureOps(findGroup(code), memberUid) });
   }, 'Remove');
 }
 function confirmLeaveGroup(code) {
@@ -635,7 +562,7 @@ async function leaveGroup(code) {
   if (!g || !myUid) return;
   const others = groupPeople(g).filter(p => p.uid !== myUid);
   if (!others.length) { await deleteGroupEverywhere(code); return; }
-  const ops = { memberUids: gwRemove(myUid), [`people.${myUid}`]: GW_DELETE, [`avail.${myUid}`]: GW_DELETE };
+  const ops = { memberUids: gwRemove(myUid), [`people.${myUid}`]: GW_DELETE, [`avail.${myUid}`]: GW_DELETE, ...groupDepartureOps(g, myUid) };
   if (g.createdBy === myUid) { ops.createdBy = others[0].uid; ops[`people.${others[0].uid}.role`] = 'owner'; }
   if (_groupDocUnsubs[code]) { _groupDocUnsubs[code](); delete _groupDocUnsubs[code]; }
   if (await groupWrite(code, ops)) dropGroupEntry(code, `You left “${g.name}”.`);

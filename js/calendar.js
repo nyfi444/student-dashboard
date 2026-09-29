@@ -310,6 +310,18 @@ function monthView() {
   `;
 }
 function openDayFromMonth(dIso) { setState({ calDate: dIso, calView: 'day' }); }
+// The same weeks monthView draws, as plain ISO dates (Sunday first), for
+// month grids outside this page (the club Calendar in js/orgs/calendar.js).
+// month: the 1st of the month; weeks: 4 to 6; cells: weeks * 7 dates.
+function calMonthCells(anyIsoInMonth) {
+  const d0 = new Date(anyIsoInMonth + 'T00:00:00');
+  const first = new Date(d0.getFullYear(), d0.getMonth(), 1);
+  const daysInMonth = new Date(d0.getFullYear(), d0.getMonth() + 1, 0).getDate();
+  const weeks = Math.ceil((first.getDay() + daysInMonth) / 7);
+  const gridStart = new Date(first); gridStart.setDate(first.getDate() - first.getDay());
+  const cells = Array.from({ length: weeks * 7 }, (_, i) => { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); return iso(d); });
+  return { month: iso(first), weeks, cells };
+}
 
 function hourLabel(h) { return `${h % 12 || 12} ${h >= 12 ? 'PM' : 'AM'}`; }
 // The grid runs 7 AM to 11 PM, and stretches to hold anything outside that:

@@ -89,7 +89,10 @@ function sessionList(g) { return Object.values(g.sessions || {}).filter(s => s &
 function sessionIsPast(s) { return eventTimeState(s).phase === 'after'; }
 function upcomingSessions(g) { return sessionList(g).filter(s => !sessionIsPast(s)); }
 function rsvpCounts(s) { const v = Object.values(s.rsvp || {}); return { yes: v.filter(x => x === 'yes').length, maybe: v.filter(x => x === 'maybe').length, no: v.filter(x => x === 'no').length }; }
-function taskList(g) { return Object.values(g.taskItems || {}).filter(t => t && safeId(t.id) && t.title); }
+// A task whose owner left the group is up for grabs again (taskOwner,
+// js/groups/tasks.js): the copy returned drops the assignee and keeps it
+// as formerAssignee, so every filter and claim button agrees.
+function taskList(g) { return Object.values(g.taskItems || {}).filter(t => t && safeId(t.id) && t.title).map(t => t.assignee && taskOwner(g, t) !== t.assignee ? { ...t, assignee: null, formerAssignee: t.assignee } : t); }
 function groupChatSeen() { return state.settings.groupChatSeen || (state.settings.groupChatSeen = {}); }
 function groupHasUnread(g) { const m = g.lastMessage; return !!m && m.uid !== myUidFor(g) && m.at > (groupChatSeen()[g.code] || 0); }
 function anyGroupUnread() { try { return allGroups().some(groupHasUnread); } catch { return false; } }

@@ -18,31 +18,37 @@
 .sg-activity { display: flex; gap: 10px; padding: 6px 0; align-items: flex-start; }
 .sg-activity .small { padding-top: 3px; line-height: 1.4; }
 /* availability */
-.sg-avail-wrap .flex-between { min-height: 30px; }
 .sg-avail-head { display: flex; justify-content: space-between; align-items: center; gap: 4px 12px; flex-wrap: wrap; min-height: 30px; }
 .sg-avail-actions { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
-.sg-avail-wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.sg-avail-wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .sg-grid-scroll { overflow-x: auto; }
-.sg-grid-mine { touch-action: none; cursor: crosshair; }
+/* A finger scrolls over your grid (both ways, for the narrow scroller) until
+   "Edit my times" turns painting on; mouse and pen paint any time. */
+.sg-grid-mine { touch-action: pan-x pan-y; cursor: crosshair; }
+.sg-grid-mine.is-editing { touch-action: none; }
+@media (pointer: coarse) { .sg-grid-mine:not(.is-editing) { cursor: default; } }
 .sg-grid-day { text-align: center; font: 600 var(--fs-xs)/1.2 var(--font); color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; padding-bottom: 6px; }
-.sg-grid-time { font-size: var(--fs-xs); color: var(--text-faint); text-align: right; padding-right: 6px; line-height: 1; transform: translateY(-4px); height: 13px; }
-.sg-cell { height: 13px; background: var(--surface-2); border-left: 1px solid var(--surface); border-bottom: 1px dashed color-mix(in srgb, var(--border) 55%, transparent); }
+.sg-grid-time { font-size: var(--fs-xs); color: var(--text-faint); text-align: right; padding-right: 6px; line-height: 1; transform: translateY(-4px); height: 14px; }
+.sg-cell { height: 14px; background: var(--surface-2); border-left: 1px solid var(--surface); border-bottom: 1px dashed color-mix(in srgb, var(--border) 55%, transparent); }
 .sg-cell.hr { border-top: 1px solid var(--border); }
-.sg-grid-mine .sg-cell:hover { background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); }
+@media (hover: hover) { .sg-grid-mine .sg-cell:hover { background: color-mix(in srgb, var(--me-color, var(--accent)) 22%, var(--surface-2)); } }
 .sg-grid-mine .sg-cell.on { background: var(--me-color, var(--accent)); border-top-color: transparent; border-bottom-color: transparent; }
 .sg-grid-mine .sg-cell.on.run-start { border-top-left-radius: var(--r-tight-active); border-top-right-radius: var(--r-tight-active); }
 .sg-grid-mine .sg-cell.on.run-end { border-bottom-left-radius: var(--r-tight-active); border-bottom-right-radius: var(--r-tight-active); }
-.sg-grid-heat .sg-cell { background: color-mix(in srgb, var(--accent) var(--heat, 0%), var(--surface-2)); border-bottom-color: transparent; }
-.sg-legend { display: flex; align-items: center; gap: 8px; margin-top: 12px; justify-content: flex-end; }
-.sg-legend-bar { width: 90px; height: 8px; border-radius: var(--r-mark); background: linear-gradient(90deg, var(--surface-2), var(--accent)); border: 1px solid var(--border); }
-/* tasks */
-.sg-task-add { display: grid; grid-template-columns: 1fr 150px 160px auto; gap: 8px; }
-.sg-task-progress { display: flex; align-items: center; gap: 10px; }
-.sg-task-progress .progress { width: 120px; height: 6px; }
+/* Heat in the group's color: --space-mark reads on light surfaces and is
+   lifted in dark mode (spaceVars), with the theme accent when the group has none. */
+.sg-find { --heat-c: var(--space-mark, var(--accent)); }
+.sg-grid-heat .sg-cell { background: color-mix(in srgb, var(--heat-c) var(--heat, 0%), var(--surface-2)); border-bottom-color: transparent; }
+/* Everyone free: an ink outline around each run, like the People view. */
+.sg-grid-heat .sg-cell.all { box-shadow: inset 1.5px 0 0 var(--text), inset -1.5px 0 0 var(--text); }
+.sg-grid-heat .sg-cell.all.all-start { box-shadow: inset 1.5px 0 0 var(--text), inset -1.5px 0 0 var(--text), inset 0 1.5px 0 var(--text); }
+.sg-grid-heat .sg-cell.all.all-end { box-shadow: inset 1.5px 0 0 var(--text), inset -1.5px 0 0 var(--text), inset 0 -1.5px 0 var(--text); }
+.sg-grid-heat .sg-cell.all.all-start.all-end { box-shadow: inset 0 0 0 1.5px var(--text); }
+.sg-legend { display: flex; align-items: center; gap: 8px; flex-shrink: 0; font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.sg-legend-bar { width: 90px; height: 8px; border-radius: var(--r-mark); background: linear-gradient(90deg, var(--surface-2), var(--heat-c, var(--accent))); border: 1px solid var(--border); }
+/* tasks: the board is its own section at the end of this file */
 @media (max-width: 900px) {
   .sg-avail-wrap { grid-template-columns: 1fr; }
-  .sg-task-add { grid-template-columns: 1fr 1fr; }
-  .sg-task-add .input:first-child { grid-column: 1 / -1; }
 }
 @media (max-width: 760px) {
   .sg-ics { margin-left: 0; }
@@ -218,4 +224,256 @@
   /* A past session has only its edit button: it stays at the row's end. */
   .space-agenda-row.sg-session.is-past { grid-template-columns: 44px minmax(0, 1fr) auto; }
   .space-agenda-row.sg-session.is-past .sg-session-end { grid-column: 3; margin-top: 0; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Find a time (groupAvailabilityTab, Tier A item 8): who's added theirs,
+   the answer in serif with two runners-up, then your week and everyone's
+   grid under "See the details" (always open on desktop).
+   ══════════════════════════════════════════════════════════════════ */
+.sg-find { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+/* 1. Progress row */
+.card.sg-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; padding: 16px 20px; }
+.sg-progress-faces { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.sg-face { display: inline-flex; }
+.sg-progress .sg-avatar { box-shadow: none; }
+.sg-face-missing.sg-avatar { background: var(--surface) !important; color: var(--text-dim); border: 1.5px dashed var(--text-faint); }
+.sg-face-more { font: 500 var(--fs-sm)/1 var(--font); color: var(--text-dim); padding-left: 2px; }
+.sg-progress-text { flex: 1; min-width: 160px; }
+.sg-progress-count { font: 600 var(--fs-lg)/1.3 var(--font); color: var(--text); }
+.sg-progress-sub { margin-top: 2px; font: 400 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); }
+.sg-progress-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; }
+.sg-progress-stale { white-space: nowrap; }
+/* On a desktop, Your week is right below with its own fill button. */
+@media (min-width: 761px) { .sg-progress-addmine { display: none; } .sg-progress-actions:not(:has(> :not(.sg-progress-addmine))) { display: none; } }
+
+/* 2. The answer */
+.card.sg-answer { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px 40px; padding: 32px; }
+.card.sg-answer.is-solo, .card.sg-answer.is-prompt { grid-template-columns: minmax(0, 1fr); }
+.sg-answer-main { min-width: 0; }
+.sg-answer-line { margin: 12px 0 0; font: 400 var(--fs-display)/1.08 var(--font-serif); letter-spacing: -.015em; color: var(--text); text-wrap: balance; overflow-wrap: anywhere; }
+.sg-answer-who { display: block; color: var(--text-dim); }
+.sg-answer-em { color: var(--em-ink); }
+.sg-answer-sub { margin: 10px 0 0; max-width: 560px; font: 400 var(--fs-md)/1.45 var(--font); color: var(--text-dim); }
+.sg-answer-faces { margin-top: 16px; }
+.sg-answer-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-top: 20px; }
+.sg-answer-foot .btn:not(.btn-sm) { min-height: 40px; padding: 0 18px; }
+.sg-answer-hint { font: 400 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); }
+.sg-answer-alts { min-width: 0; align-self: start; }
+.sg-answer-alts-label { padding-bottom: 8px; font: 500 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.sg-alt { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 12px 0; border-top: 1px solid var(--hairline); }
+.sg-alt-text { flex: 1; min-width: 0; }
+.sg-alt-when { font: 600 var(--fs-lg)/1.3 var(--font); color: var(--text); }
+.sg-alt-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.sg-alt .btn { flex-shrink: 0; }
+.sg-exam-note { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0 0; font: 400 var(--fs-sm)/1.45 var(--font); color: var(--text); }
+.sg-exam-note .i { flex-shrink: 0; margin-top: 1px; color: var(--text-dim); }
+.sg-exam-note-private { color: var(--text-dim); }
+.sg-alt .sg-exam-note { margin-top: 6px; }
+
+/* "See the details": a disclosure on phones, always open on desktop */
+.sg-details-toggle { display: none; }
+.sg-details > .sg-avail-wrap[hidden] { display: none; }
+@media (min-width: 761px) {
+  .sg-details > .sg-avail-wrap[hidden] { display: grid; }
+}
+
+/* 3 and 4. The week cards */
+.card.sg-week-card { padding: 20px; min-width: 0; scroll-margin-top: 72px; }
+.sg-week-card .sg-avail-head { margin-bottom: 12px; }
+.sg-week-card .sg-avail-actions:empty { display: none; }
+.sg-avail-hint { margin: 10px 0 12px; font: 400 var(--fs-sm)/1.45 var(--font); color: var(--text-dim); }
+.sg-hint-touch { display: none; }
+.sg-edit-times { display: none; }
+@media (pointer: coarse) {
+  .sg-hint-mouse { display: none; }
+  .sg-hint-touch { display: inline; }
+}
+@media (any-pointer: coarse) { .sg-edit-times { display: inline-flex; } }
+.sg-avail-count, .sg-avail-none { font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.sg-me-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 8px 0 4px; border: 1px solid var(--border); border-radius: var(--r-tight); background: var(--surface); color: var(--text-dim); font: 500 var(--fs-sm)/1 var(--font); cursor: pointer; transition: border-color var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-out); }
+.sg-me-btn:hover, .sg-me-btn[aria-expanded="true"] { border-color: var(--line-strong); background: var(--fill-hover); }
+.sg-me-btn .sg-avatar { box-shadow: none; }
+.sg-me-btn .i { width: 14px; height: 14px; color: var(--text-faint); }
+.sg-legend-stale { margin-left: 2px; font-weight: 400; color: var(--text-dim); }
+.sg-grid-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; min-height: 20px; }
+.sg-grid-readout { flex: 1; min-width: 0; font: 500 var(--fs-sm)/1.4 var(--font); color: var(--text-dim); }
+.sg-grid-view .sg-cell.is-picked { outline: 2px solid var(--text); outline-offset: -1px; position: relative; z-index: 1; }
+
+/* Your color: the swatches in a popover on your avatar */
+.menu.sg-color-menu { min-width: 0; padding: 12px; }
+.sg-color-pop-label { margin-bottom: 10px; font: 500 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.sg-color-menu .sg-swatches { display: grid; grid-template-columns: repeat(5, 22px); gap: 10px; }
+.sg-color-menu .menu-item.sg-swatch { width: 22px; min-height: 0; height: 22px; padding: 0; border-radius: 50%; }
+.sg-color-menu .menu-item.sg-swatch:hover { box-shadow: 0 0 0 2px var(--surface-float), 0 0 0 4px var(--control-border); }
+.sg-color-menu .menu-item.sg-swatch:focus-visible { box-shadow: 0 0 0 2px var(--surface-float), 0 0 0 4px var(--focus, var(--text)); }
+.sg-color-menu .menu-item.sg-swatch.active { box-shadow: 0 0 0 2px var(--surface-float), 0 0 0 4px var(--text); }
+@media (pointer: coarse) {
+  .sg-color-menu .sg-swatches { grid-template-columns: repeat(5, 28px); gap: 14px; }
+  .sg-color-menu .menu-item.sg-swatch { width: 28px; height: 28px; }
+}
+
+/* The fill from your class schedule: column by column, once */
+.sg-grid-mine.is-filling .sg-cell.on { animation: sgAvailFill 160ms var(--ease-out) var(--d, 0ms) both; }
+@keyframes sgAvailFill { from { background: var(--surface-2); } }
+@media (prefers-reduced-motion: reduce) {
+  .sg-grid-mine.is-filling .sg-cell.on { animation: none; }
+}
+
+/* Editing on a phone: a bar above the bottom nav with Done */
+.sg-editbar { display: none; }
+@media (any-pointer: coarse) {
+  .sg-editbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    position: fixed; z-index: 130; left: 16px; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom));
+    min-height: 52px; padding: 6px 6px 6px 16px; border: 1px solid var(--float-edge); border-radius: var(--r-mid);
+    background: var(--surface-float); box-shadow: var(--shadow-float); color: var(--text);
+  }
+  .sg-editbar-text { display: inline-flex; align-items: center; gap: 8px; font: 500 var(--fs-md)/1.3 var(--font); color: var(--text-dim); }
+  .sg-editbar-text .i { color: var(--text); }
+  .sg-editbar-done { min-height: 40px; padding: 0 20px; }
+  :root:has(#timer-pill) .sg-editbar { bottom: calc(140px + env(safe-area-inset-bottom)); }
+  /* The chat button sits in the same corner; Done wins while you paint. */
+  .space:has(.sg-editbar) .space-chat-fab { display: none !important; }
+  .sg-find:has(~ .sg-editbar) { padding-bottom: 64px; }
+}
+@media (min-width: 761px) and (any-pointer: coarse) {
+  .sg-editbar { left: auto; width: 360px; bottom: calc(24px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 900px) {
+  .card.sg-answer { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .sg-find { gap: 16px; }
+  .card.sg-progress { padding: 16px; }
+  .card.sg-answer { padding: 20px; gap: 20px; }
+  .sg-answer-line { font-size: var(--fs-title); }
+  .sg-answer-foot .btn-primary { flex: 1 1 auto; justify-content: center; }
+  .sg-answer-alts-label { padding-bottom: 4px; }
+  .card.sg-week-card { padding: 16px; }
+  .sg-avail-wrap { gap: 16px; }
+  .sg-details-toggle {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px;
+    width: 100%; min-height: 56px; padding: 10px 16px; border: 1px solid var(--card-edge); border-radius: var(--r-mid);
+    background: var(--surface); color: var(--text); text-align: left; font: 600 var(--fs-lg)/1.3 var(--font); cursor: pointer;
+  }
+  .sg-details-toggle:hover { border-color: var(--line-strong); }
+  .sg-details-toggle > span:first-child { grid-column: 1; }
+  .sg-details-sub { grid-column: 1; font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+  .sg-details-toggle .i { grid-column: 2; grid-row: 1 / span 2; color: var(--text-dim); transition: transform var(--dur-2) var(--ease-out); }
+  .sg-details.is-open .sg-details-toggle .i { transform: rotate(180deg); }
+  .sg-details.is-open .sg-details-toggle { margin-bottom: 16px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Tasks: the shared board (groupTasksTab, js/groups/tasks.js, Tier A
+   item 9). Quick add, the filter row with a ring, the thank-you line,
+   one flat card of rows, and Done. The toolbar and the thank-you line
+   sit on the page, so they use the --bg-text inks. Equal corners
+   everywhere; hover answers with a wash, never a new shape.
+   ══════════════════════════════════════════════════════════════════ */
+.sg-tasks { display: flex; flex-direction: column; min-width: 0; }
+.sg-tqa.quick-add { margin-bottom: 20px; }
+.sg-tqa .qa-row { min-height: 40px; }
+.sg-tqa .qa-title { max-width: min(100%, 420px); }
+/* The example line stays put when the field loses focus: the shared rule
+   hides it on blur, which moved the list under the pointer between
+   mousedown and mouseup, so the first click on a row missed. */
+.sg-tqa.quick-add:not(:focus-within) .qa-preview:has(> .qa-hint:only-child) { display: flex; }
+.sg-qa-who.qa-chip { padding-left: 3px; gap: 6px; }
+.sg-qa-who .sg-avatar { box-shadow: none; font-size: 10px !important; }
+.sg-ttools.sg-toolbar { margin-bottom: 10px; }
+.sg-tprogress { display: inline-flex; align-items: center; gap: 8px; font: 400 var(--fs-sm)/1.3 var(--font); color: var(--bg-text-dim); font-variant-numeric: tabular-nums; }
+.sg-tring { flex-shrink: 0; display: block; }
+.sg-tring circle { fill: none; stroke-width: 2.5; }
+.sg-tring-track { stroke: color-mix(in srgb, var(--bg-text) 14%, transparent); }
+.sg-tring-fill { stroke: var(--space-mark, var(--accent)); stroke-linecap: round; transition: stroke-dashoffset var(--dur-3) var(--ease-out); }
+/* Who finished something this week: faces and counts, in member order. */
+.sg-tcontrib { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0 0 12px; font: 500 var(--fs-md)/1.3 var(--font); color: var(--bg-text); }
+.sg-tcontrib.is-quiet { font-weight: 400; color: var(--bg-text-faint); }
+.sg-tcontrib-p { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sg-tcontrib-p .sg-avatar { box-shadow: none; }
+.sg-tcontrib-n { font-weight: 600; font-variant-numeric: tabular-nums; }
+.sg-tcontrib-label { font-weight: 400; color: var(--bg-text-faint); }
+/* The list: one L1 card, rows split by hairlines. */
+.card.sg-tlist { padding: 4px 0; }
+.sg-trow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; min-height: 56px; padding: 6px 12px 6px 16px; border-top: 1px solid var(--hairline); transition: opacity var(--dur-3) var(--ease-in), transform var(--dur-3) var(--ease-in); }
+.sg-trow:first-child { border-top: 0; }
+.sg-tcheck.row-check { width: 22px; height: 22px; }
+.sg-tmain { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; margin: 0 -8px; padding: 6px 8px; border: 0; border-radius: var(--r-tight-active); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background var(--dur-1); }
+.sg-tmain:hover { background: var(--fill-hover); }
+.sg-tmain:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sg-ttitle { max-width: 100%; font: 500 var(--fs-lg)/1.35 var(--font); letter-spacing: -.005em; color: var(--text); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sg-trow.is-done .sg-ttitle { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--text-faint); font-weight: 400; }
+.sg-tmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font: 400 var(--fs-sm)/1.3 var(--font); color: var(--text-dim); }
+.sg-tchip { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.sg-tchip .i { width: 12px; height: 12px; }
+.sg-tchip.is-today, .sg-tchip.is-over { color: var(--text); font-weight: 600; }
+.sg-tchip.is-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; padding: 1px 8px; border-radius: var(--r-pill); background: var(--track); color: var(--text-dim); font-weight: 500; }
+.sg-tactions { display: flex; align-items: center; gap: 6px; }
+/* The owner's face: 28px to see, a 40px circle to hit. */
+.sg-tface { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin: -6px -6px -6px 0; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; transition: background var(--dur-1); }
+.sg-tface:hover, .sg-tface[aria-expanded="true"] { background: var(--fill-hover); }
+.sg-tface:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sg-tface .sg-avatar { box-shadow: none; }
+.sg-tface-none { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box; border: 1.5px dashed var(--control-border); border-radius: 50%; color: var(--text-dim); transition: color var(--dur-1), border-color var(--dur-1); }
+.sg-tface:hover .sg-tface-none { border-style: solid; color: var(--text); }
+/* Checking off: a pop and a ring, a strike-through, then the row slides out. */
+.sg-tcheck.is-burst { animation: sgTaskPop 320ms var(--ease-out); }
+.sg-tcheck.is-burst::after { content: ''; position: absolute; inset: -1.5px; border-radius: inherit; pointer-events: none; animation: sgTaskRing 560ms var(--ease-out) forwards; }
+@keyframes sgTaskPop { 0% { transform: scale(1); } 40% { transform: scale(1.16); } 100% { transform: scale(1); } }
+@keyframes sgTaskRing { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); } to { box-shadow: 0 0 0 12px color-mix(in srgb, var(--accent) 0%, transparent); } }
+.sg-trow.is-leaving { opacity: 0; transform: translateX(16px); }
+.sg-trow.is-new { animation: sgTaskIn 420ms var(--ease-out); }
+@keyframes sgTaskIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sg-trow, .sg-tcheck, .sg-tring-fill { animation: none !important; transition: none !important; }
+  .sg-tcheck.is-burst::after { display: none; }
+}
+.sg-tlist-empty p { margin: 0; padding: 18px 16px; font: 400 var(--fs-lg)/1.45 var(--font); color: var(--text-dim); }
+/* Done (n) */
+.sg-tdone { margin-top: 16px; }
+.sg-tdone > summary { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; list-style: none; cursor: pointer; border-radius: var(--r-tight-active); font: 500 var(--fs-md)/1 var(--font); color: var(--bg-text-dim); }
+.sg-tdone > summary::-webkit-details-marker { display: none; }
+.sg-tdone > summary::before { content: ''; width: 6px; height: 6px; margin-top: -3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform var(--dur-1) var(--ease-out); }
+.sg-tdone:not([open]) > summary::before { margin-top: 0; transform: rotate(-45deg); }
+.sg-tdone > summary:hover { color: var(--bg-text); }
+.sg-tdone > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sg-tdone > .sg-tlist { margin-top: 8px; }
+/* The face picker (openTaskAssignMenu). Styled through the items, which
+   exist when openMenu measures the menu, so it places the right height. */
+.menu-item.sg-tpick-item { min-width: 200px; min-height: 40px; }
+.sg-tpick-item .sg-avatar { box-shadow: none; }
+.sg-tpick-item .sg-tface-none .i { width: 11px; height: 11px; }
+.sg-tpick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-item.sg-tpick-item[aria-checked="true"] { font-weight: 600; }
+.sg-tpick-item[aria-checked="true"] > .i { color: var(--text); }
+/* The edit sheet (openGroupTaskSheet): a 520px dialog, a bottom sheet on phones. */
+@media (min-width: 761px) { .modal:has(.sg-tsheet) { width: 520px; } }
+.sg-tsheet { display: flex; flex-direction: column; }
+.sg-ts-label { font: 500 var(--fs-md) var(--font); color: var(--text-dim); }
+.sg-ts-chips .chip { cursor: pointer; }
+/* Six day chips wrap to two rows on a phone instead of scrolling out of sight. */
+.sg-tsheet .chip-row.sg-ts-chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }
+.sg-ts-chips .chip .i { width: 14px; height: 14px; }
+.sg-ts-chips .chip[aria-checked="true"] { background: var(--fill-selected); border-color: var(--control-border); color: var(--text); }
+.sg-ts-chips .chip:focus-visible, .sg-ts-face:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sg-ts-date { max-width: 220px; margin-top: 4px; }
+.sg-ts-faces { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 4px; }
+.sg-ts-face { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: 76px; padding: 10px 4px 8px; border: 1px solid transparent; border-radius: var(--r-tight); background: none; cursor: pointer; font: 500 var(--fs-sm)/1.2 var(--font); color: var(--text-dim); transition: background var(--dur-1), border-color var(--dur-1); }
+.sg-ts-face > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-ts-face .sg-avatar { box-shadow: none; }
+.sg-ts-face:hover { background: var(--fill-hover); }
+.sg-ts-face[aria-checked="true"] { background: var(--fill-selected); border-color: var(--control-border); color: var(--text); }
+.sg-ts-delete.btn { align-self: flex-start; margin-top: 4px; color: var(--danger-text); }
+.sg-ts-delete.btn:hover { background: color-mix(in srgb, var(--danger) 8%, transparent); color: var(--danger-text); }
+.sg-ts-delete .i { color: currentColor; }
+@media (max-width: 760px) {
+  .sg-tqa .quick-add-input { font-size: var(--fs-xl); }
+  .sg-trow { column-gap: 10px; padding: 6px 8px 6px 14px; }
+  .sg-ttitle { font-size: var(--fs-xl); }
+  .sg-tactions .sg-claim { display: none; }
+  .sg-ts-faces { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); }
 }

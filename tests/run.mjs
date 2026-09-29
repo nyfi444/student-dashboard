@@ -97,6 +97,20 @@ check('priority marker', qa('bio lab report !! friday').priority, 'high');
 check('title is what remains', qa('bio 210 lab report friday 5pm').title.toLowerCase().includes('lab report'), true);
 check('title drops the date', /friday/i.test(qa('bio 210 lab report friday 5pm').title), false);
 
+// Group tasks (Tier A item 9): "@maya" picks a current member, never an
+// ambiguous one, and classes, times and "asap" stay in a group task's title.
+{
+  const people = [{ uid: 'm', name: 'Maya' }, { uid: 'mc', name: 'Maya Chen' }, { uid: 'j', name: 'Jordan Lee' }, { uid: 'me', name: 'Nyla' }, { uid: 'p1', name: 'Priya' }, { uid: 'p2', name: 'Priya' }];
+  const ta = (text) => { const r = sandbox.parseTaskAdd(text, { people, meUid: 'me', now }); return [r.title, r.dueDate, r.uid, r.ambiguous]; };
+  check('task add: day and @name come out of the title', ta('make quizlet fri @maya'), ['Make quizlet', '2026-09-18', 'm', false]);
+  check('task add: the longest whole name wins', ta('@maya chen outline intro'), ['Outline intro', null, 'mc', false]);
+  check('task add: two people with one name picks nobody', ta('@priya book room'), ['@priya book room', null, null, true]);
+  check('task add: @me, a last name, a unique start', [ta('@me book room')[2], ta('@lee post answers')[2], ta('@jor slides')[2]], ['me', 'j', 'j']);
+  check('task add: an email address is not a mention', ta('email prof@school.edu')[2], null);
+  check('task add: classes and times stay in the title', ta('outline bio 210 intro at 5pm')[0], 'Outline bio 210 intro at 5pm');
+  check('task add: only a day and a name leaves no title', ta('fri @maya')[0], '');
+}
+
 /* ── 2. The syllabus contract ──────────────────────────────────── */
 // Structured outputs reject a schema that doesn't close its objects, and a
 // missing `required` entry means the model may silently omit that field.
@@ -471,6 +485,30 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
     spaceFaceCaption([{ uid: 'a', name: 'Maya Lee' }], 'me', 'said'),
     spaceFaceCaption([{ uid: 'me' }, { uid: 'a', name: 'Maya' }, { uid: 'b', name: 'Jo' }, { uid: 'c', name: 'Al' }], 'me', 'said'),
   ]`), ['You said you’d go', 'Maya said they’d go', 'You, Maya and 2 others said they’d go']);
+  // Tier A item 9: group tasks (js/groups/tasks.js). An owner who left
+  // gives the task back; credit goes to the owner, then the checker, current
+  // members only, in member order, never a zero; leaving clears only upcoming RSVPs.
+  check('tasks: an owner who left is nobody, and taskList agrees', run(`(() => {
+    const g = { memberUids: ['a', 'b'], people: { a: { name: 'Ana' }, b: { name: 'Ben' } }, taskItems: { t1: { id: 't1', title: 'X', assignee: 'gone' }, t2: { id: 't2', title: 'Y', assignee: 'a' } } };
+    return [taskOwner(g, g.taskItems.t1), taskOwner(g, g.taskItems.t2), taskList(g).map(t => t.assignee), taskOwner({ memberUids: [] }, { assignee: 'z' })];
+  })()`), [null, 'a', [null, 'a'], 'z']);
+  check('tasks: this week’s credit goes to the owner first, in member order, with no zeros', run(`(() => {
+    const now = Date.now(), old = now - 9 * 86400000;
+    const g = { memberUids: ['a', 'b', 'c'], people: { a: { name: 'Ana', joinedAt: 1 }, b: { name: 'Ben', joinedAt: 2 }, c: { name: 'Cy', joinedAt: 3 } }, taskItems: {
+      t1: { id: 't1', title: '1', done: true, assignee: 'b', doneBy: 'a', doneAt: now },
+      t2: { id: 't2', title: '2', done: true, assignee: null, doneBy: 'a', doneAt: now },
+      t3: { id: 't3', title: '3', done: true, assignee: 'gone', doneBy: 'gone', doneAt: now },
+      t4: { id: 't4', title: '4', done: true, assignee: 'b', doneBy: 'b', doneAt: old },
+      t5: { id: 't5', title: '5', done: false, assignee: 'c' },
+      t6: { id: 't6', title: '6', done: true, doneByName: 'Old', doneAt: now } } };
+    return groupTaskCredits(g, { since: now - 7 * 86400000 }).map(c => c.uid + c.n);
+  })()`), ['a1', 'b1']);
+  check('tasks: leaving clears their tasks and upcoming RSVPs with deletes, past ones stay', run(`(() => {
+    const g = { memberUids: ['a', 'b'], taskItems: { t1: { id: 't1', title: 'X', assignee: 'b' }, t2: { id: 't2', title: 'Y', assignee: 'a' } },
+      sessions: { s1: { id: 's1', date: '2099-01-01', start: '10:00', rsvp: { b: 'yes', a: 'no' } }, s2: { id: 's2', date: '2001-01-01', start: '10:00', rsvp: { b: 'yes' } }, s3: { id: 's3', date: '2099-01-02', rsvp: { a: 'yes' } } } };
+    const ops = groupDepartureOps(g, 'b');
+    return Object.keys(ops).sort().map(k => k + (ops[k] === GW_DELETE ? ':del' : ':?'));
+  })()`), ['sessions.s1.rsvp.b:del', 'taskItems.t1.assignee:del', 'taskItems.t1.assigneeName:del']);
   // Tier A item 15: chat (js/spaces/chat.js).
   check('chat: URLs and @mentions are tokenized once from the raw text; an email is not a mention', run(`(() => {
     const names = chatNameIndex([{ uid: 'm', name: 'Maya Chen' }, { uid: 'j', name: 'Jo' }]);
@@ -637,6 +675,21 @@ check('sw.js caches nothing that was deleted', appShell.filter(f => f.endsWith('
   check('space colors: text, ink and dark fill clear contrast for every palette and the picker extremes', spaceColorFails, []);
   check('space colors: no color falls back to the accent with a quieter dark pattern', run(`spaceVars('')`).includes('--pattern-alpha-dark:.12'), true);
 
+  /* ── 10. Club Calendar (js/orgs/calendar.js) ────────────────────
+     A series has no cadence field, so it is read from the dates: one
+     deleted or moved week must not turn a weekly series biweekly. The
+     month grid covers whole weeks only, Sunday first. */
+  check('club calendar: series cadence from dates', run(`(() => {
+    const ev = (ds, sid = 's') => ({ events: Object.fromEntries(ds.map((d, i) => ['e' + i, { id: 'e' + i, date: d, seriesId: sid }])) });
+    return [
+      orgSeriesStep(ev(['2026-10-01', '2026-10-08', '2026-10-15', '2026-10-29']), 's'),
+      orgSeriesStep(ev(['2026-10-01', '2026-10-15', '2026-10-29', '2026-11-26']), 's'),
+      orgSeriesStep(ev(['2026-10-01']), 's'),
+      orgSeriesStep(ev(['2026-10-01', '2026-10-15']), 's'),
+      orgSeriesLabel(ev(['2026-10-01', '2026-10-15']), { seriesId: 's' }),
+    ];
+  })()`), [7, 14, 7, 14, 'Every other week']);
+  check('club calendar: month cells are whole weeks', run(`(() => { const m = calMonthCells('2026-10-17'); return [m.month, m.weeks, m.cells.length, m.cells[0], m.cells[m.cells.length - 1]]; })()`), ['2026-10-01', 5, 35, '2026-09-27', '2026-10-31']);
   check('club writes: a refused write says why', denied, ['Only the founder can change who’s an officer.', 'Only officers can change that.', 'Fallback', 'You’re no longer in this club.', 'This club was deleted.']);
 }
 

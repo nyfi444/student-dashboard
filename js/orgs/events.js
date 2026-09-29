@@ -1,10 +1,14 @@
 /* ── Clubs & teams: events ────────────────────────────────────────
    Event rows, answers (Going or Can't), the Next up hero, the Overview
-   agenda and its tags, the Calendar tab, and the event sheets (view, add,
-   edit, delete, .ics). Loaded after js/orgs/sync.js and before js/orgs.js.
+   agenda and its tags, and the event sheets (view, add, edit, delete,
+   .ics). Loaded after js/orgs/sync.js and before js/orgs.js.
 
    Before, during, after (Tier A item 7). Phases come from eventTimeState
    (js/spaces/eventcard.js); orgEventPast (js/orgs/sync.js) is its 'after'.
+   The Calendar tab itself (Agenda and Month, filters, Duplicate and
+   Extend this series) is js/orgs/calendar.js; orgAgendaRow and the sheets
+   stay here.
+
    Rows carry spaceWhenChip (today, tomorrow, Happening now). Once an
    event ends, officers get Post a recap on the sheet, the rows and the
    Overview's "just ended" card:
@@ -27,24 +31,6 @@ function orgUpcomingForMe(days = 7) {
   const end = addDays(todayIso(), days);
   return allOrgs().flatMap(o => upcomingOrgEvents(o).filter(e => e.date <= end && myOrgRsvp(o, e.id) !== 'no').map(e => ({ o, e })))
     .sort((a, b) => (a.e.date + (a.e.start || '')).localeCompare(b.e.date + (b.e.start || '')));
-}
-function orgEventRow(o, e, { showOrg = false, need = null } = {}) {
-  const counts = orgRsvpCounts(o, e.id);
-  const past = orgEventPast(e);
-  const dues = orgIsDuesEvent(e);
-  // Count text only (no faces in rows). Members never see "0 going".
-  const count = dues ? '' : past ? `${counts.yes} said they’d go` : counts.yes || isOrgOfficer(o) ? `${counts.yes} going` : '';
-  const trailing = past ? orgRecapLink(o, e) : dues ? orgDuesAction(o, e) : orgRsvpControl(o, e);
-  return `
-    <div class="list-row sg-session-row org-event-row ${past ? 'is-past' : ''}" style="--course:${esc(orgColor(o))}" onclick="showOrgEventModal('${o.code}','${e.id}')">
-      ${spaceDateBlock(e.date, { size: 'tile' })}
-      <div class="row-title">
-        <div class="sg-strong">${esc(e.title)}</div>
-        <div class="row-meta">${[showOrg ? esc(o.name) : '', orgCatHtml(e), esc(_evTimeRange(e.start, e.end)), e.location ? esc(e.location) : '', count ? `<span class="org-row-going">${count}</span>` : ''].filter(Boolean).join(' · ')}</div>
-        ${(() => { const t = `${past ? '' : spaceWhenChip(e)}${orgEventTags(o, e, { need })}`; return t ? `<div class="space-agenda-tags org-event-tags">${t}</div>` : ''; })()}
-      </div>
-      ${trailing}
-    </div>`;
 }
 /* ── Event rows, answers and the Next up hero ─────────────────── */
 // Who gave which answer, current members only.
@@ -160,46 +146,32 @@ function orgEventTags(o, e, { cat = false, need = null } = {}) {
   const asks = (need || orgNeedIds(o)).has(e.id);
   return [
     e.required && !dues ? spaceTag('required', 'Required') : '',
-    e.seriesId ? spaceTag('weekly', 'Weekly') : '',
+    e.seriesId ? spaceTag('weekly', orgSeriesLabel(o, e)) : '',
     cat && !dues && c[0] !== 'other' ? spaceTag('cat', c[1], c[2]) : '',
     asks ? spaceTag('need', 'Needs your answer') : '',
   ].join('');
 }
 // One flat agenda row: date tile, title, when and where, tags, and the
-// compact RSVP (or the dues button) at the end.
-function orgAgendaRow(o, e, need = null) {
+// compact RSVP (or the dues button) at the end. The Calendar tab
+// (js/orgs/calendar.js) passes opts:
+//   className: extra row class (org-cal-social for the larger social row)
+//   facesHtml: a face pile on its own line under the tags; the "7 going"
+//     count leaves the meta line, since the faces say it
+function orgAgendaRow(o, e, need = null, { className = '', facesHtml = '' } = {}) {
   const past = orgEventPast(e);
   const dues = orgIsDuesEvent(e);
   const counts = orgRsvpCounts(o, e.id);
   // Members never see "0 going"; officers count heads.
-  const going = dues ? '' : past ? `${counts.yes} said they’d go` : counts.yes || isOrgOfficer(o) ? `${counts.yes} going` : '';
+  const going = dues || facesHtml ? '' : past ? `${counts.yes} said they’d go` : counts.yes || isOrgOfficer(o) ? `${counts.yes} going` : '';
   const when = e.start ? `${fmtTime(e.start)}${e.end ? ` to ${fmtTime(e.end)}` : ''}` : dues ? 'Due' : 'All day';
   return spaceAgendaRow({
-    date: e.date, title: e.title, past,
-    metaHtml: [esc(when), e.location ? esc(e.location) : '', going ? `<span class="org-row-going">${going}</span>` : ''].filter(Boolean).join(' · '),
-    tags: `${past ? '' : spaceWhenChip(e)}${orgEventTags(o, e, { cat: true, need })}`,
+    date: e.date, title: e.title, past, className,
+    // A dues row says Due beside a flag, where others have their time.
+    metaHtml: [dues && !e.start ? `<span class="org-cat">${icon('flag', 12)} Due</span>` : esc(when), e.location ? esc(e.location) : '', going ? `<span class="org-row-going">${going}</span>` : ''].filter(Boolean).join(' · '),
+    tags: `${past ? '' : spaceWhenChip(e)}${orgEventTags(o, e, { cat: true, need })}${facesHtml ? `<span class="org-cal-faces">${facesHtml}</span>` : ''}`,
     trailingHtml: past ? orgRecapLink(o, e) : orgRsvpControl(o, e),
     onclick: `showOrgEventModal('${o.code}','${e.id}')`,
   });
-}
-function orgEventsTab(o) {
-  const need = orgNeedIds(o);
-  const all = orgEventList(o);
-  const upcoming = all.filter(e => !orgEventPast(e));
-  const past = all.filter(orgEventPast).reverse();
-  const byMonth = [];
-  upcoming.forEach(e => { const key = e.date.slice(0, 7); let g = byMonth.find(x => x.key === key); if (!g) byMonth.push(g = { key, label: fmtDate(e.date, { month: 'long', year: 'numeric' }), items: [] }); g.items.push(e); });
-  return `
-    <div class="sg-toolbar">
-      <div class="small muted">${o.hideCalendar ? 'These events are hidden from your calendar.' : 'Events you haven’t said no to are on your calendar.'}</div>
-      <div class="flex-gap">
-        ${upcoming.length ? `<button class="btn btn-sm" onclick="downloadOrgIcs('${o.code}')">${icon('download', 14)} Add all to calendar app</button>` : ''}
-        ${isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Event</button>` : ''}
-      </div>
-    </div>
-    ${byMonth.length ? byMonth.map(g => `<div class="sg-section-label">${esc(g.label)}</div><div class="card card-pad mb-16">${g.items.map(e => orgEventRow(o, e, { need })).join('')}</div>`).join('') : emptyState(icon('calendar', 24), 'No upcoming events', isOrgOfficer(o) ? `<button class="btn btn-primary btn-sm" onclick="openOrgEventModal('${o.code}')">${icon('plus', 14)} Add an event</button>` : '', isOrgOfficer(o) ? 'Weekly meetings can repeat, so you only add them once.' : '')}
-    ${past.length ? `<details class="sg-past"><summary class="small muted">Past events (${past.length})</summary><div class="card card-pad">${past.slice(0, 40).map(e => orgEventRow(o, e, { need })).join('')}</div></details>` : ''}
-  `;
 }
 /* ── Events ────────────────────────────────────────────────────── */
 function showOrgEventModal(code, eventId) {
@@ -218,23 +190,29 @@ function showOrgEventModal(code, eventId) {
   openModal(spaceEventSheet({
     kind: 'club', code: o.code, id: e.id, color: orgColor(o), glyph: cat[2], spaceName: o.name,
     title: e.title, date: e.date, start: e.start, end: e.end, where: e.location, notes: e.notes,
-    tags: `${spaceTag('cat', cat[1], cat[2])}${e.required && !dues ? spaceTag('required', 'Required') : ''}${e.seriesId ? spaceTag('weekly', `Weekly${later ? `, ${later} more after this` : ''}`) : ''}`,
+    tags: `${spaceTag('cat', cat[1], cat[2])}${e.required && !dues ? spaceTag('required', 'Required') : ''}${e.seriesId ? spaceTag('weekly', `${orgSeriesLabel(o, e)}${later ? `, ${later} more after this` : ''}`) : ''}`,
     rsvpHtml: past ? '' : orgRsvpControl(o, e, myOrgRsvp(o, e.id), { size: 'hero', stillComing: true, clearable: true }),
     facesHtml: dues ? '' : orgFacePile(o, e, { size: 24, past }),
     recapHtml: dues ? '' : orgRecapButton(o, e),
-    actionsHtml: past ? '' : `${joinLinkButton(e.location)}${chatShareButton('club', o.code, e.id)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button>`,
+    actionsHtml: `${past ? '' : `${joinLinkButton(e.location)}${chatShareButton('club', o.code, e.id)}<button class="btn btn-ghost btn-sm" onclick="downloadOrgIcs('${o.code}','${e.id}')">${icon('download', 14)} Add to calendar app</button>`}${officer ? orgEventOfficerActions(o, e) : ''}`,
     listsHtml: dues && !(officer && anyAnswers) ? '' : orgAttendanceLists(o, e),
     footHtml: officer ? `<button class="btn btn-danger" style="margin-right:auto" onclick="deleteOrgEvent('${o.code}','${e.id}')">Delete</button><button class="btn" onclick="openOrgEventModal('${o.code}','${e.id}')">Edit</button><button class="btn btn-primary" onclick="closeModal()">Done</button>` : '',
   }), { onClose: () => { window._orgEventModal = null; } });
 }
-function openOrgEventModal(code, eventId) {
+// opts (new events only):
+//   prefill: an event to copy (Duplicate). Everything but the date and the
+//     series comes along; the date moves a week on, past today.
+//   date: an ISO date to start on (Add an event on this day, Month view).
+function openOrgEventModal(code, eventId, { prefill = null, date = '' } = {}) {
   const o = findOrg(code);
   if (!o || !isOrgOfficer(o)) return;
   const e = eventId ? orgEventList(o).find(x => x.id === eventId) : null;
   const later = e?.seriesId ? orgEventList(o).filter(x => x.seriesId === e.seriesId && x.date > e.date).length : 0;
-  const v = e || { title: '', category: 'meeting', date: todayIso(), start: '19:00', end: '20:00', location: '', required: false, notes: '' };
+  const blank = { title: '', category: 'meeting', date: todayIso(), start: '19:00', end: '20:00', location: '', required: false, notes: '' };
+  const v = e || (prefill ? { ...blank, ...prefill, date: orgDuplicateDate(prefill.date) } : blank);
+  if (!e && /^\d{4}-\d{2}-\d{2}$/.test(date || '')) v.date = date;
   openModal(`
-    <div class="modal-head"><h3>${e ? 'Edit event' : `New event for ${esc(o.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
+    <div class="modal-head"><h3>${e ? 'Edit event' : prefill ? 'Duplicate event' : `New event for ${esc(o.name)}`}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
       <div class="field-row">
         <div class="field"><label for="oe-title">What</label><input class="input" id="oe-title" maxlength="120" value="${esc(v.title)}" placeholder="Chapter meeting"></div>
@@ -248,8 +226,8 @@ function openOrgEventModal(code, eventId) {
       <div class="field"><label for="oe-where">Where</label><input class="input" id="oe-where" maxlength="120" value="${esc(v.location)}" placeholder="Student Union 210, or a Zoom link"></div>
       <div class="field"><label for="oe-notes">Details <span class="muted">(optional)</span></label><textarea class="input" id="oe-notes" maxlength="1000" placeholder="Wear your jersey. Dues are due at the door.">${esc(v.notes)}</textarea></div>
       <label class="checkbox-row small"><input type="checkbox" id="oe-required" ${v.required ? 'checked' : ''}><span>Required for members</span></label>
-      ${!e ? `<div class="field-row mt-8" style="align-items:center"><label class="checkbox-row small" style="margin:0"><input type="checkbox" id="oe-repeat" onchange="$('#oe-weeks').disabled=!this.checked"><span>Repeat weekly for</span></label><select class="select" id="oe-weeks" style="max-width:110px" disabled aria-label="How many weeks">${[2, 4, 6, 8, 10, 12, 15].map(n => `<option value="${n}" ${n === 8 ? 'selected' : ''}>${n} weeks</option>`).join('')}</select></div>` : ''}
-      ${e && later > 0 ? `<label class="checkbox-row small mt-8"><input type="checkbox" id="oe-series"><span>Also update the ${later} later event${later === 1 ? '' : 's'} in this weekly series (they keep their dates)</span></label>` : ''}
+      ${!e ? orgRepeatFieldsHtml() : ''}
+      ${e && later > 0 ? `<label class="checkbox-row small mt-8"><input type="checkbox" id="oe-series"><span>Also update the ${later} later event${later === 1 ? '' : 's'} in this series (they keep their dates)</span></label>` : ''}
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="oe-save" onclick="saveOrgEvent('${o.code}',${e ? `'${e.id}'` : 'null'})">${e ? 'Save' : 'Add to calendar'}</button></div>
   `);
@@ -262,7 +240,7 @@ async function saveOrgEvent(code, eventId) {
   if (!title || !date) { toast('Add a name and a date', 'error'); return; }
   const base = { title: title.slice(0, 120), category: $('#oe-cat').value, start: $('#oe-start').value || '', end: $('#oe-end').value || '', location: $('#oe-where').value.trim().slice(0, 120), notes: $('#oe-notes').value.trim().slice(0, 1000), required: $('#oe-required').checked };
   const ops = {};
-  let laterCount = 0;
+  let laterCount = 0, repeatStep = 7;
   if (eventId) {
     Object.entries({ ...base, date }).forEach(([k, val]) => { ops[`events.${eventId}.${k}`] = val; });
     // Practice moved from 6 to 7 for the rest of the season: the later
@@ -274,15 +252,17 @@ async function saveOrgEvent(code, eventId) {
       later.forEach(x => Object.entries(base).forEach(([k, val]) => { ops[`events.${x.id}.${k}`] = val; }));
     }
   } else {
-    const weeks = $('#oe-repeat')?.checked ? Number($('#oe-weeks').value) || 1 : 1;
-    const seriesId = weeks > 1 ? uid() : null;
-    for (let i = 0; i < weeks; i++) {
+    // "Repeat every other week, 4 times": 4 events, 14 days apart, one seriesId.
+    const times = $('#oe-repeat')?.checked ? Math.min(ORG_REPEAT_MAX, Number($('#oe-weeks').value) || 1) : 1;
+    repeatStep = Number($('#oe-step')?.value) === 14 ? 14 : 7;
+    const seriesId = times > 1 ? uid() : null;
+    for (let i = 0; i < times; i++) {
       const id = uid();
-      ops[`events.${id}`] = { id, ...base, date: addDays(date, i * 7), seriesId, createdBy: myOrgUid(o), createdAt: Date.now() };
+      ops[`events.${id}`] = { id, ...base, date: addDays(date, i * repeatStep), seriesId, createdBy: myOrgUid(o), createdAt: Date.now() };
     }
   }
   setBtnLoading($('#oe-save'), true);
-  if (await orgWrite(code, ops)) { closeModal(); const n = Object.keys(ops).length; toast(eventId ? (laterCount ? `Updated this and ${laterCount} later event${laterCount === 1 ? '' : 's'}` : 'Event updated') : n > 1 ? `Added ${n} weekly events` : 'Event added. Members will see it on their calendar.'); }
+  if (await orgWrite(code, ops)) { closeModal(); const n = Object.keys(ops).length; toast(eventId ? (laterCount ? `Updated this and ${laterCount} later event${laterCount === 1 ? '' : 's'}` : 'Event updated') : n > 1 ? `Added ${n} events, ${ORG_SERIES_LABELS[repeatStep].toLowerCase()}` : 'Event added. Members will see it on their calendar.'); }
   else setBtnLoading($('#oe-save'), false, eventId ? 'Save' : 'Add to calendar');
 }
 function deleteOrgEvent(code, eventId) {

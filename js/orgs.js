@@ -427,60 +427,7 @@ function orgAnnouncementsTab(o) {
     ${anns.length ? `<div class="card card-pad">${anns.map(a => orgAnnouncementHtml(o, a)).join('')}</div>` : emptyState(icon('megaphone', 24), 'No announcements yet', '', isOrgOfficer(o) ? 'Dues reminders, carpool plans, last-minute changes.' : 'Officers’ updates will show up here.')}
   `;
 }
-function orgMembersTab(o) {
-  const people = orgPeople(o);
-  const me = myOrgUid(o);
-  const officerCount = people.filter(p => p.officer).length;
-  // Someone who joined with a position ("Treasurer") but isn't an officer
-  // yet: only the founder can give officer access, so the founder is asked.
-  const requests = isOrgOwner(o) ? people.filter(p => p.title && !p.officer && !p.reviewed) : [];
-  const officer = isOrgOfficer(o);
-  const faces = orgFaceColors(o);
-  const memberRow = (p) => `
-        <div class="sg-person org-member" data-search="${esc((p.name + ' ' + orgRoleLabel(o, p)).toLowerCase())}">
-          ${personAvatar(p.uid, p.name, 30, faces[p.uid] || orgColor(o))}
-          <div class="row-title"><div class="small sg-strong">${esc(p.name)}${p.uid === me && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div><div class="small muted">${esc(orgRoleLabel(o, p))}${p.officer && p.title ? ` · <span class="org-officer-tag">${icon('shield', 11)} ${p.owner ? 'Founder' : 'Officer'}</span>` : ''}</div></div>
-          ${officer && (!o.local || o.sample) ? `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>` : p.uid === me ? `<button class="btn btn-ghost btn-sm" onclick="openMyOrgTitleModal('${o.code}')">Edit title</button>` : ''}
-        </div>`;
-  const officers = people.filter(p => p.officer), general = people.filter(p => !p.officer);
-  return `
-    <div class="sg-toolbar">
-      <div class="small muted">${people.length} member${people.length === 1 ? '' : 's'} · ${officerCount} officer${officerCount === 1 ? '' : 's'}</div>
-      <div class="flex-gap wrap">
-        ${officer ? `<button class="btn btn-sm" onclick="setState({orgTab:'admin'});setTimeout(()=>document.getElementById('org-attendance')?.scrollIntoView({block:'start'}),80)">${icon('check-square', 14)} RSVPs</button><button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 14)} Export roster</button>` : ''}
-      </div>
-    </div>
-    ${people.length >= 8 ? `<input class="input org-member-search mb-8" id="org-member-search" placeholder="Search ${people.length} members by name or title" aria-label="Search members" autocomplete="off" oninput="filterOrgMembers(this.value)">` : ''}
-    ${requests.map(p => `
-      <div class="sg-callout org-request mb-8"><span>${icon('shield', 14)}</span>
-        <div class="small" style="flex:1"><span class="sg-strong">${esc(p.name)}</span> joined as <span class="sg-strong">${esc(p.title)}</span>. Make them an officer so they can add events, post announcements, and share files?</div>
-        <div class="flex-gap"><button class="btn btn-sm" onclick="reviewOrgRole('${o.code}','${esc(p.uid)}',false)">Not now</button><button class="btn btn-primary btn-sm" onclick="reviewOrgRole('${o.code}','${esc(p.uid)}',true)">Make officer</button></div>
-      </div>`).join('')}
-    <div class="card card-pad" id="org-member-list">
-      <div class="sg-section-label org-member-head" style="margin-top:0">Officers <span class="assign-count">${officers.length}</span></div>
-      ${officers.map(memberRow).join('')}
-      <div class="sg-section-label org-member-head">${esc(orgGeneralLabel(o))} <span class="assign-count">${general.length}</span></div>
-      ${general.length ? general.map(memberRow).join('') : `<p class="small muted">No one yet. <button class="sg-link" onclick="openOrgInviteModal('${o.code}')">Invite members</button></p>`}
-      <p class="small muted org-member-none" hidden>No one matches that.</p>
-    </div>
-    <details class="card card-pad org-roles-help mt-16">
-      <summary class="sg-strong small">${icon('chevron-right', 12)}How roles work</summary>
-      <div class="small muted mt-8">
-        <p><span class="sg-strong">Founder:</span> whoever started ${esc(o.name)}. The founder is an officer and is the only one who can make someone else an officer.</p>
-        <p><span class="sg-strong">Officers:</span> add events, post announcements, share files, see who hasn’t RSVPed, and manage members.</p>
-        <p><span class="sg-strong">${esc(orgGeneralLabel(o))}:</span> RSVP, chat, and open shared files. Events show up on their calendar.</p>
-        <p>Anyone can add a title, like Treasurer or Captain, that shows next to their name. When someone joins with a title, the founder is asked whether they should be an officer.</p>
-      </div>
-    </details>`;
-}
-function filterOrgMembers(q) {
-  const needle = String(q || '').trim().toLowerCase();
-  let shown = 0;
-  $$('#org-member-list .org-member').forEach(el => { const on = !needle || el.dataset.search.includes(needle); el.hidden = !on; if (on) shown++; });
-  $$('#org-member-list .org-member-head').forEach(el => { el.hidden = !!needle; });
-  const none = $('#org-member-list .org-member-none');
-  if (none) none.hidden = shown > 0;
-}
+// The Members tab (orgMembersTab, filterOrgMembers) lives in js/orgs/members.js.
 
 /* ── Announcements ─────────────────────────────────────────────── */
 function openAnnouncementModal(code, prefill = '') {
