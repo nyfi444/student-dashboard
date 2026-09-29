@@ -248,7 +248,8 @@ function captureOrgParam() {
   params.delete('tab');
   params.delete('event');
   history.replaceState({}, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
-  if (code.length === 6 && !isEmbedded()) try { localStorage.setItem(PENDING_ORG_KEY, JSON.stringify({ code, at: Date.now(), tab, ...(safeId(event) ? { event } : {}) })); } catch {}
+  // The link in the current URL wins over any older stored group invite.
+  if (code.length === 6 && !isEmbedded()) try { localStorage.setItem(PENDING_ORG_KEY, JSON.stringify({ code, at: Date.now(), tab, ...(safeId(event) ? { event } : {}) })); localStorage.removeItem('shq_pending_join'); } catch {}
 }
 function pendingOrgEvent() { try { const p = JSON.parse(localStorage.getItem(PENDING_ORG_KEY) || 'null'); return p?.event && safeId(p.event) ? p.event : ''; } catch { return ''; } }
 function pendingOrgCode() { try { const p = JSON.parse(localStorage.getItem(PENDING_ORG_KEY) || 'null'); return p?.code && Date.now() - p.at < 14 * 86400000 ? p.code : null; } catch { return null; } }

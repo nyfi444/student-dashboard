@@ -121,8 +121,8 @@ function welcomeRing(done, total) {
   </svg>`;
 }
 function welcomeStepRow(s, { inSheet = false } = {}) {
-  return `<button type="button" class="spw-step${s.done ? ' is-done' : ''}" onclick="${s.onclick}" aria-pressed="${s.done}">
-    <span class="spw-check" aria-hidden="true">${s.done ? icon('check', 14, 2.4) : ''}</span>
+  return `<button type="button" class="spw-step${s.done ? ' is-done' : ''}" onclick="${s.onclick}">
+    ${s.done ? '<span class="sr-only">Done. </span>' : ''}<span class="spw-check" aria-hidden="true">${s.done ? icon('check', 14, 2.4) : ''}</span>
     <span class="spw-step-text"><span class="spw-step-label">${esc(s.label)}</span>${s.sub && (inSheet || !s.done) ? `<span class="spw-step-sub">${esc(s.sub)}</span>` : ''}</span>
     ${s.done ? `<span class="spw-step-done">Done</span>` : icon('chevron-right', 14)}
   </button>`;

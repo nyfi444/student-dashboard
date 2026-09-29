@@ -107,7 +107,9 @@ body { background: var(--bg); color: var(--bg-text); }
   .ga-row { grid-template-columns: 32px minmax(0, 1fr); }
   .ga-row .ga-email, .ga-row .ga-joined { grid-column: 2; }
   .ga-row .ga-email { white-space: normal; overflow-wrap: anywhere; }
-  .ga-actions { grid-column: 2; justify-content: flex-start; margin-left: -8px; }
+  .ga-actions { grid-column: 2; justify-content: flex-start; margin-left: -8px; gap: 8px; flex-wrap: wrap; }
+  /* Touch targets: 44px tall on phones, btn-sm stays on desktop. */
+  .ga-actions .btn, .ga-seats .btn, .ga-invite-row .btn, .ga-qr .btn { min-height: 44px; padding-inline: 14px; }
 }
 @media (max-width: 620px) {
   .ga-page { padding: 20px 16px 60px; }

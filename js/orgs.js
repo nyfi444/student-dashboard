@@ -385,6 +385,7 @@ function orgOverviewTab(o) {
       </div>
       <div class="sg-col">
         ${typeof welcomeChecklistCard === 'function' ? welcomeChecklistCard('club', o) : ''}
+        ${typeof wrappedSpaceBanner === 'function' ? wrappedSpaceBanner('club', o) : ''}
         ${orgOfficerMiniCard(o)}
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">Announcements</h3>${officer ? `<button class="sg-link" onclick="openAnnouncementModal('${o.code}')">${icon('plus', 12)} Post</button>` : `<button class="sg-link" onclick="setState({orgTab:'announcements'})">All ${icon('chevron-right', 12)}</button>`}</div>

@@ -162,8 +162,15 @@ function wrappedSpaceDrawPattern(ctx, idx, color) {
   ctx.restore();
 }
 function wrappedSpaceDrawCrest(ctx, crest, p, sans) {
-  const cx = 96 + 72, cy = 96 + 72, r = 72;
-  ctx.fillStyle = p.fg; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  // Rounded square, like the app crest (radius about 22% of the side, --r-mid on a 56px tile).
+  const cx = 96 + 72, cy = 96 + 72, r = 72, side = r * 2, rad = Math.round(side * 0.22), x0 = cx - r, y0 = cy - r;
+  ctx.fillStyle = p.fg; ctx.beginPath();
+  ctx.moveTo(x0 + rad, y0);
+  ctx.arcTo(x0 + side, y0, x0 + side, y0 + side, rad);
+  ctx.arcTo(x0 + side, y0 + side, x0, y0 + side, rad);
+  ctx.arcTo(x0, y0 + side, x0, y0, rad);
+  ctx.arcTo(x0, y0, x0 + side, y0, rad);
+  ctx.closePath(); ctx.fill();
   ctx.fillStyle = p.bg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const main = String(crest?.main || '?'), sub = String(crest?.sub || '');
   if (sub) {
@@ -261,15 +268,28 @@ async function wrappedSpaceOpen(kind, code) {
   const canvases = [];
   for (let i = 0; i < cards.length; i++) canvases.push(await wrappedSpaceDraw(cards[i], draw, i));
   const slug = String(sp.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || kind;
-  window._wrappedSpace = { kind, code, canvases, index: 0, label, filePrefix: `${slug}-wrapped`, shareText: `${sp.name}, wrapped. semester-hq.com`, officer: kind === 'club' && isOrgOfficer(sp) };
+  window._wrappedSpace = { kind, code, cards, canvases, index: 0, label, filePrefix: `${slug}-wrapped`, shareText: `${sp.name}, wrapped. semester-hq.com`, officer: kind === 'club' && isOrgOfficer(sp), returnTo: document.activeElement };
   if (typeof playUiSound === 'function') playUiSound('success');
   document.addEventListener('keydown', wrappedSpaceKeydown);
   wrappedSpaceRender();
+  try { document.querySelector('#wrapped-space .wrapped-close')?.focus({ preventScroll: true }); } catch {}
+}
+// Screen readers get the numbers, not just "card 2 of 8".
+function wrappedSpaceAlt(w) {
+  const c = w.cards?.[w.index] || {};
+  const parts = [];
+  if (c.eyebrow) parts.push(c.big != null && c.big !== '' ? `${c.eyebrow}: ${c.big}${c.unit ? ' ' + c.unit : ''}.` : `${c.eyebrow}.`);
+  else if (c.big) parts.push(`${c.big}${c.unit ? ' ' + c.unit : ''}.`);
+  if (c.sub) parts.push(String(c.sub).replace(/\.?$/, '.'));
+  parts.push(`Card ${w.index + 1} of ${w.canvases.length}`);
+  return parts.join(' ');
 }
 function wrappedSpaceRender() {
   const w = window._wrappedSpace;
   if (!w) return;
   const url = w.canvases[w.index].toDataURL('image/png');
+  const active = document.activeElement;
+  const refocus = active?.closest?.('#wrapped-space') ? (active.classList.contains('next') ? '.wrapped-hit.next' : active.classList.contains('prev') ? '.wrapped-hit.prev' : '.wrapped-close') : null;
   let el = document.getElementById('wrapped-space');
   if (!el) {
     el = document.createElement('div');
@@ -285,7 +305,7 @@ function wrappedSpaceRender() {
       <div class="wrapped-bars">${w.canvases.map((_, i) => `<span class="${i < w.index ? 'done' : i === w.index ? 'current' : ''}"></span>`).join('')}</div>
       <button class="wrapped-close" aria-label="Close" onclick="wrappedSpaceClose()">${icon('x', 16, 2.2)}</button>
       <div class="wrapped-card">
-        <img src="${url}" alt="${esc(w.label)} card ${w.index + 1} of ${w.canvases.length}">
+        <img src="${url}" alt="${esc(wrappedSpaceAlt(w))}">
         <button class="wrapped-hit prev" aria-label="Previous card" onclick="wrappedSpaceStep(-1)" ${w.index === 0 ? 'disabled' : ''}></button>
         <button class="wrapped-hit next" aria-label="Next card" onclick="wrappedSpaceStep(1)"></button>
       </div>
@@ -295,6 +315,7 @@ function wrappedSpaceRender() {
         ${w.officer ? `<button class="btn btn-ghost wrapped-save" onclick="wrappedSpaceClose();wrappedOrgPost('${esc(w.code)}')">${icon('megaphone', 14, 1.8)} Post to announcements</button>` : ''}
       </div>
     </div>`;
+  if (refocus) { try { (el.querySelector(refocus + ':not([disabled])') || el.querySelector('.wrapped-close')).focus({ preventScroll: true }); } catch {} }
 }
 function wrappedSpaceStep(dir) {
   const w = window._wrappedSpace;
@@ -309,11 +330,26 @@ function wrappedSpaceKeydown(e) {
   if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); wrappedSpaceStep(1); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); wrappedSpaceStep(-1); }
   else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); wrappedSpaceClose(); }
+  else if (e.key === 'Tab') {
+    // Keep focus inside the viewer while it is open.
+    const root = document.getElementById('wrapped-space');
+    if (!root) return;
+    const stops = [...root.querySelectorAll('.wrapped-close, .wrapped-hit, .wrapped-actions .btn')].filter(b => !b.disabled);
+    if (!stops.length) return;
+    const i = stops.indexOf(document.activeElement);
+    let next;
+    if (i === -1) next = e.shiftKey ? stops[stops.length - 1] : stops[0];
+    else next = stops[(i + (e.shiftKey ? -1 : 1) + stops.length) % stops.length];
+    e.preventDefault();
+    try { next.focus({ preventScroll: true }); } catch {}
+  }
 }
 function wrappedSpaceClose() {
   document.removeEventListener('keydown', wrappedSpaceKeydown);
+  const back = window._wrappedSpace?.returnTo;
   document.getElementById('wrapped-space')?.remove();
   window._wrappedSpace = null;
+  if (back && back !== document.body && document.contains(back)) { try { back.focus({ preventScroll: true }); } catch {} }
 }
 function wrappedSpaceFile() {
   const w = window._wrappedSpace;

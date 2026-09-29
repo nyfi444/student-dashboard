@@ -393,7 +393,8 @@ function planHtml() {
           <select class="select" aria-label="Sort members" onchange="gaSetSort(this.value)">${GA_SORTS.map(([v, l]) => `<option value="${v}" ${v === gaList.sort ? 'selected' : ''}>${l}</option>`).join('')}</select>
         </div>` : ''}
       </div>
-      ${members.length ? `<div class="ga-rows" id="ga-rows">${gaRowsHtml()}</div>
+      ${members.length ? `<div class="sr-only" id="ga-results" aria-live="polite"></div>
+      <div class="ga-rows" id="ga-rows" role="list" aria-label="Members">${gaRowsHtml()}</div>
       <div class="ga-members-foot">
         <label class="checkbox-row"><input type="checkbox" id="ga-csv-emails"> Include emails</label>
         <button class="btn btn-sm" onclick="exportMembersCsv()">${icon('download', 13, 1.8)} Export CSV</button>
@@ -427,18 +428,29 @@ function gaRowsHtml() {
   const you = view.details?.you?.uid;
   if (!list.length) return `<div class="ga-empty">No one matches “${esc(gaList.q)}”.</div>`;
   return list.map(m => `
-    <div class="ga-row">
+    <div class="ga-row" role="listitem">
       <div class="ga-avatar ${m.admin ? 'is-admin' : ''}" aria-hidden="true">${esc(gaInitials(m.name, m.email))}</div>
       <div class="ga-who"><div class="ga-name"><span>${esc(m.name || 'Member')}</span>${m.uid === you ? '<span class="ga-you">(you)</span>' : ''}${m.admin ? '<span class="ga-badge">Admin</span>' : ''}</div><div class="ga-email">${esc(m.email || '')}</div></div>
       <div class="ga-joined">Joined ${esc(fmtJoined(m.joinedAt))}</div>
       <div class="ga-actions">
-        <button class="btn btn-sm btn-ghost" onclick="setAdmin(this,'${esc(m.uid)}',${!m.admin})">${m.admin ? 'Remove admin' : 'Make admin'}</button>
-        <button class="btn btn-sm btn-ghost" onclick="removeMember(this,'${esc(m.uid)}')">Remove</button>
+        <button class="btn btn-sm btn-ghost" aria-label="${m.admin ? 'Remove admin from' : 'Make admin:'} ${esc(m.name || m.email || 'member')}" onclick="setAdmin(this,'${esc(m.uid)}',${!m.admin})">${m.admin ? 'Remove admin' : 'Make admin'}</button>
+        <button class="btn btn-sm btn-ghost" aria-label="Remove ${esc(m.name || m.email || 'member')}" onclick="removeMember(this,'${esc(m.uid)}')">Remove</button>
       </div>
     </div>`).join('');
 }
-function gaSetQuery(q) { gaList.q = q; const rows = $('#ga-rows'); if (rows) rows.innerHTML = gaRowsHtml(); }
-function gaSetSort(sort) { gaList.sort = sort; const rows = $('#ga-rows'); if (rows) rows.innerHTML = gaRowsHtml(); }
+function gaSetQuery(q) { gaList.q = q; gaRedrawRows(); }
+function gaSetSort(sort) { gaList.sort = sort; gaRedrawRows(); }
+// Redraws the list and tells screen readers (and the Members count) how many
+// rows the search left.
+function gaRedrawRows() {
+  const rows = $('#ga-rows'); if (!rows) return;
+  rows.innerHTML = gaRowsHtml();
+  const total = (view.details?.members || []).length;
+  const shown = gaVisibleMembers().length;
+  const q = gaList.q.trim();
+  const count = $('.ga-count'); if (count) count.textContent = q ? `${shown} of ${total}` : String(total);
+  const live = $('#ga-results'); if (live) live.textContent = q ? `${shown} of ${total} members shown` : `${total} members`;
+}
 // Names are typed by members, so a cell that could start a spreadsheet
 // formula gets an apostrophe in front, and quotes are doubled.
 function csvCell(v) {

@@ -121,7 +121,7 @@ function openSpaceInvite(space, kind, { justCreated = false } = {}) {
         ${invitePricingLine(s)}
       </div>
     </div>
-  `);
+  `, { wide: true });
   inviteFillQr($('#modal'));
 }
 // The same pricing pointer the old sheets had, one per kind.

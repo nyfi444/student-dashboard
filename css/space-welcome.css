@@ -82,4 +82,5 @@
   .spw-body { padding: 18px 20px 8px; gap: 20px; }
   .spw-title { font-size: 32px; }
   .spw-foot { padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); }
+  .sg-link.spw-again { min-height: 44px; display: inline-flex; align-items: center; padding: 10px 8px; margin: 0 -8px -10px; }
 }
