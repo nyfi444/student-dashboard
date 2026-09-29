@@ -74,7 +74,7 @@ check('owner leaves: their name comes off the chat preview', w.fields['lastMessa
 log = world({ createdBy: 'solo', memberUids: ['solo'], people: { solo: { name: 'Ana', joinedAt: 1 } } });
 await sandbox.removeMemberFromSharedSpace({}, 'studyGroups/ABC123', 'solo', 'group');
 check('last member out: the group is deleted', log.deletedDocs, ['studyGroups/ABC123']);
-check('last member out: its subcollections go too', log.deletedSubs, ['studyGroups/ABC123/items', 'studyGroups/ABC123/messages']);
+check('last member out: its subcollections go too, forms included', log.deletedSubs, ['studyGroups/ABC123/items', 'studyGroups/ABC123/messages', 'studyGroups/ABC123/forms']);
 ok('last member out: nothing is written to a deleted doc', !log.commits.length);
 
 /* ── A club ────────────────────────────────────────────────────── */
@@ -109,6 +109,45 @@ w = lastWrite(log);
 check('sole officer leaves: a plain member is promoted', w.fields.createdBy, 'mem3');
 check('sole officer leaves: and made an officer', w.fields.officerUids, ['mem3']);
 
+/* ── Forms ─────────────────────────────────────────────────────── */
+// A fake Firestore that answers queries by the collection they ask for.
+function formsWorld(rows) {
+  const l = world(groupDoc());
+  l.queries = [];
+  sandbox.runFirestoreQuery = async (env, q, parent = '') => { l.queries.push(`${parent}:${q.from[0].collectionId}`); return rows[q.from[0].collectionId] || []; };
+  return l;
+}
+log = formsWorld({ formAnswers: [
+  { id: 'orgs_CLUB01_f1', kind: 'club', code: 'CLUB01', formId: 'f1' },
+  { id: 'studyGroups_ABC123_f2', kind: 'group', code: 'ABC123', formId: 'f2' },
+  { id: 'x', kind: 'club', code: 'CLUB01/../../licenses', formId: 'f1' },
+  { id: 'y', kind: 'planners', code: 'CLUB01', formId: 'f1' },
+  { id: 'z', kind: 'club', code: 'CLUB01', formId: 'a/b' },
+] });
+let threw = false;
+let left = await sandbox.eraseFormAnswers({}, 'mem2');
+check('form answers: each one is erased where it was sent, clubs never joined included', log.deletedDocs, ['orgs/CLUB01/forms/f1/responses/mem2', 'studyGroups/ABC123/forms/f2/responses/mem2']);
+check('form answers: the list is read from the person’s own planner', log.queries, ['planners/mem2:formAnswers']);
+check('form answers: the list itself is cleared', log.deletedSubs, ['planners/mem2/formAnswers']);
+check('form answers: nothing left behind', left, []);
+threw = false;
+try { await sandbox.eraseFormAnswers({}, 'bad/uid'); } catch { threw = true; }
+ok('form answers: an unsafe uid never reaches a path', threw);
+
+log = formsWorld({ formAnswers: [{ id: 'orgs_CLUB01_f1', kind: 'club', code: 'CLUB01', formId: 'f1' }] });
+sandbox.deleteFirestoreDoc = async () => { throw new Error('Firestore is down'); };
+left = await sandbox.eraseFormAnswers({}, 'mem2');
+check('form answers: a failure is reported, and the rest still runs', [left, log.deletedSubs], [['erase a form answer in orgs/CLUB01'], ['planners/mem2/formAnswers']]);
+
+log = formsWorld({ forms: [{ id: 'f1', createdBy: 'mem2', createdByName: 'Bo' }, { id: 'f2', createdBy: 'mem2', createdByName: 'Deleted account' }] });
+await sandbox.removeMemberFromSharedSpace({}, 'studyGroups/ABC123', 'mem2', 'group');
+check('forms they wrote stay, with their name taken off', log.commits.at(-1), [{ path: 'studyGroups/ABC123/forms/f1', fields: { createdByName: 'Deleted account' } }]);
+
+log = formsWorld({ forms: [{ id: 'f1' }, { id: 'f2' }] });
+sandbox.readFirestoreDocWithTime = async () => ({ data: { createdBy: 'solo', memberUids: ['solo'], people: {} }, updateTime: 't1' });
+await sandbox.removeMemberFromSharedSpace({}, 'orgs/CLUB01', 'solo', 'org');
+check('last member out of a club: every form’s answers go, then the forms', log.deletedSubs, ['orgs/CLUB01/messages', 'orgs/CLUB01/forms/f1/responses', 'orgs/CLUB01/forms/f2/responses', 'orgs/CLUB01/forms']);
+
 /* ── Concurrency ───────────────────────────────────────────────── */
 log = world(groupDoc(), { failFirstCommit: true });
 await sandbox.removeMemberFromSharedSpace({}, 'studyGroups/ABC123', 'mem2', 'group');
@@ -119,7 +158,7 @@ ok('every write is guarded by the version it read', lastWrite(log).updateTime ==
 ok('a plain uid is a safe field path', sandbox.safeFieldKey('abc123XYZ_-'));
 ok('a uid with a dot is refused', !sandbox.safeFieldKey('a.b'));
 ok('a uid with a backtick is refused', !sandbox.safeFieldKey('a`b'));
-let threw = false;
+threw = false;
 try { await sandbox.removeMemberFromSharedSpace({}, 'studyGroups/ABC123', 'bad.uid', 'group'); } catch { threw = true; }
 ok('an unsafe uid never reaches a field path', threw);
 
