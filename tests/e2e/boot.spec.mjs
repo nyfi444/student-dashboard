@@ -97,7 +97,9 @@ test('every page renders', async ({ page }) => {
 // The sample opens itself if it already exists, so a click lost to a
 // redraw on a slow phone run is safe to repeat.
 // label is the button's name; the four sample clubs are chips named
-// exactly 'Club', 'Chapter', 'Sports team' and 'Honor society'.
+// exactly 'Club', 'Chapter', 'Sports team' and 'Honor society'. tabs is
+// what to wait for once the space is open, usually its tab row; not the
+// phone chat button, which stays hidden until the row sticks.
 async function openSample(page, label, tabs) {
   await expect(async () => {
     const btn = page.locator('#content').getByRole('button', { name: label, exact: true });
@@ -108,8 +110,8 @@ async function openSample(page, label, tabs) {
 test('the sample study group and sample club open on every tab', async ({ page }) => {
   const console_ = await openApp(page);
   await navTo(page, 'studygroups');
-  // :visible because a phone moves Chat out of the tab row into the
-  // floating chat button (tested on its own below).
+  // Chat stays in the tab row on a phone too (last there); the floating
+  // chat button only adds a shortcut once the row sticks (tested below).
   const groupTabs = page.locator('#content [role="tab"]:visible');
   await openSample(page, 'Explore a sample group first', groupTabs);
   const gCount = await groupTabs.count();
@@ -201,18 +203,35 @@ test('the RSVP control answers, changes, never un-answers, and dues events ask f
   console_.expectClean();
 });
 
-test('on a phone, a group or club page fits the screen and its chat button opens chat', async ({ page }, testInfo) => {
+test('on a phone, a group or club page fits the screen, keeps Chat as the last tab, and its chat button opens chat once the tabs stick', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'phone', 'the floating chat button is phone only');
   const console_ = await openApp(page);
   const noSideways = async () => expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), 'no sideways scroll').toBeLessThanOrEqual(0);
   for (const [route, label] of [['studygroups', 'Explore a sample group first'], ['orgs', 'Club']]) {
     await navTo(page, route);
-    const fab = page.locator('#content .space-chat-fab');
-    await openSample(page, label, fab);
+    await openSample(page, label, page.locator('#content [role="tab"]'));
     await noSideways();
-    await expect(page.locator('#content [role="tab"]:visible', { hasText: /^Chat/ })).toHaveCount(0);
+    // At rest the Chat tab covers chat: it shows, and it sits last in the row.
+    const chatTab = page.locator('#content [role="tab"]', { hasText: /^Chat/ });
+    await expect(chatTab).toHaveCount(1);
+    await expect(chatTab).toBeVisible();
+    const chatIsLast = await page.evaluate(() => {
+      const tabs = [...document.querySelectorAll('#content [role="tab"]')];
+      const chat = tabs.find(t => /^Chat/.test(t.textContent.trim()));
+      const left = t => t.getBoundingClientRect().left;
+      return !!chat && tabs.every(t => t === chat || left(t) < left(chat));
+    });
+    expect(chatIsLast, 'Chat is the last tab in the row').toBe(true);
+    // The floating chat button stays hidden until the tab row sticks.
+    const fab = page.locator('#content .space-chat-fab');
+    await expect(fab).toBeHidden();
+    await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; window.scrollTo(0, document.body.scrollHeight); });
+    await expect(page.locator('#content .space-tabbar.is-stuck')).toHaveCount(1);
+    await expect(fab).toBeVisible();
+    await noSideways();
     await fab.click();
     await expect(page.locator('#content [role="tab"][aria-selected="true"]')).toHaveText(/^Chat/);
+    // The Chat tab draws no floating button of its own.
     await expect(fab).toHaveCount(0);
     await noSideways();
   }
