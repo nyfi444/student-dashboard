@@ -107,6 +107,13 @@ async function openSample(page, label, tabs) {
     await expect(tabs.first()).toBeVisible({ timeout: 3_000 });
   }).toPass({ timeout: 20_000 });
 }
+// On a phone the Chat tab opens a full-screen sheet that covers the tab
+// row (the rest of the page goes inert), so close it before the next tab.
+async function closeChatSheet(page, tab) {
+  if ((await tab.getAttribute('data-tab')) !== 'chat') return;
+  const close = page.getByRole('button', { name: 'Close chat' });
+  if (await close.isVisible()) await close.click();
+}
 test('the sample study group and sample club open on every tab', async ({ page }) => {
   const console_ = await openApp(page);
   await navTo(page, 'studygroups');
@@ -121,6 +128,7 @@ test('the sample study group and sample club open on every tab', async ({ page }
     await expect(groupTabs.nth(i)).toHaveAttribute('aria-selected', 'true');
     const text = (await page.locator('#content').innerText()).trim();
     expect(text.length, `group tab ${i} rendered no text`).toBeGreaterThan(40);
+    await closeChatSheet(page, groupTabs.nth(i));
   }
   await navTo(page, 'orgs');
   const clubTabs = page.locator('#content [role="tab"]:visible');
@@ -132,6 +140,7 @@ test('the sample study group and sample club open on every tab', async ({ page }
     await expect(clubTabs.nth(i)).toHaveAttribute('aria-selected', 'true');
     const text = (await page.locator('#content').innerText()).trim();
     expect(text.length, `club tab ${i} rendered no text`).toBeGreaterThan(40);
+    await closeChatSheet(page, clubTabs.nth(i));
   }
   console_.expectClean();
 });
