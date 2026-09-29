@@ -231,7 +231,6 @@ async function wrappedSpaceDraw(card, ctx0, index) {
     ctx.font = `600 36px ${sans}`; ctx.fillStyle = p.dim; ctx.fillText(String(card.eyebrow).toUpperCase(), 96, 760);
     ctx.font = `260px ${serif}`; ctx.fillStyle = p.fg; ctx.fillText(card.big, 80, 1000);
     wrap(card.sub, 96, 1110, W - 192, 72, `400 56px ${sans}`, p.dim);
-    ctx.fillStyle = p.accent; ctx.beginPath(); ctx.arc(W - 190, 1400, 46, 0, Math.PI * 2); ctx.fill();
   } else {
     ctx.font = `600 36px ${sans}`; ctx.fillStyle = p.dim; ctx.fillText(String(card.eyebrow).toUpperCase(), 96, 700);
     const size = fit(card.big, card.bigSize || (card.big.length > 6 ? 190 : 330), 90, W - 192);
@@ -280,6 +279,7 @@ function wrappedSpaceAlt(w) {
   const parts = [];
   if (c.eyebrow) parts.push(c.big != null && c.big !== '' ? `${c.eyebrow}: ${c.big}${c.unit ? ' ' + c.unit : ''}.` : `${c.eyebrow}.`);
   else if (c.big) parts.push(`${c.big}${c.unit ? ' ' + c.unit : ''}.`);
+  if (c.kind === 'summary') parts.push(`By the numbers. ${(c.rows || []).map(([l, v]) => `${l}: ${v}`).join('. ')}.`);
   if (c.sub) parts.push(String(c.sub).replace(/\.?$/, '.'));
   parts.push(`Card ${w.index + 1} of ${w.canvases.length}`);
   return parts.join(' ');
