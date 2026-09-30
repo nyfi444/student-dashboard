@@ -182,6 +182,13 @@ test('every sample club opens, and Previewing as switches officer and member', a
    the buttons into a pill, Change reopens them, and choosing the same
    answer again never clears it. A dues event asks for payment instead. */
 test('the RSVP control answers, changes, never un-answers, and dues events ask for payment', async ({ page }) => {
+  // The sample club's dates are built from today, so what is Next up
+  // depends on the day and the hour: from Tuesday evening, once that week's
+  // meeting has ended, it is the dues deadline, which asks for payment and
+  // has no RSVP. That failed this test every evening on CI (which runs on
+  // UTC) and would have failed it anywhere for the rest of the week. A
+  // Monday morning always has a meeting next.
+  await page.clock.setFixedTime(new Date(2026, 8, 28, 10, 0, 0));
   const console_ = await openApp(page);
   await navTo(page, 'orgs');
   const tabs = page.locator('#content [role="tab"]:visible');
