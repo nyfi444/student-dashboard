@@ -8,7 +8,7 @@
      TURNSTILE_SECRET is set; without this tag the widget never mounts and
      the page behaves exactly as it did before. -->
 <meta name="turnstile-sitekey" content="0x4AAAAAAE-MikzYTD2NWIO8">
-<title>Log In – Semester HQ</title>
+<title>Log in | Semester HQ</title>
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -173,8 +173,8 @@
   .lp-top, .lp-stage, .login-sitefoot { width: 100%; max-width: var(--lp-wrap); margin-inline: auto; }
 
   .lp-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 88px; }
-  .lp-wordmark { display: inline-flex; align-items: baseline; font: 400 24px/1 var(--lp-serif); letter-spacing: -.01em; color: var(--lp-ink); white-space: nowrap; }
-  .lp-wordmark svg { width: 11px; height: 11px; margin-left: 5px; position: relative; top: -9px; color: var(--lp-rose-deep); fill: currentColor; }
+  /* The same italic wordmark as semester-hq.com's header (.g-word). */
+  .lp-wordmark { display: inline-flex; align-items: baseline; font: italic 400 26px/1 var(--lp-serif); letter-spacing: -.01em; color: var(--lp-ink); white-space: nowrap; }
   .login-back {
     display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px;
     border-radius: var(--r-pill); border: 1px solid var(--lp-hair); background: rgba(255,253,249,.45);
@@ -401,7 +401,7 @@
   @media (max-width: 900px) {
     :root { --lp-wrap: 600px; }
     .lp-top { height: 76px; }
-    .lp-wordmark { font-size: 22px; }
+    .lp-wordmark { font-size: 24px; }
     .lp-stage {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: none;
@@ -463,7 +463,7 @@
 
 <div class="login-page">
   <header class="lp-top lp-rise" style="--i:0">
-    <div class="lp-wordmark">Semester HQ<svg aria-hidden="true" focusable="false"><use href="#lp-star"/></svg></div>
+    <div class="lp-wordmark">Semester HQ</div>
     <a href="https://semester-hq.com/" class="login-back">&larr; semester-hq.com</a>
   </header>
 
@@ -586,7 +586,7 @@ let _signupInFlight = false;
 function setMode(signup) {
   _signup = !!signup;
   document.documentElement.classList.toggle('lp-signup', _signup);
-  document.title = _signup ? 'Get Started \u2013 Semester HQ' : 'Log in \u2013 Semester HQ';
+  document.title = _signup ? 'Get started | Semester HQ' : 'Log in | Semester HQ';
   document.getElementById('login-title').textContent = _signup ? 'Start your semester.' : 'Welcome back.';
   document.getElementById('login-sub').textContent = _signup ? 'Create your account. Checkout comes next.' : 'Your semester is right where you left it.';
   document.getElementById('login-foot').innerHTML = _signup
