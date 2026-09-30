@@ -6,6 +6,7 @@
 import { logServerIssue } from './diagnostics.js';
 import { commitFirestore, deleteFirebaseAuthUser, deleteFirestoreDoc, deleteFirestoreSubcollection, deleteStorageFolder, encodeEmailDocId, patchFirestoreDoc, readFirestoreDoc, readFirestoreDocWithTime, runFirestoreQuery, verifyFirebaseIdToken } from './firebase.js';
 import { groupAdmins, groupHasAccess, groupPlansAdminedBy, removeGroupMember, setGroupAdmins } from './groups.js';
+import { clearBlockedEverywhere, writeSpacePreview } from './spaces.js';
 import { jsonError, jsonOk, verifiedEmailOf } from './http.js';
 
 /* ── Leaving every shared space when an account is deleted ────────
@@ -53,13 +54,26 @@ async function removeMemberFromSharedSpace(env, path, uid, kind) {
     if (!members.length) {
       for (const sub of subcollections) await deleteFirestoreSubcollection(env, path, sub);
       await deleteSpaceForms(env, path);
+      await deleteFirestoreSubcollection(env, path, 'public');
       await deleteFirestoreDoc(env, collection, docId);
       return;
     }
 
     const fields = { memberUids: members, updatedAt: Date.now() };
     const clear = [`people.${uid}`];
-    if (kind === 'group') clear.push(`avail.${uid}`);
+    if (kind === 'group') {
+      clear.push(`avail.${uid}`);
+      // The same cleanup the app does when someone leaves (groupDepartureOps
+      // in js/groups/tasks.js): their RSVPs and the tasks they had taken.
+      for (const [sid, sess] of Object.entries(d.sessions || {})) {
+        if (safeFieldKey(sid) && sess?.rsvp && Object.prototype.hasOwnProperty.call(sess.rsvp, uid)) clear.push(`sessions.${sid}.rsvp.${uid}`);
+      }
+      for (const [tid, t] of Object.entries(d.taskItems || {})) {
+        if (!safeFieldKey(tid) || !t) continue;
+        if (t.assignee === uid) clear.push(`taskItems.${tid}.assignee`, `taskItems.${tid}.assigneeName`);
+        if (t.doneBy === uid) fields[`taskItems.${tid}.doneByName`] = DELETED_PERSON_NAME;
+      }
+    }
     if (kind === 'org') {
       fields.officerUids = (d.officerUids || []).filter(u => u !== uid);
       clear.push(`rsvp.${uid}`, `titles.${uid}`);
@@ -82,6 +96,9 @@ async function removeMemberFromSharedSpace(env, path, uid, kind) {
     if (await commitFirestore(env, [{ path, fields, clear, updateTime: snap.updateTime }])) {
       await anonymizeMessagesBy(env, path, uid);
       await anonymizeFormsBy(env, path, uid);
+      // The public preview's member count has to stay the real one.
+      try { await writeSpacePreview(env, kind === 'org' ? 'club' : 'group', docId, { ...d, ...fields, memberUids: members }); }
+      catch (e) { await logServerIssue(env, 'account', 'Account delete could not refresh a join preview', e); }
       return;
     }
   }
@@ -190,6 +207,9 @@ async function leaveSharedSpaces(env, uid, planner) {
 
   await step('list clubs', async () => { orgs = await membersOf('orgs'); });
   for (const o of orgs) await step(`leave club ${o.id}`, () => removeMemberFromSharedSpace(env, `orgs/${o.id}`, uid, 'org'));
+
+  // Off every blocked list too: a blocked list keeps a name.
+  await step('come off blocked lists', () => clearBlockedEverywhere(env, uid));
 
   // Shared classes have no member array to query, just a document per member,
   // so the codes come from the planner being deleted. Read it before it goes.

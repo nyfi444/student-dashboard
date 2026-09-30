@@ -167,7 +167,7 @@ export async function commitFirestore(env, writes) {
       const fields = w.fields || {};
       const paths = [...Object.keys(fields), ...(w.clear || [])];
       const transforms = w.increments ? { updateTransforms: Object.entries(w.increments).map(([fieldPath, n]) => ({ fieldPath, increment: { integerValue: String(Math.trunc(n)) } })) } : {};
-      return { update: { name, fields: toFirestoreFields(fields) }, updateMask: { fieldPaths: paths }, ...transforms, ...condition };
+      return { update: { name, fields: toFirestoreFields(nestFieldPaths(fields)) }, updateMask: { fieldPaths: paths }, ...transforms, ...condition };
     }),
   };
   const res = await fetch(`https://firestore.googleapis.com/v1/${root}:commit`, {
@@ -179,6 +179,28 @@ export async function commitFirestore(env, writes) {
   const text = await res.text();
   if (/FAILED_PRECONDITION|ALREADY_EXISTS|ABORTED|NOT_FOUND/.test(text)) return false;
   throw new Error('Firestore commit failed: ' + text);
+}
+// A key like `people.abc.role` names a nested field. The update mask reads
+// it as a path, so its value has to sit at that path in the document sent
+// too: sent flat, as one field literally named "people.abc.role", Firestore
+// finds nothing at the path and deletes the field instead. (Until Oct 2026
+// that is what happened to a new study group owner's badge when the old
+// owner deleted their account.) Backticked segments keep their dots.
+export function splitFieldPath(key) {
+  return (String(key).match(/`[^`]*`|[^.]+/g) || [String(key)]).map(p => (p.startsWith('`') ? p.slice(1, -1) : p));
+}
+export function nestFieldPaths(fields) {
+  const out = {};
+  for (const [key, value] of Object.entries(fields)) {
+    const parts = splitFieldPath(key);
+    let node = out;
+    for (const part of parts.slice(0, -1)) {
+      if (!node[part] || typeof node[part] !== 'object' || Array.isArray(node[part])) node[part] = {};
+      node = node[part];
+    }
+    node[parts[parts.length - 1]] = value;
+  }
+  return out;
 }
 export async function listFirestoreCollection(env, path) {
   const token = await getFirebaseAccessToken(env);
@@ -342,6 +364,37 @@ export async function deleteStorageFolder(env, prefix) {
     pageToken = data.nextPageToken || '';
   } while (pageToken);
   return deleted;
+}
+
+// Every object name under a prefix in the project's bucket.
+export async function storageObjectsUnder(env, prefix) {
+  const bucket = env.FIREBASE_STORAGE_BUCKET;
+  if (!bucket) return [];
+  const token = await getFirebaseAccessToken(env);
+  const base = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o`;
+  const names = [];
+  let pageToken = '';
+  do {
+    const res = await fetch(`${base}?prefix=${encodeURIComponent(prefix)}&fields=items(name),nextPageToken&maxResults=500${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`Storage list ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const data = await res.json();
+    for (const item of data.items || []) names.push(item.name);
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return names;
+}
+// A Firebase download link is the object's path plus the token stored in
+// its metadata. Replacing the token makes every link handed out before
+// stop working; the app asks for a fresh one when a file is opened.
+export async function setStorageDownloadToken(env, name, downloadToken) {
+  const bucket = env.FIREBASE_STORAGE_BUCKET;
+  const token = await getFirebaseAccessToken(env);
+  const res = await fetch(`https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(name)}?fields=name`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ metadata: { firebaseStorageDownloadTokens: downloadToken } }),
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`Storage metadata ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
 
 /* ── base64url helpers ───────────────────────────────────────── */
