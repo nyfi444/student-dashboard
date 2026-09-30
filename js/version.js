@@ -8,5 +8,5 @@
    Bump this on every deploy. Changing it is what makes open tabs and
    installed home-screen apps notice there's something new.
 ──────────────────────────────────────────────────────────────── */
-var APP_VERSION = '2026.09.30-r41';
+var APP_VERSION = '2026.09.30-r42';
 if (typeof self !== 'undefined') self.APP_VERSION = APP_VERSION;

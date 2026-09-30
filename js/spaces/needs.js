@@ -112,7 +112,7 @@ function _needsForms(kind, space, items) {
   if (typeof formsAsking !== 'function') return;
   formsAsking(kind, space).forEach(f => items.push({
     key: `form:${f.id}`, type: 'form', id: f.id, title: f.title, date: null, start: '', closesAt: f.closesAt || 0,
-    eyebrow: `Form${f.closesAt ? ` · ${formClosesLabel(f).toLowerCase()}` : ''}`,
+    eyebrow: `Form${f.closesAt ? ` · ${formClosesLabel(f).replace(/^C/, 'c')}` : ''}`,
   }));
 }
 function spaceNeedsAll() {

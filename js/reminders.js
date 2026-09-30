@@ -60,7 +60,7 @@ function attentionItems() {
     } else if (n.type === 'form') {
       // An open form you haven't answered: Today when it closes today.
       const closesToday = n.closesAt && new Date(n.closesAt).toDateString() === new Date().toDateString();
-      out.push(item(closesToday ? 'Today' : 'Coming up', n.title, `${sp.name} · form to answer${n.closesAt ? ` · ${formClosesLabel({ closesAt: n.closesAt }).toLowerCase()}` : ''}`, `openFormFill('${sp.kind}','${sp.code}','${n.id}')`, sp.color));
+      out.push(item(closesToday ? 'Today' : 'Coming up', n.title, `${sp.name} · form to answer${n.closesAt ? ` · ${formClosesLabel({ closesAt: n.closesAt }).replace(/^C/, 'c')}` : ''}`, `openFormFill('${sp.kind}','${sp.code}','${n.id}')`, sp.color));
     }
   });
   milestoneDueItems(t, t).forEach(({ p, m }) => out.push(item('Today', m.title, `Milestone · ${p.title}`, `openProject('${p.id}')`, projectColor(p))));

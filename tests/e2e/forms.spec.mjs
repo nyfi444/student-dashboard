@@ -26,6 +26,7 @@ test('in the sample club, a member answers a form and an officer writes a new on
   // What needs you on the Overview asks for it too, with an Answer button.
   const need = page.locator('.space-need.is-form', { hasText: 'Fall retreat sign-up' });
   await expect(need).toHaveCount(1);
+  await expect(need.locator('.space-need-eyebrow')).toHaveText(/^Form · closes [A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}$/);
   await expect(need.getByRole('button', { name: 'Answer: Fall retreat sign-up' })).toHaveCount(1);
   await page.getByRole('tab', { name: /Forms/ }).click();
   const signup = page.locator('.form-card', { hasText: 'Fall retreat sign-up' });
