@@ -149,7 +149,7 @@ function renderSidebar() {
       <button class="nav-item nav-more ${PHONE_NAV.includes(state.route) ? '' : 'active'}" ${PHONE_NAV.includes(state.route) ? '' : 'aria-current="page"'} aria-haspopup="dialog" onclick="openMoreNav()"><span class="ic">${icon('more-horizontal', 18)}</span>More${groupsUnread || orgsUnread ? '<span class="nav-dot" aria-label="New activity"></span>' : ''}</button>
       <button class="nav-item nav-settings ${state.route === 'settings' ? 'active' : ''}" ${state.route === 'settings' ? 'aria-current="page"' : ''} onclick="setState({route:'settings',subRoute:null})"><span class="ic">${icon('settings', 18)}</span>Settings</button>
       <div class="user-chip" onclick="setState({route:'settings',subRoute:null})">
-        <div class="avatar">${(state.settings.displayName || _fbUser?.displayName || 'S')[0].toUpperCase()}</div>
+        <div class="avatar">${(state.settings.displayName || _fbUser?.displayName || (typeof sampleStudentName === 'function' ? sampleStudentName() : '') || 'S')[0].toUpperCase()}</div>
         <div>${_fbUser ? esc(_fbUser.displayName || _fbUser.email) : (fbConfigured() ? 'Not signed in' : 'Local only')}</div>
         ${fbConfigured() && !_fbUser ? `<a class="sidebar-login" href="login.html" onclick="event.stopPropagation()">Log in</a>` : ''}
       </div>

@@ -47,7 +47,8 @@ function todayTimeline() {
 
 function pageDashboard() {
   if (state.todayMode) return pageDashboardToday();
-  const name = state.settings.displayName ? `, ${esc(state.settings.displayName.split(' ')[0])}` : '';
+  const greetName = state.settings.displayName || (typeof sampleStudentName === 'function' ? sampleStudentName() : '');
+  const name = greetName ? `, ${esc(greetName.split(' ')[0])}` : '';
   const hour = new Date().getHours();
   const greeting = hour < 5 ? 'Up late' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const sem = computeSemesterProgress();

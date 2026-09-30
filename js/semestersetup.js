@@ -332,6 +332,17 @@ function setupFinish() {
 }
 
 /* ── Sample semester: a fully populated term for looking around ─── */
+// The sample student is Ashley, and her classes wear pastels. Any class can
+// be any color, so these are just the sample's picks; real classes still
+// start from COURSE_PALETTE.
+const SAMPLE_STUDENT = 'Ashley';
+const SAMPLE_COLORS = ['#9FBDE0', '#EDB0AC', '#A9D3B6', '#C7B4E6'];
+// The name the demo shows while the sample is loaded and nobody is signed
+// in. Display only: it is never saved, so it can't follow anyone into a
+// real account.
+function sampleStudentName() {
+  return state.settings.sampleData && !(typeof _fbUser !== 'undefined' && _fbUser) ? SAMPLE_STUDENT : '';
+}
 function loadSampleSemester() {
   if (state.settings.sampleData) return;
   const t = todayIso();
@@ -342,10 +353,10 @@ function loadSampleSemester() {
     id: uid(), semesterId: semId, name, code, instructor, color, credits: code.startsWith('MKT') ? 3 : 4, location, status: 'in-progress', requirementType: 'required',
     meetings, resources: [], syllabusRaw: '', sample: true,
   });
-  const chem = course('Organic Chemistry', 'CHEM 210', COURSE_PALETTE[0], 'Dr. Patel', 'Science Hall 204', [{ day: 1, start: '09:00', end: '10:15' }, { day: 3, start: '09:00', end: '10:15' }]);
-  const psy = course('Intro to Psychology', 'PSY 101', COURSE_PALETTE[1], 'Prof. Nguyen', 'Lecture Hall B', [{ day: 2, start: '11:00', end: '12:15' }, { day: 4, start: '11:00', end: '12:15' }]);
-  const calc = course('Calculus II', 'MATH 152', COURSE_PALETTE[2], 'Dr. Rivera', 'Math Building 118', [{ day: 1, start: '13:00', end: '13:50' }, { day: 3, start: '13:00', end: '13:50' }, { day: 5, start: '13:00', end: '13:50' }]);
-  const mkt = course('Marketing Strategy', 'MKT 300', COURSE_PALETTE[3], 'Prof. Okafor', 'Business School 310', [{ day: 2, start: '15:30', end: '16:45' }]);
+  const chem = course('Organic Chemistry', 'CHEM 210', SAMPLE_COLORS[0], 'Dr. Patel', 'Science Hall 204', [{ day: 1, start: '09:00', end: '10:15' }, { day: 3, start: '09:00', end: '10:15' }]);
+  const psy = course('Intro to Psychology', 'PSY 101', SAMPLE_COLORS[1], 'Prof. Nguyen', 'Lecture Hall B', [{ day: 2, start: '11:00', end: '12:15' }, { day: 4, start: '11:00', end: '12:15' }]);
+  const calc = course('Calculus II', 'MATH 152', SAMPLE_COLORS[2], 'Dr. Rivera', 'Math Building 118', [{ day: 1, start: '13:00', end: '13:50' }, { day: 3, start: '13:00', end: '13:50' }, { day: 5, start: '13:00', end: '13:50' }]);
+  const mkt = course('Marketing Strategy', 'MKT 300', SAMPLE_COLORS[3], 'Prof. Okafor', 'Business School 310', [{ day: 2, start: '15:30', end: '16:45' }]);
   chem.details = sanitizeCourseDetails({
     email: 'patel@university.edu', office: 'Science Hall 310', officeHours: [{ day: 2, start: '14:00', end: '15:30', where: 'Science Hall 310' }, { day: 4, start: '10:00', end: '11:00', where: 'Science Hall 310' }],
     officeHoursNote: 'Or by appointment. Email to set one up.', tas: [{ name: 'Marcus Hill', email: 'mhill@university.edu', officeHours: 'Mon 4–5 PM, Chem Tutoring Center' }],
@@ -378,7 +389,7 @@ function loadSampleSemester() {
     { id: uid(), courseId: null, title: 'Register for spring classes', done: false, dueDate: addDays(t, 4), priority: 'high', recurring: null, sample: true },
   );
   const dow = new Date().getDay();
-  state.events.push({ id: uid(), title: 'Library: Chem midterm prep', date: t, startTime: dow === 0 || dow === 6 ? '14:00' : '19:00', endTime: dow === 0 || dow === 6 ? '16:00' : '20:30', courseId: chem.id, type: 'block', color: COURSE_PALETTE[0], sample: true });
+  state.events.push({ id: uid(), title: 'Library: Chem midterm prep', date: t, startTime: dow === 0 || dow === 6 ? '14:00' : '19:00', endTime: dow === 0 || dow === 6 ? '16:00' : '20:30', courseId: chem.id, type: 'block', color: SAMPLE_COLORS[0], sample: true });
   // Three weeks of evening study sessions, so streaks and Semester Wrapped have something to show.
   const cycle = [chem, calc, psy, chem, mkt, calc, chem];
   for (let d = -21; d <= 0; d++) {
@@ -418,6 +429,7 @@ function loadSampleSemester() {
     { id: uid(), type: 'Job', org: 'Campus Library', role: 'Student assistant', location: 'On campus', link: '', stage: 'applied', deadline: '', appliedOn: addDays(t, -4), nextStep: { label: 'Follow up', date: addDays(t, 6), time: '' }, amount: '', notes: '', contacts: [], outcome: '', sample: true, createdAt: Date.now(), checklist: [] },
   );
   state.settings.sampleData = { prevSemesterId };
+
   state.currentSemesterId = semId;
   touch();
   toast('Sample semester loaded. Clear it any time from the dashboard.', 'info', 4200);

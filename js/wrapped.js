@@ -53,7 +53,7 @@ function semesterStats(sem = currentSemester()) {
 }
 
 function wrappedCards(st) {
-  const name = (state.settings.displayName || '').split(' ')[0];
+  const name = (state.settings.displayName || (typeof sampleStudentName === 'function' ? sampleStudentName() : '') || '').split(' ')[0];
   const hrs = Math.round(st.focusMin / 60);
   // A semester is a finite, countable thing — sixteen weeks, and then it's
   // over. That framing is the most ownable thing Semester HQ says, so

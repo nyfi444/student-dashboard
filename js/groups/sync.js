@@ -39,7 +39,7 @@ const SESSION_REPEAT_WEEKS = [2, 4, 6, 8, 10, 12, 15];
 function cloudGroupsEnabled() { return fbConfigured() && !!_fbUser && !!_fbDb && !!window._licensed; }
 function myUidFor(g) { return g && g.local ? LOCAL_UID : (_fbUser?.uid || LOCAL_UID); }
 function myGroupName() {
-  return (state.settings.displayName || _fbUser?.displayName || (_fbUser?.email || '').split('@')[0] || 'You').trim() || 'You';
+  return (state.settings.displayName || _fbUser?.displayName || (_fbUser?.email || '').split('@')[0] || (typeof sampleStudentName === 'function' ? sampleStudentName() : '') || 'You').trim() || 'You';
 }
 function genGroupCode() {
   const bytes = new Uint8Array(6);
