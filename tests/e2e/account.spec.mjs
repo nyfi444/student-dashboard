@@ -54,7 +54,11 @@ test('what one device saves, another device loads', async ({ browser }) => {
   const phonePage = await phone.newPage();
   const phoneConsole = await openSignedIn(phonePage, alice);
   await navTo(phonePage, 'courses');
-  await expect(phonePage.locator('.course-card')).toContainText('Linear Algebra');
+  // The class arrives from the account, after sign-in has finished. On a
+  // busy CI machine that took longer than the usual 7 seconds (it failed
+  // there on Sep 29, 2026 once three more multi-account tests ran beside
+  // it), so it gets the same allowance as the other waits on a sync.
+  await expect(phonePage.locator('.course-card')).toContainText('Linear Algebra', { timeout: 20_000 });
 
   laptopConsole.expectClean();
   phoneConsole.expectClean();
