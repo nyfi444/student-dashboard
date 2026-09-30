@@ -18,6 +18,7 @@
        Clubs:  'event'    a required event in the next 7 days you haven't
                           answered (dues events never ask)
                'pinned'   a pinned announcement you haven't read
+       Both:   'form'     an open form you haven't answered and don't run
      count is items.length: the same number the strip, the index card and
      the dashboard show.
    spaceNeedsAll() -> every item from every group and club, each carrying
@@ -40,7 +41,7 @@ const SPACE_NEEDS_CLAIM_MAX = 3;     // open tasks offered with "I'll take it"
 const SPACE_NEEDS_SHOW = 6;          // cards before "+N more" on a desktop
 const SPACE_NEEDS_CLEAR_MS = 400;    // the clear animation, before the write lands
 const SPACE_NEEDS_FOLD_MS = 220;     // the check shows this long, then the card folds
-const SPACE_NEEDS_ICON = { session: 'calendar', event: 'calendar', task: 'check-square', claim: 'user-plus', avail: 'grid', pinned: 'pin' };
+const SPACE_NEEDS_ICON = { session: 'calendar', event: 'calendar', task: 'check-square', claim: 'user-plus', avail: 'grid', pinned: 'pin', form: 'pencil' };
 
 // A short day for eyebrows: Today, Tomorrow, Thu, Oct 12.
 function _needsDay(dIso) {
@@ -89,6 +90,7 @@ function spaceNeeds(kind, space) {
       key: 'avail', type: 'avail', id: 'avail', title: 'Add your availability', date: null, start: '',
       eyebrow: `Find a time · ${others} have added theirs`, others,
     });
+    _needsForms('group', g, items);
     return { ...empty, color: groupColor(g) || '', items, count: items.length };
   }
   const o = space, me = myOrgUid(o);
@@ -101,7 +103,17 @@ function spaceNeeds(kind, space) {
     key: `pinned:${a.id}`, type: 'pinned', id: a.id, title: a.text.replace(/\s+/g, ' ').trim().slice(0, 160), date: null, start: '',
     eyebrow: `Pinned · ${a.name}`, at: a.at || 0,
   }));
+  _needsForms('club', o, items);
   return { ...empty, color: orgColor(o), items, count: items.length };
+}
+// Open forms I haven't answered (js/spaces/forms.js reads them for every
+// space, not only the one on screen). Forms I run myself never ask.
+function _needsForms(kind, space, items) {
+  if (typeof formsAsking !== 'function') return;
+  formsAsking(kind, space).forEach(f => items.push({
+    key: `form:${f.id}`, type: 'form', id: f.id, title: f.title, date: null, start: '', closesAt: f.closesAt || 0,
+    eyebrow: `Form${f.closesAt ? ` · ${formClosesLabel(f).toLowerCase()}` : ''}`,
+  }));
 }
 function spaceNeedsAll() {
   const out = [];
@@ -172,6 +184,7 @@ function _needsActions(kind, space, it) {
     ? `<button class="btn btn-sm space-need-btn" ${a('fill')} aria-label="Fill from my schedule: add your availability">${icon('calendar', 14)} Fill from my schedule</button>`
     : `<button class="btn btn-sm space-need-btn" onclick="setGroupTab('availability')" aria-label="Add my times: add your availability in Find a time">${icon('grid', 14)} Add my times</button>`;
   if (it.type === 'pinned') return `<button class="btn btn-sm space-need-btn" ${a('read')} aria-label="Read it: ${esc(_needsFirstWords(it.title))}">Read it</button>`;
+  if (it.type === 'form') return `<button class="btn btn-sm space-need-btn" onclick="openFormFill('${kind}','${esc(code)}','${esc(it.id)}')" aria-label="Answer: ${t}">${icon('pencil', 14)} Answer</button>`;
   return '';
 }
 // Where tapping the title goes: the sheet or the tab the item lives in.
@@ -182,6 +195,7 @@ function _needsOpenJs(kind, code, it) {
   if (it.type === 'task' || it.type === 'claim') return `setGroupTab('tasks')`;
   if (it.type === 'avail') return `setGroupTab('availability')`;
   if (it.type === 'pinned') return `spaceNeedsAct(this,${_needsArgs(kind, code, it.key)},'read')`;
+  if (it.type === 'form') return `openFormFill('${kind}','${c}','${id}')`;
   return '';
 }
 function spaceNeedsStrip(kind, space, { needs } = {}) {

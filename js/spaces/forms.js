@@ -85,7 +85,11 @@ function spaceForms(kind, sp) {
 }
 function findForm(kind, code, id) {
   const sp = FORM_ADAPTERS[kind]?.space(code);
-  return sp ? spaceForms(kind, sp).find(f => f.id === id) || null : null;
+  if (!sp) return null;
+  // From What needs you on another page, the space's own list isn't loaded;
+  // the open forms read for that list are enough to answer one.
+  return spaceForms(kind, sp).find(f => f.id === id)
+    || (_formOpen[formKey(kind, code)]?.forms || []).map(formClean).find(f => f && f.id === id) || null;
 }
 function formsLoading(kind, sp) { const s = _formStore[formKey(kind, sp.code)]; return !sp.local && !sp.loading && cloudGroupsEnabled() && !s?.loaded && !s?.failed; }
 // My own answer to a form: { at } when I have one. The full answer is read
@@ -163,6 +167,7 @@ function formsListenMine() {
   _formMine.uid = me;
   _formMine.unsub = _fbDb.collection('planners').doc(me).collection('formAnswers').onSnapshot(snap => {
     _formMine.map = Object.fromEntries(snap.docs.map(d => [d.id, d.data()]));
+    _formMine.loaded = true;
     renderRemote();
   }, err => { diag.warn('forms', 'My form answers didn’t load', err); _formMine.unsub = null; });
 }
@@ -229,6 +234,7 @@ function formsKeepCounting(kind, code) {
 }
 // Runs after every render (afterSpaceRender, js/spaces/header.js).
 function formsAfterRender() {
+  formsRefreshOpen();
   const kind = state.route === 'orgs' ? 'club' : state.route === 'studygroups' ? 'group' : '';
   const code = kind ? state.subRoute : '';
   const A = FORM_ADAPTERS[kind];
@@ -246,6 +252,51 @@ function formsAfterRender() {
   else formsCloseAnswers();
   if (A.tab() === 'forms' && !view?.id && _formStore[formKey(kind, code)]?.loaded) formsKeepCounting(kind, code);
   else formsStopCounting();
+}
+
+/* ── Open forms, for What needs you ────────────────────────────────
+   What needs you (js/spaces/needs.js) lists the open forms in every group
+   and club that I haven't answered and don't run myself, on the space's
+   Overview, the Groups pages, the dashboard and Heads up. A space's forms
+   are listened to only while its page is open, so for the rest this reads
+   the open ones once and then at most every ten minutes, one query per
+   space; the page's own listener wins while it runs. Until my own answers
+   have loaded nothing is listed, so a form I answered never flashes up.
+──────────────────────────────────────────────────────────────── */
+const FORM_OPEN_EVERY_MS = 10 * 60 * 1000;
+const _formOpen = {};                   // space key -> { at, busy, forms: [raw] }
+function formsOpenRaw(kind, sp) {
+  if (sp.local) return Object.values(FORM_ADAPTERS[kind].entry(sp.code)?.forms || {});
+  const live = _formStore[formKey(kind, sp.code)];
+  return live?.loaded ? live.forms : (_formOpen[formKey(kind, sp.code)]?.forms || []);
+}
+function formsAsking(kind, sp) {
+  if (!sp || sp.loading || !FORM_ADAPTERS[kind]) return [];
+  if (!sp.local && !_formMine.loaded) return [];
+  const A = FORM_ADAPTERS[kind];
+  return formsOpenRaw(kind, sp).map(formClean).filter(Boolean)
+    .filter(f => formIsOpen(f) && !A.runs(sp, f) && !formAnswered(kind, sp, f.id))
+    .sort((a, b) => (a.closesAt || Infinity) - (b.closesAt || Infinity) || (b.createdAt || 0) - (a.createdAt || 0));
+}
+function formsRefreshOpen() {
+  if (!_fbUser || !_fbDb || typeof cloudGroupsEnabled !== 'function' || !cloudGroupsEnabled()) return;
+  const spaces = [
+    ...(typeof allGroups === 'function' ? allGroups().map(sp => ['group', sp]) : []),
+    ...(typeof allOrgs === 'function' ? allOrgs().map(sp => ['club', sp]) : []),
+  ].filter(([kind, sp]) => sp?.code && !sp.local && FORM_ADAPTERS[kind].entry(sp.code)?.cloud);
+  if (!spaces.length) return;
+  formsListenMine();
+  const now = Date.now();
+  spaces.forEach(([kind, sp]) => {
+    const key = formKey(kind, sp.code);
+    const c = _formOpen[key] = _formOpen[key] || { at: 0, busy: false, forms: [] };
+    if (c.busy || _formSub.key === key || now - c.at < FORM_OPEN_EVERY_MS) return;
+    c.busy = true; c.at = now;
+    formRef(kind, sp.code).where('status', '==', 'open').limit(FORM_PER_SPACE_MAX).get()
+      .then(snap => { c.forms = snap.docs.map(d => ({ ...d.data(), id: d.id })); if (c.forms.length) renderRemote(); })
+      .catch(err => diag.warn('forms', 'Open forms for What needs you didn’t load', err))
+      .finally(() => { c.busy = false; });
+  });
 }
 
 /* ── The tab ───────────────────────────────────────────────────── */

@@ -23,6 +23,10 @@ test('in the sample club, a member answers a form and an officer writes a new on
 
   /* As a member: the sign-up is waiting, and says so. */
   await page.getByRole('button', { name: 'Member', exact: true }).click();
+  // What needs you on the Overview asks for it too, with an Answer button.
+  const need = page.locator('.space-need.is-form', { hasText: 'Fall retreat sign-up' });
+  await expect(need).toHaveCount(1);
+  await expect(need.getByRole('button', { name: 'Answer: Fall retreat sign-up' })).toHaveCount(1);
   await page.getByRole('tab', { name: /Forms/ }).click();
   const signup = page.locator('.form-card', { hasText: 'Fall retreat sign-up' });
   await expect(signup).toContainText('Waiting for your answer');
@@ -40,6 +44,10 @@ test('in the sample club, a member answers a form and an officer writes a new on
   await page.locator('#form-send').click();
   await expect(page.locator('#modal')).toBeHidden();
   await expect(signup).toContainText('You answered');
+  // Answered, so What needs you stops asking.
+  await page.getByRole('tab', { name: /Overview/ }).click();
+  await expect(page.locator('.space-need.is-form', { hasText: 'Fall retreat sign-up' })).toHaveCount(0);
+  await page.getByRole('tab', { name: /Forms/ }).click();
 
   // Their answer comes back when they open it again.
   await signup.getByRole('button', { name: 'Change my answer' }).click();

@@ -822,7 +822,7 @@ async function runSignIn() {
     // like an email sign-up. Anyone else goes to the app.
     if (_signup && result.additionalUserInfo?.isNewUser) { await checkoutForUser(result.user); return; }
     _signupInFlight = false;
-    window.location.href = 'index.html';
+    window.location.href = afterSignInUrl();
   } catch (e) {
     _signupInFlight = false;
     renderSignInButton();
@@ -899,6 +899,14 @@ async function tryCompleteEmailLink() {
   }
 }
 
+// ?next= sends someone back to the form they were asked to answer
+// (form.html offers "Log in with a password"). Only a form link on this
+// site is honoured, so the parameter can never send anyone elsewhere.
+function afterSignInUrl() {
+  const next = new URLSearchParams(location.search).get('next') || '';
+  return /^form\.html\?f=[cg]\.[A-Z0-9]{6}\.[A-Za-z0-9_-]{1,64}$/.test(next) ? next : 'index.html';
+}
+
 (async function init() {
   if (!FB_CONFIG.apiKey || typeof firebase === 'undefined') {
     showError('Sign-in isn’t available right now. Try again in a moment.');
@@ -910,7 +918,7 @@ async function tryCompleteEmailLink() {
   await tryCompleteEmailLink();
   let settled = false;
   _auth.onAuthStateChanged((user) => {
-    if (user) { if (!_signupInFlight) window.location.href = 'index.html'; return; }
+    if (user) { if (!_signupInFlight) window.location.href = afterSignInUrl(); return; }
     if (!settled) { settled = true; renderSignInButton(); }
   });
 })();

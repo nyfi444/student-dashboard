@@ -170,6 +170,7 @@ function fpSignInHtml() {
         </form>
         <div class="login-divider" style="margin:14px 0"><span>or</span></div>
         <button class="btn" style="width:100%" onclick="fpGoogleSignIn()">Continue with Google</button>
+        <p class="small muted" style="margin:12px 0 0;text-align:center">Use a password? <a href="login.html?next=${encodeURIComponent('form.html' + location.search)}">Log in</a> and you’ll come back here.</p>
       </div>
     </div>`);
 }

@@ -57,6 +57,10 @@ function attentionItems() {
     } else if ((n.type === 'session' || n.type === 'event') && n.date > t && !(n.type === 'event' && sp.hideCalendar)) {
       const action = n.type === 'session' ? `showGroupSessionModal('${sp.code}','${n.id}')` : `openOrgEvent('${sp.code}','${n.id}')`;
       out.push(item(n.date === tomorrow ? 'Tomorrow' : 'Coming up', n.title, `${sp.name} · ${fmtSessionDay(n.date)}${n.start ? ` ${fmtTime(n.start)}` : ''}${n.type === 'event' ? ' · required' : ''} · needs your RSVP`, action, sp.color));
+    } else if (n.type === 'form') {
+      // An open form you haven't answered: Today when it closes today.
+      const closesToday = n.closesAt && new Date(n.closesAt).toDateString() === new Date().toDateString();
+      out.push(item(closesToday ? 'Today' : 'Coming up', n.title, `${sp.name} · form to answer${n.closesAt ? ` · ${formClosesLabel({ closesAt: n.closesAt }).toLowerCase()}` : ''}`, `openFormFill('${sp.kind}','${sp.code}','${n.id}')`, sp.color));
     }
   });
   milestoneDueItems(t, t).forEach(({ p, m }) => out.push(item('Today', m.title, `Milestone · ${p.title}`, `openProject('${p.id}')`, projectColor(p))));
