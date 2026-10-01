@@ -137,7 +137,7 @@ function setup({ resendOk = true } = {}) {
   ok('receipt: in the body, not fine print', rc.html.indexOf('How to cancel') < rc.html.indexOf('Your entire semester, finally in one place.'));
   const gr = w.renderEmail('group-receipt', ctx);
   ok('group receipt: seats and total', gr.text.includes('12 seats') && gr.text.includes('$5.99 per seat a month, $71.88 a month in total'));
-  ok('group receipt: how to cancel', gr.text.includes('Manage billing in Stripe'));
+  ok('group receipt: how to cancel, in the plan page’s own words', gr.text.includes('Billing choose Manage billing'));
   ok('tips link to the right page', w.renderEmail('calendar', ctx).html.includes('https://app.semester-hq.com/?open=calendar') && w.renderEmail('canvas', ctx).html.includes('?open=assignments'));
   check('an unknown email is null', w.renderEmail('nope', ctx), null);
 }
