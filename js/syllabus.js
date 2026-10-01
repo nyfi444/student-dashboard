@@ -95,7 +95,9 @@ function syllabusCard(c) {
         </div>
       </div>
 
+      <div class="syl-body">
       ${c.instructor || d.email || d.phone || d.office ? `
+      <div class="syl-who">
       <div class="syl-prof">
         <div class="syl-prof-avatar" aria-hidden="true">${esc((c.instructor || '?').replace(/^(dr|prof|professor|mr|mrs|ms)\.?\s+/i, '').charAt(0).toUpperCase() || '?')}</div>
         <div style="min-width:0;flex:1">
@@ -103,7 +105,8 @@ function syllabusCard(c) {
           <div class="small muted syl-lines">${[d.email ? esc(d.email) : '', d.phone ? esc(d.phone) : '', d.office ? `${icon('map-pin', 11, 1.8)} ${esc(d.office)}` : ''].filter(Boolean).join('<span aria-hidden="true"> · </span>')}</div>
         </div>
       </div>
-      ${contact ? `<div class="flex-gap wrap mt-8">${contact}</div>` : ''}` : contact ? `<div class="flex-gap wrap">${contact}</div>` : ''}
+      ${contact ? `<div class="flex-gap wrap mt-8">${contact}</div>` : ''}
+      </div>` : contact ? `<div class="flex-gap wrap">${contact}</div>` : ''}
 
       ${d.officeHours?.length || d.officeHoursNote ? `
       <div class="syl-section">
@@ -139,6 +142,7 @@ function syllabusCard(c) {
       ${d.policies?.length ? `<details class="syl-more disclosure"><summary class="small">More policies <span class="disclosure-count">${d.policies.length}</span></summary>${d.policies.map(p => policyBlock(p.title, 'file-text', p.text)).join('')}</details>` : ''}
       ${d.textbook ? `<div class="syl-section"><div class="syl-label">${icon('book-open', 12, 1.9)} Textbook</div><p class="small">${esc(d.textbook)}</p></div>` : ''}
       ${storedSyllabusHtml(c)}
+      </div>
     </div>`;
 }
 

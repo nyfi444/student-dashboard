@@ -153,7 +153,6 @@ function pageCourseHub(c) {
           <div class="hub-exam-row"><div class="hub-exam-days"><strong>${daysBetween(exams[0].dueDate)}</strong><span>day${daysBetween(exams[0].dueDate) === 1 ? '' : 's'}</span></div>
           <div style="min-width:0"><div class="sg-strong">${esc(exams[0].title)}</div><div class="small dim">${esc(fmtDateLong(exams[0].dueDate))}</div></div></div>
         </div>` : ''}
-        ${syllabusCard(c)}
         <div class="card card-pad">
           <h3 class="sg-h3 mb-8">Class schedule</h3>
           ${(c.meetings || []).length ? [...c.meetings].sort((a, b) => a.day - b.day || a.start.localeCompare(b.start)).map(m => `<div class="sg-person"><span class="hub-day">${DOW_NAMES[m.day]}</span><div class="row-title small">${fmtTime(m.start)} – ${fmtTime(m.end)}</div></div>`).join('') : `<p class="small muted">No meeting times. <button class="sg-link" onclick="openCourseModal('${c.id}')">Add them</button></p>`}
@@ -169,6 +168,7 @@ function pageCourseHub(c) {
         </div>
       </div>
     </div>
+    <div class="hub-syllabus">${syllabusCard(c)}</div>
     </div>`;
 }
 function hubAssignmentRow(a) {
