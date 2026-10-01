@@ -85,18 +85,43 @@ service cloud.firestore {
             : !('email' in d));
     }
 
+    // A group's or club's public preview: what someone holding the code
+    // sees before joining (js/spaces/invite.js). Only these fields, only
+    // this size, and the member count has to be the real one, so nobody can
+    // dress a space up as bigger than it is. Faces, names, events, files
+    // and chat stay in the members-only document.
+    function validPreview(d, parent, docId) {
+      return docId == 'preview'
+        && d.keys().hasOnly(['v', 'name', 'description', 'color', 'courseLabel', 'kind', 'school', 'memberCount', 'next', 'updatedAt'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && (!('description' in d) || (d.description is string && d.description.size() <= 200))
+        && (!('color' in d) || (d.color is string && d.color.size() <= 9))
+        && (!('courseLabel' in d) || (d.courseLabel is string && d.courseLabel.size() <= 80))
+        && (!('kind' in d) || (d.kind is string && d.kind.size() <= 20))
+        && (!('school' in d) || (d.school is string && d.school.size() <= 120))
+        && d.memberCount == parent.memberUids.size()
+        && (!('next' in d) || d.next == null
+            || (d.next is map && d.next.keys().hasOnly(['title', 'date', 'start'])
+                && d.next.title is string && d.next.title.size() <= 120
+                && d.next.date is string && d.next.date.size() <= 10
+                && (!('start' in d.next) || (d.next.start is string && d.next.start.size() <= 5))))
+        && d.updatedAt is number;
+    }
+
     // Study groups. The 6-character code is the doc id and doubles as the
-    // invite: any signed-in user who has the code can look the group up (to
-    // see what they're joining) and add themselves. Everything else is
-    // members-only, and there's no `list`, so nobody can browse or download
-    // groups they don't have a code for. The first version of these rules
-    // let any signed-in user read, overwrite, or delete every group.
+    // invite: anyone signed in who has the code can read the group's public
+    // preview (public/preview, below) and add themselves, unless the owner
+    // blocked them. The group itself is members-only, and there's no `list`,
+    // so nobody can browse or download groups. Until Oct 2026 anyone with the
+    // code could read the whole group; the first version of these rules let
+    // any signed-in user read, overwrite, or delete every group.
     match /studyGroups/{code} {
       function signedIn() { return request.auth != null; }
       function isMember(data) { return signedIn() && ('memberUids' in data) && request.auth.uid in data.memberUids; }
       function groupData() { return get(/databases/$(database)/documents/studyGroups/$(code)).data; }
 
-      allow get: if signedIn();
+      allow get: if isMember(resource.data)
+        || (signedIn() && !('memberUids' in resource.data) && resource.data.createdBy == request.auth.uid);
       allow list: if false;
 
       allow create: if signedIn()
@@ -106,13 +131,17 @@ service cloud.firestore {
       allow update: if signedIn() && (
         // Members can edit sessions, tasks, availability, etc. Only the owner
         // can remove someone else or hand off ownership; anyone can leave.
+        // Only the owner blocks or unblocks someone.
         (isMember(resource.data) && (
           resource.data.createdBy == request.auth.uid
           || (request.resource.data.memberUids.hasAll(resource.data.memberUids.removeAll([request.auth.uid]))
-              && request.resource.data.createdBy == resource.data.createdBy)
+              && request.resource.data.createdBy == resource.data.createdBy
+              && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['blocked']))
         ))
-        // Joining with the code: may only add yourself, nothing else.
+        // Joining with the code: may only add yourself, nothing else, and
+        // not after the owner removed you with "Block from rejoining".
         || (!(request.auth.uid in resource.data.memberUids)
+            && !(request.auth.uid in resource.data.get('blocked', {}))
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids', 'people', 'members', 'updatedAt'])
             && request.resource.data.memberUids.hasAll(resource.data.memberUids)
             && request.resource.data.memberUids.size() == resource.data.memberUids.size() + 1
@@ -125,6 +154,16 @@ service cloud.firestore {
       );
 
       allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
+
+      // The public preview. Members keep it current; the Worker's daily job
+      // refreshes every one with the service account.
+      match /public/{docId} {
+        function groupPath() { return /databases/$(database)/documents/studyGroups/$(code); }
+        allow get: if signedIn();
+        allow list: if false;
+        allow create, update: if isMember(groupData()) && validPreview(request.resource.data, groupData(), docId);
+        allow delete: if signedIn() && (!exists(groupPath()) || groupData().createdBy == request.auth.uid);
+      }
 
       // Shared notes, decks, files, links.
       match /items/{itemId} {
@@ -228,7 +267,9 @@ service cloud.firestore {
     }
 
     // Clubs & teams. Like study groups, the 6-character code is the invite:
-    // anyone signed in with the code can look the org up and add themselves.
+    // anyone signed in with the code can read the club's public preview and
+    // add themselves, unless an officer blocked them. The club itself is
+    // members-only.
     // Officers (officerUids) run it: events, announcements, files, members,
     // details. Only the founder (createdBy) changes who's an officer or hands
     // off the org, and the founder can never be removed. Regular members can
@@ -247,7 +288,20 @@ service cloud.firestore {
           && request.resource.data[field].size() == resource.data[field].size() - 1;
       }
 
-      allow get: if orgSignedIn();
+      // A member's own entry in people: only their name, title and join
+      // date, and they can never mark their own title as reviewed. That is
+      // the founder's check that "President" really is the president.
+      function ownEntryOk() {
+        let me = request.auth.uid;
+        let before = resource.data.get('people', {}).get(me, {});
+        let after = request.resource.data.get('people', {});
+        return !(me in after)
+          || (after[me].keys().hasOnly(['name', 'title', 'joinedAt', 'reviewed'])
+              && (after[me].get('reviewed', false) != true
+                  || (before.get('reviewed', false) == true && after[me].get('title', '') == before.get('title', ''))));
+      }
+
+      allow get: if isOrgMember();
       allow list: if false;
 
       allow create: if orgSignedIn()
@@ -263,6 +317,9 @@ service cloud.firestore {
           && request.resource.data.officerUids is list
           && request.resource.data.createdBy in request.resource.data.memberUids
           && request.resource.data.createdBy in request.resource.data.officerUids
+          // Officers remove people; they never add anyone. People join
+          // themselves, with the code.
+          && resource.data.memberUids.hasAll(request.resource.data.memberUids)
           && (isOrgFounder()
               || (!orgChanged().hasAny(['createdBy'])
                   && (!orgChanged().hasAny(['officerUids']) || removesOnlyMe('officerUids')))))
@@ -270,12 +327,15 @@ service cloud.firestore {
         || (isOrgMember() && !isOrgOfficer()
           && orgChanged().hasOnly(['rsvp', 'people', 'memberUids', 'lastMessage', 'updatedAt'])
           && (!orgChanged().hasAny(['rsvp']) || request.resource.data.rsvp.diff(resource.data.rsvp).affectedKeys().hasOnly([request.auth.uid]))
-          && (!orgChanged().hasAny(['people']) || request.resource.data.people.diff(resource.data.people).affectedKeys().hasOnly([request.auth.uid]))
+          && (!orgChanged().hasAny(['people']) || (request.resource.data.people.diff(resource.data.people).affectedKeys().hasOnly([request.auth.uid]) && ownEntryOk()))
           && (!orgChanged().hasAny(['memberUids']) || removesOnlyMe('memberUids'))
           && (!orgChanged().hasAny(['lastMessage']) || request.resource.data.lastMessage.uid == request.auth.uid))
-        // Joining with the code: add only yourself.
+        // Joining with the code: add only yourself, arrive unreviewed, and
+        // not after an officer removed you with "Block from rejoining".
         || (!(request.auth.uid in resource.data.memberUids)
+          && !(request.auth.uid in resource.data.get('blocked', {}))
           && orgChanged().hasOnly(['memberUids', 'people', 'updatedAt'])
+          && request.resource.data.people[request.auth.uid].keys().hasOnly(['name', 'joinedAt', 'title'])
           && request.resource.data.memberUids.hasAll(resource.data.memberUids)
           && request.resource.data.memberUids.size() == resource.data.memberUids.size() + 1
           && request.auth.uid in request.resource.data.memberUids
@@ -283,6 +343,18 @@ service cloud.firestore {
       );
 
       allow delete: if isOrgFounder();
+
+      // The public preview. Officers keep it current; the Worker's daily job
+      // refreshes every one with the service account.
+      match /public/{docId} {
+        function previewOrgPath() { return /databases/$(database)/documents/orgs/$(code); }
+        function previewOrg() { return get(previewOrgPath()).data; }
+        allow get: if request.auth != null;
+        allow list: if false;
+        allow create, update: if request.auth != null && request.auth.uid in previewOrg().officerUids
+          && validPreview(request.resource.data, previewOrg(), docId);
+        allow delete: if request.auth != null && (!exists(previewOrgPath()) || previewOrg().createdBy == request.auth.uid);
+      }
 
       // Club chat. Members read and post as themselves; officers can remove
       // any message. Same shape as study group chat.

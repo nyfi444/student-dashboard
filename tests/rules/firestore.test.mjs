@@ -11,7 +11,7 @@
 ──────────────────────────────────────────────────────────────── */
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, addDoc, writeBatch } from 'firebase/firestore';
+import { arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, query, setDoc, updateDoc, where, addDoc, writeBatch } from 'firebase/firestore';
 import { as, makeEnv, signedOut } from './setup.mjs';
 
 let env;
@@ -103,11 +103,42 @@ describe('studyGroups', () => {
   test('alice cannot start a group with other people already in it', async () => {
     await assertFails(setDoc(doc(db('alice'), 'studyGroups/GRP123'), { createdBy: 'alice', memberUids: ['alice', 'bob'], people: {} }));
   });
-  test('anyone signed in with the code can look a group up; nobody can browse them', async () => {
+  test('only members can read a group; nobody can browse them', async () => {
     await seed('studyGroups/GRP123', group());
-    await assertSucceeds(getDoc(doc(db('mallory'), 'studyGroups/GRP123')));
+    await assertSucceeds(getDoc(doc(db('bob'), 'studyGroups/GRP123')));
+    await assertFails(getDoc(doc(db('mallory'), 'studyGroups/GRP123')));
     await assertFails(getDoc(doc(db(null), 'studyGroups/GRP123')));
     await assertFails(getDocs(collection(db('alice'), 'studyGroups')));
+  });
+  test('anyone signed in with the code can read the public preview, never browse previews', async () => {
+    await seed('studyGroups/GRP123', group());
+    await seed('studyGroups/GRP123/public/preview', { v: 1, name: 'Bio study', memberCount: 2, updatedAt: 1 });
+    await assertSucceeds(getDoc(doc(db('mallory'), 'studyGroups/GRP123/public/preview')));
+    await assertFails(getDoc(doc(db(null), 'studyGroups/GRP123/public/preview')));
+    await assertFails(getDocs(collection(db('mallory'), 'studyGroups/GRP123/public')));
+  });
+  test('a member keeps the preview current, with the real member count and nothing extra', async () => {
+    await seed('studyGroups/GRP123', group());
+    const p = (uid) => doc(db(uid), 'studyGroups/GRP123/public/preview');
+    const ok = { v: 1, name: 'Bio study', courseLabel: 'BIO 210', color: '#8FB3A9', memberCount: 2, next: { title: 'Midterm review', date: '2026-10-08', start: '18:00' }, updatedAt: 1 };
+    await assertSucceeds(setDoc(p('bob'), ok));
+    await assertFails(setDoc(p('bob'), { ...ok, memberCount: 40 }));
+    await assertFails(setDoc(p('bob'), { ...ok, people: { bob: 'Bob' } }));
+    await assertFails(setDoc(p('bob'), { ...ok, next: { title: 'x', date: '2026-10-08', where: 'Room 4' } }));
+    await assertFails(setDoc(p('mallory'), ok));
+    await assertFails(setDoc(doc(db('bob'), 'studyGroups/GRP123/public/other'), ok));
+  });
+  test('the owner can block someone from rejoining, and a blocked account cannot join', async () => {
+    await seed('studyGroups/GRP123', group());
+    await assertSucceeds(updateDoc(doc(db('alice'), 'studyGroups/GRP123'), { memberUids: ['alice'], 'blocked.bob': { name: 'Bob', at: 1 } }));
+    await assertFails(updateDoc(doc(db('bob'), 'studyGroups/GRP123'), { memberUids: ['alice', 'bob'], 'people.bob': { name: 'Bob' } }));
+    await assertSucceeds(updateDoc(doc(db('mallory'), 'studyGroups/GRP123'), { memberUids: ['alice', 'mallory'], 'people.mallory': { name: 'M' } }));
+  });
+  test('only the owner changes the blocked list', async () => {
+    await seed('studyGroups/GRP123', group({ blocked: { eve: { name: 'Eve', at: 1 } } }));
+    await assertFails(updateDoc(doc(db('bob'), 'studyGroups/GRP123'), { 'blocked.eve': deleteField() }));
+    await assertFails(updateDoc(doc(db('bob'), 'studyGroups/GRP123'), { 'blocked.carol': { name: 'C', at: 1 } }));
+    await assertSucceeds(updateDoc(doc(db('alice'), 'studyGroups/GRP123'), { 'blocked.eve': deleteField() }));
   });
   test('mallory can join with the code by adding only herself', async () => {
     await seed('studyGroups/GRP123', group());
@@ -170,6 +201,8 @@ describe('studyGroups', () => {
   });
   test('an original-format group with no member list: only its creator may touch it', async () => {
     await seed('studyGroups/OLD111', { createdBy: 'alice', name: 'Old' });
+    await assertSucceeds(getDoc(doc(db('alice'), 'studyGroups/OLD111')));
+    await assertFails(getDoc(doc(db('mallory'), 'studyGroups/OLD111')));
     await assertFails(updateDoc(doc(db('mallory'), 'studyGroups/OLD111'), { name: 'mine' }));
     await assertSucceeds(updateDoc(doc(db('alice'), 'studyGroups/OLD111'), { memberUids: ['alice'], people: {} }));
   });
@@ -283,10 +316,51 @@ describe('orgs', () => {
     await assertFails(setDoc(doc(db('alice'), 'orgs/CLUB02'), { code: 'CLUB02', createdBy: 'bob', memberUids: ['bob'], officerUids: ['bob'] }));
     await assertFails(setDoc(doc(db('alice'), 'orgs/CLUB03'), { code: 'CLUB03', createdBy: 'alice', memberUids: ['alice'], officerUids: ['alice', 'bob'] }));
   });
-  test('clubs can be looked up by code, never browsed', async () => {
+  test('only members can read a club; nobody can browse them', async () => {
     await seed('orgs/CLUB01', org());
-    await assertSucceeds(getDoc(ref('mallory')));
+    await assertSucceeds(getDoc(ref('carol')));
+    await assertFails(getDoc(ref('mallory')));
     await assertFails(getDocs(collection(db('alice'), 'orgs')));
+  });
+  test('anyone signed in with the code reads the preview; only officers write it, honestly', async () => {
+    await seed('orgs/CLUB01', org());
+    const p = (uid) => doc(db(uid), 'orgs/CLUB01/public/preview');
+    const ok = { v: 1, name: 'Chess', kind: 'club', school: 'State', color: '#B49F90', memberCount: 3, next: null, updatedAt: 1 };
+    await assertSucceeds(setDoc(p('bob'), ok));
+    await assertSucceeds(getDoc(p('mallory')));
+    await assertFails(getDoc(p(null)));
+    await assertFails(setDoc(p('carol'), ok));
+    await assertFails(setDoc(p('bob'), { ...ok, memberCount: 300 }));
+    await assertFails(setDoc(p('bob'), { ...ok, officerUids: ['alice'] }));
+  });
+  test('an officer can block someone from rejoining, and a blocked account cannot join', async () => {
+    await seed('orgs/CLUB01', org());
+    await assertSucceeds(updateDoc(ref('bob'), { memberUids: ['alice', 'bob'], 'people.carol': deleteField(), 'blocked.carol': { name: 'C', at: 1 } }));
+    await assertFails(updateDoc(ref('carol'), { memberUids: arrayUnion('carol'), 'people.carol': { name: 'C', joinedAt: 2 } }));
+    await assertFails(updateDoc(ref('carol'), { 'blocked.carol': deleteField() }));
+  });
+  test('an officer removes people but never adds anyone', async () => {
+    await seed('orgs/CLUB01', org());
+    await assertFails(updateDoc(ref('bob'), { memberUids: arrayUnion('mallory'), 'people.mallory': { name: 'M' } }));
+    await assertSucceeds(updateDoc(ref('bob'), { memberUids: ['alice', 'bob'] }));
+  });
+  test('joining arrives unreviewed, with only a name, title and join date', async () => {
+    await seed('orgs/CLUB01', org());
+    await assertFails(updateDoc(ref('mallory'), { memberUids: arrayUnion('mallory'), 'people.mallory': { name: 'M', title: 'President', reviewed: true } }));
+    await assertFails(updateDoc(ref('mallory'), { memberUids: arrayUnion('mallory'), 'people.mallory': { name: 'M', color: '#000' } }));
+    await assertSucceeds(updateDoc(ref('mallory'), { memberUids: arrayUnion('mallory'), 'people.mallory': { name: 'M', title: 'Treasurer', joinedAt: 5 } }));
+  });
+  test('a member can never mark their own title as reviewed', async () => {
+    await seed('orgs/CLUB01', org());
+    await assertFails(updateDoc(ref('carol'), { 'people.carol.title': 'President', 'people.carol.reviewed': true }));
+    await assertFails(updateDoc(ref('carol'), { 'people.carol': { name: 'C', title: 'President', reviewed: true } }));
+    await assertSucceeds(updateDoc(ref('carol'), { 'people.carol.title': 'President', 'people.carol.reviewed': false }));
+  });
+  test('a reviewed title stays reviewed only while it stays the same', async () => {
+    await seed('orgs/CLUB01', org({ people: { alice: { name: 'A' }, bob: { name: 'B' }, carol: { name: 'C', title: 'Treasurer', reviewed: true } } }));
+    await assertSucceeds(updateDoc(ref('carol'), { 'people.carol.name': 'Carol' }));
+    await assertFails(updateDoc(ref('carol'), { 'people.carol.title': 'President' }));
+    await assertSucceeds(updateDoc(ref('carol'), { 'people.carol.title': 'President', 'people.carol.reviewed': deleteField() }));
   });
   test('mallory can join with the code by adding only herself', async () => {
     await seed('orgs/CLUB01', org());
