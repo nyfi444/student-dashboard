@@ -463,3 +463,7 @@ html.dark .org-month-cell.is-today .org-month-num { box-shadow: 0 0 0 1px var(--
 .org-seats-foot > p { display: flex; gap: 8px; align-items: flex-start; margin: 0; }
 .org-seats-foot > p > svg { flex: none; margin-top: 2px; }
 .org-seats-outside .org-dir-row { padding: 8px 0; }
+
+/* Overview cards that would run the rail past the calendar sit side by
+   side under both columns instead. */
+.org-overview-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; margin-top: 16px; }

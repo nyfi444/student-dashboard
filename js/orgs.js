@@ -359,6 +359,34 @@ function orgOverviewTab(o) {
   const faces = orgFaceColors(o);
   const me = myOrgUid(o);
   const files = orgFileList(o);
+  // The rail holds what comes and goes (checklist, wrapped, officer view).
+  // Announcements, Officers and Files fill it only while it is shorter than
+  // the left column; the rest sit side by side in a row underneath, so the
+  // rail never runs far past the calendar.
+  const railTop = [
+    typeof welcomeChecklistCard === 'function' ? welcomeChecklistCard('club', o) : '',
+    typeof wrappedSpaceBanner === 'function' ? wrappedSpaceBanner('club', o) : '',
+    orgOfficerMiniCard(o),
+  ].filter(Boolean);
+  const movable = [`
+        <div class="card card-pad">
+          <div class="flex-between mb-8"><h3 class="sg-h3">Announcements</h3>${officer ? `<button class="sg-link" onclick="openAnnouncementModal('${o.code}')">${icon('plus', 12)} Post</button>` : `<button class="sg-link" onclick="setState({orgTab:'announcements'})">All ${icon('chevron-right', 12)}</button>`}</div>
+          ${anns.length ? anns.map(a => orgAnnouncementHtml(o, a, { compact: true })).join('') : `<p class="small muted">${bannerId || stripPinned.size ? 'Nothing else yet.' : 'No announcements yet.'}</p>`}
+        </div>`, `
+        <div class="card card-pad">
+          <div class="flex-between mb-8"><h3 class="sg-h3">Officers</h3><button class="sg-link" onclick="setState({orgTab:'members'})">${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'} ${icon('chevron-right', 12)}</button></div>
+          <div class="org-officer-faces">${officers.map(p => `
+            <div class="org-officer-face">${personAvatar(p.uid, p.name, 32, faces[p.uid] || orgColor(o))}<div class="org-officer-face-text"><span class="org-officer-face-name">${esc(p.name)}${p.uid === me && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</span><span class="org-officer-face-title">${esc(orgRoleLabel(o, p))}</span></div></div>`).join('')}
+          </div>
+        </div>`];
+  if (files.length) movable.push(`
+        <div class="card card-pad org-rail-files">
+          <div class="flex-between mb-8"><h3 class="sg-h3">Files</h3><button class="sg-link" onclick="setState({orgTab:'files'})">All ${files.length} ${icon('chevron-right', 12)}</button></div>
+          ${files.slice(0, 3).map(f => orgFileRow(o, f, { compact: true })).join('')}
+        </div>`);
+  // The left column is three cards tall with an event (hero, week, agenda)
+  // and one without.
+  const inRail = Math.max(0, (next ? 3 : 1) - railTop.length);
   return `
     ${strip}
     ${banner}
@@ -384,26 +412,11 @@ function orgOverviewTab(o) {
         </div>` : ''}
       </div>
       <div class="sg-col">
-        ${typeof welcomeChecklistCard === 'function' ? welcomeChecklistCard('club', o) : ''}
-        ${typeof wrappedSpaceBanner === 'function' ? wrappedSpaceBanner('club', o) : ''}
-        ${orgOfficerMiniCard(o)}
-        <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Announcements</h3>${officer ? `<button class="sg-link" onclick="openAnnouncementModal('${o.code}')">${icon('plus', 12)} Post</button>` : `<button class="sg-link" onclick="setState({orgTab:'announcements'})">All ${icon('chevron-right', 12)}</button>`}</div>
-          ${anns.length ? anns.map(a => orgAnnouncementHtml(o, a, { compact: true })).join('') : `<p class="small muted">${bannerId || stripPinned.size ? 'Nothing else yet.' : 'No announcements yet.'}</p>`}
-        </div>
-        <div class="card card-pad">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Officers</h3><button class="sg-link" onclick="setState({orgTab:'members'})">${o.memberUids.length} member${o.memberUids.length === 1 ? '' : 's'} ${icon('chevron-right', 12)}</button></div>
-          <div class="org-officer-faces">${officers.map(p => `
-            <div class="org-officer-face">${personAvatar(p.uid, p.name, 32, faces[p.uid] || orgColor(o))}<div class="org-officer-face-text"><span class="org-officer-face-name">${esc(p.name)}${p.uid === me && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</span><span class="org-officer-face-title">${esc(orgRoleLabel(o, p))}</span></div></div>`).join('')}
-          </div>
-        </div>
-        ${files.length ? `
-        <div class="card card-pad org-rail-files">
-          <div class="flex-between mb-8"><h3 class="sg-h3">Files</h3><button class="sg-link" onclick="setState({orgTab:'files'})">All ${files.length} ${icon('chevron-right', 12)}</button></div>
-          ${files.slice(0, 3).map(f => orgFileRow(o, f, { compact: true })).join('')}
-        </div>` : ''}
+        ${railTop.join('')}
+        ${movable.slice(0, inRail).join('')}
       </div>
-    </div>`;
+    </div>
+    ${movable.length > inRail ? `<div class="org-overview-row">${movable.slice(inRail).join('')}</div>` : ''}`;
 }
 function setOrgOnCalendar(code, on) { const e = orgEntry(code); if (!e) return; e.hideCalendar = !on; touch(); }
 // compact: the rail preview. Links shrink to their host at normal weight
