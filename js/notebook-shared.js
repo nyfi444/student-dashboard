@@ -88,7 +88,7 @@ class NbSharedNote {
   get updatedAt() { return this.rec?.updatedAt || 0; }
   set updatedAt(v) {}
 }
-function nbSharedNote(id) { const sid = nbSharedSid(id); return _nbShared.list.has(sid) ? new NbSharedNote(sid) : null; }
+function nbSharedNote(id) { nbSharedEnsureSample(); const sid = nbSharedSid(id); return _nbShared.list.has(sid) ? new NbSharedNote(sid) : null; }
 function nbSharedNotes() { return [..._nbShared.list.keys()].map(sid => new NbSharedNote(sid)); }
 function nbSharedWhere(rec) {
   const bits = [];
@@ -118,8 +118,8 @@ function nbSharedRowHtml(n, selectedId) {
 }
 // The Shared section of the notes list.
 function nbSharedSectionHtml(search, sort, selectedId) {
-  if (!nbSharedEnabled()) return '';
-  nbSharedRefresh();
+  nbSharedEnsureSample();
+  if (nbSharedEnabled()) nbSharedRefresh();
   const notes = sortNotebookNotes(nbSharedNotes().filter(n => notebookNoteMatches(n, search)), sort);
   if (!notes.length) return '';
   return `<div class="nb-section nb-section-shared">
@@ -151,7 +151,7 @@ function nbSharedRefresh(force) {
     if (open && _nbShared.list.has(open.sid) && !open.lost) next.set(open.sid, _nbShared.list.get(open.sid));
     const before = [..._nbShared.list.values()].map(r => `${r.sid}:${r.updatedAt}:${r.title}`).sort().join('|');
     const after = [...next.values()].map(r => `${r.sid}:${r.updatedAt}:${r.title}`).sort().join('|');
-    if (failed < results.length) { _nbShared.list = next; _nbShared.loadedAt = Date.now(); }
+    if (failed < results.length) { _nbShared.list = next; _nbShared.loadedAt = Date.now(); nbSharedEnsureSample(); }
     _nbShared.loaded = true;
     if (before !== after && state.route === 'notebook') nbSharedListChanged();
   }).finally(() => { _nbShared.loading = null; });
@@ -271,6 +271,17 @@ async function nbSharedAttach(note) {
   if (!note || !note.shared) { if (open) nbSharedDetach(); return; }
   if (open && open.sid === note.sid) { nbSharedPaintPeople(); nbDrawCarets(); return; }
   if (open) nbSharedDetach();
+  if (note.rec?.sample) {
+    // The demo: Maya and Priya are "here", their cursors in the study guide.
+    const o = { sid: note.sid, sample: true, others: new Map(), lost: false };
+    const text = (nbSharedEditor(note.sid)?.textContent || '');
+    const at = (needle, fallback) => { const i = text.indexOf(needle); return i >= 0 ? i + needle.length : fallback; };
+    o.others.set('sample-maya', { name: 'Maya', caret: at('Chair flips', 20) });
+    o.others.set('sample-priya', { name: 'Priya', caret: at('Writing it', 60) });
+    _nbShared.open = o;
+    nbSharedPaintPeople(); nbDrawCarets();
+    return;
+  }
   if (!nbSharedEnabled()) return;
   const sid = note.sid;
   const o = { sid, base: null, pushing: false, again: false, remote: null, timer: 0, maxTimer: 0, others: new Map(), lost: false, unsub: null, presUnsub: null, beat: 0, lastCaret: -2 };
@@ -297,6 +308,7 @@ function nbSharedDetach() {
   o.unsub?.(); o.presUnsub?.();
   clearInterval(o.beat);
   _nbShared.open = null;
+  if (o.sample) return;
   const rec = _nbShared.list.get(o.sid);
   if (rec) rec._base = o.base;
   if (_fbUser && _fbDb) nbSharedCol().doc(o.sid).collection('presence').doc(_fbUser.uid).delete().catch(() => {});
@@ -335,9 +347,12 @@ function nbSharedLocalEdit(id, html) {
   const sid = nbSharedSid(id);
   const rec = _nbShared.list.get(sid);
   if (rec && typeof html === 'string') rec.content = html;
+  if (rec?.sample) { clearTimeout(rec._saveTimer); rec._saveTimer = setTimeout(() => nbSampleSave(rec), 500); return; }
   nbSharedSchedule(sid);
 }
 function nbSharedSchedule(sid) {
+  const sampleRec = _nbShared.list.get(sid);
+  if (sampleRec?.sample) { nbSampleSave(sampleRec); return; }
   const o = _nbShared.open;
   if (!o || o.sid !== sid) { nbSharedPushClosed(sid); return; }
   nbSharedStatus('Saving…');
@@ -432,6 +447,7 @@ function nbSharedRename(id, name) {
   rec._titleDirtyUntil = Date.now() + 2500;
   const label = rec.title.trim() || 'Untitled';
   document.querySelectorAll('.nb-note-row.selected .nb-note-name').forEach(el => { el.textContent = label; el.title = label; });
+  if (rec.sample) { nbSampleSave(rec); return; }
   clearTimeout(rec._titleTimer);
   rec._titleTimer = setTimeout(() => {
     nbSharedCol().doc(sid).update({ title: rec.title, updatedAt: Date.now(), updatedBy: _fbUser.uid })
@@ -455,7 +471,7 @@ function nbSharedUpdateRow(sid) {
 
 /* Presence: who's here, and their cursors */
 function nbSharedBeat(o) {
-  if (_nbShared.open !== o || o.lost || !_fbUser) return;
+  if (_nbShared.open !== o || o.lost || o.sample || !_fbUser) return;
   const editor = nbSharedEditor(o.sid);
   const c = editor && document.activeElement === editor ? nbCaretOffsets(editor) : null;
   o.lastCaret = c ? c.end : -1;
@@ -467,7 +483,7 @@ function nbSharedBeat(o) {
 let _nbCaretBeatTimer = 0;
 function nbSharedCaretMoved() {
   const o = _nbShared.open;
-  if (!o || _nbCaretBeatTimer) return;
+  if (!o || o.sample || _nbCaretBeatTimer) return;
   _nbCaretBeatTimer = setTimeout(() => {
     _nbCaretBeatTimer = 0;
     const editor = nbSharedEditor(o.sid);
@@ -476,6 +492,7 @@ function nbSharedCaretMoved() {
   }, 1200);
 }
 function nbSharedHere(o) {
+  if (o.sample) return [...o.others.entries()];
   const now = Date.now();
   return [...o.others.entries()].filter(([, p]) => now - (Number(p.at) || 0) < NB_PRESENCE_STALE);
 }
@@ -616,6 +633,18 @@ async function nbStartSharing(noteId) {
 function nbOpenSharedPanel(id) {
   const rec = _nbShared.list.get(nbSharedSid(id));
   if (!rec) return;
+  if (rec.sample) {
+    openModal(`
+      <div class="modal-head"><h3>Share “${esc(rec.title || 'Untitled')}”</h3>${closeXButton()}</div>
+      <div class="modal-body nb-share-body">
+        <div class="nb-share-section-label">Who can edit</div>
+        <ul class="nb-share-people">${NB_SAMPLE_PEOPLE.map(([u, name]) => `<li class="nb-share-person"><span class="nb-person" style="--c:${nbPersonColor(u)}">${esc(name.charAt(0))}</span><span class="nb-share-person-name">${esc(name)}</span><span class="small muted">Sample classmate</span></li>`).join('')}</ul>
+        <p class="small muted">This is a sample. In your own notebook, Share on any note lets your study group, your club, or anyone with the link write in it with you, and you see each other’s changes as they happen.</p>
+      </div>
+      <div class="modal-foot"><button class="btn btn-primary" onclick="closeModal()">Got it</button></div>
+    `);
+    return;
+  }
   const me = _fbUser?.uid;
   const owner = rec.ownerUid === me;
   const title = rec.title || 'Untitled';
@@ -751,6 +780,59 @@ function nbCopySharedToMine(sid) {
   state.notes.push({ id, type: 'note', name: (rec.title || 'Untitled note') + ' (copy)', parentId: 'root', courseId: null, pinned: false, content: editor ? editor.innerHTML : rec.content, updatedAt: Date.now() });
   setState({ notebookSelected: id });
   toast('Saved a copy to your notebook');
+}
+
+/* ── The demo's shared note ─────────────────────────────────────
+   The sample semester carries one shared note (state.sampleSharedNote),
+   "written with" Maya and Priya, so the demo shows a note several people
+   edit: who's here, their cursors, a wrapped picture and a table. It lives
+   in this browser only; nothing goes to Firestore, and Share explains how
+   to make a real one. */
+const NB_SAMPLE_SID = 'sampleStudyGuide01';
+const NB_SAMPLE_PEOPLE = [['sample-maya', 'Maya'], ['sample-priya', 'Priya']];
+function nbMakeSampleSharedNote() {
+  const pic = typeof libSampleImage === 'function' ? libSampleImage(520, 400, (c, w, h) => {
+    c.fillStyle = '#f4eef6'; c.fillRect(0, 0, w, h);
+    const cx = 250, cy = 205, r = 92;
+    const pts = [...Array(6)].map((_, i) => [cx + r * Math.cos(Math.PI / 6 + i * Math.PI / 3), cy + r * Math.sin(Math.PI / 6 + i * Math.PI / 3)]);
+    c.strokeStyle = '#3b3346'; c.lineWidth = 6; c.lineJoin = 'round'; c.lineCap = 'round';
+    c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); c.stroke();
+    c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); c.lineTo(pts[0][0] + 78, pts[0][1] + 34); c.stroke();
+    c.fillStyle = '#c0567f'; c.font = '600 40px "General Sans", system-ui, sans-serif'; c.fillText('OH', pts[0][0] + 84, pts[0][1] + 52);
+    c.fillStyle = '#3b3346'; c.font = '38px "Instrument Serif", Georgia, serif'; c.fillText('Cyclohexanol', 24, 52);
+    c.fillStyle = '#7b6f86'; c.font = '500 22px "General Sans", system-ui, sans-serif'; c.fillText('OH sits equatorial in the chair', 24, h - 26);
+  }) : null;
+  const img = pic ? `<p><img class="nb-img nb-img-right" src="${pic.dataUrl}" alt="Cyclohexanol, OH equatorial in the chair" style="width: 40%"></p>` : '';
+  return {
+    title: 'Exam 2 study guide',
+    updatedAt: Date.now() - 12 * 60000,
+    content: `${img}<p>Split up by chapter. Add what you finish, and check off what you’ve reviewed.</p>`
+      + '<ul><li>Chair flips: big groups go equatorial</li><li>SN1 vs SN2: substrate, nucleophile, solvent</li><li>E2 needs anti-periplanar H and leaving group</li></ul>'
+      + '<h3>Who’s covering what</h3>'
+      + '<table class="nb-table"><thead><tr><th>Topic</th><th>Who</th><th>Status</th></tr></thead><tbody>'
+      + '<tr><td>Conformations</td><td>Maya</td><td>Done</td></tr><tr><td>Substitution</td><td>Priya</td><td>Writing it up</td></tr><tr><td>Elimination</td><td>Ashley</td><td>Next</td></tr></tbody></table>'
+      + '<div class="nb-todo-line"><input type="checkbox" checked="">&nbsp;Practice exam 1</div><div class="nb-todo-line"><input type="checkbox">&nbsp;Office hours Thursday</div>',
+  };
+}
+// Puts the sample note into the list while the sample semester has one.
+function nbSharedEnsureSample() {
+  // A sample semester loaded before this note existed gets it once.
+  if (state.settings.sampleData && state.sampleSharedNote === undefined) state.sampleSharedNote = nbMakeSampleSharedNote();
+  const sample = state.sampleSharedNote;
+  if (!sample) { if (_nbShared.list.has(NB_SAMPLE_SID)) _nbShared.list.delete(NB_SAMPLE_SID); return; }
+  const rec = _nbShared.list.get(NB_SAMPLE_SID);
+  if (rec) { rec.title = sample.title; return; }
+  _nbShared.list.set(NB_SAMPLE_SID, {
+    ...nbSharedRecord(NB_SAMPLE_SID, { title: sample.title, content: sample.content, ownerUid: 'sample-maya', editorUids: NB_SAMPLE_PEOPLE.map(p => p[0]), people: Object.fromEntries(NB_SAMPLE_PEOPLE.map(([u, name]) => [u, { name }])), updatedAt: sample.updatedAt }),
+    sample: true,
+  });
+}
+function nbSampleSave(rec) {
+  const sample = state.sampleSharedNote;
+  if (!sample || !rec) return;
+  sample.content = rec.content; sample.title = rec.title; sample.updatedAt = rec.updatedAt = Date.now();
+  save();
+  nbSharedStatus('Saved just now');
 }
 
 /* ── ?note=ID.KEY invite links ── */

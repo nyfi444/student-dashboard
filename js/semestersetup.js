@@ -408,6 +408,8 @@ function loadSampleSemester() {
   ] });
   state.notes.push({ id: uid(), type: 'note', name: 'Lecture 7: Stereochemistry', parentId: 'root', courseId: chem.id, pinned: true, sample: true, updatedAt: Date.now() - 3600000,
     content: '<h2>Stereochemistry</h2><ul><li>Chiral centers have four different substituents</li><li>Assign R/S by priority (Cahn-Ingold-Prelog)</li><li>Enantiomers are non-superimposable mirror images</li></ul>' });
+  // A note "shared" with two classmates, so the demo shows notes written together (js/notebook-shared.js).
+  if (typeof nbMakeSampleSharedNote === 'function') state.sampleSharedNote = nbMakeSampleSharedNote();
   const mil = (title, d, done, tasks) => ({ id: uid(), title, dueDate: addDays(t, d), done, tasks: tasks.map(([x, dn]) => ({ id: uid(), title: x, done: !!dn })) });
   state.projects.push(
     { id: uid(), title: 'Nike case study', courseId: mkt.id, dueDate: addDays(t, 11), startDate: addDays(t, -10), createdAt: Date.now() - 10 * 86400000, status: 'active', template: 'case', sample: true,
@@ -443,6 +445,7 @@ function removeSampleSemester() {
     state.courses = state.courses.filter(c => !c.sample);
     ['assignments', 'todos', 'events', 'timerSessions', 'decks', 'notes', 'projects', 'applications'].forEach(k => { state[k] = (state[k] || []).filter(x => !x.sample && !sampleCourseIds.includes(x.courseId)); });
     state.todoSections = (state.todoSections || []).filter(x => !x.sample);
+    delete state.sampleSharedNote;
     state.semesters = state.semesters.filter(s => !s.sample);
     const prev = state.semesters.find(s => s.id === info.prevSemesterId) || state.semesters[0];
     if (!prev) { const id = uid(); state.semesters.push({ id, name: suggestedSemesterName(), startDate: todayIso(), endDate: addDays(todayIso(), 110), archived: false }); state.currentSemesterId = id; }

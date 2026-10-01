@@ -91,7 +91,7 @@ function nbPickPicture() {
 function nbPictureStoragePath(name) {
   const noteId = String(window._nbCurrentNoteId || '');
   const file = `${uid()}-${storageSafeName(name || 'picture.jpg')}`;
-  if (noteId.startsWith('shared:')) return `sharedNotes/${noteId.slice(7)}/images/${file}`;
+  if (noteId.startsWith('shared:') && !nbSharedNote(noteId)?.rec?.sample) return `sharedNotes/${noteId.slice(7)}/images/${file}`;
   return `users/${_fbUser.uid}/attachments/note-${file}`;
 }
 function nbPicturesToCloud() { return typeof _fbUser !== 'undefined' && !!_fbUser && !!window._licensed && !isEmbedded(); }
@@ -99,7 +99,8 @@ function nbPicturesToCloud() { return typeof _fbUser !== 'undefined' && !!_fbUse
 // data URL itself when this note only lives here. A shared note always
 // syncs, so a failed upload there is an error rather than a fallback.
 async function nbStorePicture(dataUrl, name) {
-  const shared = String(window._nbCurrentNoteId || '').startsWith('shared:');
+  // The demo's sample shared note keeps pictures in this browser, like any local note.
+  const shared = String(window._nbCurrentNoteId || '').startsWith('shared:') && !nbSharedNote(window._nbCurrentNoteId)?.rec?.sample;
   if (!nbPicturesToCloud()) {
     if (shared) throw new Error('Log in to add pictures to a shared note.');
     return dataUrl;
