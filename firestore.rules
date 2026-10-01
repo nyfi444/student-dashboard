@@ -249,6 +249,110 @@ service cloud.firestore {
     // times, and assignment titles and dates, nothing personal). Classes the
     // sharer marked "listed" can also be found by school and course code.
     // Only the person who shared a class can change or delete it.
+    // Notes several people edit together (js/notebook-shared.js). Who can
+    // open and edit one: the people on it (editorUids: its owner and anyone
+    // who joined with its link), plus everyone currently in the study group
+    // or club it is shared with, so leaving that group or club takes the
+    // note away again. Only the owner changes who it's shared with, and the
+    // owner can take people off but never put anyone on: people join
+    // themselves, with the link.
+    match /sharedNotes/{noteId} {
+      function signedIn() { return request.auth != null; }
+      function me() { return request.auth.uid; }
+      function inGroup(code) {
+        return code is string && code != ''
+          && exists(/databases/$(database)/documents/studyGroups/$(code))
+          && me() in get(/databases/$(database)/documents/studyGroups/$(code)).data.get('memberUids', []);
+      }
+      function inOrg(code) {
+        return code is string && code != ''
+          && exists(/databases/$(database)/documents/orgs/$(code))
+          && me() in get(/databases/$(database)/documents/orgs/$(code)).data.get('memberUids', []);
+      }
+      function canEdit(d) { return signedIn() && (me() in d.editorUids || inGroup(d.groupCode) || inOrg(d.orgCode)); }
+      function noteDoc() { return get(/databases/$(database)/documents/sharedNotes/$(noteId)).data; }
+      function validNote(d) {
+        return d.keys().hasOnly(['title', 'content', 'ownerUid', 'editorUids', 'people', 'groupCode', 'orgCode', 'joinKey', 'createdAt', 'updatedAt', 'updatedBy', 'rev'])
+          && d.keys().hasAll(['title', 'content', 'ownerUid', 'editorUids', 'people', 'groupCode', 'orgCode', 'joinKey'])
+          && d.title is string && d.title.size() <= 200
+          && d.content is string && d.content.size() <= 900000
+          && d.ownerUid is string
+          && d.editorUids is list && d.editorUids.size() <= 200
+          && d.people is map && d.people.size() <= 200
+          && d.groupCode is string && d.groupCode.size() <= 40
+          && d.orgCode is string && d.orgCode.size() <= 40
+          && d.joinKey is string && (d.joinKey == '' || (d.joinKey.size() >= 20 && d.joinKey.size() <= 64));
+      }
+      function onlyMyName() { return request.resource.data.people.diff(resource.data.people).affectedKeys().hasOnly([me()]); }
+      function sharedOnlyWhereIAm(field, check) {
+        return request.resource.data[field] == resource.data[field] || request.resource.data[field] == '' || check;
+      }
+
+      allow get: if canEdit(resource.data);
+      // Listing works for the three questions the app asks: the notes I am
+      // on, and the notes shared with one of my groups or clubs.
+      allow list: if signedIn() && (me() in resource.data.editorUids || inGroup(resource.data.groupCode) || inOrg(resource.data.orgCode));
+      // The id goes into the app's markup (the notes list), so it is letters
+      // and digits only.
+      allow create: if signedIn() && validNote(request.resource.data)
+        && noteId.matches('^[A-Za-z0-9]{10,40}$')
+        && request.resource.data.ownerUid == me()
+        && request.resource.data.editorUids == [me()]
+        && (request.resource.data.groupCode == '' || inGroup(request.resource.data.groupCode))
+        && (request.resource.data.orgCode == '' || inOrg(request.resource.data.orgCode));
+      allow update: if signedIn() && validNote(request.resource.data) && (
+        // The owner: sharing, the link, taking people off. Stays the owner
+        // and stays on it, and shares only with a group or club they're in.
+        (resource.data.ownerUid == me()
+          && request.resource.data.ownerUid == me()
+          && me() in request.resource.data.editorUids
+          && resource.data.editorUids.concat([me()]).hasAll(request.resource.data.editorUids)
+          && sharedOnlyWhereIAm('groupCode', inGroup(request.resource.data.groupCode))
+          && sharedOnlyWhereIAm('orgCode', inOrg(request.resource.data.orgCode)))
+        // Anyone who can edit it: the writing, the title, their own name,
+        // or taking themselves off it.
+        || (canEdit(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'content', 'updatedAt', 'updatedBy', 'rev', 'people', 'editorUids'])
+          && (request.resource.data.editorUids == resource.data.editorUids
+            || (resource.data.ownerUid != me() && request.resource.data.editorUids == resource.data.editorUids.removeAll([me()])))
+          && onlyMyName())
+        // Joining with the link: adds only yourself, and only with a join
+        // record that holds the note's current key (written in the same batch).
+        || (!(me() in resource.data.editorUids)
+          && resource.data.joinKey != ''
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['editorUids', 'people'])
+          && request.resource.data.editorUids == resource.data.editorUids.concat([me()])
+          && existsAfter(/databases/$(database)/documents/sharedNotes/$(noteId)/joins/$(me()))
+          && getAfter(/databases/$(database)/documents/sharedNotes/$(noteId)/joins/$(me())).data.key == resource.data.joinKey
+          && onlyMyName())
+      );
+      allow delete: if signedIn() && resource.data.ownerUid == me();
+
+      // The key someone joined with. Only right while it matches the note's
+      // link; turning the link off or making a new one stops old links.
+      match /joins/{uid} {
+        allow read: if signedIn() && uid == me();
+        allow create, update: if signedIn() && uid == me()
+          && request.resource.data.keys().hasOnly(['key', 'at'])
+          && request.resource.data.key is string
+          && noteDoc().joinKey != ''
+          && request.resource.data.key == noteDoc().joinKey;
+        allow delete: if signedIn() && (uid == me() || noteDoc().ownerUid == me());
+      }
+
+      // Who has the note open, and where their cursor is.
+      match /presence/{uid} {
+        allow read: if canEdit(noteDoc());
+        allow create, update: if signedIn() && uid == me() && canEdit(noteDoc())
+          && request.resource.data.keys().hasOnly(['name', 'at', 'caret', 'color'])
+          && request.resource.data.name is string && request.resource.data.name.size() <= 60
+          && request.resource.data.at is number
+          && request.resource.data.caret is int && request.resource.data.caret >= -1
+          && (!('color' in request.resource.data) || (request.resource.data.color is string && request.resource.data.color.size() <= 9));
+        allow delete: if signedIn() && (uid == me() || noteDoc().ownerUid == me());
+      }
+    }
+
     match /classes/{code} {
       allow get: if request.auth != null;
       allow list: if request.auth != null && resource.data.listed == true;

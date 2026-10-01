@@ -753,3 +753,131 @@ describe('semesterhq_biz', () => {
     await assertFails(getDoc(doc(db('nyla', owner), 'semesterhq_biz/other')));
   });
 });
+
+/* ── Shared notes: edited together, live ─────────────────────────
+   alice owns the note; bob joined with its link; carol is in the study
+   group it is shared with; dan is in the club it is shared with; mallory
+   is nobody to it. */
+describe('sharedNotes', () => {
+  const KEY = 'k'.repeat(24);
+  const note = (over = {}) => ({ title: 'Bio', content: '<p>hi</p>', ownerUid: 'alice', editorUids: ['alice', 'bob'], people: { alice: { name: 'Alice' }, bob: { name: 'Bob' } }, groupCode: 'GRP001', orgCode: 'ORG001', joinKey: KEY, createdAt: 1, updatedAt: 1, updatedBy: 'alice', rev: 1, ...over });
+  const seedAll = async (over) => {
+    await seed('studyGroups/GRP001', { createdBy: 'carol', memberUids: ['carol', 'alice'] });
+    await seed('orgs/ORG001', { createdBy: 'dan', memberUids: ['dan', 'alice'], officerUids: ['dan'] });
+    await seed('sharedNotes/n1', note(over));
+  };
+  const ref = (uid, path = 'sharedNotes/n1') => doc(db(uid), path);
+
+  test('the owner, a link editor, a group member and a club member can all open it', async () => {
+    await seedAll();
+    for (const who of ['alice', 'bob', 'carol', 'dan']) await assertSucceeds(getDoc(ref(who)));
+  });
+  test('mallory and the signed-out cannot open it', async () => {
+    await seedAll();
+    await assertFails(getDoc(ref('mallory')));
+    await assertFails(getDoc(ref(null)));
+  });
+  test('leaving the study group takes the note away', async () => {
+    await seedAll();
+    await seed('studyGroups/GRP001', { createdBy: 'alice', memberUids: ['alice'] });
+    await assertFails(getDoc(ref('carol')));
+  });
+  test('listing: my notes, my group’s notes and my club’s notes; never everyone’s', async () => {
+    await seedAll();
+    const col = (uid) => collection(db(uid), 'sharedNotes');
+    await assertSucceeds(getDocs(query(col('bob'), where('editorUids', 'array-contains', 'bob'))));
+    await assertSucceeds(getDocs(query(col('carol'), where('groupCode', '==', 'GRP001'))));
+    await assertSucceeds(getDocs(query(col('dan'), where('orgCode', '==', 'ORG001'))));
+    await assertFails(getDocs(query(col('mallory'), where('groupCode', '==', 'GRP001'))));
+    await assertFails(getDocs(col('mallory')));
+  });
+  test('anyone who can edit can change the writing and the title', async () => {
+    await seedAll();
+    for (const who of ['bob', 'carol', 'dan']) await assertSucceeds(updateDoc(ref(who), { content: `<p>${who}</p>`, title: who, updatedAt: 2, updatedBy: who, rev: 2 }));
+  });
+  test('mallory cannot change the writing', async () => {
+    await seedAll();
+    await assertFails(updateDoc(ref('mallory'), { content: '<p>x</p>' }));
+  });
+  test('an editor cannot change who it is shared with, the link or the owner', async () => {
+    await seedAll();
+    await assertFails(updateDoc(ref('bob'), { groupCode: '' }));
+    await assertFails(updateDoc(ref('bob'), { joinKey: 'z'.repeat(24) }));
+    await assertFails(updateDoc(ref('carol'), { ownerUid: 'carol' }));
+    await assertFails(updateDoc(ref('carol'), { editorUids: ['alice', 'bob', 'carol'] }));
+  });
+  test('an editor changes only their own name', async () => {
+    await seedAll();
+    await assertSucceeds(updateDoc(ref('bob'), { 'people.bob': { name: 'Bobby' } }));
+    await assertFails(updateDoc(ref('bob'), { 'people.alice': { name: 'Al' } }));
+  });
+  test('a link editor can take themselves off; the owner cannot leave that way', async () => {
+    await seedAll();
+    await assertSucceeds(updateDoc(ref('bob'), { editorUids: ['alice'] }));
+    await assertFails(updateDoc(ref('alice'), { editorUids: ['bob'] }));
+  });
+  test('the owner can take people off, change sharing and the link, and delete it', async () => {
+    await seedAll();
+    await assertSucceeds(updateDoc(ref('alice'), { editorUids: ['alice'], 'people.bob': deleteField(), groupCode: '', orgCode: '', joinKey: '' }));
+    await assertSucceeds(deleteDoc(ref('alice')));
+  });
+  test('the owner cannot put someone on, or share with a group they are not in', async () => {
+    await seedAll();
+    await assertFails(updateDoc(ref('alice'), { editorUids: ['alice', 'bob', 'mallory'] }));
+    await seed('studyGroups/OTHER1', { createdBy: 'mallory', memberUids: ['mallory'] });
+    await assertFails(updateDoc(ref('alice'), { groupCode: 'OTHER1' }));
+  });
+  test('only the owner deletes it', async () => {
+    await seedAll();
+    await assertFails(deleteDoc(ref('bob')));
+    await assertFails(deleteDoc(ref('carol')));
+  });
+  test('creating: only as the owner, alone on it, shared only with your own group', async () => {
+    await seedAll();
+    const fresh = { title: '', content: '', ownerUid: 'alice', editorUids: ['alice'], people: { alice: { name: 'Alice' } }, groupCode: 'GRP001', orgCode: '', joinKey: KEY, createdAt: 1, updatedAt: 1, updatedBy: 'alice', rev: 0 };
+    await assertSucceeds(setDoc(ref('alice', 'sharedNotes/note2abcdefgh'), fresh));
+    await assertFails(setDoc(ref('mallory', 'sharedNotes/note3abcdefgh'), { ...fresh, ownerUid: 'mallory', editorUids: ['mallory'], people: {} }));
+    await assertFails(setDoc(ref('alice', 'sharedNotes/note4abcdefgh'), { ...fresh, editorUids: ['alice', 'bob'] }));
+    await assertFails(setDoc(ref('alice', 'sharedNotes/note5abcdefgh'), { ...fresh, ownerUid: 'bob' }));
+    await assertFails(setDoc(ref('alice', 'sharedNotes/note6abcdefgh'), { ...fresh, extra: true }));
+    // The id lands in the app's markup, so only letters and digits.
+    await assertFails(setDoc(ref('alice', "sharedNotes/abcdefghij');alert(1);x"), fresh));
+  });
+  test('a note over the size cap is refused', async () => {
+    await seedAll();
+    await assertFails(updateDoc(ref('bob'), { content: 'x'.repeat(900001) }));
+  });
+  test('joining with the link: the right key adds only yourself', async () => {
+    await seedAll();
+    const fs = db('mallory');
+    const b = writeBatch(fs);
+    b.set(doc(fs, 'sharedNotes/n1/joins/mallory'), { key: KEY, at: 1 });
+    b.update(doc(fs, 'sharedNotes/n1'), { editorUids: arrayUnion('mallory'), 'people.mallory': { name: 'M' } });
+    await assertSucceeds(b.commit());
+    await assertSucceeds(getDoc(ref('mallory')));
+  });
+  test('joining with a wrong key, or once the link is off, fails', async () => {
+    await seedAll();
+    const tryJoin = (key) => { const fs = db('mallory'); const b = writeBatch(fs); b.set(doc(fs, 'sharedNotes/n1/joins/mallory'), { key, at: 1 }); b.update(doc(fs, 'sharedNotes/n1'), { editorUids: arrayUnion('mallory') }); return b.commit(); };
+    await assertFails(tryJoin('w'.repeat(24)));
+    await seed('sharedNotes/n1', note({ joinKey: '' }));
+    await assertFails(tryJoin(''));
+    await assertFails(tryJoin(KEY));
+  });
+  test('joining cannot bring anyone else along or touch the writing', async () => {
+    await seedAll();
+    const fs = db('mallory');
+    const b = writeBatch(fs);
+    b.set(doc(fs, 'sharedNotes/n1/joins/mallory'), { key: KEY, at: 1 });
+    b.update(doc(fs, 'sharedNotes/n1'), { editorUids: arrayUnion('mallory', 'eve'), content: '<p>x</p>' });
+    await assertFails(b.commit());
+  });
+  test('presence: editors see who is here and write only their own', async () => {
+    await seedAll();
+    await assertSucceeds(setDoc(ref('carol', 'sharedNotes/n1/presence/carol'), { name: 'Carol', at: 5, caret: 10, color: '#e07a9b' }));
+    await assertSucceeds(getDocs(collection(db('bob'), 'sharedNotes/n1/presence')));
+    await assertFails(setDoc(ref('carol', 'sharedNotes/n1/presence/bob'), { name: 'Bob', at: 5, caret: 1 }));
+    await assertFails(getDocs(collection(db('mallory'), 'sharedNotes/n1/presence')));
+    await assertFails(setDoc(ref('mallory', 'sharedNotes/n1/presence/mallory'), { name: 'M', at: 5, caret: 1 }));
+  });
+});

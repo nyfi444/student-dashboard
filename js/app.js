@@ -63,6 +63,7 @@ function render() {
   applyExpandables($('#content'));
   if (typeof afterGroupPageRender === 'function') afterGroupPageRender();
   if (typeof afterOrgPageRender === 'function') afterOrgPageRender();
+  if (typeof afterNotebookRender === 'function') afterNotebookRender();
   if (typeof loadEmailTipsSetting === 'function') loadEmailTipsSetting();
   if (typeof updateTimerChrome === 'function') updateTimerChrome();
   const now = document.activeElement;
@@ -206,6 +207,7 @@ function initApp() {
   captureJoinParam();
   captureClassParam();
   captureOrgParam();
+  if (typeof captureNoteParam === 'function') captureNoteParam();
   capturePlanParam();
   save();
   bootFirebase();

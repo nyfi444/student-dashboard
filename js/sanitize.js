@@ -93,6 +93,8 @@ function copySafeAttributes(from, to, tag) {
     for (let i = 0; i < from.style.length; i++) {
       const prop = from.style[i];
       const value = from.style.getPropertyValue(prop);
+      // A notebook picture's size, as a share of the line (see notebook-media.js).
+      if (tag === 'img' && prop === 'width' && /^\d{1,3}(\.\d{1,2})?%$/.test(value)) { kept.push(`width: ${value}`); continue; }
       if (!SANITIZE_ALLOWED_STYLES.has(prop) || !value || value.length > 120) continue;
       if (!SANITIZE_STYLE_VALUE.test(value) || /url\(|expression|javascript|@import/i.test(value)) continue;
       kept.push(`${prop}: ${value}`);

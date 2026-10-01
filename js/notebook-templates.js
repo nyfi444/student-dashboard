@@ -183,7 +183,7 @@ function nbMarkFirstCornell(n, key) { if (key === 'cornell' && !state.settings.n
 // Puts the layout on a note. A blank note becomes the template; a note
 // with writing in it keeps that writing and gets the layout added below.
 function applyNoteTemplate(id, key) {
-  const n = state.notes.find(x => x.id === id && x.type === 'note');
+  const n = nbNoteById(id);
   const t = NOTE_TEMPLATES[key];
   if (!n || !t) return;
   const editor = $('#note-editor');
@@ -203,7 +203,7 @@ function applyNoteTemplate(id, key) {
 function insertTemplateBlock(key) {
   const t = NOTE_TEMPLATES[key];
   const editor = $('#note-editor');
-  const n = state.notes.find(x => x.id === window._nbCurrentNoteId);
+  const n = nbNoteById(window._nbCurrentNoteId);
   if (!t || !editor || !n) return;
   const block = window._slashBlock;
   if (block && block.parentElement && editor.contains(block)) { block.insertAdjacentHTML('beforebegin', t.html()); block.remove(); }

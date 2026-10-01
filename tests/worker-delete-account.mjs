@@ -162,6 +162,24 @@ await sandbox.removeMemberFromSharedSpace({}, 'studyGroups/ABC123', 'mem2', 'gro
 check('a clash with another member editing is retried', log.commits.length, 1);
 ok('every write is guarded by the version it read', lastWrite(log).updateTime === 't1');
 
+/* ── Shared notes ──────────────────────────────────────────────── */
+const noteDoc = (over = {}) => ({ ownerUid: 'own1', editorUids: ['own1', 'ed2', 'ed3'], people: { own1: { name: 'Ana' }, ed2: { name: 'Bo' } }, groupCode: '', orgCode: '', ...over });
+log = world(noteDoc());
+await sandbox.leaveSharedNote({}, 'NOTE01', 'ed2');
+check('an editor leaves a shared note: off the list, name gone', lastWrite(log), { path: 'sharedNotes/NOTE01', fields: { editorUids: ['own1', 'ed3'] }, clear: ['people.ed2'], updateTime: 't1' });
+check('an editor leaves: their presence and join records go', log.deletedDocs, ['sharedNotes/NOTE01/presence/ed2', 'sharedNotes/NOTE01/joins/ed2']);
+log = world(noteDoc());
+await sandbox.leaveSharedNote({}, 'NOTE01', 'own1');
+check('the owner leaves: the next person on it owns it', lastWrite(log).fields, { editorUids: ['ed2', 'ed3'], ownerUid: 'ed2' });
+log = world(noteDoc({ editorUids: ['own1'], groupCode: 'ABC123' }));
+await sandbox.leaveSharedNote({}, 'NOTE01', 'own1');
+check('a note only a group reaches stays for the group, with no owner', lastWrite(log).fields, { editorUids: [], ownerUid: '' });
+log = world(noteDoc({ editorUids: ['own1'] }));
+await sandbox.leaveSharedNote({}, 'NOTE01', 'own1');
+check('a note nobody else is on is deleted', log.deletedDocs, ['sharedNotes/NOTE01']);
+check('with its presence and join records', log.deletedSubs, ['sharedNotes/NOTE01/presence', 'sharedNotes/NOTE01/joins']);
+check('and its pictures', log.deletedFolders, ['sharedNotes/NOTE01/']);
+
 /* ── Field paths ───────────────────────────────────────────────── */
 ok('a plain uid is a safe field path', sandbox.safeFieldKey('abc123XYZ_-'));
 ok('a uid with a dot is refused', !sandbox.safeFieldKey('a.b'));

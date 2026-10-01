@@ -62,6 +62,24 @@ service firebase.storage {
       allow delete: if orgOfficer(code);
     }
 
+    // Pictures in a shared note (js/notebook-media.js). Anyone who can edit
+    // the note adds them; whoever added one, or the note's owner, removes it.
+    function sharedNote(id) { return firestore.get(/databases/(default)/documents/sharedNotes/$(id)); }
+    function sharedNoteExists(id) { return firestore.exists(/databases/(default)/documents/sharedNotes/$(id)); }
+    function sharedNoteEditor(id) {
+      return signedIn() && sharedNoteExists(id) && (
+        request.auth.uid in sharedNote(id).data.editorUids
+        || (sharedNote(id).data.groupCode != '' && groupMember(sharedNote(id).data.groupCode))
+        || (sharedNote(id).data.orgCode != '' && orgMember(sharedNote(id).data.orgCode)));
+    }
+    match /sharedNotes/{noteId}/images/{fileId} {
+      allow read: if sharedNoteEditor(noteId);
+      allow create: if sharedNoteEditor(noteId) && resource == null && under(10)
+        && request.resource.contentType.matches('image/.*');
+      allow update: if false;
+      allow delete: if signedIn() && (uploadedByMe() || (sharedNoteExists(noteId) && sharedNote(noteId).data.ownerUid == request.auth.uid));
+    }
+
     // Files sent as an answer to a form (js/spaces/forms.js). One file per
     // question, stored under the sender's own uid: .../forms/FORM/UID/QUESTION.
     // Only the sender puts one there, while the form is open and only if

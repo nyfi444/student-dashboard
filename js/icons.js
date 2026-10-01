@@ -87,6 +87,13 @@ const ICON_PATHS = {
   'chevron-down': '<path d="m6 9 6 6 6-6"/>',
   'arrow-up-down': '<path d="m21 16-4 4-4-4M17 20V4M3 8l4-4 4 4M7 4v16"/>',
   'folder-plus': '<path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4.2l1.6 2H19a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5A1.5 1.5 0 0 1 3.5 17.5v-11Z"/><path d="M12 10.5v5M9.5 13h5"/>',
+  // Notebook pictures and tables (js/notebook-media.js).
+  image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="m4 18 5.5-5.5 4 4 2.5-2.5 4.5 4.5"/>',
+  table: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M3.5 14.5h17M10 4.5v15"/>',
+  'img-left': '<rect x="3.5" y="5" width="8" height="7" rx="1.5"/><path d="M14.5 6h6M14.5 9h6M14.5 12h6M3.5 16h17M3.5 19.5h12"/>',
+  'img-right': '<rect x="12.5" y="5" width="8" height="7" rx="1.5"/><path d="M3.5 6h6M3.5 9h6M3.5 12h6M3.5 16h17M3.5 19.5h12"/>',
+  'img-center': '<rect x="7" y="4" width="10" height="8" rx="1.5"/><path d="M3.5 16h17M3.5 19.5h17"/>',
+  'img-full': '<rect x="3.5" y="4" width="17" height="10" rx="1.5"/><path d="M3.5 18h17"/>',
 };
 // One stroke weight on screen at every size: about 1.25px whether the icon
 // is drawn at 12 or 22. The width argument is kept for callers but only

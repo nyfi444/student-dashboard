@@ -141,34 +141,36 @@
   #app.sidebar-collapsed .notebook-layout.list-hidden .nb-topbar { padding-left: 56px; }
 }
 /* The format group stays centered over the text, so the actions get half
-   of what is left beside it: (bar content box - 378 group - 24 gaps) / 2.
+   of what is left beside it: (bar content box - 446 group - 24 gaps) / 2.
+   (The group was 378 until Picture and Table joined it; every width below
+   moved up by their 68px.)
    Pin, Flashcards, Share and ··· take 242 labeled (126 as icons), Log in
    adds 56. A Cornell note keeps the same four-button shape: while space is
-   short its Pin moves into the ··· menu (Cornell needs 1040 to show it,
-   1152 with Log in), then Cover drops to an icon (976, 1088), and last,
-   with every other note, Flashcards and Share lose their labels (886,
-   998). A few px of slack cover "Reveal", a little wider than "Cover". */
-@container nbbar (max-width: 1050px) {
+   short its Pin moves into the ··· menu (Cornell needs 1108 to show it,
+   1220 with Log in), then Cover drops to an icon (1044, 1156), and last,
+   with every other note, Flashcards and Share lose their labels (954,
+   1066). A few px of slack cover "Reveal", a little wider than "Cover". */
+@container nbbar (max-width: 1118px) {
   .nb-topbar:has(.nb-act-cover) .nb-act-pin { display: none; }
   .nb-topbar:has(.nb-act-cover) .nb-more-menu .nb-menu-pin { display: flex; }
 }
-@container nbbar (max-width: 986px) {
+@container nbbar (max-width: 1054px) {
   .nb-act-cover .nb-act-label { display: none; }
   .nb-page-actions .nb-act-cover { width: 30px; padding: 0; }
 }
-@container nbbar (max-width: 890px) {
+@container nbbar (max-width: 958px) {
   .nb-act-label { display: none; }
   .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
 }
-@container nbbar (max-width: 1160px) {
+@container nbbar (max-width: 1228px) {
   #app.sidebar-collapsed .nb-topbar:has(.nb-act-cover):has(.head-login) .nb-act-pin { display: none; }
   #app.sidebar-collapsed .nb-topbar:has(.nb-act-cover):has(.head-login) .nb-more-menu .nb-menu-pin { display: flex; }
 }
-@container nbbar (max-width: 1096px) {
+@container nbbar (max-width: 1164px) {
   #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-act-cover .nb-act-label { display: none; }
   #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-page-actions .nb-act-cover { width: 30px; padding: 0; }
 }
-@container nbbar (max-width: 1004px) {
+@container nbbar (max-width: 1072px) {
   #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-act-label { display: none; }
   #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
 }
@@ -189,16 +191,20 @@
 }
 /* The same, a little sooner, when the collapsed sidebar adds Log in or
    its floating expand button's padding to the bar. */
-@container nbpage (max-width: 880px) {
+@container nbpage (max-width: 948px) {
   #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 48px auto; height: auto; row-gap: 0; }
   #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) .nb-toolbar { grid-row: 2; grid-column: 1 / -1; justify-self: center; flex-wrap: nowrap; justify-content: flex-start; height: 40px; max-width: 100%; padding-bottom: 4px; overflow-x: auto; }
   #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) .nb-toolbar-sep { display: none; }
 }
 
-/* Row two holds the group at 331px (84 style + 7 buttons + gaps) inside
-   the bar's 20px of padding. Below that, Link and Checklist fold into the
-   Aa popover (263px), and on the narrowest canvas Bulleted list too,
-   with no gaps (219px). openNbTypePop shows each folded item's popover twin. */
+/* Row two holds the group at 399px (84 style + 9 buttons + gaps) inside
+   the bar's 20px of padding. Below that, Picture and Table fold into the
+   Aa popover (331px), then Link and Checklist (263px), and on the
+   narrowest canvas Bulleted list too, with no gaps (219px).
+   openNbTypePop shows each folded item's popover twin. */
+@container nbpage (max-width: 424px) {
+  .nb-topbar [data-nb-fold="image"], .nb-topbar [data-nb-fold="table"] { display: none; }
+}
 @container nbpage (max-width: 356px) {
   .nb-topbar [data-nb-fold="link"], .nb-topbar [data-nb-fold="checklist"] { display: none; }
 }
@@ -596,3 +602,94 @@ html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body 
   .nb-folder-actions { opacity: 1; pointer-events: auto; }
   .nb-note-del, .nb-note-row:hover .nb-note-del { display: none; }
 }
+
+/* ── Pictures and tables (js/notebook-media.js) ──────────────────
+   A picture's layout is a class and its size a percent width, both saved
+   with the note. Left and right float so the text beside wraps around
+   them; the note clears them at its end. ── */
+.rich-editor img.nb-img { display: block; height: auto; max-width: 100%; border-radius: var(--r-tight); }
+.rich-editor img.nb-img-center { margin: 8px auto; }
+.rich-editor img.nb-img-full { width: 100%; margin: 8px 0; }
+.rich-editor img.nb-img-left { float: left; margin: 4px 20px 12px 0; }
+.rich-editor img.nb-img-right { float: right; margin: 4px 0 12px 20px; }
+.rich-editor::after { content: ''; display: table; clear: both; }
+/* Headings, tables and code start below a wrapped picture, never squeezed beside it. */
+.rich-editor :is(h1, h2, h3, table, pre, hr) { clear: both; }
+.nb-editor-body img { cursor: pointer; }
+/* On a phone a wrapped picture would leave a sliver of text, so it sits on its own line. */
+@container nbpage (max-width: 480px) {
+  .rich-editor img.nb-img-left, .rich-editor img.nb-img-right { float: none; margin: 8px auto; }
+}
+@media (max-width: 480px) {
+  .rich-editor img.nb-img-left, .rich-editor img.nb-img-right { float: none; margin: 8px auto; }
+}
+.nb-img-bar { position: fixed; display: none; align-items: center; gap: 2px; padding: 4px; z-index: 250; background: var(--surface-float); border: 1px solid var(--float-edge); border-radius: var(--r-tight); box-shadow: var(--shadow-float); animation: menuIn var(--dur-2) var(--ease-out); }
+.nb-img-bar.is-shown { display: flex; }
+.nb-img-bar button { display: flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 6px; border: 0; border-radius: var(--r-tight-active); background: transparent; font: 600 13px var(--font); color: var(--text-dim); cursor: pointer; }
+.nb-img-bar button:hover { background: var(--fill-hover); color: var(--text); }
+.nb-img-bar button.active { background: var(--fill-selected); color: var(--text); box-shadow: inset 0 0 0 1px var(--control-border); }
+.nb-img-bar button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.nb-img-bar button .i { width: 16px; height: 16px; }
+.nb-img-bar .nb-bubble-sep { width: 1px; height: 18px; margin: 0 3px; background: var(--hairline); }
+.nb-img-frame { position: fixed; display: none; z-index: 240; pointer-events: none; border-radius: var(--r-tight); box-shadow: 0 0 0 2px var(--accent); }
+.nb-img-frame.is-shown { display: block; }
+.nb-img-handle { position: absolute; bottom: -7px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--accent); pointer-events: auto; touch-action: none; }
+.nb-img-handle.is-left { left: -7px; cursor: nesw-resize; }
+.nb-img-handle.is-right { right: -7px; cursor: nwse-resize; }
+/* A bigger target for a finger, same dot. */
+.nb-img-handle::before { content: ''; position: absolute; inset: -12px; }
+body.nb-resizing, body.nb-resizing * { cursor: nwse-resize !important; user-select: none; -webkit-user-select: none; }
+
+/* Tables made with the Table button read as ordinary text, not a layout's labels. */
+.rich-editor table.nb-table th { font: 600 14px/1.4 var(--font); letter-spacing: 0; text-transform: none; }
+.nb-editor-body table.nb-table th { color: var(--text); background: var(--surface-2); }
+.nb-editor-body table.nb-table td:first-child { color: var(--text); }
+/* Each cell carries its own border, so a narrow screen (where a table
+   scrolls sideways as a block) shows no empty frame past the last column. */
+.nb-editor-body table.nb-table td, .nb-editor-body table.nb-table th,
+.nb-export .rich-editor table.nb-table td, .nb-export .rich-editor table.nb-table th { border: 1px solid var(--border); }
+.nb-table-btn { position: fixed; display: none; align-items: center; gap: 4px; height: 26px; padding: 0 8px; z-index: 240; border: 1px solid var(--float-edge); border-radius: var(--r-tight-active); background: var(--surface-float); box-shadow: var(--shadow-float); font: 600 12px var(--font); color: var(--text-dim); cursor: pointer; }
+.nb-table-btn.is-shown { display: inline-flex; }
+.nb-table-btn:hover { color: var(--text); }
+.nb-table-btn .i { width: 14px; height: 14px; }
+.nb-table-pick { position: fixed; display: none; z-index: 260; padding: 10px; width: 184px; animation: menuIn var(--dur-2) var(--ease-out); }
+.nb-table-pick.is-shown { display: block; }
+.nb-tp-grid { display: grid; gap: 4px; }
+.nb-tp-cell { aspect-ratio: 1; min-width: 0; padding: 0; border: 1px solid var(--border); border-radius: 3px; background: transparent; cursor: pointer; }
+.nb-tp-cell.on { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: var(--accent); }
+.nb-tp-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.nb-tp-label { margin-top: 8px; text-align: center; font: 600 12px var(--font); color: var(--text-dim); }
+
+/* ── Shared notes (js/notebook-shared.js) ──────────────────────── */
+.nb-note-shared .nb-shared-ic { display: inline-flex; color: var(--text-faint); }
+.nb-note-shared .nb-shared-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-people { display: inline-flex; align-items: center; min-width: 0; }
+.nb-people-dots { display: inline-flex; align-items: center; padding: 0 4px; }
+.nb-person { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: var(--c, var(--text-dim)); color: #fff; font: 600 11px/1 var(--font); box-shadow: 0 0 0 2px var(--surface); }
+.nb-people-dots .nb-person + .nb-person { margin-left: -6px; }
+.nb-person-more { background: var(--surface-2); color: var(--text-dim); }
+.nb-person-group { background: var(--surface-2); color: var(--text-dim); }
+.nb-person-group .i { width: 12px; height: 12px; }
+.nb-prop-shared { cursor: pointer; }
+.nb-page-inner.is-shared { position: relative; }
+.nb-carets { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.nb-rcaret { position: absolute; width: 2px; margin-left: -1px; background: var(--c); border-radius: 1px; }
+.nb-rcaret-name { position: absolute; bottom: 100%; left: -1px; padding: 1px 6px; border-radius: 4px; background: var(--c); color: #fff; font: 600 11px/1.5 var(--font); white-space: nowrap; transform: translateY(-1px); }
+.nb-share-body .nb-share-who { display: grid; gap: 6px; }
+.nb-share-opt { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; cursor: pointer; }
+.nb-share-opt input { margin-top: 3px; }
+.nb-share-opt-text { display: grid; gap: 2px; }
+.nb-share-pick { padding: 0 0 6px 28px; }
+.nb-share-pick .select { width: 100%; max-width: 100%; }
+.nb-share-linkrow { display: flex; gap: 8px; min-width: 0; }
+.nb-share-linkrow .input { flex: 1; min-width: 0; font-size: 13px; }
+.nb-share-section-label { margin: 8px 0 6px; font: 600 11px/1.3 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+.nb-share-people { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 2px; }
+.nb-share-person { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.nb-share-person .nb-person { box-shadow: none; }
+.nb-share-person-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-share-change { margin-top: 8px; border-top: 1px solid var(--hairline); padding-top: 10px; }
+.nb-share-change summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.nb-share-save { display: flex; gap: 8px; margin-top: 8px; }
+.nb-share-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nb-share-foot .spacer { flex: 1; }

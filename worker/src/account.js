@@ -190,6 +190,36 @@ async function eraseFormAnswers(env, uid) {
   return failed;
 }
 
+// A shared note (js/notebook-shared.js) they were on. Someone else on it
+// becomes the owner; a note that only a study group or club reaches stays
+// for that group with no owner; a note nobody else is on goes, with its
+// pictures. Read-modify-write on updateTime, like the spaces above.
+async function leaveSharedNote(env, noteId, uid) {
+  if (!safeFieldKey(uid) || !safeFieldKey(noteId)) throw new Error('Unsafe id for a field path');
+  const path = `sharedNotes/${noteId}`;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const snap = await readFirestoreDocWithTime(env, path);
+    if (!snap) return;
+    const d = snap.data;
+    const others = (d.editorUids || []).filter(u => u !== uid);
+    const reachedByGroup = !!(d.groupCode || d.orgCode);
+    if (d.ownerUid === uid && !others.length && !reachedByGroup) {
+      for (const sub of ['presence', 'joins']) await deleteFirestoreSubcollection(env, path, sub);
+      await deleteStorageFolder(env, `${path}/`);
+      await deleteFirestoreDoc(env, 'sharedNotes', noteId);
+      return;
+    }
+    const fields = { editorUids: others };
+    if (d.ownerUid === uid) fields.ownerUid = others[0] || '';
+    if (await commitFirestore(env, [{ path, fields, clear: [`people.${uid}`], updateTime: snap.updateTime }])) {
+      await deleteFirestoreDoc(env, `${path}/presence`, uid).catch(() => {});
+      await deleteFirestoreDoc(env, `${path}/joins`, uid).catch(() => {});
+      return;
+    }
+  }
+  throw new Error(`Could not update ${path} after 5 attempts`);
+}
+
 async function leaveSharedSpaces(env, uid, planner) {
   const failed = [];
   const step = async (what, fn) => {
@@ -208,6 +238,16 @@ async function leaveSharedSpaces(env, uid, planner) {
 
   await step('list clubs', async () => { orgs = await membersOf('orgs'); });
   for (const o of orgs) await step(`leave club ${o.id}`, () => removeMemberFromSharedSpace(env, `orgs/${o.id}`, uid, 'org'));
+
+  let notes = [];
+  await step('list shared notes', async () => {
+    notes = await runFirestoreQuery(env, {
+      from: [{ collectionId: 'sharedNotes' }],
+      where: { fieldFilter: { field: { fieldPath: 'editorUids' }, op: 'ARRAY_CONTAINS', value: { stringValue: uid } } },
+      limit: SHARED_SPACE_SCAN_LIMIT,
+    });
+  });
+  for (const n of notes) await step(`leave shared note ${n.id}`, () => leaveSharedNote(env, n.id, uid));
 
   // Off every blocked list too: a blocked list keeps a name.
   await step('come off blocked lists', () => clearBlockedEverywhere(env, uid));

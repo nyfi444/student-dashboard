@@ -25,6 +25,9 @@
   expect('url() in inline styles is dropped', '<span style="background-image:url(javascript:1);color:red">t</span>', (g) => lacks('url(')(g) && has('color: red')(g));
   expect('allowed inline styles are kept', '<span style="background-color: rgb(255, 235, 59); font-weight: bold">t</span>', has('background-color: rgb(255, 235, 59)', 'font-weight: bold'));
   expect('position and other styles are dropped', '<div style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:#fff">t</div>', lacks('position', 'width'));
+  expect('a notebook picture keeps its layout and percent width', '<img class="nb-img nb-img-left" src="https://e.com/a.jpg" style="width: 40%">', has('class="nb-img nb-img-left"', 'style="width: 40%"'));
+  expect('a picture width in anything but percent is dropped', '<img src="https://e.com/a.jpg" style="width: 100vw">', lacks('width'));
+  expect('a percent width on anything but a picture is dropped', '<div style="width: 50%">t</div>', lacks('width'));
   expect('nb- classes survive, others do not', '<div class="nb-todo-line other-class"><input type="checkbox" checked>&nbsp;task</div>', (g) => has('class="nb-todo-line"', 'type="checkbox"', 'checked')(g) && lacks('other-class')(g));
   expect('non-checkbox inputs are dropped', '<input type="text" value="x"><input type="image" src="x" onerror="1">', lacks('<input'));
   expect('unknown wrappers keep their text', '<section><article><custom-el>kept</custom-el></article></section>', (g) => has('kept')(g) && lacks('<section', '<custom-el')(g));

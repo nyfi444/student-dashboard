@@ -209,6 +209,8 @@ async function startGroupSync() {
   handlePendingJoin();
   if (typeof syncSharedClasses === 'function') syncSharedClasses();
   if (typeof startOrgSync === 'function') startOrgSync();
+  // A shared-note invite link, once the account is ready (js/notebook-shared.js).
+  if (typeof handlePendingNote === 'function') handlePendingNote();
   if (typeof render === 'function') render();
 }
 // Anything in the planner that isn't a cloud membership entry: first-version
@@ -578,6 +580,6 @@ function pendingInviteBanner() {
 }
 // Called at the end of every auth state change (see firebase.js).
 function onGroupsAuthResolved() {
-  if (!_fbUser) { handlePendingJoin(); if (typeof handlePendingClass === 'function' && !pendingJoinCode()) handlePendingClass(); if (typeof handlePendingOrg === 'function' && !pendingJoinCode() && !pendingClassCode()) handlePendingOrg(); }
+  if (!_fbUser) { handlePendingJoin(); if (typeof handlePendingClass === 'function' && !pendingJoinCode()) handlePendingClass(); if (typeof handlePendingOrg === 'function' && !pendingJoinCode() && !pendingClassCode()) handlePendingOrg(); if (typeof handlePendingNote === 'function' && !pendingJoinCode() && !pendingClassCode() && !(typeof pendingOrgCode === 'function' && pendingOrgCode())) handlePendingNote(); }
 }
 

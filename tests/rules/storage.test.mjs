@@ -193,3 +193,36 @@ describe('studyGroups/{groupId}/{fileId} (original format)', () => {
     await assertFails(put('alice', 'studyGroups/oldgroup/f2.pdf'));
   });
 });
+
+/* ── Pictures in a shared note ──────────────────────────────────── */
+describe('sharedNotes/{noteId}/images', () => {
+  const image = (uid, path) => uploadBytes(ref(store(uid), path), bytes(), { contentType: 'image/jpeg', customMetadata: { uploadedBy: uid } });
+  const seedNote = async () => {
+    await seedDoc('studyGroups/GRP001', { createdBy: 'carol', memberUids: ['carol'] });
+    await seedDoc('sharedNotes/n1', { ownerUid: 'alice', editorUids: ['alice', 'bob'], groupCode: 'GRP001', orgCode: '' });
+  };
+  test('editors and the group it is shared with can add and open pictures', async () => {
+    await seedNote();
+    await assertSucceeds(image('bob', 'sharedNotes/n1/images/p1.jpg'));
+    await assertSucceeds(image('carol', 'sharedNotes/n1/images/p2.jpg'));
+    await assertSucceeds(getBytes(ref(store('alice'), 'sharedNotes/n1/images/p1.jpg')));
+  });
+  test('mallory can neither add nor open one', async () => {
+    await seedNote();
+    await seedFile('sharedNotes/n1/images/p1.jpg', 'bob');
+    await assertFails(image('mallory', 'sharedNotes/n1/images/p9.jpg'));
+    await assertFails(getBytes(ref(store('mallory'), 'sharedNotes/n1/images/p1.jpg')));
+  });
+  test('only pictures, and nobody replaces one', async () => {
+    await seedNote();
+    await assertFails(put('bob', 'sharedNotes/n1/images/x.html'));
+    await seedFile('sharedNotes/n1/images/p1.jpg', 'bob');
+    await assertFails(image('carol', 'sharedNotes/n1/images/p1.jpg'));
+  });
+  test('whoever added it, or the owner, removes it; nobody else', async () => {
+    await seedNote();
+    await seedFile('sharedNotes/n1/images/p1.jpg', 'bob');
+    await assertFails(deleteObject(ref(store('carol'), 'sharedNotes/n1/images/p1.jpg')));
+    await assertSucceeds(deleteObject(ref(store('alice'), 'sharedNotes/n1/images/p1.jpg')));
+  });
+});

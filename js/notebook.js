@@ -12,6 +12,8 @@ const SLASH_COMMANDS = [
   { key: 'quote', label: 'Quote', desc: 'Callout quote block', icon: 'text-quote', group: 'Basics', run: () => document.execCommand('formatBlock', false, 'BLOCKQUOTE') },
   { key: 'divider', label: 'Divider', desc: 'Visual line break', icon: 'minus', group: 'Basics', run: () => document.execCommand('insertHTML', false, '<hr><p><br></p>') },
   { key: 'code', label: 'Code block', desc: 'Monospace snippet', icon: 'code', group: 'Basics', run: () => document.execCommand('formatBlock', false, 'PRE') },
+  { key: 'image', label: 'Picture', desc: 'A photo or image; wrap text around it', icon: 'image', group: 'Basics', run: () => nbPickPicture() },
+  { key: 'table', label: 'Table', desc: 'Rows and columns', icon: 'table', group: 'Basics', run: () => nbInsertTable(3, 3) },
   { key: 'cornell', label: 'Cornell layout', desc: 'Cues, notes, and a summary', icon: 'grid', group: 'Layouts', run: () => insertTemplateBlock('cornell') },
   { key: 'lab', label: 'Lab report', desc: 'Purpose through conclusion, with a data table', icon: 'clipboard-list', group: 'Layouts', run: () => insertTemplateBlock('lab') },
   { key: 'lecture', label: 'Lecture notes', desc: 'Big idea, notes, examples, questions, summary', icon: 'book-open', group: 'Layouts', run: () => insertTemplateBlock('lecture') },
@@ -22,15 +24,23 @@ const SLASH_COMMANDS = [
 ];
 
 function pageNotebook() {
+  nbFlushEditor();
   const allNotes = state.notes.filter(n => n.type === 'note');
   const selectedId = state.notebookSelected || allNotes[0]?.id;
-  const note = state.notes.find(n => n.id === selectedId && n.type === 'note');
+  const sharedSel = nbIsSharedId(selectedId);
+  const note = sharedSel ? nbSharedNote(selectedId) : state.notes.find(n => n.id === selectedId && n.type === 'note');
+  // Whoever is typing keeps their place through the rebuild. Two redraws in
+  // a row keep the first one's place: by the second, the first has already
+  // put the caret back at the start of the new editor.
+  const caret = window._nbCaretPending || nbCaretSnapshot();
+  window._nbCaretPending = caret;
   const search = (state._notebookSearch || '').trim().toLowerCase();
   const sort = state._notebookSort || 'edited';
   // Pinned notes show once, in Pinned; the tree below leaves them out. Both
   // lists answer to the same search.
   const pinned = sortNotebookNotes(allNotes.filter(n => n.pinned && notebookNoteMatches(n, search)), sort);
   const tree = notebookTree('root', 0, search, sort);
+  const sharedSection = nbSharedSectionHtml(search, sort, selectedId);
   const hasFolders = state.notes.some(n => n.type === 'folder' && n.id !== 'root');
 
   const listHidden = notebookListHidden();
@@ -58,20 +68,24 @@ function pageNotebook() {
             <div class="nb-section-label"><span>Pinned</span></div>
             <div class="nb-rows">${pinned.map(n => nbNoteRowHtml(n, selectedId, true)).join('')}</div>
           </div>` : ''}
+          ${sharedSection}
           ${allNotes.length || hasFolders ? `<div class="nb-section nb-section-notes">
             <div class="nb-section-label"><span>Notes</span>
               <label class="nb-sort">${sort === 'alpha' ? 'A–Z' : 'Recent'}${icon('chevron-down', 12)}<select aria-label="Sort notes" onchange="state._notebookSort=this.value;touch()"><option value="edited" ${sort !== 'alpha' ? 'selected' : ''}>Recent</option><option value="alpha" ${sort === 'alpha' ? 'selected' : ''}>A–Z</option></select></label>
             </div>
             ${tree ? `<div class="nb-rows">${tree}</div>` : ''}
           </div>` : `<div class="nb-list-empty"><span class="nb-list-empty-line">No notes yet.</span><div class="nb-list-empty-phone">${emptyStateHtml({ icon: 'book-open', title: 'Your notebook is empty', body: 'Start a page for your next lecture, or pick a layout like Cornell notes.', compact: true, actions: [{ label: 'New note', onclick: "createNote('root')", icon: 'plus' }, { label: 'Browse layouts', onclick: "openNoteTemplateModal('root')", primary: false }] })}</div></div>`}
-          ${search && !tree && !pinned.length ? `<div class="nb-no-match">No notes match “${esc(state._notebookSearch.trim())}”. <button type="button" class="sg-link" onclick="state._notebookSearch='';touch()">Clear search</button></div>` : ''}
+          ${search && !tree && !pinned.length && !sharedSection ? `<div class="nb-no-match">No notes match “${esc(state._notebookSearch.trim())}”. <button type="button" class="sg-link" onclick="state._notebookSearch='';touch()">Clear search</button></div>` : ''}
         </div>
       </div>
       <div class="notebook-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize notes list" tabindex="0" onmousedown="startNotebookTreeResize(event)" onkeydown="onNotebookResizeKey(event)"></div>
       <div class="notebook-page" id="nb-page" data-keep-scroll>
         ${note ? renderNoteEditor(note) : `
           <div class="nb-topbar"><div class="nb-topbar-left">${nbListToggleHtml(listHidden)}${nbBackHtml()}</div></div>
-          <div class="nb-blank">${allNotes.length
+          <div class="nb-blank">${sharedSel
+            ? (nbSharedEnabled() && !_nbShared.loaded ? emptyStateHtml({ title: 'Opening the shared note…', body: 'One moment.' })
+              : emptyStateHtml({ title: 'This shared note isn’t available', body: nbSharedEnabled() ? 'It may have been deleted, or it’s no longer shared with you.' : 'Log in to open notes shared with you.', actions: [{ label: 'New note', onclick: "createNote('root')", icon: 'plus' }] }))
+            : allNotes.length
             ? emptyStateHtml({ title: 'No note open', body: 'Pick a note from the list, or start a new page.', actions: [{ label: 'New note', onclick: "createNote('root')", icon: 'plus' }] })
             : emptyStateHtml({ icon: 'book-open', title: 'Your notebook is empty', body: 'Start a page for your next lecture, or pick a layout like Cornell notes.', actions: [{ label: 'New note', onclick: "createNote('root')", icon: 'plus' }, { label: 'Browse layouts', onclick: "openNoteTemplateModal('root')", primary: false }] })}</div>`}
       </div>
@@ -95,9 +109,10 @@ function pageNotebook() {
     <div class="nb-color-popover" id="nb-color-popover"></div>
     <div class="nb-type-pop menu-surface" id="nb-type-pop" role="menu" aria-label="More formatting">${nbTypePopHtml()}</div>
     <input type="file" id="nb-file-input" multiple style="display:none" onchange="handleNoteFileUpload(this.files)">
+    ${nbMediaBarsHtml()}
   `;
   setTimeout(() => {
-    wireBubbleToolbar(); wireSlashMenu(); updateNbColorSwatches();
+    wireBubbleToolbar(); wireSlashMenu(); updateNbColorSwatches(); wireNbMedia(); wireNbShared();
     wireNbKeyboardBar(); nbUpdateKeyboardInset();
     const editor = $('#note-editor');
     if (editor) nbTagInks(editor);
@@ -110,8 +125,35 @@ function pageNotebook() {
     // A re-render while typing (a sync, a pin) keeps the phone keyboard bar up.
     const layout = $('.notebook-layout');
     if (layout && editor && editor.contains(document.activeElement)) layout.classList.add('is-editing');
+    afterNotebookRender();
+    nbSharedAttach(note);
   }, 0);
   return html;
+}
+
+// A redraw (a sync landing, a groupmate's change, a pin) rebuilds the
+// editor from the note, and what was typed in the last half second hasn't
+// been saved into the note yet: the redraw wiped it. So it goes in first,
+// unless the note itself was replaced by a newer copy from another device
+// since it was drawn, in which case that copy is what should show.
+function nbFlushEditor() {
+  const editor = document.getElementById('note-editor');
+  const r = window._nbRendered;
+  if (!editor || !r || r.id !== window._nbCurrentNoteId || nbIsSharedId(r.id)) return;
+  const n = state.notes.find(x => x.id === r.id);
+  if (!n || n !== r.note || n.content !== r.content) return;
+  const html = editor.innerHTML;
+  if (html !== n.content) { n.content = html; r.content = html; }
+}
+
+// Straight after the page is rebuilt, in the same task (render() calls
+// this), so no keystroke can land in the new editor before the caret is
+// back where it was. The setTimeout in pageNotebook is the fallback.
+function afterNotebookRender() {
+  const caret = window._nbCaretPending;
+  if (!caret || state.route !== 'notebook' || !document.getElementById('note-editor')) return;
+  window._nbCaretPending = null;
+  nbCaretRestore(caret);
 }
 
 /* ── Notes list pieces ── */
@@ -202,6 +244,8 @@ function nbTypePopHtml() {
     <button role="menuitem" class="menu-item nb-type-folded" data-nb-folded="link" ${pd} onclick="closeNbTypePop();promptInsertLink()">${icon('link', 16)}<span>Insert link</span></button>
     <button role="menuitem" class="menu-item nb-type-folded" data-nb-folded="checklist" ${pd} onclick="closeNbTypePop();insertNbChecklist()">${icon('check-square', 16)}<span>Checklist</span></button>
     <button role="menuitem" class="menu-item nb-type-folded" data-nb-folded="list" ${pd} onclick="closeNbTypePop();runNbCommand('insertUnorderedList')">${icon('list', 16)}<span>Bulleted list</span></button>
+    <button role="menuitem" class="menu-item nb-type-folded" data-nb-folded="image" ${pd} onclick="closeNbTypePop();nbPickPicture()">${icon('image', 16)}<span>Picture</span></button>
+    <button role="menuitem" class="menu-item nb-type-folded" data-nb-folded="table" ${pd} onclick="closeNbTypePop();nbInsertTable(3,3)">${icon('table', 16)}<span>Table</span></button>
     <div class="menu-label">Font</div>
     ${NB_FONT_FAMILIES.map(f => `<button role="menuitem" class="menu-item nb-font-item" ${pd} onclick="${f.value ? `runNbFontFamily(${esc(JSON.stringify(f.value))})` : `runNbFontFamily(getComputedStyle($('#note-editor')).fontFamily)`};closeNbTypePop()" style="font-family:${esc(f.value || 'var(--font)')}">${esc(f.label)}</button>`).join('')}
     <div class="menu-label">Size</div>
@@ -439,7 +483,7 @@ function wireBubbleToolbar() {
   if (!editor || !bar) return;
   const positionBubble = () => {
     // While Aa or a color popover is open, the bubble stays down.
-    if (nbPopoverOpen()) { bar.style.display = 'none'; return; }
+    if (nbPopoverOpen() || window._nbImg) { bar.style.display = 'none'; return; }
     const sel = window.getSelection();
     if (!sel || !sel.anchorNode || !editor.contains(sel.anchorNode) || sel.isCollapsed) { bar.style.display = 'none'; return; }
     const rect = sel.getRangeAt(0).getBoundingClientRect();
@@ -1065,8 +1109,12 @@ function deleteNoteItem(id) {
 
 function renderNoteEditor(note) {
   window._nbCurrentNoteId = note.id;
+  window._nbRendered = { id: note.id, note, content: note.content };
   const words = plainTextOfNote(note).trim().split(/\s+/).filter(Boolean).length;
-  const crumbs = notePath(note);
+  const shared = !!note.shared;
+  const rec = shared ? note.rec : null;
+  const isOwner = shared && rec?.ownerUid === _fbUser?.uid;
+  const crumbs = shared ? ['Shared'] : notePath(note);
   const tpl = noteTemplateOf(note);
   const tplDef = tpl ? NOTE_TEMPLATES[tpl] : null;
   const blank = !tpl && noteIsBlank(note);
@@ -1100,41 +1148,50 @@ function renderNoteEditor(note) {
         <button data-nb-fold="list" ${pd} onclick="runNbCommand('insertUnorderedList')" aria-label="Bulleted list" data-tip="Bulleted list">${icon('list', 16)}</button>
         <button data-nb-fold="checklist" ${pd} onclick="insertNbChecklist()" aria-label="Checklist" data-tip="Checklist">${icon('check-square', 16)}</button>
         <span class="nb-toolbar-sep" aria-hidden="true"></span>
+        <button data-nb-fold="image" ${pd} onclick="nbPickPicture()" aria-label="Add a picture" data-tip="Picture">${icon('image', 16)}</button>
+        <button data-nb-fold="table" ${pd} onclick="openNbTablePick(this)" aria-label="Add a table" aria-haspopup="dialog" data-tip="Table">${icon('table', 16)}</button>
+        <span class="nb-toolbar-sep" aria-hidden="true"></span>
         <button data-nb-fold="link" ${pd} onclick="promptInsertLink()" aria-label="Insert link" data-tip="Link">${icon('link', 16)}</button>
         <button id="nb-type-btn" ${pd} onclick="openNbTypePop(this, event)" aria-label="More formatting" aria-haspopup="menu" aria-expanded="false" data-tip="More formatting">${icon('type', 16)}</button>
       </div>
       <div class="nb-page-actions">
         ${signInHeaderButton()}
         ${tpl === 'cornell' ? `<button class="btn btn-ghost btn-sm nb-act-cover ${covered ? 'is-on' : ''}" id="nb-cover-btn" aria-pressed="${covered}" aria-label="${covered ? 'Reveal notes' : 'Cover notes'}" data-tip="Hide the notes column and answer from your cues" onclick="toggleCornellCover()">${nbCoverBtnInner(covered)}</button>` : ''}
-        <button class="btn btn-ghost btn-sm btn-icon nb-act-pin ${note.pinned ? 'is-on' : ''}" aria-pressed="${!!note.pinned}" aria-label="${note.pinned ? 'Unpin note' : 'Pin note'}" data-tip="${note.pinned ? 'Unpin note' : 'Pin note'}" onclick="toggleNotePinned('${note.id}')">${icon('pin', 16)}</button>
-        <button class="btn btn-ghost btn-sm nb-act-cards" aria-label="Flashcards" data-tip="Make flashcards from this note" onclick="openGenerateDeckModal('${note.id}')">${icon('layers', 16)}<span class="nb-act-label">Flashcards</span></button>
-        <button class="btn btn-ghost btn-sm nb-act-share" aria-label="Share" data-tip="Share with a group" onclick="shareNoteToGroup('${note.id}')">${icon('users', 16)}<span class="nb-act-label">Share</span></button>
+        ${shared ? `<div class="nb-people" id="nb-shared-people">${nbSharedPeopleHtml()}</div>` : `<button class="btn btn-ghost btn-sm btn-icon nb-act-pin ${note.pinned ? 'is-on' : ''}" aria-pressed="${!!note.pinned}" aria-label="${note.pinned ? 'Unpin note' : 'Pin note'}" data-tip="${note.pinned ? 'Unpin note' : 'Pin note'}" onclick="toggleNotePinned('${note.id}')">${icon('pin', 16)}</button>
+        <button class="btn btn-ghost btn-sm nb-act-cards" aria-label="Flashcards" data-tip="Make flashcards from this note" onclick="openGenerateDeckModal('${note.id}')">${icon('layers', 16)}<span class="nb-act-label">Flashcards</span></button>`}
+        <button class="btn btn-ghost btn-sm nb-act-share" aria-label="Share" data-tip="${shared ? 'Who can edit, and the invite link' : 'Edit together, or send a copy'}" onclick="${shared ? `nbOpenSharedPanel('${note.id}')` : `openNoteShareModal('${note.id}')`}">${icon('users', 16)}<span class="nb-act-label">Share</span></button>
         <details class="nb-more">
           <summary class="btn btn-ghost btn-sm btn-icon" aria-label="More for this note" data-tip="More">${icon('more-horizontal', 16)}</summary>
           <div class="nb-more-menu menu-surface" role="menu">
-            <button role="menuitem" class="menu-item nb-menu-phone nb-menu-pin" onclick="this.closest('details').open=false;toggleNotePinned('${note.id}')">${icon('pin', 16)}<span>${note.pinned ? 'Unpin note' : 'Pin note'}</span></button>
-            <button role="menuitem" class="menu-item nb-menu-phone" onclick="this.closest('details').open=false;openGenerateDeckModal('${note.id}')">${icon('layers', 16)}<span>Make flashcards</span></button>
+            ${shared ? '' : `<button role="menuitem" class="menu-item nb-menu-phone nb-menu-pin" onclick="this.closest('details').open=false;toggleNotePinned('${note.id}')">${icon('pin', 16)}<span>${note.pinned ? 'Unpin note' : 'Pin note'}</span></button>
+            <button role="menuitem" class="menu-item nb-menu-phone" onclick="this.closest('details').open=false;openGenerateDeckModal('${note.id}')">${icon('layers', 16)}<span>Make flashcards</span></button>`}
             ${tpl === 'cornell' ? `<button role="menuitem" class="menu-item nb-menu-phone" id="nb-cover-item" onclick="this.closest('details').open=false;toggleCornellCover()">${nbCoverIcon(covered)}<span>${covered ? 'Reveal notes' : 'Cover notes'}</span></button>` : ''}
-            <button role="menuitem" class="menu-item" onclick="this.closest('details').open=false;duplicateNote('${note.id}')">${icon('copy', 16)}<span>Duplicate</span></button>
-            <button role="menuitem" class="menu-item" onclick="this.closest('details').open=false;openMoveNoteModal('${note.id}')">${icon('folder', 16)}<span>Move to a folder</span></button>
+            ${shared ? `<button role="menuitem" class="menu-item" onclick="this.closest('details').open=false;nbCopySharedToMine('${note.sid}')">${icon('copy', 16)}<span>Save a copy to my notebook</span></button>`
+              : `<button role="menuitem" class="menu-item" onclick="this.closest('details').open=false;duplicateNote('${note.id}')">${icon('copy', 16)}<span>Duplicate</span></button>
+            <button role="menuitem" class="menu-item" onclick="this.closest('details').open=false;openMoveNoteModal('${note.id}')">${icon('folder', 16)}<span>Move to a folder</span></button>`}
             <button role="menuitem" class="menu-item" onclick="this.closest('details').open=false;triggerNoteFileUpload('${note.id}')">${icon('upload', 16)}<span>Upload a file</span></button>
             <button role="menuitem" class="menu-item" onclick="this.closest('details').open=false;exportNoteToPdf('${note.id}')">${icon('download', 16)}<span>Export as PDF</span></button>
-            <div class="menu-sep" role="separator"></div>
-            <button role="menuitem" class="menu-item is-danger" onclick="this.closest('details').open=false;deleteNoteItem('${note.id}')">${icon('trash', 16)}<span>Delete note</span></button>
+            ${!shared ? `<div class="menu-sep" role="separator"></div>
+            <button role="menuitem" class="menu-item is-danger" onclick="this.closest('details').open=false;deleteNoteItem('${note.id}')">${icon('trash', 16)}<span>Delete note</span></button>`
+              : isOwner ? `<div class="menu-sep" role="separator"></div>
+            <button role="menuitem" class="menu-item is-danger" onclick="this.closest('details').open=false;nbDeleteShared('${note.sid}')">${icon('trash', 16)}<span>Delete for everyone</span></button>`
+              : rec?.editorUids.includes(_fbUser?.uid) ? `<div class="menu-sep" role="separator"></div>
+            <button role="menuitem" class="menu-item" onclick="this.closest('details').open=false;nbLeaveShared('${note.sid}')">${icon('log-out', 16)}<span>Leave this note</span></button>` : ''}
           </div>
         </details>
       </div>
     </div>
-    <div class="nb-page-inner ${tpl ? `tpl-${tpl}` : ''}">
+    <div class="nb-page-inner ${tpl ? `tpl-${tpl}` : ''} ${shared ? 'is-shared' : ''}">
+      ${shared ? '<div class="nb-carets" id="nb-carets" aria-hidden="true"></div>' : ''}
       <textarea id="nb-title-input" class="nb-title-input" rows="1" aria-label="Note title" placeholder="${tpl === 'cornell' ? 'Lecture topic' : tpl === 'lab' ? 'Experiment title' : esc(tplDef?.titlePh || 'Untitled')}" oninput="renameNote('${note.id}',this.value);nbAutosizeTitle(this)" onkeydown="nbTitleKeydown(event)" onpaste="nbTitlePaste(event)">${esc(note.name === 'Untitled note' ? '' : note.name)}</textarea>
       <div class="nb-props">
-        <div class="nb-prop nb-prop-course ${course ? '' : 'is-empty'}">
+        ${shared ? `<button type="button" class="nb-prop nb-prop-shared" onclick="nbOpenSharedPanel('${note.id}')" data-tip="Who can edit">${icon('users', 14)}<span class="nb-prop-text">${esc(nbSharedWhere(rec))}</span></button>` : `<div class="nb-prop nb-prop-course ${course ? '' : 'is-empty'}">
           ${course ? `<span class="nb-prop-dot" style="background:${getCourseColor(note.courseId)}" aria-hidden="true"></span><span class="nb-prop-text">${esc(course.name)}</span>` : '<span class="nb-prop-text">Add class</span>'}${icon('chevron-down', 12)}
           <select class="nb-course-select" aria-label="Class" onchange="setNoteCourse('${note.id}',this.value)">
             <option value="">No class</option>${activeCourses().map(c => `<option value="${c.id}" ${c.id === note.courseId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
           </select>
-        </div>
-        ${tpl ? `<div class="nb-prop nb-prop-date ${note.date ? '' : 'is-empty'}">${icon('calendar', 14)}<span class="nb-prop-text">${note.date ? esc(fmtDate(note.date, { month: 'short', day: 'numeric' })) : 'Add date'}</span>
+        </div>`}
+        ${tpl && !shared ? `<div class="nb-prop nb-prop-date ${note.date ? '' : 'is-empty'}">${icon('calendar', 14)}<span class="nb-prop-text">${note.date ? esc(fmtDate(note.date, { month: 'short', day: 'numeric' })) : 'Add date'}</span>
           <input type="date" class="nb-date-input" value="${esc(note.date || '')}" aria-label="${dateLabel}" onclick="try{this.showPicker()}catch(e){}" onchange="setNoteDate('${note.id}',this.value)">
         </div>
         <button type="button" class="nb-prop nb-prop-tpl" aria-label="Layout: ${esc(tplDef.label)}. Add another layout" data-tip="Add a layout" onclick="openNoteTemplateModal('${note.parentId}','${note.id}')">${icon(tplDef.icon, 14)}<span>${esc(tplDef.label)}</span></button>` : ''}
@@ -1209,6 +1266,7 @@ function onNoteEdit(id, el) {
   if (start && !start.classList.contains('is-hidden') && (el.textContent || '').trim()) start.classList.add('is-hidden');
 }
 function renameNote(id, name) {
+  if (nbIsSharedId(id)) { nbSharedRename(id, name); return; }
   const n = state.notes.find(x => x.id === id);
   n.name = String(name).replace(/[\r\n]+/g, ' ').trim() ? String(name).replace(/[\r\n]+/g, ' ') : 'Untitled note';
   save();
@@ -1217,12 +1275,22 @@ function renameNote(id, name) {
   document.querySelectorAll('.nb-note-row.selected .nb-note-name').forEach(el => { el.textContent = label; el.title = label; });
 }
 function setNoteCourse(id, courseId) { const n = state.notes.find(x => x.id === id); n.courseId = courseId || null; touch(); }
-const saveNoteContentDebounced = debounce((id, html) => {
+const saveLocalNoteDebounced = debounce((id, html) => {
   const n = state.notes.find(x => x.id === id);
+  if (!n) return;
   n.content = html; n.updatedAt = Date.now(); save();
+  if (window._nbRendered?.note === n) window._nbRendered.content = html;
   const status = $('#nb-save-status');
   if (status) { const words = plainTextOfNote(n).trim().split(/\s+/).filter(Boolean).length; status.textContent = `Saved just now · ${words} word${words === 1 ? '' : 's'}`; }
 }, 500);
+// Every edit in the editor comes through here. A shared note saves its own
+// way (js/notebook-shared.js), right away, to everyone on it.
+function saveNoteContentDebounced(id, html) {
+  if (nbIsSharedId(id)) nbSharedLocalEdit(id, html);
+  else saveLocalNoteDebounced(id, html);
+}
+// The note behind an id, whether it's yours or shared.
+function nbNoteById(id) { return nbIsSharedId(id) ? nbSharedNote(id) : state.notes.find(x => x.id === id && x.type === 'note'); }
 
 function plainTextOfNote(note) { return textOfHtml(note.content || ''); }
 
@@ -1247,7 +1315,7 @@ function legacyPrintNote(note, crumbs, courseName) {
   document.title = restoreTitle;
 }
 async function exportNoteToPdf(id) {
-  const note = state.notes.find(n => n.id === id);
+  const note = nbNoteById(id);
   if (!note) return;
   const courseName = note.courseId ? getCourse(note.courseId)?.name : '';
   const crumbs = notePath(note);
@@ -1320,6 +1388,8 @@ function shareFolderToGroup(id) {
 }
 
 function triggerNoteFileUpload(id) {
+  // A shared note takes files the way pictures go in: stored, never inline.
+  if (nbIsSharedId(id)) { nbPickPicture(); return; }
   window._nbUploadNoteId = id;
   const input = $('#nb-file-input');
   if (input) input.click();

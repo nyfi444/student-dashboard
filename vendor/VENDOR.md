@@ -13,6 +13,7 @@ a version that has been looked at. Verify a file with:
 | pdf.js worker | 4.10.38 | pdfjs/pdf.worker.min.mjs | https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs | ToeVvShCxKc6CEvhHeMt0Q8A06pSPDbAlngO9nokrDmh914gk/pYd0N7D0a4Lz2o |
 | heic2any | 0.0.4 | heic2any/heic2any.min.js | https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js | OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL |
 | html2pdf.js | 0.14.0 | html2pdf/html2pdf.bundle.min.js | https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.14.0/html2pdf.bundle.min.js | EaWTV/aVUkLz3tfwg3+5ycX7Q/d9ET9ruOKUgUuFIRUCfzHO1eo2J62a844iWPmY |
+| diff-match-patch | 20121119 | diff-match-patch/diff_match_patch.js | https://cdnjs.cloudflare.com/ajax/libs/diff_match_patch/20121119/diff_match_patch.js | 7Le+JVwfZJb8qalIvvPjnRmpLO/aJJrlzAPIjywCLxhQrQ9v6dYKDTshRfeZTXZn |
 | qrcode-generator | 1.4.4 | qrcode/qrcode.min.js | https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js | mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1 |
 
 Why pdf.js moved: 3.11.174 had a bug (CVE-2024-4367) that let a crafted PDF
