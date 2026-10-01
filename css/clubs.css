@@ -462,7 +462,12 @@ html.dark .org-month-cell.is-today .org-month-num { box-shadow: 0 0 0 1px var(--
 .org-dir-pill.is-noseat { background: transparent; color: var(--text-dim); box-shadow: inset 0 0 0 1px var(--border); }
 .org-seats-foot > p { display: flex; gap: 8px; align-items: flex-start; margin: 0; }
 .org-seats-foot > p > svg { flex: none; margin-top: 2px; }
-.org-seats-outside .org-dir-row { padding: 8px 0; }
+.org-seats-add { margin-top: 12px; }
+.org-seats-out { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.org-seats-out .org-dir-title { margin: 0 0 4px; }
+.org-seats-out > p { margin: 0 0 8px; }
+.org-seats-outside .org-dir-row { padding: 10px 0; }
+.org-seats-outside .org-dir-row:first-child { border-top: 0; }
 
 /* Overview cards that would run the rail past the calendar sit side by
    side under both columns instead. */

@@ -382,3 +382,45 @@ function orgPlanAdminCard(o, plan) {
     </div>`}
   </div>`;
 }
+
+/* ── Local demo: group plan features on a sample club ───────────
+   index.html?seatsdemo=1 on localhost only (never the live app). Sample
+   clubs are local, so none of the plan features show on them; this gives
+   the open sample club a made-up full plan you run and pay for, two
+   members without a seat and one outsider holding one, and makes you its
+   founder, so the seat tags, Add a seat, Free seat and Hand off leadership
+   can be looked at. Nothing is saved and every button stays inert: there
+   is no account or real plan behind it. */
+const SEATS_DEMO = new URLSearchParams(location.search).get('seatsdemo') === '1' && ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+function installSeatsDemo() {
+  const isDemo = (o) => !!o && !!o.sample;
+  const planFor = (o) => {
+    const people = orgPeople(o);
+    const seats = Math.max(5, people.length - 1);
+    return { id: `DEMO${o.code}`, name: o.name, status: 'active', seats, memberCount: seats, paidSeats: seats, cancelAtPeriodEnd: false,
+      inviteUrl: 'https://app.semester-hq.com/?plan=DEMO2345', orgCode: o.code, admins: [{ uid: 'demo-you', name: 'You' }], billedTo: { uid: 'demo-you', name: 'You' }, handoff: null };
+  };
+  const real = { orgSeatInfo, orgGroupPlan, isOrgOwner, orgPlanAdminCard, orgAdminTab };
+  window.orgGroupPlan = (o) => isDemo(o) ? planFor(o) : real.orgGroupPlan(o);
+  window.orgSeatInfo = (o) => {
+    if (!isDemo(o)) return real.orgSeatInfo(o);
+    const people = orgPeople(o);
+    return { plan: planFor(o), has: new Set(people.slice(0, people.length - 2).map(p => p.uid)), outside: [{ uid: 'demo-outsider', name: 'Jordan Lee', joinedAt: '' }], canManage: true };
+  };
+  window.isOrgOwner = (o) => isDemo(o) || real.isOrgOwner(o);
+  // The real card and Officer home skip samples, so they're shown one that isn't.
+  window.orgPlanAdminCard = (o, p) => {
+    if (!isDemo(o)) return real.orgPlanAdminCard(o, p);
+    window._groupMine = { plans: [planFor(o)] };
+    const ce = window.checkoutEnabled;
+    (0, eval)('window.__seatsDemoUser = _fbUser; _fbUser = { uid: "demo-you", getIdToken: async () => "" }');
+    window.checkoutEnabled = () => true;
+    try { return real.orgPlanAdminCard({ ...o, sample: false, local: false }, p); }
+    finally { window.checkoutEnabled = ce; (0, eval)('_fbUser = window.__seatsDemoUser'); }
+  };
+  window.orgAdminTab = (o) => real.orgAdminTab(isDemo(o) ? { ...o, local: false } : o);
+  if (!allOrgs().some(o => o.sample)) createSampleOrg('club');
+  toast('Seats demo: the sample club has a made-up group plan. Buttons do nothing here.', 'info', 6000);
+  render();
+}
+if (SEATS_DEMO) window.addEventListener('load', () => setTimeout(installSeatsDemo, 300));

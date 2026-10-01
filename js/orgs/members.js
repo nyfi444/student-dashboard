@@ -201,16 +201,18 @@ function orgSeatsFootHtml(o, seats, noSeat) {
   return `
       <div class="card card-pad org-seats-foot mt-16">
         <p class="small">${icon('shield', 14)} <span>${line} When someone leaves the ${esc(kindWord)}, their seat opens up for the next person, and swapping people never changes the bill.</span></p>
-        ${seats.canManage && !open ? `<button class="btn btn-primary btn-sm mt-8" onclick="addPlanSeat(this,'${o.code}','${esc(seats.plan.id)}')">${icon('plus', 13, 1.8)} Add a seat</button>` : ''}
+        ${seats.canManage && !open ? `<button class="btn btn-primary btn-sm org-seats-add" onclick="addPlanSeat(this,'${o.code}','${esc(seats.plan.id)}')">${icon('plus', 13, 1.8)} Add a seat</button>` : ''}
         ${seats.outside.length ? `
-        <h3 class="org-dir-title mt-16">Holding a seat, not in the ${esc(kindWord)} <span class="org-dir-n">${seats.outside.length}</span></h3>
-        <p class="small muted mb-8">They took a seat from the plan link but aren’t in ${esc(o.name)}.${seats.canManage ? ' Free a seat and it opens for a member.' : ` ${esc(orgPlanAdminNames(seats.plan))} can free these.`}</p>
+        <div class="org-seats-out">
+        <h3 class="org-dir-title">Holding a seat, not in the ${esc(kindWord)} <span class="org-dir-n">${seats.outside.length}</span></h3>
+        <p class="small muted">They took a seat from the plan link but aren’t in ${esc(o.name)}.${seats.canManage ? ' Free a seat and it opens for a member.' : ` ${esc(orgPlanAdminNames(seats.plan))} can free these.`}</p>
         <div class="org-seats-outside">${seats.outside.map(m => `
           <div class="org-dir-row">
             ${personAvatar(m.uid, m.name, 32, orgColor(o))}
             <div class="org-dir-text"><div class="org-dir-name">${esc(m.name)}</div></div>
             ${seats.canManage ? `<div class="org-dir-act"><button class="btn btn-sm" onclick="freeOrgSeat(this,'${o.code}','${esc(seats.plan.id)}','${esc(m.uid)}')">Free seat</button></div>` : ''}
           </div>`).join('')}
+        </div>
         </div>` : ''}
       </div>`;
 }
