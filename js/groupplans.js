@@ -197,12 +197,37 @@ const ORG_PLAN_KINDS = { club: 'club', team: 'team', chapter: 'chapter', org: 'c
 // An officer who doesn't run the plan still sees it (viewOnly), from the
 // club's seats (orgSeats below), so nobody starts a second plan by mistake.
 function orgGroupPlan(o) {
+  if (o?.sample) return orgSamplePlan(o);
   if (!o || o.local || !_fbUser || !checkoutEnabled()) return null;
   ensureGroupMine();
   const mine = (window._groupMine?.plans || []).find(p => p.orgCode && p.orgCode === o.code);
   if (mine) return mine;
   const seats = orgSeats(o);
   return seats?.plan ? { ...seats.plan, viewOnly: true } : null;
+}
+
+/* ── The sample clubs' plan ──────────────────────────────────────
+   Every sample club shows a made-up group plan, so anyone trying the demo
+   (the app's own, or the one on the site) sees what running one is like:
+   a full plan you run and pay for, two members without a seat, and one
+   person holding a seat who isn't in the club. Nothing calls the Worker:
+   Add a seat, Free seat and the handoff explain what they'd do instead. */
+const SAMPLE_PLAN_OUTSIDER = { uid: 'sample-outsider', name: 'Jordan Lee', joinedAt: '' };
+function orgSamplePlan(o) {
+  const seats = Math.max(ORG_PLAN_MIN_SEATS, (o.memberUids?.length || 0) - 1);
+  return { id: `sample-${o.code}`, sample: true, name: o.name, status: 'active', seats, memberCount: seats, paidSeats: seats, cancelAtPeriodEnd: false,
+    inviteUrl: 'https://app.semester-hq.com/?plan=SAMPLE00', orgCode: o.code, admins: [{ uid: myOrgUid(o), name: 'You' }], billedTo: { uid: myOrgUid(o), name: 'You' }, handoff: null };
+}
+function orgSampleSeats(o) {
+  const people = orgPeople(o);
+  return { plan: orgSamplePlan(o), has: new Set(people.slice(0, Math.max(0, people.length - 2)).map(p => p.uid)), outside: [SAMPLE_PLAN_OUTSIDER], canManage: true };
+}
+// What a plan button would do in a real club, for the sample's buttons.
+function orgSamplePlanNote(code, what) {
+  const o = findOrg(code);
+  if (!o?.sample) return false;
+  toast(`${what} This is a sample, so nothing changed.`, 'info', 6000);
+  return true;
 }
 
 /* ── Seats, seen from the club ──────────────────────────────────
@@ -225,6 +250,7 @@ function orgSeats(o) {
 }
 // What the Members tab needs: only for a plan that's running.
 function orgSeatInfo(o) {
+  if (o?.sample) return orgSampleSeats(o);
   const s = orgSeats(o);
   if (!s?.plan || !(s.plan.status === 'active' || s.plan.status === 'past_due')) return null;
   return { plan: s.plan, has: new Set(s.seatUids || []), outside: s.outside || [], canManage: !!s.canManage };
@@ -244,6 +270,7 @@ async function releaseOrgSeat(code, uid) {
   } catch (e) { diag.warn('clubs', 'Could not free a seat', e); }
 }
 function freeOrgSeat(btn, code, planId, uid) {
+  if (orgSamplePlanNote(code, `In your own club, this frees the seat for a member, and the person loses Plus through the plan unless they pay themselves.`)) return;
   const name = (_orgSeatCache[code]?.data?.outside || []).find(m => m.uid === uid)?.name || 'this person';
   confirmDialog(`Free ${name}’s seat? They lose Semester HQ Plus through the plan unless they pay themselves, and the seat opens for a member.`, async () => {
     try {
@@ -254,26 +281,79 @@ function freeOrgSeat(btn, code, planId, uid) {
     } catch (e) { toast(e.message || 'Couldn’t free that seat', 'error', 5000); }
   }, 'Free seat');
 }
-// One tap from the club when every seat is taken (plan admins). Seats go
-// up easily; removing them is on the plan page, for the person paying.
+// Add seats from the club (plan admins): pick how many, see the new
+// monthly total, confirm. Seats go up easily; removing them is on the plan
+// page, for the person paying.
+function orgPlanForSeats(code, planId) {
+  const o = findOrg(code);
+  if (o?.sample) return orgSamplePlan(o);
+  return (window._groupMine?.plans || []).find(x => x.id === planId) || _orgSeatCache[code]?.data?.plan || null;
+}
 function addPlanSeat(btn, code, planId) {
-  const p = (window._groupMine?.plans || []).find(x => x.id === planId) || _orgSeatCache[code]?.data?.plan;
+  const p = orgPlanForSeats(code, planId);
   if (!p) return;
-  const next = (p.seats || 0) + 1;
-  if (next > ORG_PLAN_MAX_SEATS) {
+  const room = ORG_PLAN_MAX_SEATS - (p.seats || 0);
+  if (room < 1) {
     confirmDialog(`Plans over ${ORG_PLAN_MAX_SEATS} seats are put together with you, so the rate fits your group. Ask for a quote?`, () => window.open(GROUP_PRICING_URL, '_blank', 'noopener'), 'Ask for a quote');
     return;
   }
-  const monthly = `$${(next * orgPlanSeatCents() / 100).toFixed(2)}`;
-  const free = next <= (p.paidSeats || 0);
-  confirmDialog(`Add a seat? The plan becomes ${next} seats, ${monthly} a month. ${free ? 'That seat was already paid for this month, so there’s nothing extra until the next bill.' : 'The rest of this month’s share goes on the plan’s next bill.'}`, async () => {
-    try {
-      await groupApi('seats', { planId, seats: next });
-      forgetOrgSeats(code);
-      toast('Seat added. A member can take it now.', 'success');
-      render();
-    } catch (e) { toast(e.message || 'Couldn’t add a seat', 'error', 5000); }
-  }, 'Add a seat');
+  window._planSeatAdd = { code, planId, seats: p.seats || 0, paid: p.paidSeats || 0, room };
+  openModal(`
+    <div class="modal-head"><h3>Add seats</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
+    <div class="modal-body">
+      <div class="field"><label for="ps-n">How many seats to add</label>
+        <div class="org-seat-step">
+          <button type="button" class="btn btn-icon btn-sm" aria-label="One fewer" onclick="stepPlanSeats(-1)">−</button>
+          <input class="input" id="ps-n" type="number" inputmode="numeric" min="1" max="${room}" value="1" oninput="planSeatTotal()">
+          <button type="button" class="btn btn-icon btn-sm" aria-label="One more" onclick="stepPlanSeats(1)">+</button>
+        </div>
+      </div>
+      <p class="small" id="ps-total" aria-live="polite"></p>
+      <p class="small muted mt-8">Up to ${ORG_PLAN_MAX_SEATS} seats here. Need more? <a href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">Ask for a quote</a>.</p>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ps-go" onclick="savePlanSeats()">Add 1 seat</button></div>`);
+  planSeatTotal();
+  setTimeout(() => $('#ps-n')?.select(), 30);
+}
+function planSeatCount() {
+  const c = window._planSeatAdd;
+  const n = Math.round(Number($('#ps-n')?.value));
+  return c ? Math.max(1, Math.min(c.room, Number.isFinite(n) ? n : 1)) : 1;
+}
+function stepPlanSeats(by) {
+  const input = $('#ps-n');
+  if (!input) return;
+  input.value = Math.max(1, Math.min(window._planSeatAdd?.room || 1, planSeatCount() + by));
+  planSeatTotal();
+}
+function planSeatTotal() {
+  const c = window._planSeatAdd;
+  if (!c) return;
+  const n = planSeatCount();
+  const total = c.seats + n;
+  const out = $('#ps-total');
+  if (out) out.textContent = `The plan becomes ${total} seats, $${(total * orgPlanSeatCents() / 100).toFixed(2)} a month. ${total <= c.paid ? 'Those seats were already paid for this month, so there’s nothing extra until the next bill.' : 'This month’s share for the new seats goes on the plan’s next bill.'}`;
+  const go = $('#ps-go');
+  if (go) go.textContent = `Add ${n} seat${n === 1 ? '' : 's'}`;
+}
+async function savePlanSeats() {
+  const c = window._planSeatAdd;
+  if (!c) return;
+  const n = planSeatCount();
+  if (findOrg(c.code)?.sample) {
+    closeModal();
+    toast(`In your own club, this adds ${n} seat${n === 1 ? '' : 's'} at ${GROUP_SEAT_PRICE} a month each, and members can take ${n === 1 ? 'it' : 'them'} right away. This is a sample, so nothing changed.`, 'info', 6000);
+    return;
+  }
+  const btn = $('#ps-go');
+  setBtnLoading(btn, true);
+  try {
+    await groupApi('seats', { planId: c.planId, seats: c.seats + n });
+    closeModal();
+    forgetOrgSeats(c.code);
+    toast(`${n} seat${n === 1 ? '' : 's'} added. Members can take ${n === 1 ? 'it' : 'them'} now.`, 'success');
+    render();
+  } catch (e) { setBtnLoading(btn, false, `Add ${n} seat${n === 1 ? '' : 's'}`); toast(e.message || 'Couldn’t add seats', 'error', 5000); }
 }
 async function startPlanCard(btn, planId) {
   setBtnLoading(btn, true);
@@ -329,15 +409,11 @@ function orgPlanAdminNames(plan) {
 function orgPlanAdminCard(o, plan) {
   const kindWord = o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club';
   const perSeat = `${GROUP_SEAT_PRICE} per member each month`;
-  // A sample club is made up, so it only ever explains the plan. It never
-  // links to a checkout prefilled with a club that doesn't exist.
-  if (o.sample) {
-    return orgPlanPitch(o, {
-      actionsHtml: () => `<a class="btn btn-primary btn-sm" href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">How group pricing works</a>`,
-      note: (m) => m.big ? `Plans past ${ORG_PLAN_MAX_SEATS} seats are put together with you.` : `In your own ${esc(kindWord)}: ${perSeat}, paid from your budget or dues.`,
-    });
-  }
-  if (!checkoutEnabled()) return '';
+  // A sample club shows its made-up plan (orgSamplePlan). It never links to
+  // a checkout or a plan page for a club that doesn't exist.
+  if (o.sample) plan = orgSamplePlan(o);
+  else if (!checkoutEnabled()) return '';
+  if (!o.sample) {
   if (!_fbUser) {
     return orgPlanPitch(o, {
       actionsHtml: () => `<a class="btn btn-primary btn-sm" href="login.html">Log in to set it up</a>`,
@@ -355,6 +431,7 @@ function orgPlanAdminCard(o, plan) {
       note: (m) => m.big ? `Tell us your size and we’ll send a rate that fits.` : `${perSeat}, paid from your budget or dues. Members claim their own seat.`,
     });
   }
+  }
   const live = plan.status === 'active' || plan.status === 'past_due';
   const statusLine = plan.status === 'active' ? `${plan.memberCount} of ${plan.seats} seats claimed`
     : plan.status === 'past_due' ? 'A payment didn’t go through. Members still have access for now.'
@@ -362,6 +439,7 @@ function orgPlanAdminCard(o, plan) {
     : 'Canceled.';
   return `<div class="card card-pad">
     <h3 class="sg-h3 mb-8">${icon('shield', 14, 1.8)} ${esc(plan.name || o.name)} group plan</h3>
+    ${plan.sample ? `<p class="small muted mb-8">A made-up plan, so you can see how it works. In your own ${esc(kindWord)}: ${perSeat}, paid from your budget or dues.</p>` : ''}
     ${plan.status === 'active' ? `<div class="org-plan-seats mb-8">
       <span class="org-plan-ring" style="--p:${plan.seats ? Math.min(100, Math.round((plan.memberCount / plan.seats) * 100)) : 0}" role="img" aria-label="${plan.memberCount} of ${plan.seats} seats claimed"><strong>${plan.memberCount}</strong></span>
       <div class="small muted">${esc(statusLine)}. Covering your members’ Semester HQ.${plan.cancelAtPeriodEnd ? ' Ends at the close of this billing period.' : ''}</div>
@@ -376,51 +454,12 @@ function orgPlanAdminCard(o, plan) {
     ${plan.viewOnly
       ? `<p class="small muted">${esc(orgPlanAdminNames(plan))} ${(plan.admins || []).length === 1 ? 'runs' : 'run'} the plan’s billing and seats. See who has a seat on the Members tab.</p>`
       : `<div class="flex-gap wrap">
-      ${live && plan.memberCount >= plan.seats ? `<button class="btn btn-primary btn-sm" onclick="addPlanSeat(this,'${esc(o.code)}','${esc(plan.id)}')">${icon('plus', 13, 1.8)} Add a seat</button>` : ''}
-      <a class="btn btn-primary btn-sm" href="${GROUP_ADMIN_PAGE}?plan=${encodeURIComponent(plan.id)}">${icon('settings', 13, 1.8)} Seats, billing and members</a>
+      ${live ? `<button class="btn ${plan.memberCount >= plan.seats ? 'btn-primary' : ''} btn-sm" onclick="addPlanSeat(this,'${esc(o.code)}','${esc(plan.id)}')">${icon('plus', 13, 1.8)} Add seats</button>` : ''}
+      ${plan.sample
+        ? `<a class="btn btn-sm" href="${GROUP_PRICING_URL}" target="_blank" rel="noopener">How group pricing works</a>`
+        : `<a class="btn btn-primary btn-sm" href="${GROUP_ADMIN_PAGE}?plan=${encodeURIComponent(plan.id)}">${icon('settings', 13, 1.8)} Seats, billing and members</a>`}
       ${plan.status === 'pending' ? `<a class="btn btn-sm" href="${GROUP_ADMIN_PAGE}?plan=${encodeURIComponent(plan.id)}">Finish setting it up</a>` : ''}
     </div>`}
   </div>`;
 }
 
-/* ── Local demo: group plan features on a sample club ───────────
-   index.html?seatsdemo=1 on localhost only (never the live app). Sample
-   clubs are local, so none of the plan features show on them; this gives
-   the open sample club a made-up full plan you run and pay for, two
-   members without a seat and one outsider holding one, and makes you its
-   founder, so the seat tags, Add a seat, Free seat and Hand off leadership
-   can be looked at. Nothing is saved and every button stays inert: there
-   is no account or real plan behind it. */
-const SEATS_DEMO = new URLSearchParams(location.search).get('seatsdemo') === '1' && ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
-function installSeatsDemo() {
-  const isDemo = (o) => !!o && !!o.sample;
-  const planFor = (o) => {
-    const people = orgPeople(o);
-    const seats = Math.max(5, people.length - 1);
-    return { id: `DEMO${o.code}`, name: o.name, status: 'active', seats, memberCount: seats, paidSeats: seats, cancelAtPeriodEnd: false,
-      inviteUrl: 'https://app.semester-hq.com/?plan=DEMO2345', orgCode: o.code, admins: [{ uid: 'demo-you', name: 'You' }], billedTo: { uid: 'demo-you', name: 'You' }, handoff: null };
-  };
-  const real = { orgSeatInfo, orgGroupPlan, isOrgOwner, orgPlanAdminCard, orgAdminTab };
-  window.orgGroupPlan = (o) => isDemo(o) ? planFor(o) : real.orgGroupPlan(o);
-  window.orgSeatInfo = (o) => {
-    if (!isDemo(o)) return real.orgSeatInfo(o);
-    const people = orgPeople(o);
-    return { plan: planFor(o), has: new Set(people.slice(0, people.length - 2).map(p => p.uid)), outside: [{ uid: 'demo-outsider', name: 'Jordan Lee', joinedAt: '' }], canManage: true };
-  };
-  window.isOrgOwner = (o) => isDemo(o) || real.isOrgOwner(o);
-  // The real card and Officer home skip samples, so they're shown one that isn't.
-  window.orgPlanAdminCard = (o, p) => {
-    if (!isDemo(o)) return real.orgPlanAdminCard(o, p);
-    window._groupMine = { plans: [planFor(o)] };
-    const ce = window.checkoutEnabled;
-    (0, eval)('window.__seatsDemoUser = _fbUser; _fbUser = { uid: "demo-you", getIdToken: async () => "" }');
-    window.checkoutEnabled = () => true;
-    try { return real.orgPlanAdminCard({ ...o, sample: false, local: false }, p); }
-    finally { window.checkoutEnabled = ce; (0, eval)('_fbUser = window.__seatsDemoUser'); }
-  };
-  window.orgAdminTab = (o) => real.orgAdminTab(isDemo(o) ? { ...o, local: false } : o);
-  if (!allOrgs().some(o => o.sample)) createSampleOrg('club');
-  toast('Seats demo: the sample club has a made-up group plan. Buttons do nothing here.', 'info', 6000);
-  render();
-}
-if (SEATS_DEMO) window.addEventListener('load', () => setTimeout(installSeatsDemo, 300));

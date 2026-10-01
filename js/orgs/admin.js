@@ -275,7 +275,7 @@ function orgAdminTab(o) {
   const plan = typeof orgGroupPlan === 'function' ? orgGroupPlan(o) : null;
   // No plan yet (or a sample): the pitch goes right under the numbers, in
   // this club's own seat math. A club with a plan keeps it in the rail.
-  const pitch = typeof orgPlanAdminCard === 'function' && (o.sample || !plan);
+  const pitch = typeof orgPlanAdminCard === 'function' && !plan;
   const color = orgDetailsColor(o);
   const faces = orgFaceColors(o);
   return `
@@ -316,21 +316,6 @@ function orgAdminTab(o) {
             </div>
             ${noEvents ? `<p class="small muted mt-8">Nothing on the calendar yet. The first meeting or practice you add shows up for every member.</p>` : ''}
           </div>
-        </div>
-
-        <div class="org-admin-col">
-          ${pitch ? '' : orgPlanAdminCard(o, plan)}
-          ${typeof wrappedOrgAdminCard === 'function' ? wrappedOrgAdminCard(o) : ''}
-
-          <div class="card card-pad">
-            <div class="flex-between mb-8"><h3 class="sg-h3">${icon('users', 16)} Who’s who</h3><button class="sg-link" onclick="setState({orgTab:'members'})">All ${people.length} ${icon('chevron-right', 12)}</button></div>
-            <div class="small muted mb-8">${people.length} member${people.length === 1 ? '' : 's'} · ${officers.length} officer${officers.length === 1 ? '' : 's'}${isOrgOwner(o) ? '' : ' · Only the founder can add officers.'}</div>
-            ${officers.map(p => `<div class="sg-person org-whos-row">
-              ${personAvatar(p.uid, p.name, 28, faces[p.uid] || orgColor(o))}
-              <div class="row-title small"><span class="sg-strong">${esc(p.name)}</span>${p.uid === myOrgUid(o) && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}<div class="muted">${esc(orgRoleLabel(o, p))}</div></div>
-              ${o.local && !o.sample ? '' : `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>`}
-            </div>`).join('')}
-          </div>
 
           <div class="card card-pad">
             <h3 class="sg-h3 mb-8">${icon('settings', 16)} ${esc(o.name)} details</h3>
@@ -348,9 +333,25 @@ function orgAdminTab(o) {
             <button class="btn btn-primary btn-sm" id="oa-save" onclick="saveOrgAdminDetails('${o.code}')">Save details</button>
           </div>
 
+        </div>
+
+        <div class="org-admin-col">
+          ${pitch ? '' : orgPlanAdminCard(o, plan)}
+          ${typeof wrappedOrgAdminCard === 'function' ? wrappedOrgAdminCard(o) : ''}
+
           <div class="card card-pad">
-            <h3 class="sg-h3 mb-8">${icon('log-out', 16)} ${isOrgOwner(o) && !o.local ? 'Handing off and leaving' : 'Leaving and closing'}</h3>
-            ${isOrgOwner(o) && !o.local ? `
+            <div class="flex-between mb-8"><h3 class="sg-h3">${icon('users', 16)} Who’s who</h3><button class="sg-link" onclick="setState({orgTab:'members'})">All ${people.length} ${icon('chevron-right', 12)}</button></div>
+            <div class="small muted mb-8">${people.length} member${people.length === 1 ? '' : 's'} · ${officers.length} officer${officers.length === 1 ? '' : 's'}${isOrgOwner(o) ? '' : ' · Only the founder can add officers.'}</div>
+            ${officers.map(p => `<div class="sg-person org-whos-row">
+              ${personAvatar(p.uid, p.name, 28, faces[p.uid] || orgColor(o))}
+              <div class="row-title small"><span class="sg-strong">${esc(p.name)}</span>${p.uid === myOrgUid(o) && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}<div class="muted">${esc(orgRoleLabel(o, p))}</div></div>
+              ${o.local && !o.sample ? '' : `<button class="btn btn-ghost btn-sm" onclick="openMemberRoleModal('${o.code}','${esc(p.uid)}')">Manage</button>`}
+            </div>`).join('')}
+          </div>
+
+          <div class="card card-pad">
+            <h3 class="sg-h3 mb-8">${icon('log-out', 16)} ${(isOrgOwner(o) && !o.local) || o.sample ? 'Handing off and leaving' : 'Leaving and closing'}</h3>
+            ${(isOrgOwner(o) && !o.local) || o.sample ? `
             <p class="small muted mb-8">Graduating or stepping down? Pick who runs ${esc(o.name)} next. They become the founder${plan && !plan.viewOnly && plan.status !== 'canceled' ? ' and take over the group plan' : ''}, and you choose whether to stay on as an officer, step back, or leave.</p>
             <button class="btn btn-primary btn-sm mb-8" onclick="openOrgHeirModal('${o.code}','officer')">${icon('user-plus', 14)} Hand off leadership</button>` : ''}
             <p class="small muted mb-8">${o.local ? 'Removing it clears it from this tab.' : isOrgOwner(o) ? 'If you leave, you pick who takes over first.' : 'Leaving takes this club’s events off your calendar. Other members keep theirs.'}</p>
@@ -541,7 +542,8 @@ function confirmLeaveOrg(code) {
 function orgHeirCandidates(o) {
   const me = myOrgUid(o);
   const byJoined = (a, b) => (a.joinedAt || 0) - (b.joinedAt || 0) || a.name.localeCompare(b.name);
-  const others = orgPeople(o).filter(p => p.uid !== me);
+  // Never the current founder (in a sample, that isn't you).
+  const others = orgPeople(o).filter(p => p.uid !== me && p.uid !== o.createdBy);
   return [...others.filter(p => p.officer).sort(byJoined), ...others.filter(p => !p.officer).sort(byJoined)];
 }
 // The founder hands the club on: the next founder, and what happens to
@@ -550,9 +552,10 @@ function orgHeirCandidates(o) {
 // becomes its admin and is asked to put it on their own card; it stays on
 // the founder's card until then (worker/src/groups.js, groupHandoff).
 const ORG_HANDOFF_AFTER = [['officer', 'Stay on as an officer'], ['member', 'Step back to a member'], ['leave', 'Leave the club']];
+// A sample club shows it to its officer preview too, so the demo has it.
 function openOrgHeirModal(code, after = 'leave') {
   const o = findOrg(code);
-  if (!o || !isOrgOwner(o)) return;
+  if (!o || (!isOrgOwner(o) && !o.sample)) return;
   const list = orgHeirCandidates(o);
   if (!list.length) { toast('There’s nobody to hand it to yet. Invite someone first.', 'info', 4500); return; }
   const faces = orgFaceColors(o);
@@ -580,6 +583,12 @@ function openOrgHeirModal(code, after = 'leave') {
 }
 async function handOffOrg(code) {
   const o = findOrg(code);
+  if (o?.sample) {
+    const heir = orgHeirCandidates(o).find(p => p.uid === document.querySelector('#modal input[name=org-heir]:checked')?.value);
+    closeModal();
+    toast(`In your own club, ${heir?.name || 'they'} would run ${o.name} now and be asked to put the group plan on their own card. This is a sample, so nothing changed.`, 'info', 7000);
+    return;
+  }
   const me = _fbUser?.uid;
   if (!o || !me || !isOrgOwner(o)) return;
   const heir = orgHeirCandidates(o).find(p => p.uid === document.querySelector('#modal input[name=org-heir]:checked')?.value);

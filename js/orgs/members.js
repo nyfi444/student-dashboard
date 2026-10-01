@@ -195,13 +195,13 @@ function orgSeatsFootHtml(o, seats, noSeat) {
   const open = Math.max(0, seats.plan.seats - seats.plan.memberCount);
   const kindWord = o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club';
   const line = noSeat && !open
-    ? `Every seat is taken. ${seats.canManage ? `Add one, or free one${seats.outside.length ? ' below' : ' by removing someone who’s gone'}.` : `Ask ${esc(orgPlanAdminNames(seats.plan))} to add seats.`}`
+    ? `Every seat is taken. ${seats.canManage ? `Add more, or free one${seats.outside.length ? ' below' : ' by removing someone who’s gone'}.` : `Ask ${esc(orgPlanAdminNames(seats.plan))} to add seats.`}`
     : noSeat ? `${open} seat${open === 1 ? '' : 's'} open. Members without one can take it from the seat link on Officer home.`
     : 'Everyone in the club has a seat.';
   return `
       <div class="card card-pad org-seats-foot mt-16">
         <p class="small">${icon('shield', 14)} <span>${line} When someone leaves the ${esc(kindWord)}, their seat opens up for the next person, and swapping people never changes the bill.</span></p>
-        ${seats.canManage && !open ? `<button class="btn btn-primary btn-sm org-seats-add" onclick="addPlanSeat(this,'${o.code}','${esc(seats.plan.id)}')">${icon('plus', 13, 1.8)} Add a seat</button>` : ''}
+        ${seats.canManage && !open ? `<button class="btn btn-primary btn-sm org-seats-add" onclick="addPlanSeat(this,'${o.code}','${esc(seats.plan.id)}')">${icon('plus', 13, 1.8)} Add seats</button>` : ''}
         ${seats.outside.length ? `
         <div class="org-seats-out">
         <h3 class="org-dir-title">Holding a seat, not in the ${esc(kindWord)} <span class="org-dir-n">${seats.outside.length}</span></h3>
