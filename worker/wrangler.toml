@@ -29,9 +29,10 @@ FIREBASE_STORAGE_BUCKET = "semester-hq.firebasestorage.app"
 # Where contact-form/group-pricing submissions get emailed (only sent at all
 # once RESEND_API_KEY below is set, otherwise it's silently skipped and
 # submissions still land in Firestore's `feedback` collection either way).
-# This is the only address the Worker ever emails: the person who filled in
-# the form never hears from Resend, they're set as reply-to so a reply from
-# this inbox goes straight back to them.
+# Alerts (alerts.js) go here too. The person who filled in the form never
+# hears from Resend: they're set as reply-to, so a reply from this inbox goes
+# straight back to them. (Students do get sign-in links, receipts and the
+# onboarding emails; those go to the student, see mail.js.)
 #
 # The sandbox restriction is gone now that send.semester-hq.com is verified,
 # so this can be any address you actually read.
@@ -44,6 +45,17 @@ NOTIFY_EMAIL = "semesterhq@gmail.com"
 # mail to hello@semester-hq.com rather than adding to it. The DMARC policy on
 # the apex uses relaxed alignment, so a subdomain sender still aligns.
 NOTIFY_FROM = "Semester HQ <notifications@send.semester-hq.com>"
+# Resend's daily sending limit for the plan we're on (free = 100). Every
+# email shares it, sign-in links first; see worker/src/mail.js. Raise it the
+# day the plan grows (Pro has no daily limit: use 1600, about 50,000/30).
+RESEND_DAILY_LIMIT = "100"
+# This Worker's own address, for the one-click unsubscribe link in emails.
+SELF_URL = "https://student-planner-ai-proxy.semesterhq.workers.dev"
+# Estimated Anthropic spend in a UTC day, in cents, that emails an alert.
+AI_SPEND_ALERT_CENTS = "500"
+# Nyla's own inboxes, which /admin/email-test may send to (?to=) for an
+# inbox-placement check. Nobody else can be picked.
+OWNER_TEST_EMAILS = "semesterhq@gmail.com,nylaiman@icloud.com,nnylabrown111@gmail.com"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
@@ -110,4 +122,64 @@ simple = { limit = 60, period = 60 }
 # older than 30 days (pruneOldIssues). Semester HQ sends no notifications, so
 # there is no reminder sweep and nothing else needs a schedule.
 [triggers]
+crons = ["0 13 * * *"]
+
+# ── Staging ─────────────────────────────────────────────────────────────
+# The same code as a separate Worker, student-planner-ai-proxy-staging, for
+# branch Previews, version URLs and localhost (js/config.js sends every
+# host that isn't production here). Deploy with:
+#   npx wrangler deploy --env staging
+# Nothing here can reach a real student: its own Firebase project, Stripe
+# in test mode, its own KV and rate limiters, and email only to the
+# addresses in MAIL_ALLOWLIST. stagingProblem() in src/http.js refuses every
+# request if any of that is ever not true (a live Stripe key, the production
+# Firebase project, or no allow-list).
+# Its secrets are its own, set with `npx wrangler secret put NAME --env staging`:
+#   STRIPE_SECRET_KEY (sk_test_…), STRIPE_WEBHOOK_SECRET (the test-mode
+#   endpoint's), FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY (the staging
+#   project's service account), ANTHROPIC_API_KEY (a separate key with a low
+#   spend limit), RESEND_API_KEY, ADMIN_TOKEN, EMAIL_LINK_SECRET.
+#   No TURNSTILE_SECRET: previews use Cloudflare's always-pass test widget.
+[env.staging]
+name = "student-planner-ai-proxy-staging"
+
+[env.staging.observability]
+enabled = true
+
+[env.staging.vars]
+STAGING = "1"
+ALLOWED_ORIGIN = "https://*-semester-hq-app.semesterhq.workers.dev,https://*-semester-hq-site.semesterhq.workers.dev,http://localhost:7437,http://localhost:7438,http://localhost:7448,http://localhost:7449"
+APP_URL = "https://staging-semester-hq-app.semesterhq.workers.dev/"
+SITE_URL = "https://staging-semester-hq-site.semesterhq.workers.dev/"
+FIREBASE_PROJECT_ID = "semester-hq-staging"
+FIREBASE_STORAGE_BUCKET = "semester-hq-staging.firebasestorage.app"
+NOTIFY_EMAIL = "semesterhq@gmail.com"
+NOTIFY_FROM = "Semester HQ Staging <notifications@send.semester-hq.com>"
+MAIL_ALLOWLIST = "semesterhq@gmail.com,hello@semester-hq.com,nnylabrown111@gmail.com,nylaiman@icloud.com"
+# Its own small slice of the one Resend account, so testing can never use
+# up the day that production's sign-in links need.
+RESEND_DAILY_LIMIT = "12"
+SELF_URL = "https://student-planner-ai-proxy-staging.semesterhq.workers.dev"
+AI_SPEND_ALERT_CENTS = "100"
+
+[[env.staging.kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "204ce7f00642443ebeb67827964d8863"
+
+[[env.staging.ratelimits]]
+name = "RL_TIGHT"
+namespace_id = "2001"
+simple = { limit = 5, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "RL_NORMAL"
+namespace_id = "2002"
+simple = { limit = 20, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "RL_LOOSE"
+namespace_id = "2003"
+simple = { limit = 60, period = 60 }
+
+[env.staging.triggers]
 crons = ["0 13 * * *"]

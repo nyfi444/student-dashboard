@@ -56,6 +56,10 @@
       Resend sends it from send.semester-hq.com, because Firebase's own
       sender lands in Gmail's Spam with its link switched off. Turnstile
       and daily caps; login.html falls back to Firebase's email on failure.
+  13. Customer emails: the receipt and welcome when a checkout completes
+      (Stripe webhook) or a seat is taken, then five spaced tips from the
+      daily cron, with one-click unsubscribe (/email/*) and a Settings
+      switch (/account/email). See onboarding.js and emails.js.
   12. Alerts: emails Nyla when something breaks. Right away for a server
       failure in checkout, licenses, accounts or group plans; once an hour
       at most when app and site error reports spike; and a morning digest
@@ -63,6 +67,9 @@
   13. Anonymous form answers (/form/answer): the ONLY writer of an answer
       to an anonymous form. Files it under a random id with no name, and
       keeps the link to the sender where only they can read it. See forms.js.
+  14. Members-only groups and clubs (Oct 2026): the daily cron keeps every
+      public join preview true, and /space/rotate-files gives a club's
+      files new links after an officer removes someone. See spaces.js.
 ──────────────────────────────────────────────────────────────── */
 
 /* ── Where each job lives ─────────────────────────────────────────
@@ -86,8 +93,12 @@
      feeds.js        job 10  LMS calendar feeds
      account.js      deleting an account, terms acceptance
      forms.js        job 13  anonymous answers to a club's or study group's form
+     spaces.js       job 14  join previews, blocked lists, new club file links
      authmail.js     job 11  sign-in link and password-reset emails
-     alerts.js       job 12  emails Nyla when something breaks
+     alerts.js       job 12  emails Nyla when something breaks, and AI spend
+     mail.js                 the one door to Resend: one daily budget, sign-in first
+     onboarding.js   job 13  receipts, welcomes and the tips: who gets what, when
+     emails.js       job 13  what those emails say and look like
 
    and the three every job leans on, which lean on nothing:
 
@@ -111,10 +122,12 @@ import { featureForPath, handleAdminErrors, handleLogError, logServerIssue, prun
 import { buildBusinessEvents, handleAdminBizEvents, handleTrackEvent } from './events.js';
 import { handleCalendarFeed } from './feeds.js';
 import { handleFormAnswer } from './forms.js';
+import { handleRotateFiles, refreshSpacePreviews } from './spaces.js';
 import { handleGroupRoute } from './groups.js';
-import { checkRateLimit, corsHeaders, isAllowedOrigin, jsonError } from './http.js';
+import { checkRateLimit, corsHeaders, isAllowedOrigin, jsonError, stagingProblem } from './http.js';
 import { handleAdminLedger, writeDailyLedger } from './ledger.js';
 import { handleCheckEmail, handleClaimLicense, handleStripeWebhook } from './licensing.js';
+import { fetchEmailSummary, handleAccountEmail, handleAdminEmailTest, handleAdminOnboardingRun, handleAdminOnboardingStart, handleEmailLink, runOnboardingEmails } from './onboarding.js';
 
 export default {
   // Every request passes through here. A route that throws still answers with
@@ -122,6 +135,8 @@ export default {
   // lands in the error log with the route and what went wrong.
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
+    const unsafe = stagingProblem(env);
+    if (unsafe) return new Response(JSON.stringify({ error: `Staging is switched off: ${unsafe}.` }), { status: 503, headers: { 'content-type': 'application/json' } });
     try {
       const res = await routeRequest(request, env, ctx);
       if (res.status >= 500 && pathname !== '/log-error') {
@@ -140,12 +155,17 @@ export default {
   // waking up every 5 minutes. Stripe is asked once and both writers share
   // the answer (null when Stripe isn't set up or didn't answer).
   async scheduled(event, env, ctx) {
+    if (stagingProblem(env)) return;
     const stripeReady = env.STRIPE_SECRET_KEY ? fetchStripeSummary(env).catch(() => null) : Promise.resolve(null);
     ctx.waitUntil(buildBusinessEvents(env, stripeReady).catch(e => logServerIssue(env, 'business-events', 'Daily business events failed', e)));
     ctx.waitUntil(writeDailyLedger(env, { stripeReady }).catch(e => logServerIssue(env, 'ledger', 'Daily ledger failed', e)));
     ctx.waitUntil(pruneOldIssues(env).catch(e => logServerIssue(env, 'diagnostics', 'Pruning old reports failed', e)));
+    // Job 14: every group's and club's public join preview, made true again.
+    ctx.waitUntil(refreshSpacePreviews(env).catch(e => logServerIssue(env, 'spaces', 'Refreshing join previews failed', e)));
     // Job 12: yesterday's errors to Nyla's inbox, only on days with any.
     ctx.waitUntil(fetchErrorSummary(env).then(summary => sendDailyDigest(env, summary)).catch(e => logServerIssue(env, 'alerts', 'Daily error digest failed', e)));
+    // Job 13: the day's onboarding tips, at 9am Eastern (8am in winter).
+    ctx.waitUntil(runOnboardingEmails(env).catch(e => logServerIssue(env, 'email', 'Onboarding emails failed', e)));
   },
 };
 
@@ -156,10 +176,22 @@ async function routeRequest(request, env, ctx) {
   // /admin/errors needs GET + an Authorization header, unlike every other
   // route here (POST + content-type only), handle its preflight separately
   // so the browser doesn't reject the real request for a disallowed method/header.
-  if (request.method === 'OPTIONS' && (url.pathname === '/admin/errors' || url.pathname === '/admin/business-summary' || url.pathname === '/admin/biz-events' || url.pathname === '/admin/ledger')) {
-    return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
+  if (request.method === 'OPTIONS' && ['/admin/errors', '/admin/business-summary', '/admin/biz-events', '/admin/ledger', '/admin/email-test', '/admin/onboarding-run', '/admin/onboarding-start'].includes(url.pathname)) {
+    return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'authorization' } });
   }
   if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env, origin) });
+
+  // Unsubscribe and email-settings links: a mail app posts the one-click
+  // unsubscribe with no Origin at all, so these sit before the origin check.
+  // The signed token in the link is what they trust.
+  if (url.pathname === '/email/unsubscribe' || url.pathname === '/email/prefs') {
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (!(await checkRateLimit(env, ip, 'email-link', 20))) return new Response('{"error":"Too many requests"}', { status: 429, headers: { 'content-type': 'application/json' } });
+    return handleEmailLink(request, env, url.pathname);
+  }
+  if (url.pathname === '/admin/email-test' && request.method === 'POST') return handleAdminEmailTest(request, env);
+  if (url.pathname === '/admin/onboarding-run' && request.method === 'POST') return handleAdminOnboardingRun(request, env);
+  if (url.pathname === '/admin/onboarding-start' && request.method === 'POST') return handleAdminOnboardingStart(request, env);
 
   // Stripe calls this server-to-server, no Origin header, verified by signature instead of CORS.
   if (url.pathname === '/stripe-webhook' && request.method === 'POST') return handleStripeWebhook(request, env);
@@ -218,6 +250,10 @@ async function routeRequest(request, env, ctx) {
     if (!(await checkRateLimit(env, ip, 'track-event', 60))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
     return handleTrackEvent(request, env, origin);
   }
+  if (url.pathname === '/account/email') {
+    if (!(await checkRateLimit(env, ip, 'account-email', 20))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleAccountEmail(request, env, origin);
+  }
   if (url.pathname === '/account/attest') {
     if (!(await checkRateLimit(env, ip, 'attest', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
     return handleAccountAttest(request, env, origin);
@@ -230,6 +266,10 @@ async function routeRequest(request, env, ctx) {
     // Looser than most: a whole club can answer a vote from one campus network.
     if (!(await checkRateLimit(env, ip, 'form-answer', 60))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
     return handleFormAnswer(request, env, origin);
+  }
+  if (url.pathname === '/space/rotate-files') {
+    if (!(await checkRateLimit(env, ip, 'rotate-files', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleRotateFiles(request, env, origin);
   }
   if (url.pathname === '/calendar-feed') {
     if (!(await checkRateLimit(env, ip, 'feed', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);

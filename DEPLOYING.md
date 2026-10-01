@@ -42,6 +42,49 @@ its own), root `/`; preview builds on for every other branch with
 `npx wrangler preview`. If a build ever says `npx wrangler deploy`, change it
 back: that would publish every push to `main` straight to production.
 
+## Staging: where previews and localhost go
+
+Only `app.semester-hq.com`, `semester-hq.com` and `www` count as production
+(`PRODUCTION_HOSTS` in `js/config.js`, and the same list in the site's
+`js/diagnostics.js`). Everything else, meaning every branch Preview, every
+version URL and localhost, talks to staging instead:
+
+- **API Worker:** `student-planner-ai-proxy-staging`, the same code deployed
+  with `npx wrangler deploy --env staging` from `worker/`. Its own KV, rate
+  limiters and secrets; Stripe in test mode; email only to the addresses in
+  `MAIL_ALLOWLIST`; at most 12 emails a day. If it is ever given a live
+  Stripe key, the production Firebase project, or no allow-list, it refuses
+  every request (`stagingProblem` in `worker/src/http.js`).
+- **Firebase:** the `semester-hq-staging` project, with the same rules
+  (`deploy-rules.yml` publishes to staging on every branch, then to
+  production from `main`). Until that project exists, `FB_CONFIG_STAGING`
+  is an offline-only stand-in: previews start signed out and sign-in fails.
+- **Turnstile:** Cloudflare's always-pass test key.
+- Preview pages show a small "Staging" label in the corner.
+
+## The API Worker
+
+It still deploys from `worker/` with the Wrangler CLI (it isn't connected to
+Workers Builds), but the same way as the sites: staging first, then a
+version, then promote.
+
+```bash
+cd worker
+npx wrangler deploy --env staging          # try it on a preview
+npx wrangler versions upload               # production version, not live
+# test the Version Preview URL it prints
+npx wrangler versions deploy <version-id>@100% -y
+npx wrangler triggers deploy               # only if the cron changed
+node ../tests/smoke.mjs --wait 60
+```
+
+`npx wrangler rollback` goes back one version. A secret added with
+`npx wrangler versions secret put NAME` lands on a new version without
+deploying it; `wrangler secret put` (without `versions`) deploys at once.
+
+The one-page checklist for any change is `docs/how-to-ship.md` in the
+Business OS repo, also in the OS under About.
+
 ## Files that control serving
 
 | File | What it does |

@@ -8,6 +8,7 @@ import { logServerIssue } from './diagnostics.js';
 import { batchGetFirestoreDocs, commitFirestore, deleteFirestoreDoc, listFirestoreCollection, parseJsonField, patchFirestoreDoc, readFirestoreDoc, readFirestoreDocWithTime, runFirestoreQuery, verifyFirebaseIdToken } from './firebase.js';
 import { jsonError, jsonOk, verifiedEmailOf } from './http.js';
 import { individualPaidOf } from './licensing.js';
+import { startCustomerEmails } from './onboarding.js';
 import { createStripePortalSession, stripeRequest } from './stripe.js';
 
 const GROUP_SEAT_PRICE_CENTS = 599; // $5.99 per member per month, same note as above
@@ -242,6 +243,7 @@ export async function activateGroupPlan(env, session) {
     stripeCustomerId: session.customer || '', stripeSubscriptionId: session.subscription || '', stripeItemId: item?.id || '',
     activatedAt: new Date(), updatedAt: new Date(),
   });
+  return { name: plan.name || '', seats: item?.quantity || plan.requestedSeats || GROUP_MIN_SEATS };
 }
 // Webhook: renewals, seat changes made in Stripe, failed payments, cancellation.
 export async function syncGroupPlan(env, sub, deleted) {
@@ -283,6 +285,8 @@ async function groupJoin(env, ctx) {
   if (license?.groupPlanId && license.groupPlanId !== plan.id) await removeGroupMember(env, license.groupPlanId, ctx.uid);
   const added = await claimGroupSeat(env, plan.id, ctx);
   await setLicenseSeat(env, ctx.uid, license, { planId: plan.id, name: plan.name, active: true });
+  // Job 13: a member welcome and the tips, the first time they take a seat.
+  if (added && ctx.email) await startCustomerEmails(env, { email: ctx.email, uid: ctx.uid, plan: 'member', groupName: plan.name });
   return { joined: true, already: !added, name: plan.name, individualPaid: individualPaidOf(license) };
 }
 // The seat count only moves if nobody else changed the plan since it was

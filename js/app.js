@@ -51,6 +51,7 @@ function render() {
   const isNewView = viewKey !== _lastViewKey;
   _lastViewKey = viewKey;
   if (isNewView) diag.crumb('view', viewKey.replace(/\|+$/, ''));
+  if (isNewView && typeof usageOnRoute === 'function') usageOnRoute(state.route);
   const demoBar = typeof demoBannerHtml === 'function' ? demoBannerHtml() : '';
   $('#content').innerHTML = `${demoBar}<div class="${isNewView ? 'fade-in' : ''}">${fn()}</div>`;
   // A different page opens at the top, not at the old page's scroll offset.
@@ -62,6 +63,7 @@ function render() {
   applyExpandables($('#content'));
   if (typeof afterGroupPageRender === 'function') afterGroupPageRender();
   if (typeof afterOrgPageRender === 'function') afterOrgPageRender();
+  if (typeof loadEmailTipsSetting === 'function') loadEmailTipsSetting();
   if (typeof updateTimerChrome === 'function') updateTimerChrome();
   const now = document.activeElement;
   if (focusKey && samePage && (!now || now === document.body) && !$('#modal-wrap')?.classList.contains('show')) {

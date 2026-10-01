@@ -54,7 +54,7 @@ export async function handleLogError(request, env, origin) {
     console.error('Error log write failed', e);
   }
   // Job 12: one email an hour at most when reports spike. Never fails the report.
-  await alertOnSpike(env, ERROR_LEVELS.includes(body.level) ? body.level : 'error').catch(e => console.error('Spike alert failed', e?.message));
+  await alertOnSpike(env, ERROR_LEVELS.includes(body.level) ? body.level : 'error', clip(body.session, 20)).catch(e => console.error('Spike alert failed', e?.message));
   return jsonOk({ ok: true }, env, origin);
 }
 
@@ -83,7 +83,7 @@ export async function logServerIssue(env, feature, message, err, extra = {}) {
 }
 export function featureForPath(path) {
   const map = [[/^\/v1\/messages/, 'ai'], [/^\/create-(checkout|portal)-session|^\/stripe-webhook/, 'checkout'], [/^\/(claim-license|check-email)/, 'license'],
-    [/^\/group\//, 'group-plans'], [/^\/delete-account/, 'account'], [/^\/contact-message/, 'feedback'], [/^\/admin\//, 'admin']];
+    [/^\/group\//, 'group-plans'], [/^\/delete-account/, 'account'], [/^\/contact-message/, 'feedback'], [/^\/(email\/|account\/email)/, 'email'], [/^\/admin\//, 'admin']];
   return (map.find(([re]) => re.test(path)) || [])[1] || 'worker';
 }
 function scrubPII(text) {

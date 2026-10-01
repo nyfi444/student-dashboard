@@ -29,6 +29,12 @@ import { expect } from '@playwright/test';
    Worker, which rejects a fake one. That last part is the boundary this
    suite deliberately does not cross. */
 export async function stubExternals(page) {
+  // localhost is staging (js/config.js), and staging's Firebase may be the
+  // offline stand-in. Signed-out pages still ask Google for the project's
+  // settings; answer that here, so no test ever reaches a real Firebase
+  // project and the console stays a fair test of the page itself.
+  await page.route(/googleapis\.com\/identitytoolkit\/v3\/relyingparty\/getProjectConfig/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"projectId":"staging","authorizedDomains":["localhost"]}' }));
   await page.route(/cloudflareinsights\.com/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/javascript', body: '' }));
   await page.route(/challenges\.cloudflare\.com/, (route) =>

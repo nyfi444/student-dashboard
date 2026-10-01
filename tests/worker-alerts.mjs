@@ -12,6 +12,11 @@
    - a Stripe webhook with a signature that fails the check alerts; a
      request with no signature header doesn't
    - a Resend failure never breaks the thing being reported
+   - a spike needs five different sessions, so one stuck device is not
+     an outage
+   - AI spend past the line emails once a day
+   - mail.js: one shared budget, the less important kinds stop first,
+     and an allow-list (staging) refuses everyone else
 
    Run:  node tests/worker-alerts.mjs
 ──────────────────────────────────────────────────────────────── */
@@ -89,11 +94,17 @@ function setup({ resendOk = true } = {}) {
 {
   const { w, env, sent } = setup();
   let fired = 0;
-  for (let i = 0; i < 25; i++) if (await w.alertOnSpike(env, 'error')) fired++;
+  for (let i = 0; i < 25; i++) if (await w.alertOnSpike(env, 'error', 's' + (i % 5))) fired++;
   check('25 reports in an hour are normal', fired, 0);
-  check('the 26th is a spike', await w.alertOnSpike(env, 'error'), true);
-  check('and it emails only once that hour', await w.alertOnSpike(env, 'error'), false);
+  check('the 26th is a spike', await w.alertOnSpike(env, 'error', 's1'), true);
+  check('and it emails only once that hour', await w.alertOnSpike(env, 'error', 's2'), false);
   check('one spike email', sent.length, 1);
+  const { w: w1, env: env1, sent: sent1 } = setup();
+  for (let i = 0; i < 60; i++) await w1.alertOnSpike(env1, 'error', 'stuck-device');
+  check('one device looping is not a spike', sent1.length, 0);
+  const { w: w3, env: env3, sent: sent3 } = setup();
+  for (let i = 0; i < 60; i++) await w3.alertOnSpike(env3, 'error', 'd' + (i % 4));
+  check('four devices are not enough either', sent3.length, 0);
   const { w: w2, env: env2, sent: sent2 } = setup();
   for (let i = 0; i < 40; i++) await w2.alertOnSpike(env2, 'warn');
   check('warnings never make a spike', sent2.length, 0);
@@ -133,6 +144,60 @@ function setup({ resendOk = true } = {}) {
   const wrongSecret = await w.handleStripeWebhook(new Request('https://x/stripe-webhook', { method: 'POST', body: '{}', headers: { 'Stripe-Signature': 't=1,v1=abc' } }), env);
   check('a signed request that fails the check is refused', wrongSecret.status, 400);
   check('and emails, because payments may be going unlicensed', sent.length, 1);
+}
+
+/* ── AI spend running hot ─────────────────────────────────────────── */
+{
+  const { w, env, sent } = setup();
+  env.AI_SPEND_ALERT_CENTS = '100';
+  check('under the line, nothing', await w.noteAiSpend(env, 60), false);
+  check('past it, one email', await w.noteAiSpend(env, 50), true);
+  check('and not again that day', await w.noteAiSpend(env, 500), false);
+  check('one spend email', sent.length, 1);
+  ok('the subject says the amount', sent[0].subject.includes('$1.10'));
+  ok('no em dashes', !(sent[0].subject + sent[0].text).includes('—'));
+  const { w: w2, env: env2, sent: sent2 } = setup();
+  await w2.recordAiUsage(env2, { feature: 'syllabus', model: 'claude-opus-5', usage: { input_tokens: 1_000_000, output_tokens: 0 } });
+  check('a real AI call feeds the running total (500 cents default line)', sent2.length, 1);
+}
+
+/* ── mail.js: one budget, shared in order of importance ──────────── */
+{
+  const { w, env, sent } = setup();
+  env.RESEND_DAILY_LIMIT = '10';
+  const kinds = [];
+  for (let i = 0; i < 12; i++) kinds.push((await w.sendMail(env, { kind: 'onboarding', to: 'a@b.co', subject: 's', text: 't' })).sent);
+  check('onboarding stops at 60% of the day', kinds.filter(Boolean).length, 6);
+  check('the refusal says why', (await w.sendMail(env, { kind: 'onboarding', to: 'a@b.co', subject: 's', text: 't' })).reason, 'budget');
+  check('contact still has room', (await w.sendMail(env, { kind: 'contact', to: 'o@x.co', subject: 's', text: 't' })).sent, true);
+  check('receipts still have room', (await w.sendMail(env, { kind: 'receipt', to: 'a@b.co', subject: 's', text: 't' })).sent, true);
+  check('sign-in links still have room', (await w.sendMail(env, { kind: 'auth', to: 'a@b.co', subject: 's', text: 't' })).sent, true);
+  check('nine went out in all', sent.length, 9);
+  let unknown = null;
+  try { await w.sendMail(env, { kind: 'mystery', to: 'a@b.co', subject: 's', text: 't' }); } catch (e) { unknown = e.message; }
+  ok('an unknown kind throws', unknown && unknown.includes('Unknown mail kind'));
+}
+{
+  const { w, env, sent } = setup();
+  env.MAIL_ALLOWLIST = 'me@x.co, hello@semester-hq.com';
+  check('staging refuses a stranger', (await w.sendMail(env, { kind: 'auth', to: 'student@school.edu', subject: 's', text: 't' })).reason, 'allowlist');
+  check('and sends to the tester', (await w.sendMail(env, { kind: 'auth', to: 'Me@X.co', subject: 's', text: 't' })).sent, true);
+  check('only one went out', sent.length, 1);
+}
+{
+  const { w, env, sent } = setup();
+  const r = await w.sendMail(env, { kind: 'onboarding', to: 'a@b.co', subject: 's', text: 't', html: '<p>h</p>', headers: { 'List-Unsubscribe': '<https://x>' }, idempotencyKey: 'k1' });
+  check('sent with an id', [r.sent, r.id], [true, 'x']);
+  check('headers pass through', sent[0].headers['List-Unsubscribe'], '<https://x>');
+  const summary = await w.mailUsageSummary(env);
+  check('the summary counts it by kind', [summary.days[0].onboarding, summary.days[0].total, summary.dailyLimit], [1, 1, 100]);
+}
+{
+  const { w, env } = setup();
+  await w.alertIfUrgent(env, { feature: 'checkout', message: 'x', fingerprint: 'z9' });
+  const summary = await w.mailUsageSummary(env);
+  ok('the last alert is remembered for the Business OS', summary.lastAlert && summary.lastAlert.subject.includes('Checkout'));
+  check('and where alerts go', summary.alertsTo, 'owner@example.com');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

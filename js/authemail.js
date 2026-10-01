@@ -11,7 +11,7 @@
    tag, and the Worker only checks the token once TURNSTILE_SECRET is set.
 ──────────────────────────────────────────────────────────────── */
 
-const TURNSTILE_SITEKEY = document.querySelector('meta[name="turnstile-sitekey"]')?.content || '';
+const TURNSTILE_SITEKEY = (IS_PRODUCTION ? document.querySelector('meta[name="turnstile-sitekey"]')?.content : TURNSTILE_TEST_SITEKEY) || '';
 let _tsWidget = null, _tsScriptStarted = false;
 function turnstileToken() {
   try { return TURNSTILE_SITEKEY && window.turnstile && _tsWidget !== null ? window.turnstile.getResponse(_tsWidget) : ''; }

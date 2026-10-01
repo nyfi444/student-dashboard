@@ -8,6 +8,9 @@ import { fetchCheckoutSummary } from './checkouts.js';
 import { listFirestoreCollection, queryRecentDocs, runFirestoreQuery } from './firebase.js';
 import { groupAdmins } from './groups.js';
 import { adminTokenOk } from './http.js';
+import { fetchActivitySummary } from './activity.js';
+import { mailUsageSummary } from './mail.js';
+import { fetchEmailSummary } from './onboarding.js';
 import { stripeGetJson } from './stripe.js';
 import { finishSubscriberRows, subscriberRow } from './subscribers.js';
 import { fetchAiUsageSummary } from './usage.js';
@@ -67,6 +70,8 @@ export async function handleAdminBusinessSummary(request, env) {
   //   checkouts   Stripe Checkout Sessions, last 30 days, by path (checkouts.js)
   //   groupPlans  one line per group plan, no member names or emails
   //   aiUsage     AI calls, tokens and estimated cost by feature (usage.js)
+  //   mail        emails sent per kind per day against Resend's daily limit,
+  //               where alerts go and when the last one went (mail.js)
   const hasFirebase = !!(env.FIREBASE_PROJECT_ID && env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY);
   const [checkouts, groupPlans, aiUsage] = await Promise.allSettled([
     env.STRIPE_SECRET_KEY ? fetchCheckoutSummary(env) : Promise.resolve(undefined),
@@ -79,6 +84,14 @@ export async function handleAdminBusinessSummary(request, env) {
     out.groupPlansError = groupPlans.status === 'fulfilled' ? '' : (groupPlans.reason?.message || 'failed');
     out.aiUsage = aiUsage.status === 'fulfilled' ? aiUsage.value : { error: aiUsage.reason?.message || 'failed' };
   }
+
+  try { out.mail = await mailUsageSummary(env); } catch (e) { out.mail = { error: e.message }; }
+  //   emails      the onboarding sequence: how many people are in it, which
+  //               tips went and were skipped, who stopped and why (counts)
+  if (hasFirebase) { try { out.emails = await fetchEmailSummary(env); } catch (e) { out.emails = { error: e.message }; } }
+  //   activity    weekly active accounts, feature use and day 2/7/30 returns
+  //               by cohort, from the app's anonymous counts (activity.js)
+  if (hasFirebase) { try { out.activity = await fetchActivitySummary(env); } catch (e) { out.activity = { error: e.message }; } }
 
   return new Response(JSON.stringify(out), { headers: adminCors });
 }

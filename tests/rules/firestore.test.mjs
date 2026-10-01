@@ -71,7 +71,7 @@ describe('licenses', () => {
 /* ── Server-only collections: the Worker writes these with its own
       service account; no client may read or write them at all. ───── */
 describe('server-only collections', () => {
-  for (const path of ['licensesByEmail/alice@school.edu', 'feedback/f1', 'errors/e1', 'events/v1', 'groupPlans/p1', 'groupPlans/p1/members/alice', 'groupInvites/ABCDEFGH']) {
+  for (const path of ['licensesByEmail/alice@school.edu', 'feedback/f1', 'errors/e1', 'events/v1', 'groupPlans/p1', 'groupPlans/p1/members/alice', 'groupInvites/ABCDEFGH', 'emailOnboarding/alice@school.edu', 'emailPrefs/alice@school.edu', 'emailLog/abc-welcome', 'bizLedger/2026-09-27', 'bizEvents/x', 'bizState/events', 'aiUsage/2026-09-27']) {
     test(`${path.split('/')[0]}${path.includes('/members/') ? '/members' : ''}: no client may read or write`, async () => {
       await seed(path, { anything: true });
       await assertFails(getDoc(doc(db('alice'), path)));

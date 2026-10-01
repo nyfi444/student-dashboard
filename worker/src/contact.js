@@ -6,6 +6,7 @@
 import { logServerIssue } from './diagnostics.js';
 import { writeFirestoreDoc } from './firebase.js';
 import { jsonError, jsonOk, turnstileOk, underDailyCap } from './http.js';
+import { sendMail } from './mail.js';
 
 /* ── 4. Contact form ──────────────────────────────────────────── */
 // Writes to Firestore's `feedback` collection. Clients can never read or
@@ -58,15 +59,9 @@ export async function handleContactMessage(request, env, origin) {
 // the Firestore `feedback` collection. Silently no-ops if RESEND_API_KEY
 // isn't set, so this stays optional. See worker/README.md to enable it.
 async function notifyNewContactMessage(env, { name, email, category, message }) {
-  if (!env.RESEND_API_KEY) return;
-  const to = env.NOTIFY_EMAIL || 'hello@semester-hq.com';
-  const from = env.NOTIFY_FROM || 'Semester HQ <onboarding@resend.dev>';
   const subject = `[Semester HQ] New ${category} message${name ? ' from ' + name : ''}`;
   const text = `Category: ${category}\nFrom: ${name || '(no name given)'} <${email}>\n\n${message}`;
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ from, to, reply_to: email, subject, text }),
-  });
-  if (!res.ok) throw new Error(`Resend API ${res.status}: ${await res.text()}`);
+  // Past its share of the day's email budget the message still saves; the
+  // Business OS Support page shows it either way.
+  await sendMail(env, { kind: 'contact', to: env.NOTIFY_EMAIL || 'hello@semester-hq.com', replyTo: email, subject, text });
 }

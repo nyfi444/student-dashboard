@@ -11,7 +11,7 @@ let _lastKnownUpdatedAt = 0;
 let _plannerUnsub = null, _notesUnsub = null;
 const DEVICE_LOCAL_VIEW_KEYS = ['route', 'subRoute', 'groupTab', 'orgTab', 'groupTaskFilter', 'calView', 'calDate', 'todoFilter', 'notebookSelected', 'todayMode'];
 
-function fbConfigured() { return !!FB_CONFIG.apiKey; }
+function fbConfigured() { return !!FB_CONFIG.apiKey || !!firebaseEmulatorHost(); }
 
 // Marks "this device has edits the cloud hasn't confirmed yet," so a reload
 // (or reopening after being offline) can tell local edits apart from a stale
@@ -46,7 +46,7 @@ function bootFirebase() {
     const emulator = firebaseEmulatorHost();
     // The emulators run as demo-semester-hq, a project id the Firebase tools
     // treat as offline-only: nothing addressed to it can reach the real one.
-    firebase.initializeApp(emulator ? { ...FB_CONFIG, projectId: 'demo-semester-hq', storageBucket: 'demo-semester-hq.appspot.com' } : FB_CONFIG);
+    firebase.initializeApp(emulator ? { apiKey: 'demo-key', authDomain: 'demo-semester-hq.firebaseapp.com', projectId: 'demo-semester-hq', storageBucket: 'demo-semester-hq.appspot.com', appId: 'demo' } : FB_CONFIG);
     _fbAuth = firebase.auth();
     _fbDb = firebase.firestore();
     if (emulator) {
@@ -65,6 +65,7 @@ function bootFirebase() {
       if (typeof render === 'function') render(); // show a "checking" state rather than flash stale content
       if (user) {
         recordTermsAcceptance(user); // nothing waits on this
+        if (typeof usageAccountCreated === 'function') usageAccountCreated(user); // js/usagecounts.js
         // Captured before resolveLicenseStatus()/pollForLicense() below, since
         // a successful license check clears this param. Need to know whether
         // this moment is "just paid" to show "Your HQ is ready" instead of the
@@ -101,6 +102,10 @@ function bootFirebase() {
           // First-week setup counts (js/setupcounts.js): decided once per
           // account, after its data is here. Does nothing while switched off.
           if (typeof setupCountsBaseline === 'function') setupCountsBaseline(user);
+          // What the email tips can skip (js/emailprefs.js), once the data is here.
+          if (typeof noteEmailProgress === 'function') noteEmailProgress();
+          // Anonymous weekly counts (js/usagecounts.js).
+          if (typeof usageOnLoad === 'function') usageOnLoad();
           toast(justPurchased ? 'Your HQ is ready, welcome in.' : `Synced as ${user.displayName || user.email}`, 'success');
         } else {
           // Signed in but not on a paid plan. The paywall screen already

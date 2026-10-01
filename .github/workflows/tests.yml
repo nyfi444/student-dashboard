@@ -47,7 +47,11 @@ jobs:
           node tests/worker-security.mjs
           node tests/worker-measure.mjs
           node tests/worker-alerts.mjs
+          node tests/worker-staging.mjs
+          node tests/worker-onboarding.mjs
+          node tests/worker-activity.mjs
           node tests/worker-forms.mjs
+          node tests/worker-spaces.mjs
 
   rules:
     runs-on: ubuntu-latest

@@ -18,14 +18,15 @@
 import { logServerIssue } from './diagnostics.js';
 import { generateAuthEmailLink } from './firebase.js';
 import { jsonError, jsonOk, turnstileOk, underDailyCap } from './http.js';
+import { sendMail } from './mail.js';
 
 const AUTH_EMAIL_KINDS = {
   signin: { requestType: 'EMAIL_SIGNIN', subject: 'Your Semester HQ sign-in link', lead: 'Tap the button to sign in to Semester HQ.', button: 'Sign in to Semester HQ' },
   reset: { requestType: 'PASSWORD_RESET', subject: 'Set your Semester HQ password', lead: 'Tap the button to choose a new password for Semester HQ.', button: 'Set my password' },
 };
-// Resend's free plan sends 100 a day, and the contact form needs some of
-// them. Past this, login.html uses Firebase's email for the rest of the day.
-const AUTH_EMAIL_DAILY_CAP = 80;
+// How many a day go out is mail.js's shared budget: sign-in links come
+// first there, so they keep their room whatever else is sending. Past it,
+// login.html uses Firebase's email for the rest of the day.
 
 export async function handleAuthEmail(request, env, origin) {
   if (!env.RESEND_API_KEY || !env.FIREBASE_PROJECT_ID) return jsonError('Email sending is not set up.', 503, env, origin);
@@ -39,7 +40,7 @@ export async function handleAuthEmail(request, env, origin) {
 
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   if (!(await turnstileOk(env, body.turnstileToken, ip))) return jsonError('Please complete the verification and try again.', 400, env, origin);
-  if (!(await underDailyCap(env, 'auth-email', AUTH_EMAIL_DAILY_CAP)) || !(await underDailyCap(env, `auth-email:${email}`, 5))) {
+  if (!(await underDailyCap(env, `auth-email:${email}`, 5))) {
     return jsonError('Daily email limit reached.', 429, env, origin);
   }
 
@@ -47,7 +48,10 @@ export async function handleAuthEmail(request, env, origin) {
     const link = await generateAuthEmailLink(env, kind.requestType, email, authContinueUrl(env, body.continueUrl));
     // A reset for an address with no account sends nothing, and says so to
     // nobody: the page shows the same "check your inbox" either way.
-    if (link) await sendAuthEmail(env, email, kind, link);
+    if (link) {
+      const result = await sendAuthEmail(env, email, kind, link);
+      if (!result.sent) return jsonError('Daily email limit reached.', 429, env, origin);
+    }
     return jsonOk({ ok: true }, env, origin);
   } catch (e) {
     await logServerIssue(env, 'login', `Could not send a ${body.kind} email`, e);
@@ -69,7 +73,6 @@ function authContinueUrl(env, asked) {
 function escapeHtmlText(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 async function sendAuthEmail(env, to, kind, link) {
-  const from = env.NOTIFY_FROM || 'Semester HQ <notifications@send.semester-hq.com>';
   const text = `${kind.lead}\n\n${link}\n\nThe link works once and lasts an hour. If you didn't ask for it, ignore this email and nothing changes.\n\nSemester HQ`;
   const href = escapeHtmlText(link);
   // Plain tables and inline styles, which is what email clients render. The
@@ -86,10 +89,5 @@ async function sendAuthEmail(env, to, kind, link) {
 <p style="margin:0 0 24px;font-size:12px;line-height:1.5;word-break:break-all"><a href="${href}" style="color:#121212">${href}</a></p>
 <p style="margin:0;font-size:13px;line-height:1.5;color:#555">The link works once and lasts an hour. If you didn’t ask for it, ignore this email and nothing changes.</p>
 </td></tr></table></td></tr></table></body></html>`;
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ from, to, reply_to: 'hello@semester-hq.com', subject: kind.subject, text, html }),
-  });
-  if (!res.ok) throw new Error(`Resend API ${res.status}: ${await res.text()}`);
+  return sendMail(env, { kind: 'auth', to, replyTo: 'hello@semester-hq.com', subject: kind.subject, text, html });
 }
