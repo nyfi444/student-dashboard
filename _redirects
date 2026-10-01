@@ -3,6 +3,7 @@
 # See the comment at the top of that script for why each kind exists.
 / /index.html 200
 /admin/errors /admin/errors.html 200
+/form /form.html 200
 /group-admin /group-admin.html 200
 /index /index.html 200
 /login /login.html 200

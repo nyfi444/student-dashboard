@@ -11,7 +11,7 @@
 ──────────────────────────────────────────────────────────────── */
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, addDoc } from 'firebase/firestore';
+import { arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, addDoc, writeBatch } from 'firebase/firestore';
 import { as, makeEnv, signedOut } from './setup.mjs';
 
 let env;
@@ -366,6 +366,298 @@ describe('orgs', () => {
       await assertSucceeds(deleteDoc(doc(db('carol'), 'orgs/CLUB01/messages/m1')));
       await assertSucceeds(deleteDoc(doc(db('bob'), 'orgs/CLUB01/messages/m2')));
     });
+  });
+});
+
+/* ── Forms (clubs and study groups) ─────────────────────────────────
+   alice founded the club and bob is an officer; carol is a member;
+   mallory has never joined. An answer is only ever written together
+   with the sender's own record of it (planners/{uid}/formAnswers), which
+   is what lets "delete my account" find it later. */
+describe('forms', () => {
+  const org = () => ({
+    code: 'CLUB01', name: 'Chess', createdBy: 'alice',
+    memberUids: ['alice', 'bob', 'carol'], officerUids: ['alice', 'bob'],
+    people: { alice: { name: 'A' }, bob: { name: 'B' }, carol: { name: 'C' } }, rsvp: {},
+  });
+  const group = () => ({
+    code: 'GRP123', name: 'Bio study', createdBy: 'alice', memberUids: ['alice', 'bob', 'carol'],
+    people: { alice: { name: 'Alice' }, bob: { name: 'Bob' }, carol: { name: 'Carol' } },
+  });
+  const form = (extra = {}) => ({
+    v: 1, id: 'f1', title: 'Interest form', description: '', questions: [{ id: 'q1', type: 'short', label: 'Major?', required: true, options: [] }],
+    status: 'open', audience: 'link', collectEmail: true, allowEdit: true, closesAt: null,
+    createdBy: 'alice', createdByName: 'A', createdAt: 1, updatedAt: 1, spaceKind: 'club', spaceName: 'Chess', spaceColor: '', ...extra,
+  });
+  const answer = (uid, extra = {}) => ({ uid, name: uid, email: `${uid}@school.edu`, member: false, answers: { q1: 'Biology' }, at: 5, updatedAt: 5, ...extra });
+  // The way the app sends one: the answer and the sender's record of it, together.
+  const send = (uid, base, data, { key = `${base.split('/')[0]}_${base.split('/')[1]}_f1`, record = true } = {}) => {
+    const d = db(uid);
+    const batch = writeBatch(d);
+    batch.set(doc(d, `${base}/forms/f1/responses/${data.uid}`), data);
+    if (record) batch.set(doc(d, `planners/${uid}/formAnswers/${key}`), { kind: 'club', code: base.split('/')[1], formId: 'f1', at: 5 });
+    return batch.commit();
+  };
+
+  describe('in a club', () => {
+    const base = 'orgs/CLUB01';
+    beforeEach(async () => { await seed(base, org()); });
+
+    test('an officer can write a form; a member and an outsider cannot', async () => {
+      await assertSucceeds(setDoc(doc(db('bob'), `${base}/forms/f1`), form({ createdBy: 'bob' })));
+      await assertFails(setDoc(doc(db('carol'), `${base}/forms/f2`), form({ id: 'f2', createdBy: 'carol' })));
+      await assertFails(setDoc(doc(db('mallory'), `${base}/forms/f3`), form({ id: 'f3', createdBy: 'mallory' })));
+    });
+    test('a form cannot be written in another officer’s name, or handed to someone else later', async () => {
+      await assertFails(setDoc(doc(db('bob'), `${base}/forms/f1`), form({ createdBy: 'alice' })));
+      await seed(`${base}/forms/f1`, form());
+      await assertFails(updateDoc(doc(db('bob'), `${base}/forms/f1`), { createdBy: 'bob' }));
+      await assertSucceeds(updateDoc(doc(db('bob'), `${base}/forms/f1`), { status: 'closed' }));
+    });
+    test('a form with no title, too many questions, or a made-up status is refused', async () => {
+      const put = (extra) => setDoc(doc(db('alice'), `${base}/forms/f1`), form(extra));
+      await assertFails(put({ title: '' }));
+      await assertFails(put({ title: 'x'.repeat(121) }));
+      await assertFails(put({ questions: Array.from({ length: 41 }, (_, i) => ({ id: `q${i}` })) }));
+      await assertFails(put({ status: 'secret' }));
+      await assertFails(put({ audience: 'everyone' }));
+      await assertFails(put({ id: 'other' }));
+    });
+    test('members see the club’s forms; an outsider can open only an open link form, and never browse', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await seed(`${base}/forms/f2`, form({ id: 'f2', audience: 'members' }));
+      await seed(`${base}/forms/f3`, form({ id: 'f3', status: 'closed' }));
+      await seed(`${base}/forms/f4`, form({ id: 'f4', status: 'draft' }));
+      await assertSucceeds(getDocs(collection(db('carol'), `${base}/forms`)));
+      await assertSucceeds(getDoc(doc(db('mallory'), `${base}/forms/f1`)));
+      await assertFails(getDoc(doc(db('mallory'), `${base}/forms/f2`)));
+      await assertFails(getDoc(doc(db('mallory'), `${base}/forms/f3`)));
+      await assertFails(getDoc(doc(db('mallory'), `${base}/forms/f4`)));
+      await assertFails(getDocs(collection(db('mallory'), `${base}/forms`)));
+      await assertFails(getDoc(doc(db(null), `${base}/forms/f1`)));
+    });
+    test('an outsider with the link can answer an open link form as themselves', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await assertSucceeds(send('mallory', base, answer('mallory')));
+    });
+    test('a member can answer a members-only form; an outsider cannot', async () => {
+      await seed(`${base}/forms/f1`, form({ audience: 'members', collectEmail: false }));
+      const plain = (uid, member) => { const a = answer(uid, { member }); delete a.email; return a; };
+      await assertSucceeds(send('carol', base, plain('carol', true)));
+      await assertFails(send('mallory', base, plain('mallory', false)));
+    });
+    test('an answer is refused without the sender’s own record of it', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await assertFails(send('mallory', base, answer('mallory'), { record: false }));
+      await assertFails(send('mallory', base, answer('mallory'), { key: 'orgs_CLUB01_other' }));
+    });
+    test('nobody can answer as someone else', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await assertFails(send('mallory', base, answer('carol')));
+      await assertFails(send('mallory', base, { ...answer('mallory'), uid: 'carol' }));
+    });
+    test('the email on an answer is the one the sender signed in with, and only when the form asks', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await assertFails(send('mallory', base, answer('mallory', { email: 'alice@school.edu' })));
+      const none = answer('mallory'); delete none.email;
+      await assertFails(send('mallory', base, none));
+      await seed(`${base}/forms/f1`, form({ collectEmail: false }));
+      await assertFails(send('mallory', base, answer('mallory')));
+      await assertSucceeds(send('mallory', base, none));
+    });
+    test('an outsider cannot pass as a member, and a member is marked as one', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await assertFails(send('mallory', base, answer('mallory', { member: true })));
+      await assertFails(send('carol', base, answer('carol', { member: false })));
+      await assertSucceeds(send('carol', base, answer('carol', { member: true })));
+    });
+    test('an answer with extra fields, no name, or too many answers is refused', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await assertFails(send('mallory', base, answer('mallory', { accepted: true })));
+      await assertFails(send('mallory', base, answer('mallory', { name: '' })));
+      await assertFails(send('mallory', base, answer('mallory', { name: 'x'.repeat(81) })));
+      await assertFails(send('mallory', base, answer('mallory', { answers: Object.fromEntries(Array.from({ length: 41 }, (_, i) => [`q${i}`, 'x'])) })));
+    });
+    test('a draft, a closed form, and a form past its closing time take no answers', async () => {
+      await seed(`${base}/forms/f1`, form({ status: 'draft' }));
+      await assertFails(send('carol', base, answer('carol', { member: true })));
+      await seed(`${base}/forms/f1`, form({ status: 'closed' }));
+      await assertFails(send('carol', base, answer('carol', { member: true })));
+      await seed(`${base}/forms/f1`, form({ closesAt: Date.now() - 60000 }));
+      await assertFails(send('carol', base, answer('carol', { member: true })));
+      await seed(`${base}/forms/f1`, form({ closesAt: Date.now() + 3600000 }));
+      await assertSucceeds(send('carol', base, answer('carol', { member: true })));
+    });
+    test('an answer can be changed while the form allows it, and not after', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await seed(`${base}/forms/f1/responses/mallory`, answer('mallory'));
+      const mine = doc(db('mallory'), `${base}/forms/f1/responses/mallory`);
+      await assertSucceeds(setDoc(mine, answer('mallory', { answers: { q1: 'Chemistry' }, updatedAt: 9 })));
+      await assertFails(setDoc(mine, answer('mallory', { at: 99 })));
+      await seed(`${base}/forms/f1`, form({ allowEdit: false }));
+      await assertFails(setDoc(mine, answer('mallory', { answers: { q1: 'Physics' }, updatedAt: 10 })));
+      await seed(`${base}/forms/f1`, form({ status: 'closed' }));
+      await assertFails(setDoc(mine, answer('mallory', { answers: { q1: 'Physics' }, updatedAt: 10 })));
+    });
+    test('officers read every answer; the sender reads their own; nobody else reads any', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await seed(`${base}/forms/f1/responses/mallory`, answer('mallory'));
+      await seed(`${base}/forms/f1/responses/dave`, answer('dave'));
+      await assertSucceeds(getDocs(collection(db('bob'), `${base}/forms/f1/responses`)));
+      await assertSucceeds(getDoc(doc(db('mallory'), `${base}/forms/f1/responses/mallory`)));
+      await assertFails(getDoc(doc(db('mallory'), `${base}/forms/f1/responses/dave`)));
+      await assertFails(getDoc(doc(db('carol'), `${base}/forms/f1/responses/mallory`)));
+      await assertFails(getDocs(collection(db('carol'), `${base}/forms/f1/responses`)));
+      await assertFails(getDocs(collection(db('mallory'), `${base}/forms/f1/responses`)));
+      await assertFails(getDoc(doc(db(null), `${base}/forms/f1/responses/mallory`)));
+    });
+    test('the sender can take their answer back, an officer can remove one, a member cannot', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await seed(`${base}/forms/f1/responses/mallory`, answer('mallory'));
+      await seed(`${base}/forms/f1/responses/dave`, answer('dave'));
+      await assertFails(deleteDoc(doc(db('carol'), `${base}/forms/f1/responses/mallory`)));
+      await assertSucceeds(deleteDoc(doc(db('mallory'), `${base}/forms/f1/responses/mallory`)));
+      await assertSucceeds(deleteDoc(doc(db('bob'), `${base}/forms/f1/responses/dave`)));
+    });
+    test('only officers delete a form', async () => {
+      await seed(`${base}/forms/f1`, form());
+      await assertFails(deleteDoc(doc(db('carol'), `${base}/forms/f1`)));
+      await assertFails(deleteDoc(doc(db('mallory'), `${base}/forms/f1`)));
+      await assertSucceeds(deleteDoc(doc(db('bob'), `${base}/forms/f1`)));
+    });
+  });
+
+  describe('in a club: accepted, waitlisted, declined', () => {
+    const base = 'orgs/CLUB01';
+    const mark = (by, extra = {}) => ({ status: 'accepted', by, at: 9, ...extra });
+    beforeEach(async () => { await seed(base, org()); await seed(`${base}/forms/f1`, form({ review: true })); await seed(`${base}/forms/f1/responses/mallory`, answer('mallory')); });
+
+    test('an officer can mark an answer, change the mark and clear it', async () => {
+      const ref = doc(db('bob'), `${base}/forms/f1/marks/mallory`);
+      await assertSucceeds(setDoc(ref, mark('bob')));
+      await assertSucceeds(setDoc(ref, mark('bob', { status: 'waitlisted' })));
+      await assertSucceeds(getDocs(collection(db('alice'), `${base}/forms/f1/marks`)));
+      await assertSucceeds(deleteDoc(ref));
+    });
+    test('the person an answer belongs to cannot read what was decided, and neither can a member', async () => {
+      await seed(`${base}/forms/f1/marks/mallory`, mark('bob', { status: 'declined' }));
+      await seed(`${base}/forms/f1/marks/carol`, mark('bob'));
+      await assertFails(getDoc(doc(db('mallory'), `${base}/forms/f1/marks/mallory`)));
+      await assertFails(getDoc(doc(db('carol'), `${base}/forms/f1/marks/carol`)));
+      await assertFails(getDocs(collection(db('carol'), `${base}/forms/f1/marks`)));
+      await assertFails(getDoc(doc(db(null), `${base}/forms/f1/marks/mallory`)));
+    });
+    test('nobody accepts themselves, and a member cannot mark anyone', async () => {
+      await assertFails(setDoc(doc(db('mallory'), `${base}/forms/f1/marks/mallory`), mark('mallory')));
+      await assertFails(setDoc(doc(db('carol'), `${base}/forms/f1/marks/mallory`), mark('carol')));
+    });
+    test('a mark is one of the three, signed by the officer who made it, and nothing more', async () => {
+      const put = (data) => setDoc(doc(db('bob'), `${base}/forms/f1/marks/mallory`), data);
+      await assertFails(put(mark('bob', { status: 'maybe' })));
+      await assertFails(put(mark('alice')));
+      await assertFails(put(mark('bob', { note: 'seemed nice' })));
+      await assertFails(put({ status: 'accepted', by: 'bob' }));
+    });
+  });
+
+  describe('in a club: an anonymous form', () => {
+    const base = 'orgs/CLUB01';
+    const anon = (extra = {}) => form({ anonymous: true, collectEmail: false, audience: 'members', ...extra });
+    beforeEach(async () => { await seed(base, org()); });
+
+    test('no answer to it can be filed under anybody’s uid', async () => {
+      await seed(`${base}/forms/f1`, anon());
+      const plain = answer('carol', { member: true }); delete plain.email;
+      await assertFails(send('carol', base, plain));
+      await seed(`${base}/forms/f1/responses/carol`, plain);
+      await assertFails(setDoc(doc(db('carol'), `${base}/forms/f1/responses/carol`), { ...plain, updatedAt: 10 }));
+    });
+    test('officers read the answers, which carry no name; a member reads none', async () => {
+      await seed(`${base}/forms/f1`, anon());
+      await seed(`${base}/forms/f1/responses/a1b2c3`, { anon: true, answers: { q1: 'More snacks' }, at: 5 });
+      await assertSucceeds(getDocs(collection(db('bob'), `${base}/forms/f1/responses`)));
+      await assertFails(getDoc(doc(db('carol'), `${base}/forms/f1/responses/a1b2c3`)));
+    });
+    test('the sender’s record of an anonymous answer is the server’s to write: they can read it, not make, change or remove it', async () => {
+      await seed('planners/carol/formAnswers/orgs_CLUB01_f1', { kind: 'club', code: 'CLUB01', formId: 'f1', anon: true, answerId: 'a1b2c3', at: 5 });
+      const mine = doc(db('carol'), 'planners/carol/formAnswers/orgs_CLUB01_f1');
+      await assertSucceeds(getDoc(mine));
+      await assertFails(deleteDoc(mine));
+      await assertFails(setDoc(mine, { kind: 'club', code: 'CLUB01', formId: 'f1', at: 6 }));
+      await assertFails(updateDoc(mine, { answerId: 'other' }));
+      await assertFails(setDoc(doc(db('carol'), 'planners/carol/formAnswers/orgs_CLUB01_f2'), { kind: 'club', code: 'CLUB01', formId: 'f2', anon: true, answerId: 'x', at: 6 }));
+      await assertFails(getDoc(doc(db('bob'), 'planners/carol/formAnswers/orgs_CLUB01_f1')));
+    });
+    test('a record of a named answer is still the sender’s to keep or remove', async () => {
+      await seed('planners/carol/formAnswers/orgs_CLUB01_f9', { kind: 'club', code: 'CLUB01', formId: 'f9', at: 5 });
+      await assertSucceeds(updateDoc(doc(db('carol'), 'planners/carol/formAnswers/orgs_CLUB01_f9'), { at: 6 }));
+      await assertSucceeds(deleteDoc(doc(db('carol'), 'planners/carol/formAnswers/orgs_CLUB01_f9')));
+    });
+    test('a form cannot turn anonymous, or stop being anonymous, once it has left draft', async () => {
+      await seed(`${base}/forms/f1`, anon());
+      await assertFails(updateDoc(doc(db('alice'), `${base}/forms/f1`), { anonymous: false }));
+      await assertSucceeds(updateDoc(doc(db('alice'), `${base}/forms/f1`), { title: 'Suggestions' }));
+      await seed(`${base}/forms/f2`, form({ id: 'f2', status: 'closed' }));
+      await assertFails(updateDoc(doc(db('alice'), `${base}/forms/f2`), { anonymous: true }));
+      await seed(`${base}/forms/f3`, form({ id: 'f3', status: 'draft' }));
+      await assertSucceeds(updateDoc(doc(db('alice'), `${base}/forms/f3`), { anonymous: true, status: 'open' }));
+    });
+    test('anonymous and review are yes or no, nothing else', async () => {
+      await assertFails(setDoc(doc(db('alice'), `${base}/forms/f1`), form({ anonymous: 'yes' })));
+      await assertFails(setDoc(doc(db('alice'), `${base}/forms/f1`), form({ review: 1 })));
+      await assertSucceeds(setDoc(doc(db('alice'), `${base}/forms/f1`), form({ anonymous: false, review: true })));
+    });
+  });
+
+  describe('in a study group', () => {
+    const base = 'studyGroups/GRP123';
+    const gform = (extra = {}) => form({ spaceKind: 'group', spaceName: 'Bio study', audience: 'members', collectEmail: false, createdBy: 'bob', ...extra });
+    const ganswer = (uid, extra = {}) => { const a = answer(uid, { member: true, ...extra }); delete a.email; return a; };
+    beforeEach(async () => { await seed(base, group()); });
+
+    test('any member can make a form, in their own name; an outsider cannot', async () => {
+      await assertSucceeds(setDoc(doc(db('carol'), `${base}/forms/f1`), gform({ createdBy: 'carol' })));
+      await assertFails(setDoc(doc(db('carol'), `${base}/forms/f2`), gform({ id: 'f2', createdBy: 'bob' })));
+      await assertFails(setDoc(doc(db('mallory'), `${base}/forms/f3`), gform({ id: 'f3', createdBy: 'mallory' })));
+    });
+    test('whoever made it and the group’s owner run it; other members do not', async () => {
+      await seed(`${base}/forms/f1`, gform());
+      await assertFails(updateDoc(doc(db('carol'), `${base}/forms/f1`), { status: 'closed' }));
+      await assertSucceeds(updateDoc(doc(db('bob'), `${base}/forms/f1`), { status: 'closed' }));
+      await assertSucceeds(updateDoc(doc(db('alice'), `${base}/forms/f1`), { status: 'open' }));
+      await assertFails(deleteDoc(doc(db('carol'), `${base}/forms/f1`)));
+      await assertSucceeds(deleteDoc(doc(db('alice'), `${base}/forms/f1`)));
+    });
+    test('a member answers; an outsider cannot answer a members-only form', async () => {
+      await seed(`${base}/forms/f1`, gform());
+      await assertSucceeds(send('carol', base, ganswer('carol')));
+      await assertFails(send('mallory', base, ganswer('mallory', { member: false })));
+    });
+    test('whoever runs the form marks answers; other members neither mark nor read marks', async () => {
+      await seed(`${base}/forms/f1`, gform({ review: true }));
+      await assertSucceeds(setDoc(doc(db('bob'), `${base}/forms/f1/marks/carol`), { status: 'accepted', by: 'bob', at: 1 }));
+      await assertSucceeds(getDoc(doc(db('alice'), `${base}/forms/f1/marks/carol`)));
+      await assertFails(getDoc(doc(db('carol'), `${base}/forms/f1/marks/carol`)));
+      await assertFails(setDoc(doc(db('carol'), `${base}/forms/f1/marks/carol`), { status: 'accepted', by: 'carol', at: 1 }));
+    });
+    test('answers are read by whoever runs the form and by their sender, not by other members', async () => {
+      await seed(`${base}/forms/f1`, gform());
+      await seed(`${base}/forms/f1/responses/carol`, ganswer('carol'));
+      await assertSucceeds(getDocs(collection(db('bob'), `${base}/forms/f1/responses`)));
+      await assertSucceeds(getDocs(collection(db('alice'), `${base}/forms/f1/responses`)));
+      await assertSucceeds(getDoc(doc(db('carol'), `${base}/forms/f1/responses/carol`)));
+      await seed(`${base}/forms/f1/responses/bob`, ganswer('bob'));
+      await assertFails(getDoc(doc(db('carol'), `${base}/forms/f1/responses/bob`)));
+      await assertFails(getDocs(collection(db('carol'), `${base}/forms/f1/responses`)));
+      await assertFails(getDocs(collection(db('mallory'), `${base}/forms/f1/responses`)));
+    });
+  });
+
+  test('a person’s record of what they answered is theirs alone', async () => {
+    await seed('planners/alice/formAnswers/orgs_CLUB01_f1', { code: 'CLUB01' });
+    await assertSucceeds(getDocs(collection(db('alice'), 'planners/alice/formAnswers')));
+    await assertFails(getDocs(collection(db('mallory'), 'planners/alice/formAnswers')));
+    await assertFails(setDoc(doc(db('mallory'), 'planners/alice/formAnswers/x'), { code: 'X' }));
   });
 });
 

@@ -1,0 +1,598 @@
+/* ────────────────────────────────────────────────────────────────
+   Notebook: the notes list, the writing canvas, the one top bar with
+   its format group, the slash menu, templates (Cornell, lab report,
+   sheets) and printing. Loaded after styles.css.
+
+   Layers: the list panel sits on the page (L0, var(--bg) and only the
+   --bg-text* inks), the canvas is the paper (L1, var(--surface)), and
+   menus and popovers float above both (L2). The chrome is flat and
+   never frames the text: no pills, no card around the editor, no focus
+   box around the writing (the caret is the indicator).
+──────────────────────────────────────────────────────────────── */
+
+/* ── Shell: a full-height column. The flex chain is keyed on structure,
+   not on .fade-in (render() only adds that on a view change, and after
+   any in-page render the chain used to fall back to display:block, so a
+   long note could no longer scroll). ── */
+.content.content-notebook { padding: 0; max-width: none; height: 100vh; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+.content-notebook > :not(.demo-bar) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.content-notebook > .demo-bar { flex: none; margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--hairline); }
+.content-notebook .page-head { margin: 0; padding: 16px; flex-shrink: 0; }
+/* On a computer the list panel carries the title and the Note button. */
+@media (min-width: 761px) {
+  .content-notebook .page-head { display: none; }
+}
+
+/* ── Layout ── */
+.notebook-layout { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+
+/* ── List panel (L0) ── */
+.notebook-tree-panel { width: var(--nb-tree-w, 280px); flex-shrink: 0; min-height: 0; padding: 0 10px 12px; display: flex; flex-direction: column; background: var(--bg); color: var(--bg-text); }
+.notebook-layout.nb-animating .notebook-tree-panel { overflow: hidden; transition: width var(--dur-3) var(--ease-out), padding var(--dur-3) var(--ease-out), opacity var(--dur-2) var(--ease-out); }
+.notebook-layout.list-hidden .notebook-tree-panel { width: 0; padding-left: 0; padding-right: 0; opacity: 0; overflow: hidden; visibility: hidden; }
+.notebook-layout.nb-animating.list-hidden .notebook-tree-panel { transition: width var(--dur-3) var(--ease-out), padding var(--dur-3) var(--ease-out), opacity var(--dur-2) var(--ease-out), visibility 0s linear var(--dur-3); }
+
+.nb-panel-head { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 2px 0 8px; flex-shrink: 0; }
+.nb-panel-title { margin: 0 auto 0 0; font: 400 var(--fs-heading)/1 var(--font-serif); letter-spacing: -.01em; color: var(--bg-text); }
+.split-btn { display: inline-flex; flex-shrink: 0; }
+.split-btn > .btn:first-child { border-radius: var(--r-tight) 0 0 var(--r-tight); }
+.split-btn-menu { width: 26px; min-width: 26px; padding: 0; border-radius: 0 var(--r-tight) var(--r-tight) 0; border-left: 1px solid color-mix(in srgb, var(--accent-text) 22%, var(--accent)); }
+.split-btn-menu .i { width: 14px; height: 14px; }
+
+.notebook-search-wrap { position: relative; flex-shrink: 0; margin: 0 0 4px; }
+.notebook-search-ic { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); display: flex; color: var(--bg-text-dim); pointer-events: none; }
+.notebook-search-ic .i { width: 14px; height: 14px; }
+.notebook-search { width: 100%; height: 32px; padding: 0 10px 0 30px; font: 400 13px var(--font); border: 0; border-radius: var(--r-tight); background: color-mix(in srgb, var(--bg-text) 6%, var(--bg)); color: var(--bg-text); -webkit-appearance: none; appearance: none; transition: background var(--dur-1), box-shadow var(--dur-1); }
+.notebook-search::placeholder { color: var(--bg-text-faint); }
+.notebook-search::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+.notebook-search:focus, .notebook-search:focus-visible { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--focus-edge), 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); outline: none; }
+
+.notebook-tree { overflow-y: auto; flex: 1; min-height: 0; margin: 0 -10px; padding: 0 10px 8px; }
+.nb-section-label { display: flex; justify-content: space-between; align-items: center; padding: 16px 10px 6px; font: 600 12px/1.2 var(--font); color: var(--bg-text-dim); }
+.nb-sort { position: relative; display: inline-flex; align-items: center; gap: 2px; margin: -3px -6px -3px 0; padding: 3px 6px; border-radius: var(--r-tight-active); font: 500 12px/1.2 var(--font); color: var(--bg-text-dim); cursor: pointer; }
+.nb-sort:hover { background: var(--bg-fill-hover); color: var(--bg-text); }
+.nb-sort .i { width: 12px; height: 12px; }
+.nb-sort select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; cursor: pointer; -webkit-appearance: none; appearance: none; border: 0; }
+.nb-sort:has(select:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* One row template for Pinned and Notes. */
+.nb-note-row { position: relative; display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: var(--r-tight); cursor: pointer; transition: background var(--dur-1); }
+.nb-note-row:hover { background: var(--bg-fill-hover); }
+.nb-note-row.selected { background: var(--bg-fill-selected); box-shadow: inset 0 0 0 1px var(--bg-control-border); }
+.nb-note-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.nb-note-meta { flex: 1; min-width: 0; }
+.nb-note-title { display: flex; align-items: center; gap: 4px; min-width: 0; font: 500 14px/1.35 var(--font); color: var(--bg-text); }
+.nb-note-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-note-pin { display: inline-flex; flex-shrink: 0; color: var(--bg-text-faint); }
+.nb-note-pin .i { width: 12px; height: 12px; }
+.nb-note-snippet { margin-top: 2px; font-size: 12px; line-height: 1.4; color: var(--bg-text-dim); display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.nb-note-sub { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px; line-height: 1.35; color: var(--bg-text-dim); white-space: nowrap; overflow: hidden; }
+.nb-note-del { flex-shrink: 0; margin: -4px -6px -4px 0; opacity: 0; }
+.nb-note-row:hover .nb-note-del, .nb-note-row:focus-within .nb-note-del { opacity: 1; }
+.notebook-tree-panel .btn-ghost { color: var(--bg-text-dim); }
+.notebook-tree-panel .btn-ghost:hover { background: var(--bg-fill-selected); color: var(--bg-text); }
+
+/* Folders */
+.nb-branch { margin-bottom: 1px; }
+.nb-folder-row { position: relative; display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 6px 8px; border-radius: var(--r-tight); cursor: pointer; font: 500 13px/1.3 var(--font); color: var(--bg-text); text-transform: none; letter-spacing: 0; transition: background var(--dur-1); }
+.nb-folder-row:hover { background: var(--bg-fill-hover); }
+.nb-folder-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.nb-chevron { display: flex; color: var(--bg-text-faint); transition: transform var(--dur-1) var(--ease-out); flex-shrink: 0; }
+.nb-chevron .i { width: 12px; height: 12px; }
+.nb-chevron.open { transform: rotate(90deg); }
+.nb-folder-ic { display: flex; color: var(--bg-text-faint); flex-shrink: 0; }
+.nb-folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-count { flex-shrink: 0; padding: 0; background: none; font: 500 12px var(--font); color: var(--bg-text-faint); }
+.nb-folder-row:hover .nb-count, .nb-folder-row:focus-within .nb-count { visibility: hidden; }
+/* The per-folder buttons sit over the row's right edge (out of flow), so
+   the name keeps the row's full width until they are showing. */
+.nb-folder-actions { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 2px; opacity: 0; padding-left: 16px; background: linear-gradient(to right, transparent, var(--bg-fill-hover) 14px); pointer-events: none; }
+.nb-folder-row:hover .nb-folder-actions, .nb-folder-row:focus-within .nb-folder-actions { opacity: 1; pointer-events: auto; }
+.nb-folder-actions .btn-ghost:hover { background: var(--bg-fill-selected); }
+.nb-children { margin-left: 14px; padding-left: 6px; border-left: 1px solid var(--hairline); }
+.nb-folder-note { padding: 6px 10px; font-size: 12px; color: var(--bg-text-faint); }
+
+.nb-list-empty-line { display: block; padding: 16px 10px; font-size: 13px; color: var(--bg-text-faint); }
+.nb-list-empty-phone { display: none; }
+.nb-no-match { padding: 12px 10px; font-size: 13px; line-height: 1.5; color: var(--bg-text-dim); }
+.nb-no-match .sg-link { color: var(--bg-text); font-size: 13px; }
+
+/* Resize handle: a hairline with an 8px hit area. It sits above the
+   sticky top bar (z-index 6), so the hairline runs the full height. */
+.notebook-resize-handle { position: relative; z-index: 7; flex-shrink: 0; width: 8px; margin: 0 -4px; background: transparent; cursor: col-resize; }
+.notebook-resize-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; margin-left: -.5px; background: var(--border); transition: background var(--dur-1) 120ms, width var(--dur-1) 120ms, margin var(--dur-1) 120ms; }
+.notebook-resize-handle:hover::after, .notebook-resize-handle:focus-visible::after, .notebook-resize-handle.is-dragging::after { width: 2px; margin-left: -1px; background: var(--bg-control-border); }
+.notebook-resize-handle:focus-visible { outline: none; }
+.notebook-layout.list-hidden .notebook-resize-handle { display: none; }
+@media (max-width: 900px) {
+  .notebook-resize-handle { width: 1px; margin: 0; cursor: default; pointer-events: none; }
+  .notebook-resize-handle::after { width: 1px; }
+}
+
+/* ── Canvas (L1) ── */
+.notebook-page { position: relative; flex: 1; min-width: 0; min-height: 0; overflow-y: auto; background: var(--surface); padding: 0; }
+.nb-blank { display: flex; align-items: center; justify-content: center; min-height: calc(100% - 48px); padding: 24px; }
+.nb-blank .empty-state.card { background: none; border: 0; }
+
+/* The one bar: list toggle and path, the format group centered over the
+   text, the note's actions. */
+.nb-topbar { position: sticky; top: 0; z-index: 6; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px;
+  height: 48px; padding: 0 12px 0 8px; background: color-mix(in srgb, var(--surface) 92%, transparent);
+  -webkit-backdrop-filter: saturate(1.3) blur(14px); backdrop-filter: saturate(1.3) blur(14px);
+  border-bottom: 1px solid transparent; transition: border-color var(--dur-2); }
+.nb-topbar.is-stuck { border-bottom-color: var(--hairline); }
+.nb-topbar-left { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
+.nb-back { display: none; }
+.nb-breadcrumb { min-width: 0; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-dim); }
+.nb-crumb-sep { margin: 0 6px; color: var(--text-faint); }
+.nb-page-actions { justify-self: end; display: flex; align-items: center; gap: 2px; min-width: 0; }
+.nb-page-actions .btn .i, .nb-list-toggle .i { width: 16px; height: 16px; }
+.nb-act-pin.is-on { background: transparent; color: var(--text); border-color: transparent; }
+.nb-act-pin.is-on svg { fill: currentColor; }
+.nb-page-actions .head-login { display: none; }
+#app.sidebar-collapsed .nb-page-actions .head-login { display: inline-flex; }
+@media (min-width: 761px) {
+  .nb-topbar { container: nbbar / inline-size; }
+  /* The canvas is a size container on a computer only: on a phone the
+     keyboard bar inside it is position:fixed, which containment breaks. */
+  .notebook-page { container: nbpage / inline-size; }
+  /* Collapsed sidebar: its expand button floats at the top left. */
+  #app.sidebar-collapsed .nb-panel-head { padding-left: 48px; }
+  #app.sidebar-collapsed .notebook-layout.list-hidden .nb-topbar { padding-left: 56px; }
+}
+/* The format group stays centered over the text, so the actions get half
+   of what is left beside it: (bar content box - 378 group - 24 gaps) / 2.
+   Pin, Flashcards, Share and ··· take 242 labeled (126 as icons), Log in
+   adds 56. A Cornell note keeps the same four-button shape: while space is
+   short its Pin moves into the ··· menu (Cornell needs 1040 to show it,
+   1152 with Log in), then Cover drops to an icon (976, 1088), and last,
+   with every other note, Flashcards and Share lose their labels (886,
+   998). A few px of slack cover "Reveal", a little wider than "Cover". */
+@container nbbar (max-width: 1050px) {
+  .nb-topbar:has(.nb-act-cover) .nb-act-pin { display: none; }
+  .nb-topbar:has(.nb-act-cover) .nb-more-menu .nb-menu-pin { display: flex; }
+}
+@container nbbar (max-width: 986px) {
+  .nb-act-cover .nb-act-label { display: none; }
+  .nb-page-actions .nb-act-cover { width: 30px; padding: 0; }
+}
+@container nbbar (max-width: 890px) {
+  .nb-act-label { display: none; }
+  .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
+}
+@container nbbar (max-width: 1160px) {
+  #app.sidebar-collapsed .nb-topbar:has(.nb-act-cover):has(.head-login) .nb-act-pin { display: none; }
+  #app.sidebar-collapsed .nb-topbar:has(.nb-act-cover):has(.head-login) .nb-more-menu .nb-menu-pin { display: flex; }
+}
+@container nbbar (max-width: 1096px) {
+  #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-act-cover .nb-act-label { display: none; }
+  #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-page-actions .nb-act-cover { width: 30px; padding: 0; }
+}
+@container nbbar (max-width: 1004px) {
+  #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-act-label { display: none; }
+  #app.sidebar-collapsed .nb-topbar:has(.head-login) .nb-page-actions .btn-sm:not(.btn-icon):not(.head-login) { width: 30px; padding: 0; }
+}
+@container nbbar (max-width: 720px) {
+  .nb-breadcrumb { display: none; }
+}
+/* Too narrow for all three on one line: the format group gets its own
+   centered row under the list toggle and the note's actions. (Asked of
+   the canvas, nbpage, since a container can't query itself.) */
+@container nbpage (max-width: 760px) {
+  .nb-topbar { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 48px auto; height: auto; row-gap: 0; }
+  /* On its own row it stays one row: never wraps. A narrow canvas folds
+     the least-used buttons into the Aa popover (below); only past that
+     does it scroll, from the start, so nothing is out of reach. */
+  .nb-topbar .nb-toolbar { grid-row: 2; grid-column: 1 / -1; justify-self: center; flex-wrap: nowrap; justify-content: flex-start; height: 40px; max-width: 100%; padding-bottom: 4px; overflow-x: auto; }
+  .nb-topbar .nb-toolbar-sep { display: none; }
+  .nb-topbar .nb-toolbar-select { min-width: 84px; }
+}
+/* The same, a little sooner, when the collapsed sidebar adds Log in or
+   its floating expand button's padding to the bar. */
+@container nbpage (max-width: 880px) {
+  #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 48px auto; height: auto; row-gap: 0; }
+  #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) .nb-toolbar { grid-row: 2; grid-column: 1 / -1; justify-self: center; flex-wrap: nowrap; justify-content: flex-start; height: 40px; max-width: 100%; padding-bottom: 4px; overflow-x: auto; }
+  #app.sidebar-collapsed :is(.nb-topbar:has(.head-login), .list-hidden .nb-topbar) .nb-toolbar-sep { display: none; }
+}
+
+/* Row two holds the group at 331px (84 style + 7 buttons + gaps) inside
+   the bar's 20px of padding. Below that, Link and Checklist fold into the
+   Aa popover (263px), and on the narrowest canvas Bulleted list too,
+   with no gaps (219px). openNbTypePop shows each folded item's popover twin. */
+@container nbpage (max-width: 356px) {
+  .nb-topbar [data-nb-fold="link"], .nb-topbar [data-nb-fold="checklist"] { display: none; }
+}
+@container nbpage (max-width: 288px) {
+  .nb-topbar [data-nb-fold="list"] { display: none; }
+  .nb-topbar .nb-toolbar { gap: 0; }
+}
+
+/* The ··· menu: an L2 surface anchored under its summary. */
+.nb-more { position: relative; }
+.nb-more > summary { list-style: none; cursor: pointer; }
+.nb-more > summary::-webkit-details-marker { display: none; }
+.nb-more[open] > summary { background: var(--fill-selected); color: var(--text); }
+.nb-more-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; min-width: 220px; animation: menuIn var(--dur-2) var(--ease-out); }
+.nb-more-menu .nb-menu-phone { display: none; }
+
+/* ── Page ── */
+.nb-page-inner { max-width: calc(640px + 96px); margin: 0 auto; padding: 32px 48px 160px; }
+.nb-page-inner.tpl-cornell, .nb-page-inner.tpl-lab, .nb-page-inner.tpl-weekly, .nb-page-inner.tpl-meeting { max-width: calc(800px + 96px); }
+
+.nb-title-input { display: block; width: 100%; resize: none; overflow: hidden; border: 0; background: transparent; padding: 0; margin: 0;
+  font: 400 var(--fs-display-lg)/1.08 var(--font-serif); letter-spacing: -.02em; color: var(--text); text-wrap: balance; field-sizing: content; caret-color: var(--text); }
+.nb-title-input:focus, .nb-title-input:focus-visible { outline: none; }
+.nb-title-input::placeholder { color: var(--text-faint); }
+
+/* Plain space between the pills, no text separators: a wrapped row can
+   never leave a dot hanging at the end of a line. */
+.nb-props { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 12px 0 24px -8px; }
+.nb-prop { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--r-tight-active); background: none; font: 500 13px var(--font); color: var(--text-dim); white-space: nowrap; flex-shrink: 0; cursor: pointer; transition: background var(--dur-1), color var(--dur-1); }
+.nb-prop:hover { background: var(--fill-hover); color: var(--text); }
+.nb-prop:has(:focus-visible), button.nb-prop:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.nb-prop .i { width: 14px; height: 14px; color: var(--text-faint); flex-shrink: 0; }
+.nb-prop-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.nb-prop-text { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.nb-course-select, .nb-date-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; font-size: 16px; -webkit-appearance: none; appearance: none; background: none; color: inherit; }
+.nb-date-input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.nb-prop-status { padding: 0 8px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+
+.nb-hint { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 16px; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+.nb-hint .i { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; color: var(--text-faint); }
+
+/* First run: a quiet list of layouts under the empty page. */
+.nb-tpl-start { display: flex; flex-direction: column; align-items: flex-start; margin-top: 8px; }
+.nb-tpl-start.is-hidden { display: none; }
+.nb-tpl-start-label { margin: 0 0 4px; font-size: 12px; color: var(--text-dim); }
+.nb-tpl-start-row { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 8px; margin-left: -8px; border: 0; background: none; border-radius: var(--r-tight-active); font: 400 14px var(--font); color: var(--text-dim); cursor: pointer; transition: background var(--dur-1), color var(--dur-1); }
+.nb-tpl-start-row .i { width: 16px; height: 16px; color: var(--text-faint); }
+.nb-tpl-start-row:hover { background: var(--fill-hover); color: var(--text); }
+.nb-tpl-start-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.nb-page-inner:has(.nb-tpl-start:not(.is-hidden)) .nb-editor-body { min-height: 3.4em; }
+
+/* ── Writing: the document scale (16 body, 18 H3, 24 H2, 30 H1, 20 quote).
+   Structure lives on .rich-editor (also used by exports); theme colors
+   only on the live editor, .nb-editor-body. ── */
+.rich-editor { line-height: 1.6; }
+.nb-editor-body { font-size: 16px; line-height: 1.6; color: var(--text); min-height: 50vh; caret-color: var(--text); text-rendering: optimizeLegibility; overflow-wrap: break-word; }
+.nb-editor-body:focus, .nb-editor-body:focus-visible, .rich-editor:focus-visible { outline: none; } /* the caret is the indicator */
+.rich-editor p { margin: 0 0 .75em; }
+.rich-editor h1 { font: 400 30px/1.15 var(--font-serif); letter-spacing: -.015em; margin: 1.5em 0 .4em; }
+.rich-editor h2 { font: 400 24px/1.2 var(--font-serif); letter-spacing: -.01em; margin: 1.35em 0 .35em; }
+.rich-editor h3 { font: 600 18px/1.35 var(--font); margin: 1.2em 0 .3em; }
+.rich-editor > :first-child { margin-top: 0; }
+.rich-editor ul, .rich-editor ol { padding-left: 1.4em; margin: .2em 0 .8em; }
+.rich-editor li { margin: .2em 0; }
+.rich-editor blockquote { margin: 1em 0; padding: 2px 0 2px 18px; border-left: 2px solid var(--rose); font: italic 400 20px/1.45 var(--font-serif); }
+.rich-editor pre { font: 14px/1.6 ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; border: 0; border-radius: var(--r-tight); padding: 14px 16px; tab-size: 2; margin: 1em 0; overflow-x: auto; white-space: pre-wrap; }
+.rich-editor code { font: .875em ui-monospace, 'SF Mono', Menlo, Consolas, monospace; padding: .1em .35em; border-radius: 4px; }
+.rich-editor pre code { padding: 0; background: none; font-size: inherit; }
+.rich-editor hr { border: 0; border-top: 1px solid; margin: 2em 0; }
+.rich-editor a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
+.rich-editor img { max-width: 100%; height: auto; }
+.rich-editor table { border-collapse: collapse; width: 100%; margin: 8px 0 1em; font-size: 14px; }
+.rich-editor th, .rich-editor td { border: 0; border-bottom: 1px solid; padding: 8px 12px; text-align: left; vertical-align: top; min-width: 56px; }
+.rich-editor th { background: none; font: 600 11px/1.3 var(--font); letter-spacing: .08em; text-transform: uppercase; }
+/* Theme colors: the live editor, and the export sheet (whose tokens are
+   pinned to black on white below). */
+.nb-editor-body h1, .nb-editor-body h2, .nb-editor-body h3, .nb-editor-body blockquote,
+.nb-export .rich-editor h1, .nb-export .rich-editor h2, .nb-export .rich-editor h3, .nb-export .rich-editor blockquote { color: var(--text); }
+.nb-editor-body li::marker, .nb-export .rich-editor li::marker { color: var(--text-dim); }
+.nb-editor-body pre, .nb-editor-body code, .nb-export .rich-editor pre, .nb-export .rich-editor code { background: var(--surface-2); }
+.nb-editor-body pre code, .nb-export .rich-editor pre code { background: none; }
+.nb-editor-body hr, .nb-editor-body th, .nb-editor-body td,
+.nb-export .rich-editor hr, .nb-export .rich-editor th, .nb-export .rich-editor td { border-color: var(--border); }
+.nb-editor-body td + td, .nb-editor-body th + th, .nb-export .rich-editor td + td, .nb-export .rich-editor th + th { border-left: 1px solid var(--hairline); }
+.nb-editor-body th, .nb-export .rich-editor th { color: var(--text-dim); }
+.nb-editor-body td:first-child { color: var(--text-dim); }
+
+.nb-editor-body:empty::before { content: attr(data-placeholder); color: var(--text-faint); pointer-events: none; }
+/* The block hint shows on the one line the caret is on (.nb-caret-line,
+   set in notebook.js), only while writing. */
+.nb-editor-body:focus .nb-caret-line:empty::before,
+.nb-editor-body:focus .nb-caret-line:has(> br:only-child)::before { content: 'Type / for blocks'; color: var(--text-faint); pointer-events: none; }
+
+/* Checklists: a drawn box with a 3:1 ring; checked lines are struck. */
+.nb-todo-line { display: flex; align-items: flex-start; gap: 10px; margin: .2em 0; }
+.nb-todo-line input[type=checkbox] { -webkit-appearance: none; appearance: none; flex-shrink: 0; width: 18px; height: 18px; margin: calc((1.6em - 18px) / 2) 0 0; border: 1.5px solid var(--control-border); border-radius: var(--r-tight-active); background: var(--surface); display: grid; place-content: center; cursor: pointer; }
+.nb-todo-line input[type=checkbox]:checked { background: var(--accent); border-color: var(--accent); }
+.nb-todo-line input[type=checkbox]:checked::after { content: ''; width: 9px; height: 5px; border: 2px solid var(--accent-text); border-top: 0; border-right: 0; transform: translateY(-1px) rotate(-45deg); }
+.nb-todo-line input[type=checkbox]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nb-editor-body .nb-todo-line:has(input:checked) { color: var(--text-dim); text-decoration: line-through; }
+
+/* User-picked colors that would vanish on this theme (tagged by
+   nbTagInks). Inline styles need !important to be overridden; the
+   literals are the brand's rich black and bone. */
+html.dark .nb-editor-body [data-hl=light], html.dark .nb-editor-body [data-hl=light] * { color: #121212 !important; }
+html:not(.dark) .nb-editor-body [data-hl=dark], html:not(.dark) .nb-editor-body [data-hl=dark] * { color: #F8F6F2 !important; }
+.nb-editor-body [data-ink] { color: var(--text) !important; }
+
+/* ── Format group (#nb-toolbar): flat, 32px targets, no pill ── */
+.nb-toolbar { display: flex; align-items: center; flex-wrap: nowrap; gap: 2px; min-width: 0; height: 36px; padding: 0; margin: 0; background: none; border: 0; border-radius: 0; box-shadow: none; overflow-x: auto; scrollbar-width: none; }
+.nb-toolbar::-webkit-scrollbar { display: none; }
+.nb-toolbar > * { flex-shrink: 0; }
+.nb-toolbar button, .nb-type-row button, .nb-size-grid button { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-width: 0; padding: 0; border: 0; border-radius: var(--r-tight-active); background: transparent; font: 600 13px var(--font); color: var(--text-dim); cursor: pointer; transition: background var(--dur-1), color var(--dur-1); }
+.nb-toolbar button:hover, .nb-type-row button:hover, .nb-size-grid button:hover { background: var(--fill-hover); color: var(--text); }
+.nb-toolbar button.active, .nb-type-row button.active, #nb-type-btn[aria-expanded=true] { background: var(--fill-selected); color: var(--text); box-shadow: inset 0 0 0 1px var(--control-border); }
+.nb-toolbar button:focus-visible, .nb-type-row button:focus-visible, .nb-size-grid button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.nb-toolbar button .i, .nb-type-row button .i { width: 16px; height: 16px; }
+.nb-toolbar b, .nb-toolbar i, .nb-type-row u, .nb-type-row s, .nb-bubble b, .nb-bubble i, .nb-bubble u, .nb-bubble s { font-family: var(--font); font-size: 14px; }
+.nb-toolbar-select { height: 32px; min-width: 96px; padding: 0 24px 0 8px; border: 0; border-radius: var(--r-tight-active); background-color: transparent; font: 500 13px var(--font); color: var(--text-dim); cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-faint) 50%), linear-gradient(135deg, var(--text-faint) 50%, transparent 50%);
+  background-position: calc(100% - 13px) 55%, calc(100% - 8px) 55%; background-size: 5px 5px; background-repeat: no-repeat; transition: background-color var(--dur-1), color var(--dur-1); }
+.nb-toolbar-select:hover { background-color: var(--fill-hover); color: var(--text); }
+.nb-toolbar-select:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.nb-toolbar-sep { width: 1px; height: 16px; margin: 0 4px; background: var(--hairline); flex-shrink: 0; }
+.nb-color-swatch { position: absolute; left: 9px; right: 9px; bottom: 5px; height: 3px; border-radius: var(--r-mark); background: currentColor; pointer-events: none; }
+.nb-toolbar-color { color: var(--text-dim); }
+
+/* The Aa popover (L2) */
+#nb-type-pop { display: none; position: fixed; z-index: 260; width: 272px; max-height: calc(100vh - 16px); overflow-y: auto; animation: menuIn var(--dur-2) var(--ease-out); }
+#nb-type-pop .nb-type-folded { display: none; }
+#nb-type-pop .nb-type-folded.is-shown { display: flex; }
+.nb-type-row { display: flex; align-items: center; justify-content: space-between; gap: 2px; padding: 2px 2px 4px; border-bottom: 1px solid var(--hairline); margin-bottom: 2px; }
+.nb-font-item { font-size: 14px; }
+.nb-size-grid { display: grid; grid-template-columns: repeat(6, 32px); justify-content: space-between; gap: 4px 0; padding: 0 6px 6px; }
+.nb-size-grid button { font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Selection bubble (L2) */
+.nb-bubble { position: fixed; display: none; align-items: center; gap: 2px; padding: 4px; z-index: 250; background: var(--surface-float); border: 1px solid var(--float-edge); border-radius: var(--r-tight); box-shadow: var(--shadow-float); animation: menuIn var(--dur-2) var(--ease-out); }
+.nb-bubble button { position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--r-tight-active); background: transparent; font: 600 13px var(--font); color: var(--text-dim); cursor: pointer; }
+.nb-bubble button:hover { background: var(--fill-hover); color: var(--text); }
+.nb-bubble button.active { background: var(--fill-selected); color: var(--text); box-shadow: inset 0 0 0 1px var(--control-border); }
+.nb-bubble button .i { width: 16px; height: 16px; }
+.nb-bubble .nb-bubble-h { font: 400 18px/1 var(--font-serif); }
+.nb-bubble-sep { width: 1px; height: 16px; margin: 0 4px; background: var(--hairline); flex-shrink: 0; }
+@media (pointer: coarse) {
+  #nb-bubble { display: none !important; }
+}
+
+/* Text and highlight color popover (colorwheel.js), L2 */
+.nb-color-popover { position: fixed; display: none; z-index: 260; width: 182px; padding: 12px; background: var(--surface-float); border: 1px solid var(--float-edge); border-radius: var(--r-mid); box-shadow: var(--shadow-float); }
+.nb-color-pop-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font: 500 12px var(--font); color: var(--text-dim); }
+.nb-color-pop-clear { padding: 0; border: 0; background: transparent; font: 500 12px var(--font); color: var(--text); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
+.nb-color-pop-clear:hover { text-decoration-color: currentColor; }
+
+/* Slash menu (L2) */
+.nb-slash-menu { position: fixed; display: none; z-index: 250; width: 300px; max-width: calc(100vw - 16px); max-height: 360px; overflow-y: auto; padding: 4px; background: var(--surface-float); border: 1px solid var(--float-edge); border-radius: var(--r-mid); box-shadow: var(--shadow-float); animation: menuIn var(--dur-2) var(--ease-out); }
+.nb-slash-group { padding: 8px 8px 4px; font: 600 11px/1.2 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+.nb-slash-item { display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-radius: var(--r-tight-active); cursor: pointer; }
+.nb-slash-item:hover, .nb-slash-item.is-active { background: var(--fill-hover); }
+.nb-slash-glyph { width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-tight-active); color: var(--text-dim); }
+.nb-slash-glyph .i { width: 16px; height: 16px; }
+.nb-slash-glyph.is-h { font: 400 16px/1 var(--font-serif); color: var(--text); }
+/* The serif 1 reads as a lowercase l at this size, so the digit is sans. */
+.nb-slash-digit { margin-left: 1px; font: 500 .75em/1 var(--font); }
+.nb-slash-glyph.nb-slash-h2 { font-size: 14px; }
+.nb-slash-glyph.nb-slash-h3 { font-size: 12px; }
+.nb-slash-text { display: flex; flex-direction: column; min-width: 0; }
+.nb-slash-label { font: 500 13px/1.3 var(--font); color: var(--text); }
+.nb-slash-desc { font-size: 12px; line-height: 1.35; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-slash-none { padding: 10px 8px; font-size: 13px; color: var(--text-dim); }
+.nb-slash-foot { position: sticky; bottom: -4px; margin: 4px -4px -4px; padding: 8px 12px; border-top: 1px solid var(--hairline); background: var(--surface-float); font-size: 12px; color: var(--text-dim); }
+
+/* ══════════════════════════════════════════════════════════════════
+   Templates (Cornell, lab report, sheets). Labels, ruled lines and
+   section numbers are all CSS, so nothing decorative is ever part of
+   the saved note.
+   ══════════════════════════════════════════════════════════════════ */
+/* Cornell: a cue column, ruled notes, and a summary band */
+.rich-editor .nb-cornell { position: relative; display: grid; grid-template-columns: minmax(150px, 30%) minmax(0, 1fr); border: 1px solid var(--border); border-radius: var(--r-tight) var(--r-tight) 0 0; overflow: hidden; margin: 8px 0 0; min-height: 460px; background: var(--surface); }
+.rich-editor .nb-cornell-cues, .rich-editor .nb-cornell-notes { position: relative; padding: 36px 16px 18px; min-width: 0; }
+.rich-editor .nb-cornell-cues { border-right: 1px solid var(--border); background: color-mix(in srgb, var(--accent-light) 55%, var(--surface)); font-size: 14px; }
+.rich-editor .nb-cornell-cues::before, .rich-editor .nb-cornell-notes::before, .rich-editor .nb-cornell-summary::before { content: 'Cues & questions'; position: absolute; top: 12px; left: 16px; font: 600 11px/1.2 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); pointer-events: none; }
+.rich-editor .nb-cornell-notes::before { content: 'Notes'; }
+.rich-editor .nb-cornell-summary::before { content: 'Summary'; }
+.rich-editor .nb-cornell-notes { line-height: 28px; background-image: repeating-linear-gradient(to bottom, transparent 0 27px, var(--hairline) 27px 28px); background-origin: content-box; background-clip: content-box; }
+.rich-editor .nb-cornell-notes p, .rich-editor .nb-cornell-notes li, .rich-editor .nb-cornell-notes h3, .rich-editor .nb-cornell-notes blockquote { margin: 0; line-height: 28px; }
+.rich-editor .nb-cornell-notes ul, .rich-editor .nb-cornell-notes ol { margin: 0; }
+.rich-editor .nb-cornell-notes h3 { font-size: 16px; }
+.rich-editor .nb-cornell-notes blockquote { font-size: 16px; }
+.rich-editor .nb-cornell-cues p { margin: 0 0 8px; }
+.rich-editor .nb-cornell-cues strong { color: var(--text); }
+.rich-editor .nb-cornell-summary { position: relative; padding: 36px 16px 16px; border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--r-tight) var(--r-tight); background: var(--surface-2); min-height: 112px; margin-bottom: 12px; }
+.rich-editor .nb-cornell-summary p { margin: 0 0 6px; }
+.rich-editor .nb-cornell-cues > p:only-child:has(> br:only-child)::before { content: 'Key questions, terms, and prompts'; color: var(--text-faint); pointer-events: none; }
+.rich-editor .nb-cornell-notes > p:only-child:has(> br:only-child)::before { content: 'Take notes here during the lecture'; color: var(--text-faint); pointer-events: none; }
+.rich-editor .nb-cornell-summary > p:only-child:has(> br:only-child)::before { content: 'Afterward: the whole lecture in two or three sentences'; color: var(--text-faint); pointer-events: none; }
+/* Covered: the notes are hidden (not blurred), with one centered label. */
+.nb-editor-body.is-covered .nb-cornell-notes { user-select: none; pointer-events: none; }
+.nb-editor-body.is-covered .nb-cornell-notes > * { visibility: hidden; }
+.nb-editor-body.is-covered .nb-cornell-notes::after { content: 'Notes covered. Answer from your cues.'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font: 500 12px var(--font); color: var(--text-dim); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-tight); padding: 6px 10px; white-space: nowrap; }
+
+/* Lab report and sheets: numbered sections with a hairline between */
+.rich-editor .nb-lab, .rich-editor .nb-sheet { counter-reset: labsec; margin-top: 6px; }
+.rich-editor .nb-lab-section, .rich-editor .nb-sheet-section { counter-increment: labsec; position: relative; padding: 6px 0 16px 50px; border-top: 1px solid var(--border); }
+.rich-editor .nb-lab-section:first-child, .rich-editor .nb-sheet-section:first-child { border-top: none; }
+.rich-editor .nb-lab-section::before, .rich-editor .nb-sheet-section::before { content: counter(labsec, decimal-leading-zero); position: absolute; left: 0; top: 18px; font: 400 24px/1 var(--font-serif); color: var(--text-faint); pointer-events: none; }
+.rich-editor .nb-lab-section > h2, .rich-editor .nb-sheet-section > h2 { margin: 12px 0 4px; font-size: 24px; }
+.rich-editor .nb-sheet-section > p:last-child:has(> br:only-child)::before, .rich-editor .nb-sheet-section > ul > li:only-child:has(> br:only-child)::before, .rich-editor .nb-sheet-section > ol > li:only-child:has(> br:only-child)::before { color: var(--text-faint); pointer-events: none; content: 'Write here'; }
+.rich-editor .nb-lab-section > p:last-child:has(> br:only-child)::before, .rich-editor .nb-lab-section > ul > li:only-child:has(> br:only-child)::before, .rich-editor .nb-lab-section > ol > li:only-child:has(> br:only-child)::before { color: var(--text-faint); pointer-events: none; content: 'Write here'; }
+.rich-editor .nb-lab-section:nth-of-type(1) > p:last-child:has(> br:only-child)::before { content: 'What question is this experiment answering?'; }
+.rich-editor .nb-lab-section:nth-of-type(2) > p:last-child:has(> br:only-child)::before { content: 'If … then … because …'; }
+.rich-editor .nb-lab-section:nth-of-type(3) > ul > li:only-child:has(> br:only-child)::before { content: 'One item per line, with amounts'; }
+.rich-editor .nb-lab-section:nth-of-type(4) > ol > li:only-child:has(> br:only-child)::before { content: 'Step by step, enough for someone to repeat it'; }
+.rich-editor .nb-lab-section:nth-of-type(5) > p:last-child:has(> br:only-child)::before { content: 'Anything you noticed that the table can’t hold'; }
+.rich-editor .nb-lab-section:nth-of-type(6) > p:last-child:has(> br:only-child)::before { content: 'What the data shows, with calculations'; }
+.rich-editor .nb-lab-section:nth-of-type(7) > p:last-child:has(> br:only-child)::before { content: 'Was the hypothesis supported? Say why.'; }
+.rich-editor .nb-lab-section:nth-of-type(8) > p:last-child:has(> br:only-child)::before { content: 'What could have skewed the results, and how much'; }
+
+/* Lab tracker: a hairline, then dot-and-text links to each section */
+.nb-lab-rail { margin: -8px 0 24px; padding: 12px 0 0; border-top: 1px solid var(--hairline); }
+.nb-lab-rail-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.nb-lab-count { font-size: 12px; color: var(--text-dim); }
+.nb-lab-progress { width: 110px; height: 4px; }
+.nb-lab-chips { display: flex; flex-wrap: wrap; gap: 2px 4px; align-items: center; margin-left: -6px; }
+.nb-lab-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px; border: 0; border-radius: var(--r-tight-active); background: none; font: 400 13px var(--font); color: var(--text-dim); cursor: pointer; }
+.nb-lab-chip:hover { background: var(--fill-hover); color: var(--text); }
+.nb-lab-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.nb-lab-chip.is-filled { color: var(--text); }
+.nb-lab-dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--control-border); flex-shrink: 0; }
+.nb-lab-chip.is-filled .nb-lab-dot { background: var(--accent); border-color: var(--accent); }
+.nb-lab-add { margin-left: auto; }
+
+/* Template picker: a sketch of each page */
+/* Eight layouts outgrow the modal, so the grid scrolls on its own and the
+   Create button stays in view underneath it. */
+.nb-tpl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-height: min(56vh, 520px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 4px; margin: -4px; }
+.nb-tpl-card { display: flex; flex-direction: column; gap: 6px; padding: 10px; text-align: left; border: 1px solid var(--border); border-radius: var(--r-card); background: var(--surface); cursor: pointer; font-family: inherit; color: inherit; transition: background var(--dur-1), border-color var(--dur-1); }
+.nb-tpl-card:hover { background: var(--fill-hover); border-color: var(--line-strong); }
+.nb-tpl-card.active { outline: 2px solid var(--text); outline-offset: 2px; border-color: var(--line-strong); }
+.nb-tpl-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nb-tpl-card.active:focus-visible { outline-color: var(--text); }
+.nb-tpl-preview { position: relative; height: 88px; overflow: hidden; border-radius: var(--r-tight); background: var(--surface); border: 1px solid var(--hairline); }
+.nb-tpl-preview i { position: absolute; display: block; height: 3px; border-radius: 2px; background: var(--text-faint); opacity: .38; }
+.nb-tpl-preview.cornell::before { content: ''; position: absolute; left: 30%; top: 0; bottom: 24px; width: 1px; background: var(--text-faint); opacity: .5; }
+.nb-tpl-preview.cornell::after { content: ''; position: absolute; left: 0; right: 0; bottom: 24px; height: 1px; background: var(--text-faint); opacity: .5; }
+.nb-tpl-title { font: 500 14px/1.3 var(--font); }
+.nb-tpl-desc { font-size: 12px; line-height: 1.4; color: var(--text-dim); }
+
+/* A narrow canvas on a computer (list open in a small window, split view):
+   the wide layouts stack to one column like on a phone, and wide tables
+   scroll inside themselves instead of being cut off. */
+@container nbpage (max-width: 600px) {
+  .nb-page-inner { padding-left: 24px; padding-right: 24px; }
+  .rich-editor .nb-cornell { grid-template-columns: 1fr; min-height: 0; }
+  .rich-editor .nb-cornell-cues { border-right: none; border-bottom: 1px solid var(--border); min-height: 140px; }
+  .rich-editor .nb-cornell-notes { min-height: 300px; }
+  .rich-editor .nb-lab-section, .rich-editor .nb-sheet-section { padding-left: 34px; }
+  .rich-editor .nb-lab-section::before, .rich-editor .nb-sheet-section::before { font-size: 18px; top: 20px; }
+  .rich-editor table { display: block; overflow-x: auto; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Export and print: black on white whatever the theme. Derived tokens
+   do not re-derive, so every token an export can reach is pinned.
+   ══════════════════════════════════════════════════════════════════ */
+.nb-export, #print-area { --text: #121212; --text-dim: #3d3d3d; --text-faint: #595959; --surface: #fff; --surface-2: #f4f4f4; --border: #cfcfcf; --hairline: #e3e3e3; --control-border: #6b6b6b; --accent: #121212; --accent-text: #fff; --accent-light: #f4f4f4; color: #121212; background: #fff; }
+.nb-export .rich-editor, #print-area .rich-editor { font-size: 14px; }
+@media print {
+  #print-area .rich-editor { font-size: 13px; line-height: 1.6; color: #000; }
+  #print-area .rich-editor h1, #print-area .rich-editor h2, #print-area .rich-editor h3 { color: #000; }
+  #print-area .rich-editor pre { border: 1px solid #ccc; }
+  #print-area .rich-editor .nb-cornell { display: grid; grid-template-columns: 30% 1fr; border-color: #999; }
+  #print-area .rich-editor .nb-cornell-cues { border-right-color: #999; background: #f4f4f4; }
+  #print-area .rich-editor .nb-cornell-summary { border-color: #999; background: #f4f4f4; }
+  #print-area .rich-editor .nb-cornell-cues::before, #print-area .rich-editor .nb-cornell-notes::before, #print-area .rich-editor .nb-cornell-summary::before, #print-area .rich-editor .nb-lab-section::before, #print-area .rich-editor .nb-sheet-section::before { color: #595959; }
+  #print-area .rich-editor th, #print-area .rich-editor td { border-color: #999; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Phone (≤760px): the list and the open note take turns filling the
+   screen. The list is two grouped sheets; the note gets a nav bar and
+   the format group docks above the keyboard.
+   ══════════════════════════════════════════════════════════════════ */
+@media (max-width: 760px) {
+  .content.content-notebook { height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible; padding-bottom: 88px; }
+  /* An open note's paper runs to the bottom of the screen, under the tab
+     bar (the page's own 140px bottom padding keeps the text clear of it). */
+  .content.content-notebook:has(.notebook-layout.list-hidden) { padding-bottom: 0; }
+  .content-notebook .page-head { border-bottom: 0; }
+  .content-notebook:has(.notebook-layout.list-hidden) .page-head { display: none; }
+  .notebook-layout { flex-direction: column; overflow: visible; }
+  .notebook-layout.list-hidden .notebook-tree-panel { display: none; }
+  .notebook-layout:not(.list-hidden) .notebook-page { display: none; }
+  .notebook-resize-handle { display: none; }
+
+  /* List view */
+  .nb-panel-head { display: none; }
+  .notebook-tree-panel { width: auto; background: transparent; padding: 0 16px 16px; }
+  .notebook-search-wrap { position: sticky; top: 0; z-index: 4; margin: 0; padding: 8px 0; background: var(--bg); }
+  .notebook-search-ic { left: 12px; }
+  .notebook-search-ic .i { width: 16px; height: 16px; }
+  .notebook-search { height: 36px; padding-left: 36px; font-size: 16px; }
+  .notebook-tree { overflow: visible; margin: 0; padding: 0; }
+  .nb-section-label { padding: 20px 4px 8px; }
+  .nb-rows { background: var(--surface); border: 1px solid var(--card-edge); border-radius: var(--r-card); overflow: clip; }
+  .nb-rows .nb-note-row { min-height: 64px; padding: 12px 16px; border-radius: 0; }
+  .nb-rows .nb-note-row + .nb-note-row::before, .nb-rows .nb-branch + .nb-note-row::before, .nb-rows .nb-branch + .nb-branch::before, .nb-rows .nb-note-row + .nb-branch::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--hairline); }
+  .nb-rows .nb-branch { position: relative; margin: 0; }
+  .nb-rows .nb-note-row:hover { background: var(--fill-hover); }
+  .nb-rows .nb-note-title { font: 500 16px/1.35 var(--font); color: var(--text); }
+  .nb-rows .nb-note-pin { color: var(--text-faint); }
+  .nb-rows .nb-note-snippet { font-size: 14px; line-height: 1.4; color: var(--text-dim); -webkit-line-clamp: 2; margin-top: 2px; }
+  .nb-rows .nb-note-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  .nb-rows .nb-folder-row { min-height: 52px; padding: 12px 16px; border-radius: 0; font: 500 16px var(--font); color: var(--text); }
+  .nb-rows .nb-folder-row:hover { background: var(--fill-hover); }
+  .nb-rows .nb-folder-ic, .nb-rows .nb-chevron, .nb-rows .nb-count { color: var(--text-faint); }
+  .nb-rows .nb-folder-actions { background: none; opacity: 1; pointer-events: auto; position: static; transform: none; padding: 0; margin: -8px -8px -8px 0; }
+  .nb-rows .nb-folder-actions .btn-ghost { color: var(--text-dim); }
+  .nb-rows .nb-folder-actions .btn-ghost:hover { background: var(--fill-hover); color: var(--text); }
+  .nb-rows .nb-folder-row:hover .nb-count { visibility: visible; }
+  .nb-rows .nb-children { margin-left: 0; padding-left: 16px; border-left: 0; border-top: 1px solid var(--hairline); }
+  .nb-rows .nb-folder-note { padding: 12px 16px; color: var(--text-faint); }
+  .notebook-layout:not(.list-hidden) .nb-note-row.selected { background: transparent; box-shadow: none; }
+  .nb-list-empty-line { display: none; }
+  .nb-list-empty-phone { display: block; }
+  .nb-list-empty-phone .empty-state { background: var(--surface); border: 1px solid var(--card-edge); border-radius: var(--r-card); }
+
+  /* Note view: a nav bar. No backdrop-filter, transform, filter or
+     container here or above it: #nb-toolbar inside is position:fixed. */
+  /* The paper grows with the note (flex-basis auto, no shrink), so a long
+     note never runs past the surface; a short one still fills the screen. */
+  .notebook-page { height: auto; overflow: visible; padding: 0; flex: 1 0 auto; }
+  .nb-topbar { display: flex; align-items: center; justify-content: space-between; gap: 4px; box-sizing: border-box; height: calc(52px + env(safe-area-inset-top, 0px)); min-height: 0; padding: env(safe-area-inset-top, 0px) 4px 0; background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; container-type: normal; border-bottom: 1px solid var(--hairline); }
+  .nb-list-toggle, .nb-breadcrumb { display: none; }
+  .nb-back { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 8px 0 4px; font: 500 16px var(--font); color: var(--text); }
+  .nb-back .i { width: 20px; height: 20px; }
+  .nb-page-actions { gap: 0; }
+  .nb-act-pin, .nb-act-cards, .nb-act-cover, .nb-page-actions .head-login, #app.sidebar-collapsed .nb-page-actions .head-login { display: none; }
+  .nb-act-share { width: 44px; height: 44px; padding: 0; }
+  .nb-act-share .nb-act-label { display: none; }
+  .nb-more > summary.btn { width: 44px; height: 44px; min-height: 44px; }
+  .nb-more-menu .nb-menu-phone { display: flex; }
+  .nb-more-menu .menu-item { min-height: 44px; font-size: 16px; }
+  .nb-page-inner { max-width: none; padding: 10px 16px 140px; }
+  .nb-page-inner.tpl-cornell, .nb-page-inner.tpl-lab, .nb-page-inner.tpl-weekly, .nb-page-inner.tpl-meeting { max-width: none; }
+  .nb-title-input { font-size: 30px; }
+  .nb-props { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: -2px -16px 2px -16px; padding: 8px 16px 8px 8px;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
+  .nb-props::-webkit-scrollbar { display: none; }
+  /* 44px hit areas around the small controls; the look stays the same. */
+  .nb-course-select, .nb-date-input { inset: -8px 0; height: calc(100% + 16px); }
+  .nb-prop-tpl::after, .nb-lab-chip::after { content: ''; position: absolute; inset: -8px 0; }
+  .nb-lab-chip { position: relative; }
+  /* The sort control is 44px tall itself; the negative margin keeps the
+     section label's height where it was. */
+  .nb-sort { min-height: 44px; margin: -12px -6px -12px 0; padding: 0 8px; }
+  .nb-tpl-start-row { height: 44px; }
+  .nb-blank { min-height: 50vh; }
+  .rich-editor table { display: block; overflow-x: auto; }
+
+  /* Keyboard bar: the same #nb-toolbar, docked above the keyboard (or
+     the tab bar) while the note is being written. */
+  #nb-toolbar { position: fixed; left: 0; right: 0; bottom: var(--nb-kb, 0px); z-index: 130; display: none; height: 48px; margin: 0; padding: 0 8px; border-top: 1px solid var(--hairline); background: var(--surface); }
+  /* Fade on the right while more buttons sit off-screen. A mask would also
+     fade the bar's own background and hairline, so the note showed through.
+     The bar scrolls sideways, so the fade is a sticky last item, not an
+     absolute one: at the end of the scroll it sits past the last button. */
+  #nb-toolbar::after { content: ''; position: sticky; right: 0; flex: 0 0 40px; align-self: stretch; margin-left: -2px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); }
+  .notebook-layout.is-editing #nb-toolbar { display: flex; }
+  #nb-toolbar button { width: 40px; height: 40px; }
+  #nb-toolbar .nb-toolbar-select { height: 40px; font-size: 16px; }
+
+  /* Templates */
+  .rich-editor .nb-cornell { grid-template-columns: 1fr; min-height: 0; }
+  .rich-editor .nb-cornell-cues { border-right: none; border-bottom: 1px solid var(--border); min-height: 140px; }
+  .rich-editor .nb-cornell-notes { min-height: 300px; }
+  .rich-editor .nb-lab-section, .rich-editor .nb-sheet-section { padding-left: 34px; }
+  .rich-editor .nb-lab-section::before, .rich-editor .nb-sheet-section::before { font-size: 18px; top: 20px; }
+  .nb-tpl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 58vh; }
+  .nb-tpl-preview { height: 64px; }
+  .nb-tpl-desc { display: none; }
+}
+
+/* Checklist box: 18px to the eye, a 44px square to a finger. The tap
+   lands on the line and notebook.js toggles the box (NB_TODO_HIT_MQ). */
+@media (max-width: 760px), (pointer: coarse) {
+  .nb-todo-line { position: relative; }
+  .nb-todo-line::before { content: ''; position: absolute; left: -13px; top: calc(.8em - 22px); width: 44px; height: 44px; }
+}
+
+/* Nothing hides behind hover on a screen that cannot hover; delete lives
+   in the note's ··· menu there, so the row's trash button goes. */
+@media (pointer: coarse) {
+  .nb-folder-actions { opacity: 1; pointer-events: auto; }
+  .nb-note-del, .nb-note-row:hover .nb-note-del { display: none; }
+}

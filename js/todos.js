@@ -44,60 +44,60 @@ function pageTodos() {
 
   return `
     ${pageHead('To-Do List', `${open.length} open${dueToday ? ` · ${dueToday} today` : ''}${overdue ? ` · ${overdue} overdue` : ''}`, `
-      <button class="btn btn-sm ${selectMode ? 'btn-primary' : ''}" onclick="toggleTodoSelectMode()">${icon('check-square', 13, 2)} ${selectMode ? 'Cancel' : 'Select'}</button>
-      <button class="btn btn-sm" onclick="openSectionModal()">${icon('plus', 13, 2.2)} New list</button>
-      <button class="btn btn-primary" onclick="openTodoModal()">+ Add to-do</button>
+      <button class="btn btn-sm head-keep${selectMode ? ' is-on' : ''}" aria-pressed="${selectMode}" onclick="toggleTodoSelectMode()">${icon('check-square', 14)} ${selectMode ? 'Cancel' : 'Select'}</button>
+      <button class="btn btn-sm" onclick="openSectionModal()">${icon('folder-plus', 14)} New list</button>
+      <button class="btn btn-primary" onclick="openTodoModal()">${icon('plus', 14)} Add to-do</button>
     `)}
     ${quickAddBar('todos', { mode: 'todo' })}
     <div class="assign-toolbar">
       <div class="chip-row" role="group" aria-label="Filter by class">
-        <button class="chip ${filter === 'all' ? 'active' : ''}" onclick="setState({todoFilter:'all'})">Everything</button>
-        ${activeCourses().filter(c => state.todos.some(x => x.courseId === c.id)).map(c => `<button class="chip ${filter === c.id ? 'active' : ''}" style="--course:${esc(c.color || '#5a6b7b')}" onclick="setState({todoFilter:'${c.id}'})"><span class="course-dot"></span>${esc(c.code || c.name)}</button>`).join('')}
-        <button class="chip ${filter === 'none' ? 'active' : ''}" onclick="setState({todoFilter:'none'})">Personal</button>
+        <button class="chip ${filter === 'all' ? 'active' : ''}" aria-pressed="${filter === 'all'}" onclick="setState({todoFilter:'all'})">Everything</button>
+        ${activeCourses().filter(c => state.todos.some(x => x.courseId === c.id)).map(c => `<button class="chip ${filter === c.id ? 'active' : ''}" aria-pressed="${filter === c.id}" style="--course:${esc(c.color || '#5a6b7b')}" onclick="setState({todoFilter:'${c.id}'})"><span class="course-dot"></span>${esc(c.code || c.name)}</button>`).join('')}
+        <button class="chip ${filter === 'none' ? 'active' : ''}" aria-pressed="${filter === 'none'}" onclick="setState({todoFilter:'none'})">Personal</button>
       </div>
       <div class="segmented" role="group" aria-label="Group to-dos">
-        <button class="${view === 'date' ? 'active' : ''}" aria-pressed="${view === 'date'}" onclick="state._todoView='date';touch()">${icon('calendar', 12, 2)} By date</button>
-        <button class="${view === 'lists' ? 'active' : ''}" aria-pressed="${view === 'lists'}" onclick="state._todoView='lists';touch()">${icon('layers', 12, 2)} By list</button>
+        <button class="${view === 'date' ? 'active' : ''}" aria-pressed="${view === 'date'}" onclick="state._todoView='date';touch()">${icon('calendar', 14)} By date</button>
+        <button class="${view === 'lists' ? 'active' : ''}" aria-pressed="${view === 'lists'}" onclick="state._todoView='lists';touch()">${icon('layers', 14)} By list</button>
       </div>
     </div>
 
     ${selectMode ? `
     <div class="card card-pad mb-16 select-bar">
-      <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleTodoSelectAll()"><span>Select all${open.length ? ` (${open.length})` : ''}</span></label>
+      <label class="checkbox-row"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleTodoSelectAll()"><span>Select all${open.length ? ` <span class="disclosure-count">${open.length}</span>` : ''}</span></label>
       <div class="flex-gap" style="align-items:center">
         <span class="small muted">${selected.size} selected</span>
-        <button class="btn btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkCompleteTodos()">${icon('check', 13, 2.2)} Mark done</button>
-        <button class="btn btn-danger btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkDeleteTodos()">${icon('trash', 13)} Delete</button>
+        <button class="btn btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkCompleteTodos()">${icon('check', 14, 2.2)} Mark done</button>
+        <button class="btn btn-danger btn-sm" ${selected.size ? '' : 'disabled'} onclick="bulkDeleteTodos()">${icon('trash', 14)} Delete</button>
       </div>
     </div>` : ''}
 
     ${open.length || view === 'lists' && state.todoSections.length ? groups.map(([k, label, items]) => `
       <section class="assign-group ${k === 'overdue' ? 'is-overdue' : ''}">
         <div class="assign-group-head">
-          <span>${esc(label)}</span><span class="assign-count">${items.length}</span>
-          ${view === 'lists' && k !== '_none' ? `<span class="todo-list-actions"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Add a to-do to ${esc(label)}" onclick="openTodoModal(null,{sectionId:'${k}'})">${icon('plus', 13, 2)}</button><button class="btn btn-ghost btn-icon btn-sm" aria-label="Rename or delete ${esc(label)}" onclick="openSectionModal('${k}')">${icon('pencil', 12)}</button></span>` : ''}
+          ${k === 'overdue' ? icon('clock', 14) : ''}<span>${esc(label)}</span><span class="assign-count">${items.length}</span>
+          ${view === 'lists' && k !== '_none' ? `<span class="todo-list-actions"><button class="btn btn-ghost btn-icon btn-sm" aria-label="Add a to-do to ${esc(label)}" data-tip="Add a to-do" onclick="openTodoModal(null,{sectionId:'${k}'})">${icon('plus', 14)}</button><button class="btn btn-ghost btn-icon btn-sm" aria-label="Rename or delete ${esc(label)}" data-tip="Rename or delete" onclick="openSectionModal('${k}')">${icon('pencil', 14)}</button></span>` : ''}
         </div>
         ${expandable(`todo-${k}`, label, `<div class="card assign-list">${items.length ? items.map(x => todoRow(x, { selectMode, selected, showList: view === 'date' })).join('') : `<div class="todo-list-empty small muted">Nothing in this list. <button class="sg-link" onclick="openTodoModal(null,{sectionId:'${k}'})">Add one</button></div>`}</div>`, { max: 420, count: items.length })}
       </section>`).join('') : emptyState(icon('check-square', 26, 1.4), scoped.length ? 'All done. Nice.' : 'A clear list', '', scoped.length ? 'Everything here is checked off.' : 'Type above like you’d text yourself: “laundry sunday”, “email advisor tomorrow 3pm !”')}
 
     ${done.length ? `
       <details class="todo-done" ${state._todoDoneOpen ? 'open' : ''} ontoggle="state._todoDoneOpen=this.open">
-        <summary><span>${icon('check', 12, 2.4)} Completed</span><span class="assign-count">${done.length}</span></summary>
+        <summary>${icon('check', 14, 2.4)}<span>Completed</span><span class="assign-count">${done.length}</span></summary>
         ${expandable('todo-done', 'Completed', `<div class="card assign-list">${done.slice(0, 50).map(x => todoRow(x, { showList: view === 'date' })).join('')}</div>`, { max: 420, count: Math.min(done.length, 50) })}
-        <button class="btn btn-ghost btn-sm mt-8" onclick="clearCompletedTodos()">${icon('trash', 12)} Clear completed</button>
+        <button class="btn btn-ghost btn-sm mt-8" onclick="clearCompletedTodos()">${icon('trash', 14)} Clear completed</button>
       </details>` : ''}
 
-    <details class="card card-pad todo-repeat" ${state.recurringTemplates.length ? '' : ''}>
-      <summary class="flex-between"><span class="sg-h3">${icon('refresh-cw', 14, 1.8)} Repeating to-dos</span><span class="small muted">${state.recurringTemplates.length ? `${state.recurringTemplates.length} set up` : 'Readings, laundry, weekly check-ins'}</span></summary>
+    <details class="card card-sm card-pad todo-repeat">
+      <summary class="flex-between"><span class="sg-h3">${icon('refresh-cw', 16)}Repeating to-dos</span><span class="small muted">${state.recurringTemplates.length ? `${state.recurringTemplates.length} set up` : 'Readings, laundry, weekly check-ins'}</span></summary>
       <div class="mt-8">
         ${state.recurringTemplates.map(rt => `
           <div class="sg-person">
-            <span class="sg-activity-ic">${icon('refresh-cw', 13, 1.8)}</span>
-            <div class="row-title small">${esc(rt.title)} <span class="muted">· ${esc(repeatLabel(rt))}</span></div>
+            <span class="sg-activity-ic">${icon('refresh-cw', 14)}</span>
+            <div class="row-title small">${esc(rt.title)} <span class="dim">· ${esc(repeatLabel(rt))}</span></div>
             ${rt.courseId && getCourse(rt.courseId) ? courseChip(rt.courseId) : ''}
-            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Stop repeating ${esc(rt.title)}" onclick="deleteRecurringTemplate('${rt.id}')">${icon('trash', 14)}</button>
+            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Stop repeating ${esc(rt.title)}" data-tip="Stop repeating" onclick="deleteRecurringTemplate('${rt.id}')">${icon('trash', 14)}</button>
           </div>`).join('') || '<p class="small muted mb-8">Set something up once and it adds itself to your list on schedule.</p>'}
-        <button class="btn btn-sm mt-8" onclick="openRecurringModal()">+ New repeating to-do</button>
+        <button class="btn btn-sm mt-8" onclick="openRecurringModal()">${icon('plus', 14)} New repeating to-do</button>
       </div>
     </details>
   `;
@@ -109,22 +109,22 @@ function todoRow(x, { selectMode = false, selected = null, showList = true } = {
   const overdue = !x.done && x.dueDate && x.dueDate < todayIso();
   const list = showList && x.sectionId ? state.todoSections.find(s => s.id === x.sectionId) : null;
   const rowClick = selectMode ? `toggleTodoSelected('${x.id}')` : `openTodoModal('${x.id}')`;
-  const due = x.dueDate ? `${esc(x.done ? fmtDate(x.dueDate) : relativeDay(x.dueDate).replace(' (overdue)', ''))}${x.dueTime && !x.done ? `<span>${fmtTime(x.dueTime)}</span>` : ''}` : (x.dueTime ? `<span>${fmtTime(x.dueTime)}</span>` : '');
   return `<div class="assign-row todo-row ${isSelected ? 'selected' : ''} ${x.done ? 'is-done' : ''}" data-item-id="${x.id}" style="--course:${esc(c?.color || 'var(--border)')}" onclick="${rowClick}" draggable="${selectMode ? 'false' : 'true'}" ondragstart="event.stopPropagation();dragStartItem(event,'todo','${x.id}')">
     ${selectMode
       ? `<button type="button" class="row-check ${isSelected ? 'checked' : ''}" role="checkbox" aria-checked="${isSelected}" aria-label="${isSelected ? 'Deselect' : 'Select'} ${esc(x.title)}" onclick="event.stopPropagation();toggleTodoSelected('${x.id}')">${isSelected ? checkGlyph(true) : ''}</button>`
       : `<button type="button" class="row-check ${x.done ? 'checked' : ''}" role="checkbox" aria-checked="${!!x.done}" aria-label="Mark ${esc(x.title)} as ${x.done ? 'not done' : 'done'}" onclick="event.stopPropagation();toggleTodo('${x.id}')">${x.done ? checkGlyph(true) : ''}</button>`}
     <div class="assign-main">
-      <div class="assign-title">${x.priority === 'high' && !x.done ? `<span class="todo-flag" title="High priority">${icon('flag', 12, 2)}</span>` : ''}${esc(x.title)}</div>
+      <div class="assign-title">${esc(x.title)}</div>
       ${c || list || x.recurringTemplateId || x.notes ? `<div class="assign-meta">
         ${c ? `<span class="assign-course"><span class="course-dot"></span>${esc(c.code || c.name)}</span>` : ''}
         ${list ? `<span>${esc(list.name)}</span>` : ''}
-        ${x.recurringTemplateId ? `<span title="Repeating">${icon('refresh-cw', 11, 2)}</span>` : ''}
-        ${x.notes ? `<span title="Has notes">${icon('file-text', 11, 2)}</span>` : ''}
-        ${x.priority === 'low' && !x.done ? '<span>Low priority</span>' : ''}
+        ${x.recurringTemplateId ? `<span role="img" aria-label="Repeating">${icon('refresh-cw', 12)}</span>` : ''}
+        ${x.notes ? `<span role="img" aria-label="Has notes">${icon('file-text', 12)}</span>` : ''}
       </div>` : ''}
     </div>
-    <div class="assign-due ${overdue ? 'sg-overdue' : ''}">${due}</div>
+    ${x.priority === 'high' && !x.done
+      ? `<div class="assign-due has-flag ${overdue ? 'is-overdue' : ''}"><span class="todo-flag" role="img" aria-label="High priority">${icon('flag', 12)}</span><span class="assign-due-stack">${dueBadgeHtml(x.dueDate, x.dueTime, x.done)}</span></div>`
+      : `<div class="assign-due ${overdue ? 'is-overdue' : ''}">${dueBadgeHtml(x.dueDate, x.dueTime, x.done)}</div>`}
   </div>`;
 }
 

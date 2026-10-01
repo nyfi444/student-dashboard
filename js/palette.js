@@ -19,14 +19,14 @@ function paletteItems() {
   add('Actions', 'Join a shared class', 'Get every deadline for a class in one tap', 'graduation-cap', () => { setState({ route: 'courses', subRoute: null }); openJoinClassModal(); }, 'class code section syllabus classmates');
   add('Actions', 'Start a study group', '', 'users', () => { setState({ route: 'studygroups', subRoute: null }); openCreateGroupModal(); }, 'create group');
   if (!isStandaloneApp()) add('Actions', installPlatform() === 'desktop' ? 'Bookmark or install Semester HQ' : 'Add Semester HQ to your home screen', 'One tap away, works offline', 'download', () => startInstall(), 'install app home screen bookmark pwa dock');
-  add('Actions', 'Semester Wrapped', 'Your semester in shareable cards', 'sparkles', () => openWrapped(), 'recap story share instagram stats');
+  add('Actions', 'Semester Wrapped', 'Your semester in shareable cards', 'star', () => openWrapped(), 'recap story share instagram stats');
   add('Actions', 'Add an application', 'Internship, job, or scholarship', 'briefcase', () => { setState({ route: 'career', subRoute: null }); openApplicationModal(); }, 'career job internship scholarship');
   add('Actions', 'Join a study group', 'With a code', 'user-plus', () => { setState({ route: 'studygroups', subRoute: null }); openJoinGroupModal(); }, 'code invite');
   add('Actions', 'Start a club or team', 'One calendar for every member', 'shield', () => { setState({ route: 'orgs', subRoute: null }); openCreateOrgModal(); }, 'org organization sorority fraternity chapter team club greek');
   add('Actions', 'Join a club or team', 'With a code from an officer', 'shield', () => { setState({ route: 'orgs', subRoute: null }); openJoinOrgModal(); }, 'org code sorority fraternity chapter team club');
   add('Actions', 'Customize dashboard', 'Widgets, theme, and colors', 'palette', () => { setState({ route: 'dashboard', subRoute: null }); openDashboardCustomizeModal(); }, 'theme color colors appearance dark light widgets');
   add('Actions', state.settings.dark ? 'Switch to light mode' : 'Switch to dark mode', '', state.settings.dark ? 'sun' : 'moon', () => toggleDark(!state.settings.dark), 'theme appearance');
-  if (!activeCourses().length) add('Actions', 'Set up my semester', '', 'sparkles', () => openSemesterSetup(), 'onboarding get started');
+  if (!activeCourses().length) add('Actions', 'Set up my semester', '', 'calendar', () => openSemesterSetup(), 'onboarding get started');
 
   NAV.forEach(([, pages]) => pages.forEach(([id, ic, name]) => add('Go to', name, '', ic, () => setState({ route: id, subRoute: null }), id)));
   add('Go to', 'Settings', '', 'settings', () => setState({ route: 'settings', subRoute: null }), 'account preferences');
@@ -79,7 +79,7 @@ function paletteSearch(q) {
 
 function openCommandPalette() {
   if (_palette.open) return;
-  _palette = { open: true, query: '', index: 0, results: paletteSearch(''), returnFocus: document.activeElement };
+  _palette = { open: true, query: '', index: 0, results: paletteSearch(''), returnFocus: paletteReturnTarget() };
   const el = document.createElement('div');
   el.id = 'cmdk';
   el.className = 'cmdk-wrap';
@@ -93,7 +93,7 @@ function openCommandPalette() {
         <kbd class="cmdk-kbd">esc</kbd>
       </div>
       <div class="cmdk-list" id="cmdk-list" role="listbox"></div>
-      <div class="cmdk-foot"><span><kbd>↑</kbd><kbd>↓</kbd> to move</span><span><kbd>↵</kbd> to open</span><span><kbd>${isMac() ? '⌘' : 'Ctrl'}</kbd><kbd>K</kbd> anywhere</span></div>
+      <div class="cmdk-foot"><span><kbd>↑</kbd><kbd>↓</kbd> to move</span><span><kbd>↵</kbd> to open</span><span><kbd>${modKey().replace('+', '')}</kbd><kbd>K</kbd> anywhere</span></div>
     </div>`;
   document.body.appendChild(el);
   const input = $('#cmdk-input');
@@ -103,14 +103,14 @@ function openCommandPalette() {
   input.focus(); // right away, so keys typed immediately after ⌘K aren't lost
   requestAnimationFrame(() => el.classList.add('show'));
 }
-function searchIcon() { return `<svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>`; }
+function searchIcon() { return icon('search', 16); }
 function isMac() { return /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent); }
 function renderPaletteList() {
   const list = $('#cmdk-list');
   if (!list) return;
   const res = _palette.results;
   if (!res.length) {
-    list.innerHTML = `<div class="cmdk-empty">No matches for “${esc(_palette.query)}”.${_palette.query.trim() ? `<button class="cmdk-item" data-i="-1" onclick="paletteQuickTodo()"><span class="cmdk-ic">${icon('plus', 14, 2)}</span><span class="cmdk-text"><span class="cmdk-label">${(() => { const p = parseQuickAdd(_palette.query); return `Add “${esc(p.title)}”${p.looksLikeAssignment ? ` to ${esc(p.courseLabel)}` : ' as a to-do'}${p.dueDate ? `, ${esc(relativeDay(p.dueDate).replace(' (overdue)', ''))}` : ''}${p.dueTime ? ` ${fmtTime(p.dueTime)}` : ''}`; })()}</span></span></button>` : ''}</div>`;
+    list.innerHTML = `<div class="cmdk-empty">No matches for “${esc(_palette.query)}”.${_palette.query.trim() ? `<button class="cmdk-item" data-i="-1" onclick="paletteQuickTodo()"><span class="cmdk-ic">${icon('plus', 16)}</span><span class="cmdk-text"><span class="cmdk-label">${(() => { const p = parseQuickAdd(_palette.query); return `Add “${esc(p.title)}”${p.looksLikeAssignment ? ` to ${esc(p.courseLabel)}` : ' as a to-do'}${p.dueDate ? `, ${esc(relativeDay(p.dueDate).replace(' (overdue)', ''))}` : ''}${p.dueTime ? ` ${fmtTime(p.dueTime)}` : ''}`; })()}</span></span></button>` : ''}</div>`;
     return;
   }
   let lastGroup = '';
@@ -118,7 +118,7 @@ function renderPaletteList() {
     const head = item.group !== lastGroup ? `<div class="cmdk-group">${esc(item.group)}</div>` : '';
     lastGroup = item.group;
     return `${head}<button class="cmdk-item ${i === _palette.index ? 'active' : ''}" role="option" aria-selected="${i === _palette.index}" id="cmdk-opt-${i}" data-i="${i}" onmousemove="paletteHover(${i})" onclick="runPaletteItem(${i})">
-      <span class="cmdk-ic">${icon(item.icon, 14, 1.8)}</span>
+      <span class="cmdk-ic">${icon(item.icon, 16)}</span>
       <span class="cmdk-text"><span class="cmdk-label">${esc(item.label)}</span>${item.sub ? `<span class="cmdk-sub">${esc(item.sub)}</span>` : ''}</span>
       ${i === _palette.index ? `<span class="cmdk-enter">↵</span>` : ''}
     </button>`;
@@ -158,13 +158,23 @@ function paletteQuickTodo() {
   touch();
   toast(`Added “${td.title}” to your to-dos`, 'success', 4500, { label: 'Undo', run: () => { state.todos = state.todos.filter(x => x.id !== td.id); touch(); } });
 }
+// Where focus goes back to when the palette closes: whatever had focus, or,
+// when a click didn't move focus (Safari never focuses a clicked button, and
+// a menu item is gone by now), the button that was clicked or the menu's ···.
+function paletteReturnTarget() {
+  let el = document.activeElement;
+  if (el && el !== document.body && !el.closest?.('.menu-surface')) return el;
+  if (el?.closest?.('.menu-surface') && typeof _menu !== 'undefined' && _menu?.anchor) return _menu.anchor;
+  const clicked = window.event?.target?.closest?.('button, a[href], [tabindex]');
+  return clicked && !clicked.closest('.menu-surface') ? clicked : el;
+}
 function closeCommandPalette(restoreFocus = true) {
   const el = $('#cmdk');
   if (!el) return;
   const back = _palette.returnFocus;
   _palette.open = false;
   el.remove();
-  if (restoreFocus && back && document.contains(back)) back.focus?.();
+  if (restoreFocus && back && back !== document.body && document.contains(back)) { try { back.focus({ preventScroll: true }); } catch {} }
 }
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {

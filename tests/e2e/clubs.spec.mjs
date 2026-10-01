@@ -13,6 +13,9 @@ import { firestoreAdmin, newAccount, openSignedIn, requireEmulators } from './si
 test.beforeEach(requireEmulators);
 
 test('an officer starts a club, a classmate joins with the code, and each sees the other', async ({ browser }) => {
+  // Two browsers, two accounts and two sign-ins: this takes ~13s alone and
+  // runs past the shared 30s budget when the whole suite runs in parallel.
+  test.setTimeout(60_000);
   const alice = await newAccount('alice');
   const bob = await newAccount('bob');
 
@@ -20,7 +23,7 @@ test('an officer starts a club, a classmate joins with the code, and each sees t
   const a = await (await browser.newContext()).newPage();
   const aConsole = await openSignedIn(a, alice);
   await navTo(a, 'orgs');
-  await a.getByRole('button', { name: '+ Start a club or team' }).click();
+  await a.getByRole('button', { name: 'Start a club or team', exact: true }).click();
   await a.locator('#modal #of-name').fill('Chess Club');
   await a.locator('#modal #of-title').fill('President');
   await a.locator('#modal #of-create').click();
@@ -50,6 +53,10 @@ test('an officer starts a club, a classmate joins with the code, and each sees t
 
   // He's in, and sees what Alice posted.
   await expect(b.locator('#content')).toContainText('Chess Club');
+  // The welcome sheet greets him first (js/spaces/welcome.js); he closes it.
+  await expect(b.locator('#modal')).toContainText('Welcome to Chess Club');
+  await b.locator('#modal .spw-go').click();
+  await expect(b.locator('#modal')).toBeHidden();
   await b.getByRole('tab', { name: /Announcements/ }).click();
   await expect(b.locator('#content')).toContainText('First meeting Tuesday at 7 in the Union.');
   // A member who isn't an officer gets no Announce button and no Admin tab.

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Refuses a push when the quick checks fail: the same syntax check and node
+# tests the GitHub workflow runs first, about a second in all. The slower
+# rules and browser suites still run on GitHub. Skip once with --no-verify.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+for f in js/*.js sw.js worker/src/*.js; do node --check "$f" || { echo "pre-push: syntax error in $f"; exit 1; }; done
+for t in tests/run.mjs tests/worker-delete-account.mjs tests/worker-security.mjs tests/worker-measure.mjs tests/worker-alerts.mjs tests/worker-forms.mjs; do
+  [ -f "$t" ] || continue
+  node "$t" >/tmp/prepush-$$.log 2>&1 || { tail -30 /tmp/prepush-$$.log; rm -f /tmp/prepush-$$.log; echo "pre-push: $t failed, nothing was pushed"; exit 1; }
+done
+rm -f /tmp/prepush-$$.log
+echo "pre-push: quick checks passed"

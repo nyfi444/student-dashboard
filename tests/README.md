@@ -6,7 +6,7 @@ publish (`.github/workflows/deploy-rules.yml`).
 
 | what | where | needs | catches |
 | --- | --- | --- | --- |
-| node tests | `run.mjs`, `worker-*.mjs` | nothing | the quick-add parser, the syllabus contract, LMS feeds, `sw.js` agreeing with `index.html`, the switches that ship off, the Worker's auth, billing and deletion logic, and what it measures for the Business OS (`worker-measure.mjs`: subscriber rows, checkout paths, the daily ledger, AI usage) |
+| node tests | `run.mjs`, `worker-*.mjs` | nothing | the quick-add parser, the syllabus contract, LMS feeds, `sw.js` agreeing with `index.html`, every `index.html` script loading together in order (no name declared twice), the switches that ship off, the Worker's auth, billing and deletion logic, and what it measures for the Business OS (`worker-measure.mjs`: subscriber rows, checkout paths, the daily ledger, AI usage) |
 | rules | `rules/` | the emulators | who may read and write what in Firestore and Storage, tested against the rules files that ship |
 | browser | `e2e/` | the emulators for the signed-in half | the app opening at all, every page rendering, real flows through the real screens, signed out and signed in |
 | smoke | `smoke.mjs` | the internet | that what's live after a deploy is this build, and the Worker still refuses what it should |
@@ -56,13 +56,14 @@ tests need no accounts at all.
 
 | file | what breaks if it fails |
 | --- | --- |
-| `boot.spec.mjs` | the app opens at all; every page renders; the service worker registers under this version; signed out nothing is kept (desktop and iPhone) |
+| `boot.spec.mjs` | the app opens at all; every page renders; the sample study group and club open on every tab; the service worker registers under this version; signed out nothing is kept (desktop and iPhone) |
 | `coursework.spec.mjs` | a class can be added, opened, given work, and the work ticked off |
 | `quickadd.spec.mjs` | plain-English quick add is still wired to the parser and writes what it promised |
 | `login.spec.mjs` | the way in renders, offers both routes, and puts the age gate and the agreement first |
 | `offline.spec.mjs` | the app opens on no connection, and `sw.js` still caches every file the app loads |
 | `account.spec.mjs` | a paying student's data reaches their account, survives a reload, and loads on a second device; an unpaid account gets the plan screen and keeps nothing; one student cannot read another's planner |
 | `clubs.spec.mjs` | an officer starts a club and posts; a classmate joins with the code, sees it, and gets no officer controls; chat reaches both |
+| `groups.spec.mjs` | a student starts a study group and schedules a session; a classmate joins with the code; RSVPs (going and maybe), Find a time, a task assigned and completed, chat and a shared link all reach the other person and the Firestore document |
 
 Every browser test also fails on a red console line. In a no-build-step app,
 an uncaught error *is* the type checker.
@@ -77,5 +78,3 @@ an uncaught error *is* the type checker.
 - Sign-in itself. The app offers Google's popup and an emailed link; the
   tests sign in through the same Firebase connection those end in, but not
   through either screen.
-- Study groups with two accounts (clubs are covered; groups share most of
-  the same code and rules, and their rules are tested in `rules/`).

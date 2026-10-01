@@ -23,6 +23,11 @@ function phaseMs(t = window._timer) {
 }
 function timerElapsed(t = window._timer) { return t.elapsedMs + (t.running && t.startedAt ? Date.now() - t.startedAt : 0); }
 function timerDisplayMs(t = window._timer) { return t.mode === 'pomodoro' ? Math.max(0, phaseMs(t) - timerElapsed(t)) : timerElapsed(t); }
+// Each digit in its own fixed-width cell, so the clock doesn't shimmy as it
+// counts (the display fonts have no tabular figures).
+function clockCells(str) {
+  return String(str).split('').map(ch => /\d/.test(ch) ? `<span class="tn">${ch}</span>` : ch === ':' ? '<span class="tc">:</span>' : esc(ch)).join('');
+}
 function fmtClock(ms) {
   const total = Math.round(ms / 1000);
   const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
@@ -53,16 +58,16 @@ function pageTimer() {
 
   return `
     ${pageHead('Study Timer', 'Work in focused blocks, then take a real break', `
-      <button class="btn btn-icon btn-sm" aria-label="Timer settings" title="Timer settings" onclick="openTimerSettings()">${icon('settings', 16, 1.6)}</button>
+      <button class="btn btn-icon btn-sm" aria-label="Timer settings" data-tip="Timer settings" onclick="openTimerSettings()">${icon('settings', 16, 1.6)}</button>
     `)}
     <div class="timer-layout">
       <div class="card timer-main">
         <div class="timer-top">
-          <div class="segmented">
-            <button class="${t.mode === 'pomodoro' ? 'active' : ''}" onclick="setTimerMode('pomodoro')">Focus blocks</button>
-            <button class="${t.mode === 'stopwatch' ? 'active' : ''}" onclick="setTimerMode('stopwatch')">Stopwatch</button>
+          <div class="segmented" role="group" aria-label="Timer mode">
+            <button class="${t.mode === 'pomodoro' ? 'active' : ''}" aria-pressed="${t.mode === 'pomodoro'}" onclick="setTimerMode('pomodoro')">Focus blocks</button>
+            <button class="${t.mode === 'stopwatch' ? 'active' : ''}" aria-pressed="${t.mode === 'stopwatch'}" onclick="setTimerMode('stopwatch')">Stopwatch</button>
           </div>
-          ${t.mode === 'pomodoro' ? `<div class="timer-phases">${['focus', 'short', 'long'].map(p => `<button class="timer-phase ${t.phase === p ? 'active' : ''}" onclick="setTimerPhase('${p}')">${PHASE_LABEL[p]}</button>`).join('')}</div>` : ''}
+          ${t.mode === 'pomodoro' ? `<div class="segmented timer-phases" role="group" aria-label="Phase">${['focus', 'short', 'long'].map(p => `<button class="timer-phase ${t.phase === p ? 'active' : ''}" aria-pressed="${t.phase === p}" onclick="setTimerPhase('${p}')">${PHASE_LABEL[p]}</button>`).join('')}</div>` : ''}
         </div>
 
         <div class="timer-dial" id="timer-dial" style="--timer-color:${color}">
@@ -71,7 +76,7 @@ function pageTimer() {
             <circle cx="120" cy="120" r="108" class="timer-arc" id="timer-arc" pathLength="100" stroke-dasharray="${pct.toFixed(2)} 100" transform="rotate(-90 120 120)"/>
           </svg>
           <div class="timer-dial-inner">
-            <div class="timer-display" id="timer-display">${fmtClock(timerDisplayMs(t))}</div>
+            <div class="timer-display" id="timer-display" role="timer" aria-label="${fmtClock(timerDisplayMs(t))}">${clockCells(fmtClock(timerDisplayMs(t)))}</div>
             <div class="timer-sub" id="timer-sub">${t.mode === 'pomodoro' ? `${PHASE_LABEL[t.phase]}${t.running ? '' : timerElapsed(t) ? ' · paused' : ''}` : t.running ? 'Running' : timerElapsed(t) ? 'Paused' : 'Stopwatch'}</div>
             ${t.mode === 'pomodoro' ? `<div class="timer-rounds" aria-label="Round ${t.round} of ${s.rounds}">${Array.from({ length: s.rounds }, (_, i) => `<span class="${i < t.round - 1 || (i === t.round - 1 && t.phase !== 'focus') ? 'done' : i === t.round - 1 ? 'current' : ''}"></span>`).join('')}</div>` : ''}
           </div>
@@ -91,27 +96,31 @@ function pageTimer() {
 
         <div class="timer-controls">
           ${t.running
-            ? `<button class="btn timer-btn-main" onclick="pauseTimer()">${icon('pause', 14, 1.5)} Pause</button>`
-            : `<button class="btn btn-primary timer-btn-main" onclick="startTimer()">${icon('play', 14, 1.5)} ${timerElapsed(t) ? 'Resume' : t.phase === 'focus' || t.mode === 'stopwatch' ? 'Start' : 'Start break'}</button>`}
+            ? `<button class="btn timer-btn-main" onclick="pauseTimer()">${icon('pause', 16)} Pause</button>`
+            : `<button class="btn btn-primary timer-btn-main" onclick="startTimer()">${icon('play', 16)} ${timerElapsed(t) ? 'Resume' : t.phase === 'focus' || t.mode === 'stopwatch' ? 'Start' : 'Start break'}</button>`}
           ${t.mode === 'pomodoro'
-            ? `<button class="btn" onclick="skipTimerPhase()" title="Skip to the next ${t.phase === 'focus' ? 'break' : 'focus block'}">Skip</button>`
-            : `<button class="btn" onclick="logAndResetTimer()">${icon('check', 13, 2.4)} Log session</button>`}
+            ? `<button class="btn" onclick="skipTimerPhase()" data-tip="Skip to the next ${t.phase === 'focus' ? 'break' : 'focus block'}">Skip</button>`
+            : `<button class="btn" onclick="logAndResetTimer()">${icon('check', 14, 2.4)} Log session</button>`}
           <button class="btn btn-ghost" onclick="resetTimer()" ${timerElapsed(t) ? '' : 'disabled'}>Reset</button>
         </div>
-        ${t.mode === 'pomodoro' ? `<div class="small muted timer-hint">${s.focus} min focus · ${s.short} min break · ${s.long} min long break every ${s.rounds} rounds. Finished focus blocks log automatically.</div>` : ''}
+        ${t.mode === 'pomodoro' ? `<div class="small dim timer-hint">${s.focus} min focus · ${s.short} min break · ${s.long} min long break every ${s.rounds} rounds. Finished focus blocks log automatically.</div>` : ''}
       </div>
 
       <div class="timer-side">
         <div class="card card-pad">
           <div class="flex-between mb-8"><h3 class="sg-h3">This week</h3>${streak ? `<span class="small muted">${streak}-day streak</span>` : ''}</div>
-          <div class="dash-focus">
-            <div class="dash-focus-ring">${progressRing(goal ? clamp((weekMin / goal) * 100, 0, 100) : null, 'var(--accent)', 84)}<div><strong>${fmtDuration(weekMin)}</strong><span>${goal ? `of ${fmtDuration(goal)}` : 'focused'}</span></div></div>
-            <div class="timer-today"><div class="timer-today-num">${fmtDuration(todayMin)}</div><div class="small muted">today · ${sessions.filter(x => x.date === today).length} session${sessions.filter(x => x.date === today).length === 1 ? '' : 's'}</div>
-            ${goal ? `<div class="small muted mt-8">${weekMin >= goal ? 'Weekly goal reached.' : `${fmtDuration(goal - weekMin)} to go this week`}</div>` : `<button class="sg-link mt-8" onclick="openTimerSettings()">Set a weekly goal</button>`}</div>
+          <div class="dash-focus timer-week">
+            <div class="dash-focus-total">
+              <div class="dash-focus-num">${durationFigure(weekMin)}</div>
+              <div class="dash-focus-of">${goal ? `of ${fmtDuration(goal)} this week` : 'focused this week'}</div>
+              ${goal ? `<div class="progress dash-focus-progress"><div style="width:${clamp((weekMin / goal) * 100, 0, 100)}%"></div></div>` : ''}
+              <div class="small dim mt-8">${(() => { const n = sessions.filter(x => x.date === today).length; return `Today ${esc(fmtDuration(todayMin))} · ${n} session${n === 1 ? '' : 's'}`; })()}</div>
+              ${goal ? '' : `<button class="sg-link mt-8" onclick="openTimerSettings()">Set a weekly goal</button>`}
+            </div>
           </div>
           ${stats.length ? `<div class="divider"></div>${stats.map(x => `
             <div class="mb-8">
-              <div class="flex-between small" style="margin-bottom:3px"><span>${esc(x.name)}</span><span class="muted">${fmtDuration(x.minutes)}</span></div>
+              <div class="flex-between small" style="margin-bottom:4px"><span>${esc(x.name)}</span><span class="dim">${fmtDuration(x.minutes)}</span></div>
               <div class="progress"><div style="width:${x.pct}%;background:${x.color}"></div></div>
             </div>`).join('')}` : ''}
         </div>
@@ -122,8 +131,8 @@ function pageTimer() {
             return `<div class="timer-session" style="--course:${esc(c?.color || '#8a8a8a')}">
               <span class="dash-tl-bar"></span>
               <div class="row-title"><div class="small sg-strong">${esc(x.task || (c ? c.name : 'General study'))}</div><div class="row-meta">${[c && x.task ? (c.code || c.name) : '', fmtSessionDay(x.date)].filter(Boolean).map(esc).join(' · ')}</div></div>
-              <span class="small">${fmtDuration(x.minutes)}</span>
-              <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete session" onclick="deleteTimerSession('${x.id}')">${icon('trash', 13)}</button>
+              <span class="timer-session-dur">${fmtDuration(x.minutes)}</span>
+              <button class="btn btn-ghost btn-icon btn-sm timer-session-del" aria-label="Delete session" data-tip="Delete session" onclick="deleteTimerSession('${x.id}')">${icon('trash', 14)}</button>
             </div>`;
           }).join('') : emptyStateHtml({
             compact: true,
@@ -270,7 +279,7 @@ function updateTimerChrome() {
   const clock = fmtClock(timerDisplayMs(t));
   document.title = active ? `${t.running ? '' : '⏸ '}${clock} · ${label} · Semester HQ` : 'Semester HQ';
   const display = document.getElementById('timer-display');
-  if (display) display.textContent = clock;
+  if (display && display.getAttribute('aria-label') !== clock) { display.innerHTML = clockCells(clock); display.setAttribute('aria-label', clock); }
   const arc = document.getElementById('timer-arc');
   if (arc && t.mode === 'pomodoro') arc.setAttribute('stroke-dasharray', `${clamp((timerElapsed(t) / phaseMs(t)) * 100, 0, 100).toFixed(2)} 100`);
   let pill = document.getElementById('timer-pill');
@@ -287,10 +296,10 @@ function updateTimerChrome() {
   pill.innerHTML = `
     <button class="timer-pill-main" onclick="setState({route:'timer',subRoute:null})" aria-label="Open study timer">
       <span class="timer-pill-dot ${t.running ? 'live' : ''}"></span>
-      <span class="timer-pill-clock">${clock}</span>
+      <span class="timer-pill-clock" aria-label="${clock}">${clockCells(clock)}</span>
       <span class="timer-pill-label">${esc(t.task || label)}</span>
     </button>
-    <button class="timer-pill-btn" aria-label="${t.running ? 'Pause' : 'Resume'} timer" onclick="${t.running ? 'pauseTimer()' : 'startTimer()'}">${icon(t.running ? 'pause' : 'play', 12, 1.5)}</button>`;
+    <button class="timer-pill-btn" aria-label="${t.running ? 'Pause' : 'Resume'} timer" onclick="${t.running ? 'pauseTimer()' : 'startTimer()'}">${icon(t.running ? 'pause' : 'play', 14)}</button>`;
 }
 function playChime() {
   try {

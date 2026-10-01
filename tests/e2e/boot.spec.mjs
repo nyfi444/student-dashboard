@@ -37,7 +37,7 @@ test('signed out, a reload really does keep nothing', async ({ page }) => {
   // for the next one, and nothing on screen would say so.
   await openApp(page);
   await navTo(page, 'courses');
-  await page.getByRole('button', { name: '+ Add course' }).click();
+  await page.getByRole('button', { name: 'Add course', exact: true }).first().click();
   await page.locator('#modal #cf-name').fill('Kept By Mistake');
   await page.locator('#modal').getByRole('button', { name: 'Save course' }).click();
   await expect(page.locator('.course-card')).toContainText('Kept By Mistake');
@@ -86,6 +86,171 @@ test('every page renders', async ({ page }) => {
     await page.locator('#sidebar .nav-settings').click();
   }
   await expect(page.locator('#content')).toContainText('Settings');
+  console_.expectClean();
+});
+
+/* Study groups and clubs are split across several files (js/spaces/,
+   js/groups/, js/orgs/), each loaded in its place in index.html. The
+   route pages above only draw the index; this opens the sample group and
+   the sample club and every one of their tabs, which is where a missing
+   or misordered file would throw. */
+// The sample opens itself if it already exists, so a click lost to a
+// redraw on a slow phone run is safe to repeat.
+// label is the button's name; the four sample clubs are chips named
+// exactly 'Club', 'Chapter', 'Sports team' and 'Honor society'. tabs is
+// what to wait for once the space is open, usually its tab row; not the
+// phone chat button, which stays hidden until the row sticks.
+async function openSample(page, label, tabs) {
+  await expect(async () => {
+    const btn = page.locator('#content').getByRole('button', { name: label, exact: true });
+    if (await btn.isVisible()) await btn.click();
+    await expect(tabs.first()).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 20_000 });
+}
+// On a phone the Chat tab opens a full-screen sheet that covers the tab
+// row (the rest of the page goes inert), so close it before the next tab.
+async function closeChatSheet(page, tab) {
+  if ((await tab.getAttribute('data-tab')) !== 'chat') return;
+  const close = page.getByRole('button', { name: 'Close chat' });
+  if (await close.isVisible()) await close.click();
+}
+test('the sample study group and sample club open on every tab', async ({ page }) => {
+  const console_ = await openApp(page);
+  await navTo(page, 'studygroups');
+  // Chat stays in the tab row on a phone too (last there); the floating
+  // chat button only adds a shortcut once the row sticks (tested below).
+  const groupTabs = page.locator('#content [role="tab"]:visible');
+  await openSample(page, 'Explore a sample group first', groupTabs);
+  const gCount = await groupTabs.count();
+  expect(gCount, 'the sample group shows its tabs').toBeGreaterThanOrEqual(5);
+  for (let i = 0; i < gCount; i++) {
+    await groupTabs.nth(i).click();
+    await expect(groupTabs.nth(i)).toHaveAttribute('aria-selected', 'true');
+    const text = (await page.locator('#content').innerText()).trim();
+    expect(text.length, `group tab ${i} rendered no text`).toBeGreaterThan(40);
+    await closeChatSheet(page, groupTabs.nth(i));
+  }
+  await navTo(page, 'orgs');
+  const clubTabs = page.locator('#content [role="tab"]:visible');
+  await openSample(page, 'Club', clubTabs);
+  const cCount = await clubTabs.count();
+  expect(cCount, 'the sample club shows its tabs').toBeGreaterThanOrEqual(5);
+  for (let i = 0; i < cCount; i++) {
+    await clubTabs.nth(i).click();
+    await expect(clubTabs.nth(i)).toHaveAttribute('aria-selected', 'true');
+    const text = (await page.locator('#content').innerText()).trim();
+    expect(text.length, `club tab ${i} rendered no text`).toBeGreaterThan(40);
+    await closeChatSheet(page, clubTabs.nth(i));
+  }
+  console_.expectClean();
+});
+
+/* The sample clubs open as an officer, with a strip that switches the
+   preview to Member and back and opens the other samples. All of it is
+   local to the tab. */
+test('every sample club opens, and Previewing as switches officer and member', async ({ page }) => {
+  const console_ = await openApp(page);
+  await navTo(page, 'orgs');
+  const tabs = page.locator('#content [role="tab"]:visible');
+  await openSample(page, 'Chapter', tabs);
+  await expect(page.locator('#content .space-title')).toHaveText('Kestrel House');
+  const strip = page.locator('#content .space-sample');
+  const admin = page.locator('#content [role="tab"]', { hasText: 'Admin' });
+  await expect(admin).toHaveCount(1);
+  await strip.getByRole('button', { name: 'Member', exact: true }).click();
+  await expect(admin).toHaveCount(0);
+  await expect(strip.getByRole('button', { name: 'Member', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await strip.getByRole('button', { name: 'Officer', exact: true }).click();
+  await expect(admin).toHaveCount(1);
+  await admin.click();
+  await expect(page.locator('#content #org-attendance tbody tr')).not.toHaveCount(0);
+  for (const [chip, name] of [['Sports team', 'Club Volleyball'], ['Honor society', 'Brightfield Honor Society'], ['Club', 'Women in Business']]) {
+    // A phone keeps the strip to one line: the other samples sit behind a Samples sheet.
+    const direct = strip.getByRole('button', { name: chip, exact: true });
+    if (await direct.isVisible()) await direct.click();
+    else {
+      await strip.getByRole('button', { name: 'Samples' }).click();
+      await page.locator('#modal').getByRole('button', { name: chip, exact: true }).click();
+    }
+    await expect(page.locator('#content .space-title')).toHaveText(name);
+  }
+  expect(await page.evaluate(() => state.orgs.filter(e => e.sample && e.local).length)).toBe(4);
+  console_.expectClean();
+});
+
+/* RSVP (js/spaces/rsvp.js) on the local sample club: answering collapses
+   the buttons into a pill, Change reopens them, and choosing the same
+   answer again never clears it. A dues event asks for payment instead. */
+test('the RSVP control answers, changes, never un-answers, and dues events ask for payment', async ({ page }) => {
+  // The sample club's dates are built from today, so what is Next up
+  // depends on the day and the hour: from Tuesday evening, once that week's
+  // meeting has ended, it is the dues deadline, which asks for payment and
+  // has no RSVP. That failed this test every evening on CI (which runs on
+  // UTC) and would have failed it anywhere for the rest of the week. A
+  // Monday morning always has a meeting next.
+  await page.clock.setFixedTime(new Date(2026, 8, 28, 10, 0, 0));
+  const console_ = await openApp(page);
+  await navTo(page, 'orgs');
+  const tabs = page.locator('#content [role="tab"]:visible');
+  await openSample(page, 'Club', tabs);
+  const ctl = page.locator('#content .space-hero .space-rsvp');
+  await expect(ctl).toHaveCount(1);
+  const change = ctl.getByRole('button', { name: /Change your answer/ });
+  if (await change.isVisible()) await change.click();
+  await ctl.getByRole('button', { name: 'Going', exact: true }).click();
+  await expect(ctl.locator('.space-rsvp-pill')).toHaveText('You’re going');
+  await ctl.getByRole('button', { name: /Change your answer/ }).click();
+  await ctl.getByRole('button', { name: 'Can’t', exact: true }).click();
+  await expect(ctl.locator('.space-rsvp-pill')).toHaveText('Can’t make it');
+  await ctl.getByRole('button', { name: /Change your answer/ }).click();
+  await ctl.getByRole('button', { name: 'Going', exact: true }).click();
+  await ctl.getByRole('button', { name: /Change your answer/ }).click();
+  await ctl.getByRole('button', { name: 'Going', exact: true }).click();
+  await expect(ctl.locator('.space-rsvp-pill')).toHaveText('You’re going');
+  const dues = await page.evaluate(() => {
+    const o = findOrg(state.subRoute);
+    const e = upcomingOrgEvents(o).find(x => x.category === 'deadline');
+    showOrgEventModal(o.code, e.id);
+    return e.title;
+  });
+  await expect(page.locator('#modal')).toContainText(dues);
+  await expect(page.locator('#modal').getByRole('button', { name: 'Going', exact: true })).toHaveCount(0);
+  await expect(page.locator('#modal').getByRole('link', { name: /Pay dues/ })).toHaveCount(1);
+  console_.expectClean();
+});
+
+test('on a phone, a group or club page fits the screen, keeps Chat as the last tab, and its chat button opens chat once the tabs stick', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'phone', 'the floating chat button is phone only');
+  const console_ = await openApp(page);
+  const noSideways = async () => expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), 'no sideways scroll').toBeLessThanOrEqual(0);
+  for (const [route, label] of [['studygroups', 'Explore a sample group first'], ['orgs', 'Club']]) {
+    await navTo(page, route);
+    await openSample(page, label, page.locator('#content [role="tab"]'));
+    await noSideways();
+    // At rest the Chat tab covers chat: it shows, and it sits last in the row.
+    const chatTab = page.locator('#content [role="tab"]', { hasText: /^Chat/ });
+    await expect(chatTab).toHaveCount(1);
+    await expect(chatTab).toBeVisible();
+    const chatIsLast = await page.evaluate(() => {
+      const tabs = [...document.querySelectorAll('#content [role="tab"]')];
+      const chat = tabs.find(t => /^Chat/.test(t.textContent.trim()));
+      const left = t => t.getBoundingClientRect().left;
+      return !!chat && tabs.every(t => t === chat || left(t) < left(chat));
+    });
+    expect(chatIsLast, 'Chat is the last tab in the row').toBe(true);
+    // The floating chat button stays hidden until the tab row sticks.
+    const fab = page.locator('#content .space-chat-fab');
+    await expect(fab).toBeHidden();
+    await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; window.scrollTo(0, document.body.scrollHeight); });
+    await expect(page.locator('#content .space-tabbar.is-stuck')).toHaveCount(1);
+    await expect(fab).toBeVisible();
+    await noSideways();
+    await fab.click();
+    await expect(page.locator('#content [role="tab"][aria-selected="true"]')).toHaveText(/^Chat/);
+    // The Chat tab draws no floating button of its own.
+    await expect(fab).toHaveCount(0);
+    await noSideways();
+  }
   console_.expectClean();
 });
 

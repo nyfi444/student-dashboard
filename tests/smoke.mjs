@@ -137,7 +137,7 @@ missing.length === 0
   ? pass(`all ${assets.length} scripts and stylesheets are served`)
   : fail('all scripts and stylesheets are served', missing.join('\n        '));
 
-for (const [name, path] of [['the service worker', '/sw.js'], ['the manifest', '/manifest.json'], ['the login page', '/login.html'], ['the group admin page', '/group-admin.html']]) {
+for (const [name, path] of [['the service worker', '/sw.js'], ['the manifest', '/manifest.json'], ['the login page', '/login.html'], ['the group admin page', '/group-admin.html'], ['the form page', '/form.html']]) {
   const res = await get(`${APP}${path}`);
   check(`${name} is served`, res.status, 200);
 }

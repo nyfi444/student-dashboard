@@ -61,6 +61,8 @@ function installCopy() {
   if (p === 'ios') return { title: 'Add Semester HQ to your Home Screen', sub: 'It opens like an app and works offline.', action: 'Show me how' };
   if (p === 'android') return { title: 'Put Semester HQ on your home screen', sub: 'One tap to open, and it works offline.', action: 'Show me how' };
   if (p === 'mac-safari') return { title: 'Keep Semester HQ in your Dock', sub: 'Add it to your Dock and it opens in its own window, one click away.', action: 'Show me how' };
+  // A phone never gets the keyboard-shortcut copy: there's no ⌘D to press.
+  if (isMobileDevice() || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) return { title: 'Put Semester HQ on your home screen', sub: 'One tap to open, and it works offline.', action: 'Show me how' };
   return { title: 'Bookmark Semester HQ', sub: `Press ${isMac() ? '⌘D' : 'Ctrl+D'} so your semester is one click away, or install it if your browser offers.`, action: 'Show me how' };
 }
 function installPromptCard() {
@@ -199,7 +201,7 @@ function installSettingsCard() {
   const c = installCopy();
   return `
     <div class="card card-pad">
-      <h3 style="font-size:15px" class="mb-8">${standalone ? 'App' : installPlatform() === 'desktop' ? 'Bookmark or install' : 'Add to home screen'}</h3>
+      <h3 class="sg-h3 mb-8">${standalone ? 'App' : installPlatform() === 'desktop' ? 'Bookmark or install' : 'Add to home screen'}</h3>
       ${standalone
         ? `<p class="small muted">You’re using Semester HQ as an app. It works offline and opens straight from your home screen or dock.</p>`
         : `<p class="small muted mb-8">${esc(c.sub)}</p><button class="btn btn-sm" onclick="startInstall()">${icon(installPlatform() === 'prompt' ? 'download' : 'share', 13, 1.9)} ${installPlatform() === 'prompt' ? 'Install Semester HQ' : 'Show me how'}</button>`}

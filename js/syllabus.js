@@ -81,7 +81,7 @@ function syllabusCard(c) {
   }
   const contact = [
     d.email ? `<a class="btn btn-sm" href="mailto:${esc(d.email)}?subject=${encodeURIComponent(c.code || c.name)}">${icon('send', 12, 1.8)} Email</a>` : '',
-    d.email ? `<button class="btn btn-sm btn-ghost btn-icon" aria-label="Copy email address" title="Copy ${esc(d.email)}" onclick="copyText('${esc(d.email)}','Email copied')">${icon('copy', 13, 1.8)}</button>` : '',
+    d.email ? `<button class="btn btn-sm btn-ghost btn-icon" aria-label="Copy email address" data-tip="Copy email" onclick="copyText('${esc(d.email)}','Email copied')">${icon('copy', 14)}</button>` : '',
     d.website ? `<a class="btn btn-sm" href="${esc(d.website)}" target="_blank" rel="noopener noreferrer">${icon('link', 12, 1.8)} Course site</a>` : '',
   ].filter(Boolean).join('');
   const policyBlock = (label, iconName, text) => text ? `<div class="syl-policy"><div class="syl-label">${icon(iconName, 12, 1.9)} ${label}</div><p class="small">${esc(text)}</p></div>` : '';
@@ -91,7 +91,7 @@ function syllabusCard(c) {
         <h3 class="sg-h3">Syllabus</h3>
         <div class="flex-gap">
           ${aiEnabled() ? `<button class="sg-link" onclick="openSyllabusUploadModal('${c.id}')">${has ? 'Update from syllabus' : 'Upload syllabus'}</button>` : ''}
-          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit syllabus details" title="Edit" onclick="openCourseDetailsModal('${c.id}')">${icon('pencil', 13, 1.7)}</button>
+          <button class="btn btn-ghost btn-icon btn-sm" aria-label="Edit syllabus details" data-tip="Edit" onclick="openCourseDetailsModal('${c.id}')">${icon('pencil', 14)}</button>
         </div>
       </div>
 
@@ -123,7 +123,7 @@ function syllabusCard(c) {
       <div class="syl-section">
         <div class="flex-between">
           <div class="syl-label">${icon('calendar', 12, 1.9)} Attendance</div>
-          <button class="sg-link" onclick="openAbsenceModal('${c.id}')">+ Log absence</button>
+          <button class="sg-link" onclick="openAbsenceModal('${c.id}')">${icon('plus', 12)} Log absence</button>
         </div>
         ${limit != null ? `
           <div class="syl-absence ${used > limit ? 'is-over' : used === limit ? 'is-at' : ''}">
@@ -131,12 +131,12 @@ function syllabusCard(c) {
             <div class="small"><strong>${used} of ${limit}</strong> allowed absence${limit === 1 ? '' : 's'} used${used >= limit ? (used > limit ? `. You’re ${used - limit} over.` : '. That’s the limit.') : ''}</div>
           </div>` : `<div class="small muted">${used ? `${used} absence${used === 1 ? '' : 's'} logged.` : 'No absences logged.'} ${d.absencePolicy ? '' : 'Add the limit from the syllabus to track it.'}</div>`}
         ${d.absencePolicy ? `<p class="small mt-4">${esc(d.absencePolicy)}</p>` : ''}
-        ${absences.length ? `<details class="syl-absence-log"><summary class="small muted">${absences.length} logged</summary>${absences.map(a => `
+        ${absences.length ? `<details class="syl-absence-log disclosure"><summary class="small muted">${absences.length} logged</summary>${absences.map(a => `
           <div class="sg-person"><div class="row-title small">${esc(fmtDate(a.date, { weekday: 'short', month: 'short', day: 'numeric' }))}${a.excused ? ' <span class="muted">· excused</span>' : ''}${a.note ? ` <span class="muted">· ${esc(a.note)}</span>` : ''}</div><button class="btn btn-ghost btn-icon btn-sm" aria-label="Remove absence on ${esc(fmtDate(a.date))}" onclick="removeAbsence('${c.id}','${a.id}')">${icon('x', 12, 2.2)}</button></div>`).join('')}</details>` : ''}
       </div>
 
       ${policyBlock('Late work', 'clock', d.latePolicy)}
-      ${d.policies?.length ? `<details class="syl-more"><summary class="small">More policies (${d.policies.length})</summary>${d.policies.map(p => policyBlock(p.title, 'file-text', p.text)).join('')}</details>` : ''}
+      ${d.policies?.length ? `<details class="syl-more disclosure"><summary class="small">More policies <span class="disclosure-count">${d.policies.length}</span></summary>${d.policies.map(p => policyBlock(p.title, 'file-text', p.text)).join('')}</details>` : ''}
       ${d.textbook ? `<div class="syl-section"><div class="syl-label">${icon('book-open', 12, 1.9)} Textbook</div><p class="small">${esc(d.textbook)}</p></div>` : ''}
       ${storedSyllabusHtml(c)}
     </div>`;
@@ -283,7 +283,7 @@ function renderCourseDetailsModal() {
 
       <div class="syl-form-label">Office hours</div>
       <div id="dd-hours">${(d.officeHours || []).map((h, i) => officeHourRow(h, i)).join('')}</div>
-      <button class="btn btn-sm mb-8" onclick="syncDetailsDraft();_detailsDraft.officeHours.push({day:2,start:'14:00',end:'15:00',where:''});renderCourseDetailsModal()">+ Add office hours</button>
+      <button class="btn btn-sm mb-8" onclick="syncDetailsDraft();_detailsDraft.officeHours.push({day:2,start:'14:00',end:'15:00',where:''});renderCourseDetailsModal()">${icon('plus', 14)} Add office hours</button>
       <div class="field"><label for="dd-ohnote">Note</label><input class="input" id="dd-ohnote" maxlength="160" value="${esc(d.officeHoursNote || '')}" placeholder="Or by appointment"></div>
 
       <div class="syl-form-label">Attendance and late work</div>

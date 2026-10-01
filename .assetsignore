@@ -25,3 +25,5 @@ worker
 worker/**
 tools
 tools/**
+.githooks
+.githooks/**

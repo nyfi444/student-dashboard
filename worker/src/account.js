@@ -53,6 +53,7 @@ async function removeMemberFromSharedSpace(env, path, uid, kind) {
     // Last one out. Nothing to hand over, and an empty group is only clutter.
     if (!members.length) {
       for (const sub of subcollections) await deleteFirestoreSubcollection(env, path, sub);
+      await deleteSpaceForms(env, path);
       await deleteFirestoreDoc(env, collection, docId);
       return;
     }
@@ -81,6 +82,7 @@ async function removeMemberFromSharedSpace(env, path, uid, kind) {
 
     if (await commitFirestore(env, [{ path, fields, clear, updateTime: snap.updateTime }])) {
       await anonymizeMessagesBy(env, path, uid);
+      await anonymizeFormsBy(env, path, uid);
       return;
     }
   }
@@ -100,6 +102,75 @@ async function anonymizeMessagesBy(env, path, uid) {
   for (let i = 0; i < named.length; i += 20) {
     await commitFirestore(env, named.slice(i, i + 20).map(m => ({ path: `${path}/messages/${m.id}`, fields: { name: DELETED_PERSON_NAME } })));
   }
+}
+
+/* ── Forms (js/spaces/formcore.js) ─────────────────────────────────
+   A form belongs to the club or group, so the ones this person wrote
+   stay, with their name taken off. Their ANSWERS are theirs and go.
+
+   Answers can sit in spaces they never joined (an interest form, an
+   application), so membership can't find them. Every answer is written
+   together with an entry in the sender's own planners/{uid}/formAnswers
+   (firestore.rules refuses the answer otherwise), and that list is what
+   this reads. */
+const FORM_ANSWER_SCAN_LIMIT = 500;
+const FORM_SPACES = { club: 'orgs', group: 'studyGroups' };
+
+async function anonymizeFormsBy(env, path, uid) {
+  const forms = await runFirestoreQuery(env, {
+    from: [{ collectionId: 'forms' }],
+    where: { fieldFilter: { field: { fieldPath: 'createdBy' }, op: 'EQUAL', value: { stringValue: uid } } },
+    limit: 100,
+  }, path);
+  const named = forms.filter(f => safeFieldKey(f.id) && f.createdByName !== DELETED_PERSON_NAME);
+  for (let i = 0; i < named.length; i += 20) {
+    await commitFirestore(env, named.slice(i, i + 20).map(f => ({ path: `${path}/forms/${f.id}`, fields: { createdByName: DELETED_PERSON_NAME } })));
+  }
+}
+// A space being deleted takes its forms and every answer to them with it.
+async function deleteSpaceForms(env, path) {
+  const forms = await runFirestoreQuery(env, { from: [{ collectionId: 'forms' }], limit: 100 }, path);
+  for (const f of forms) {
+    if (!safeFieldKey(f.id)) continue;
+    await deleteFirestoreSubcollection(env, `${path}/forms/${f.id}`, 'responses');
+    await deleteFirestoreSubcollection(env, `${path}/forms/${f.id}`, 'marks');
+  }
+  await deleteFirestoreSubcollection(env, path, 'forms');
+  // Files sent as answers. Logged, not thrown: the space is still deleted
+  // if Storage is having a bad day.
+  try { await deleteStorageFolder(env, `${path}/forms/`); }
+  catch (e) { await logServerIssue(env, 'account', 'Account delete could not remove form files', e); }
+}
+// Returns what could not be erased, in the same words leaveSharedSpaces uses.
+async function eraseFormAnswers(env, uid) {
+  if (!safeFieldKey(uid)) throw new Error('Unsafe uid for a path');
+  const failed = [];
+  let answered = [];
+  try { answered = await runFirestoreQuery(env, { from: [{ collectionId: 'formAnswers' }], limit: FORM_ANSWER_SCAN_LIMIT }, `planners/${uid}`); }
+  catch (e) { failed.push('list form answers'); await logServerIssue(env, 'account', 'Account delete could not list form answers', e); }
+  for (const a of answered) {
+    const collection = FORM_SPACES[a.kind];
+    // The list is the person's own document, so nothing in it is trusted
+    // to name a path: each part has to be a plain id.
+    if (!collection || !safeFieldKey(a.code) || !safeFieldKey(a.formId)) continue;
+    const form = `${collection}/${a.code}/forms/${a.formId}`;
+    try {
+      if (a.anon === true) {
+        // An anonymous answer is filed under a random id, which only this
+        // entry knows (worker/src/forms.js).
+        if (safeFieldKey(a.answerId)) await deleteFirestoreDoc(env, `${form}/responses`, a.answerId);
+      } else {
+        await deleteFirestoreDoc(env, `${form}/responses`, uid);
+        // What was decided about their answer goes with it, and so do the
+        // files they sent as answers.
+        await deleteFirestoreDoc(env, `${form}/marks`, uid);
+        await deleteStorageFolder(env, `${form}/${uid}/`);
+      }
+    } catch (e) { failed.push(`erase a form answer in ${collection}/${a.code}`); await logServerIssue(env, 'account', 'Account delete could not erase a form answer', e); }
+  }
+  try { await deleteFirestoreSubcollection(env, `planners/${uid}`, 'formAnswers'); }
+  catch (e) { failed.push('clear the form answer list'); await logServerIssue(env, 'account', 'Account delete could not clear the form answer list', e); }
+  return failed;
 }
 
 async function leaveSharedSpaces(env, uid, planner) {
@@ -169,6 +240,9 @@ export async function handleDeleteAccount(request, env, origin) {
     // to delete is worse, and the alternative is stopping halfway.
     const planner = await readFirestoreDoc(env, 'planners', uid).catch(() => null);
     const leftBehind = await leaveSharedSpaces(env, uid, planner);
+    // Answers to forms, wherever they were sent. After leaving the spaces,
+    // so a space that was deleted on the way out has already taken its own.
+    leftBehind.push(...await eraseFormAnswers(env, uid));
     // Same fallback as handleCreatePortalSession: an account whose license was
     // claimed via email (bought before signing up) may be missing this field on
     // the uid-keyed doc even from before that path was fixed to copy it over.

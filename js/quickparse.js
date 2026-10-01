@@ -201,6 +201,68 @@ function parseQuickAdd(text, { courses = activeCourses(), ignore = [], now = new
   return out;
 }
 
+/* ── Group tasks: "@maya" and a due day ─────────────────────────
+   qpTakeMention finds the first @name (at the start or after a space,
+   so an email address is never one) and matches it against people
+   ([{ uid, name }], current members only). It tries the whole name
+   (longest wins, "@maya chen" over "@maya"), then the first name, then
+   a unique start of any part of a name. "@me" is meUid. Two people
+   matching is ambiguous: nobody is picked and the text is left alone.
+   Returns { rest, uid, name, token, ambiguous }; rest has the match cut out.
+   parseTaskAdd runs the rest through parseQuickAdd with classes, times
+   and priority switched off (a group task has no time field, and "bio"
+   or "asap" are part of the title there), and keeps only the title and
+   the date. ignore: 'date' and/or 'who', for a dismissed chip. A text
+   that is only a date ("fri @maya") gives title ''. */
+function qpTakeMention(text, people = [], meUid = null) {
+  const src = String(text || '');
+  const out = { rest: src, uid: null, name: '', token: '', ambiguous: false };
+  const m = /(^|\s)@(?=[^\s@])/.exec(src);
+  if (!m) return out;
+  const at = m.index + m[1].length;
+  const after = src.slice(at + 1);
+  const low = after.toLowerCase();
+  const norm = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const list = (people || []).filter(p => p && p.uid && norm(p.name));
+  const ends = (n) => n >= low.length || /[\s,.;:!?)]/.test(low[n]);
+  let hits = [], len = 0;
+  list.forEach(p => {
+    const n = norm(p.name);
+    if (!low.startsWith(n) || !ends(n.length)) return;
+    if (n.length > len) { hits = [p]; len = n.length; } else if (n.length === len) hits.push(p);
+  });
+  if (!hits.length) {
+    const word = (/^[^\s,.;:!?()@]+/.exec(after) || [''])[0];
+    const w = word.toLowerCase();
+    if (!w) return out;
+    len = word.length;
+    out.token = '@' + word;
+    if (w === 'me' && meUid) {
+      const mine = list.find(p => p.uid === meUid);
+      hits = [mine || { uid: meUid, name: 'You' }];
+    } else {
+      hits = list.filter(p => norm(p.name).split(' ')[0] === w);
+      if (!hits.length && w.length >= 2) hits = list.filter(p => norm(p.name).split(' ').some(part => part.startsWith(w)));
+    }
+  } else out.token = '@' + after.slice(0, len);
+  if (hits.length > 1) { out.ambiguous = true; return out; }
+  if (!hits.length) { out.token = ''; return out; }
+  out.uid = hits[0].uid;
+  out.name = String(hits[0].name || '').trim();
+  out.rest = (src.slice(0, at) + ' ' + src.slice(at + 1 + len)).replace(/\s+/g, ' ').trim();
+  return out;
+}
+function parseTaskAdd(text, { people = [], meUid = null, now = new Date(), ignore = [] } = {}) {
+  const skip = new Set(ignore);
+  const src = String(text || '');
+  const who = skip.has('who') ? { rest: src, uid: null, name: '', token: '', ambiguous: false } : qpTakeMention(src, people, meUid);
+  const rest = who.rest.trim();
+  const p = parseQuickAdd(rest, { courses: [], ignore: ['course', 'time', 'priority', ...(skip.has('date') ? ['date'] : [])], now });
+  // parseQuickAdd falls back to the whole text when nothing is left over.
+  const onlyDate = !!p.dueDate && p.title.toLowerCase() === rest.toLowerCase();
+  return { title: onlyDate ? '' : p.title.slice(0, 200), dueDate: p.dueDate, uid: who.uid, name: who.name, token: who.token, ambiguous: who.ambiguous };
+}
+
 /* ── The quick add bar ─────────────────────────────────────────── */
 // mode: 'auto' (dashboard: decides to-do vs assignment), 'assignment', or 'todo'.
 window._qa = window._qa || {};
@@ -216,10 +278,10 @@ function quickAddBar(id, { mode = 'auto', placeholder, defaultCourseId = null } 
   return `
     <div class="quick-add card qa-smart" id="qa-wrap-${id}">
       <div class="qa-row">
-        <span class="quick-add-ic">${icon('plus', 15, 2)}</span>
+        <span class="quick-add-ic">${icon('plus', 16)}</span>
         <input class="quick-add-input" id="qa-${id}" placeholder="${esc(ph)}" autocomplete="off" aria-label="${mode === 'todo' ? 'Add a to-do' : mode === 'assignment' ? 'Add an assignment' : 'Quick add'}" aria-describedby="qa-${id}-preview"
           oninput="qaPreview('${id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();qaSubmit('${id}')}else if(event.key==='Escape'){this.value='';qaReset('${id}')}">
-        <button class="btn btn-sm btn-primary qa-add-btn" onclick="qaSubmit('${id}')">Add</button>
+        <button class="btn btn-sm qa-add-btn" onclick="qaSubmit('${id}')">Add</button>
       </div>
       <div class="qa-preview" id="qa-${id}-preview" aria-live="polite">${qaPreviewHtml(id, '')}</div>
     </div>`;

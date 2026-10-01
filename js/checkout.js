@@ -17,7 +17,7 @@ function demoBannerHtml() {
   if (typeof isDemoMode !== 'function' || !isDemoMode()) return '';
   if (typeof _fbUser !== 'undefined' && _fbUser) return '';
   const plan = typeof isEmbedded === 'function' && isEmbedded() ? '' : ', or <a href="https://semester-hq.com/pricing.html" target="_blank" rel="noopener">see the plan</a>';
-  return `<div class="demo-bar" role="status"><strong>Demo.</strong>&nbsp;Nothing here is saved. <a href="#" onclick="event.preventDefault();signIn()">Sign in</a> to keep your semester${plan}.</div>`;
+  return `<div class="demo-bar" role="status"><strong>Demo.</strong> Nothing here is saved. <a href="#" onclick="event.preventDefault();signIn()">Log in</a><span class="demo-long"> to keep your semester${plan}</span>.</div>`;
 }
 
 function checkoutReturnPending() { return new URLSearchParams(window.location.search).get('checkout') === 'success'; }
@@ -65,7 +65,7 @@ async function redirectToPortal() {
     // no subscription of their own to change.
     if (e.reason === 'group' || e.reason === 'no-billing') {
       openModal(`
-        <div class="modal-head"><h3>${e.reason === 'group' ? 'Your group covers this' : 'Nothing to manage'}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+        <div class="modal-head"><h3>${e.reason === 'group' ? 'Your group covers this' : 'Nothing to manage'}</h3>${closeXButton()}</div>
         <div class="modal-body">
           <p class="small">${esc(e.message)}</p>
           <p class="small muted mt-8">Questions about your plan? Email <a href="mailto:hello@semester-hq.com">hello@semester-hq.com</a>.</p>
@@ -80,7 +80,7 @@ async function redirectToPortal() {
     // them a way to reach a human with the support code attached.
     diag.error('checkout', 'Billing portal would not open', e);
     openModal(`
-      <div class="modal-head"><h3>Couldn’t open the billing page</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+      <div class="modal-head"><h3>Couldn’t open the billing page</h3>${closeXButton()}</div>
       <div class="modal-body">
         <p class="small">Stripe, which handles billing, didn’t answer just now. Nothing about your subscription changed, and you haven’t been charged anything extra.</p>
         <p class="small muted mt-8">Try again in a minute. If it keeps happening, email <a href="mailto:hello@semester-hq.com?subject=Billing%20portal">hello@semester-hq.com</a> with your support code <strong>${esc(diag.session)}</strong> and I’ll sort it out by hand, including cancelling for you if that’s what you want.</p>
@@ -193,8 +193,8 @@ function pagePaywall() {
       <div class="paywall-wrap">
         <div class="paywall-card">
           <h2>Payment received</h2>
-          <p class="small muted mb-16">Sign in to activate your account. It'll be linked to this purchase automatically. Use whichever you paid with; any email works, not just Google.</p>
-          <button class="btn btn-primary" style="width:100%" onclick="signIn()">${icon('sparkles', 13, 1.6)} Continue with Google</button>
+          <p class="small muted mb-16">Log in to activate your account. It'll be linked to this purchase automatically. Use whichever you paid with; any email works, not just Google.</p>
+          <button class="btn btn-primary" style="width:100%" onclick="signIn()">${icon('log-in', 16)}Continue with Google</button>
           <button class="btn btn-sm mt-8" style="width:100%" onclick="openEmailSignInModal()">Continue with email instead</button>
         </div>
       </div>`;

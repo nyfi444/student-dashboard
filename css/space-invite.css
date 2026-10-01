@@ -1,0 +1,136 @@
+/* css/space-invite.css: part 3, the invite kit (js/spaces/invite.js).
+   Tokens come from css/styles.css and spaceVars (js/spaces/tokens.js);
+   the space color arrives through --space on the .space root, so all 17
+   themes work light and dark. One corner shape: every radius is a token
+   and the same on all four corners, never changed on hover or focus. */
+
+/* ── Invite sheet ── */
+.invite-sheet { position: relative; }
+.invite-cover {
+  display: flex; align-items: flex-end; gap: 16px;
+  min-height: 112px; padding: 20px 24px 18px;
+  background: var(--space-wash);
+}
+.invite-cover .space-crest.is-xl { width: 56px; height: 56px; }
+.invite-cover-text { min-width: 0; flex: 1; }
+.invite-eyebrow { color: var(--space-bg-text, var(--text-dim)); margin-bottom: 4px; }
+.invite-title { font: 400 var(--fs-title)/1.08 var(--font-serif); letter-spacing: -.015em; color: var(--bg-text); text-wrap: balance; overflow-wrap: anywhere; }
+.invite-sub { color: var(--text-dim); margin-top: 4px; }
+.invite-close { position: absolute; top: 12px; right: 12px; z-index: 1; color: var(--bg-text-dim); }
+.invite-body { padding-top: 20px; }
+.invite-grid { display: grid; grid-template-columns: minmax(320px, 1fr) auto; gap: 16px 20px; align-items: start; }
+.invite-sheet .sg-invite-row .input { flex: 1 1 auto; min-width: 0; }
+.invite-main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.invite-code-label { color: var(--text-dim); font-weight: 500; }
+.invite-code-wrap .sg-invite-code { justify-content: flex-start; margin: 8px 0 6px; }
+.invite-code-wrap .sg-invite-code span { border-color: var(--space-line); }
+.invite-copy-code { color: var(--text-dim); }
+.invite-copy-code:hover { color: var(--text); }
+
+/* QR: always black on white, on its own white tile so it reads in dark mode and on any wash. */
+.invite-qr-card {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 12px 12px 10px; background: #fff; border: 1px solid var(--border); border-radius: var(--r-card);
+}
+.invite-qr { width: 144px; height: 144px; display: flex; align-items: center; justify-content: center; background: #fff; }
+.invite-qr svg { display: block; width: 100%; height: 100%; }
+.invite-qr-off { color: #555; text-align: center; line-height: 1.4; padding: 8px; }
+.invite-qr-cap { color: #444; font-weight: 500; }
+.invite-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.invite-actions .btn { flex: 1 1 auto; min-width: 0; }
+.invite-note { margin-top: 12px; }
+
+/* ── Show on screen: a fixed overlay, not the fullscreen API, so iPhone Safari gets the same view ── */
+.invite-screen {
+  position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--space-wash); color: var(--bg-text); --pattern-alpha: .22;
+  min-height: 100vh; min-height: 100dvh; overflow: auto;
+}
+.invite-screen-done { position: fixed; top: 16px; right: 16px; z-index: 2; }
+.invite-screen-col { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; max-width: 920px; width: 100%; }
+.invite-screen .space-crest.is-xl { width: 96px; height: 96px; font-size: var(--fs-display); }
+.invite-screen .space-crest.is-xl.is-long { font-size: var(--fs-title); }
+.invite-screen .space-crest.is-xl .space-crest-sub { font-size: var(--fs-md); }
+.invite-screen-name { font: 400 var(--fs-hero)/1.02 var(--font-serif); letter-spacing: -.02em; text-wrap: balance; overflow-wrap: anywhere; color: var(--bg-text); }
+.invite-screen-lead { font: 500 var(--fs-xl)/1.3 var(--font); letter-spacing: 0; color: var(--space-bg-text, var(--bg-text)); }
+.invite-screen-qr {
+  width: min(70vw, 360px); aspect-ratio: 1; padding: 16px; box-sizing: content-box;
+  background: #fff; border-radius: var(--r-card); border: 1px solid rgb(0 0 0 / .08);
+}
+.invite-screen-qr .invite-qr { width: 100%; height: 100%; }
+.invite-screen-code { display: flex; justify-content: center; gap: 8px; margin-top: 6px; }
+.invite-screen-code span {
+  width: 48px; height: 60px; display: inline-flex; align-items: center; justify-content: center;
+  font: 600 28px var(--font); letter-spacing: .08em; text-indent: .08em;
+  background: var(--surface); color: var(--text); border: 1px solid var(--space-line); border-radius: var(--r-tight);
+}
+.invite-screen-url { font: 400 var(--fs-lg)/1.4 var(--font); color: var(--bg-text-dim); overflow-wrap: anywhere; }
+.invite-screen-note { color: var(--bg-text-dim); }
+@media (max-width: 760px) {
+  .invite-screen { padding: 64px 20px 32px; align-items: flex-start; }
+  .invite-screen-name { font-size: var(--fs-display-lg); }
+  .invite-screen .space-crest.is-xl { width: 72px; height: 72px; font-size: var(--fs-title); }
+  .invite-screen-code span { width: 40px; height: 50px; font-size: 22px; }
+}
+
+/* ── Table card: the off-screen page for the PDF, and the print fallback ── */
+.invite-tent-page { position: fixed; left: -9999px; top: 0; width: 816px; height: 1056px; background: #fff; color: #000; overflow: hidden; }
+.invite-tent {
+  display: grid; grid-template-rows: 1fr auto 1fr; width: 100%; height: 100%;
+  background: #fff; color: #000; font-family: var(--font); -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.invite-tent-half { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 32px 48px; min-height: 0; }
+.invite-tent-half:first-child { transform: rotate(180deg); }
+.invite-tent-fold { height: 0; border-top: 1px dashed #999; margin: 0 24px; }
+.invite-tent-crest {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 72px; height: 72px; border: 2px solid #000; border-radius: var(--r-mid);
+  font: 400 30px/1 var(--font-serif); letter-spacing: -.01em;
+}
+.invite-tent-crest small { display: block; margin-top: 3px; font: 600 11px/1 var(--font); letter-spacing: .06em; }
+.invite-tent-name { font: 400 40pt/1.05 var(--font-serif); letter-spacing: -.02em; text-wrap: balance; overflow-wrap: anywhere; }
+.invite-tent-lead { font: 600 16pt/1.3 var(--font); }
+.invite-tent-qr { width: 2.4in; height: 2.4in; display: block; }
+.invite-tent-code { font: 600 20pt/1 var(--font); letter-spacing: .3em; text-indent: .3em; }
+.invite-tent-url { font: 400 11pt/1.4 var(--font); color: #333; overflow-wrap: anywhere; }
+@media print {
+  #print-area.print-tent { padding: 0 !important; height: 100vh; overflow: hidden; }
+  #print-area.print-tent .invite-tent { height: 100vh; page-break-inside: avoid; break-inside: avoid; }
+}
+
+/* ── Join preview ── */
+.invite-join { position: relative; }
+.invite-join-cover { position: relative; height: 120px; background: var(--space-wash); }
+.invite-join-cover.is-plain { height: 72px; background: var(--surface-2); }
+.invite-join-body { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 0; }
+.invite-join-body > .space-crest.is-xl, .invite-anon-crest {
+  width: 72px; height: 72px; margin-top: -36px; box-shadow: 0 0 0 4px var(--surface); font-size: var(--fs-title);
+  position: relative; z-index: 1;
+}
+.invite-anon-crest { background: var(--surface-2); color: var(--text-dim); border-radius: var(--r-mid); }
+.invite-join-body .invite-eyebrow { margin: 16px 0 6px; }
+.invite-join-name { font: 400 32px/1.08 var(--font-serif); letter-spacing: -.015em; text-wrap: balance; overflow-wrap: anywhere; color: var(--text); }
+.invite-join-meta { margin-top: 6px; }
+.invite-join-desc { margin-top: 12px; max-width: 40ch; line-height: 1.5; }
+.invite-join-next {
+  margin-top: 14px; padding: 8px 12px; border: 1px solid var(--space-line); border-radius: var(--r-tight);
+  color: var(--text); background: var(--space-wash);
+}
+.invite-join-next-k { font-weight: 600; color: var(--space-bg-text, var(--text-dim)); margin-right: 4px; }
+.invite-join-links { margin-top: 12px; display: flex; justify-content: center; }
+.invite-join-fields { width: 100%; margin-top: 16px; text-align: left; }
+.invite-join .sg-invite-code { margin-top: 16px; }
+.invite-join-btn { width: 100%; min-height: 48px; margin-top: 20px; font-size: var(--fs-md); }
+.invite-join-notnow { margin-top: 12px; color: var(--text-dim); }
+
+@media (max-width: 760px) {
+
+  .invite-cover { padding: 18px 16px 16px; min-height: 96px; }
+  .invite-grid { grid-template-columns: minmax(0, 1fr); }
+  .invite-qr-card { justify-self: center; }
+  .sg-link.invite-copy-code, .sg-link.invite-join-notnow { min-height: 44px; display: inline-flex; align-items: center; padding: 10px 8px; margin: -10px -8px; }
+  .sg-link.invite-join-notnow { margin-top: 2px; }
+  .invite-code-wrap .sg-invite-code { justify-content: center; }
+  .invite-code-label, .invite-code-wrap { text-align: center; }
+  .invite-actions .btn { flex: 1 1 100%; }
+}

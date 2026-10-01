@@ -8,7 +8,7 @@ const FAQ_ITEMS = [
   { q: 'How do I change the colors?', a: 'Settings → Appearance (or Customize on the dashboard) has themes, each with a matching dark mode, plus page colors. Turn on Dark mode and the page colors switch to deep tints of the same colors, with light text so everything stays readable.' },
   { q: 'How do study groups work?', a: 'Start a group from Study Groups and invite classmates with its 6-character code or an invite link. Inside a group you can schedule sessions (they show up on every member’s calendar, with RSVPs), paint your weekly availability so Semester HQ can suggest the best time to meet, split up tasks with owners and due dates, chat, and share notes, flashcards, files, and links. Everyone in a group needs their own Semester HQ Plus account. Organizing a whole class, club, or team? A group plan covers all of them, see the next question.' },
   { q: 'Can I pay for my whole club, team, or class?', a: 'Yes. A group plan is $5.99 per member each month instead of $7.99 each, and you can buy it yourself for 5 to 50 members. Open group-admin.html from Settings, pick how many members you\u2019re covering, and share the invite link it gives you: each person signs in, takes a seat, and gets their own full Semester HQ. Add or remove seats whenever your roster changes, and cancel anytime. Covering more than 50, or need an invoice, a PO, or a W-9 (or you\u2019re an academic department or a whole campus)? Ask for a quote at semester-hq.com/group-pricing.html and we\u2019ll set it up with you.' },
-  { q: 'What can I share with a study group?', a: 'Notes, whole notebooks, flashcard decks, and projects each have a Share button that sends a copy to one of your groups. You can also open a group’s Resources tab to share any of those, plus files and links, without leaving the group. Members can add their own copy to their notebook, flashcards, or projects. It’s a one-time copy, not a live sync, so edits after sharing stay with whoever made them.' },
+  { q: 'What can I share with a study group?', a: 'Notes, whole notebooks, flashcard decks, and projects each have a Share button that sends a copy to one of your groups. You can also open a group’s Files tab to share any of those, plus files and links, without leaving the group. Members can add their own copy to their notebook, flashcards, or projects. It’s a one-time copy, not a live sync, so edits after sharing stay with whoever made them.' },
   { q: 'Can I assign tasks to people in my study group?', a: 'Yes. On a group’s Tasks tab, give each task an owner and an optional due date, and filter to just yours. Tasks assigned to you also show up on your Dashboard, and the group’s Overview shows a feed of who scheduled, shared, and finished what.' },
   { q: 'Can I add a PDF or other file to my notes?', a: 'Yes. Open a note and click Upload file. A PDF comes in as page images, so figures and handwriting look like the original. Photos come in as pictures, and Word docs, slides, spreadsheets, and text files come in as text you can edit. This doesn’t use AI, and it’s separate from syllabus upload under Courses.' },
   { q: 'What kinds of files can I upload?', a: 'PDFs, Word docs (.docx and older .doc), PowerPoint (.pptx and .ppt), Excel (.xlsx), CSV, OpenDocument, RTF, text files, web pages, and photos, including iPhone photos. Pages, Keynote, and Numbers files need to be exported first: in the app, choose File → Export To → PDF (or Excel for Numbers), then upload that.' },
@@ -54,14 +54,14 @@ function reviewSettingsCard() {
   if (sent && !window._reviewAgain) {
     return `
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Thanks for the review</h3>
+        <h3 class="sg-h3 mb-8">Thanks for the review</h3>
         <p class="small muted">You sent one on ${esc(fmtDate(iso(sent), { month: 'long', day: 'numeric' }))}. It really does help.</p>
         <button class="btn btn-sm mt-8" onclick="window._reviewAgain=true;render()">Write another</button>
       </div>`;
   }
   return `
     <div class="card card-pad">
-      <h3 style="font-size:15px" class="mb-8">Leave a review</h3>
+      <h3 class="sg-h3 mb-8">Leave a review</h3>
       <p class="small muted mb-8">Semester HQ is made by one person. Tell me what’s working and what isn’t, and it goes straight to me.</p>
       <div class="rev-stars" role="group" aria-label="Rating">
         ${[1, 2, 3, 4, 5].map(n => `<button class="rev-star ${n <= rating ? 'on' : ''}" aria-label="${n} star${n === 1 ? '' : 's'}" aria-pressed="${n === rating}" onclick="setReviewRating(${n})">${n <= rating ? '★' : '☆'}</button>`).join('')}
@@ -69,7 +69,7 @@ function reviewSettingsCard() {
       </div>
       <textarea class="input mt-8" id="rev-text" placeholder="What’s it saved you? What’s still annoying?" style="min-height:90px"></textarea>
       ${_fbUser?.email ? '' : `<input class="input mt-8" id="rev-email" type="email" placeholder="Your email, so I can reply" autocomplete="email">`}
-      <label class="checkbox-row small mt-8"><input type="checkbox" id="rev-quote"><span>You can quote this on semester-hq.com (first name only)</span></label>
+      <label class="checkbox-row settings-check small mt-8"><input type="checkbox" id="rev-quote"><span>You can quote this on semester-hq.com (first name only)</span></label>
       <button class="btn btn-primary btn-sm mt-8" onclick="submitReview(this)">Send</button>
     </div>`;
 }
@@ -109,7 +109,7 @@ function pageSettings() {
   return `
     ${pageHead('Settings', 'Customize your planner')}
     <div class="settings-columns">
-      ${expandable('set-appearance', 'Appearance', appearanceSettingsCard(), { max: 320 })}
+      ${appearanceSettingsCard()}
 
 
       ${installSettingsCard()}
@@ -117,7 +117,7 @@ function pageSettings() {
       ${versionSettingsCard()}
 
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Account & Sync</h3>
+        <h3 class="sg-h3 mb-8">Account & Sync</h3>
         ${_fbUser ? `
           <div class="flex-gap"><div class="avatar">${(_fbUser.displayName || _fbUser.email || '?')[0].toUpperCase()}</div><div><div style="font-weight:600">${esc(_fbUser.displayName || _fbUser.email)}</div><div class="small muted">Synced across devices. This is the default experience.</div></div></div>
           ${window._licensed && !(window._licenseDoc?.groupPaid && !window._licenseDoc?.individualPaid) ? `<button class="btn mt-16" onclick="redirectToPortal()">Manage subscription</button>` : ''}
@@ -133,17 +133,17 @@ function pageSettings() {
       </div>
 
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Syllabus &amp; file reading</h3>
+        <h3 class="sg-h3 mb-8">Syllabus &amp; file reading</h3>
         <p class="small muted mb-8">Powers syllabus upload, quick capture, and making flashcards from notes and files.</p>
         ${aiEnabled() && !aiLooksUnlocked()
-          ? `<div class="flex-gap"><span class="pill" style="background:var(--surface-2);color:var(--text-dim)">${icon('lock', 12, 2)} Included with Semester HQ Plus</span></div><p class="small muted mt-8">These don’t run in the demo. ${isEmbedded() ? '' : _fbUser ? '' : '<a href="login.html">Log in</a> to use them.'}</p>`
+          ? `<div class="flex-gap"><span class="pill settings-pill">${icon('lock', 12)} Included with Semester HQ Plus</span></div><p class="small muted mt-8">These don’t run in the demo. ${isEmbedded() ? '' : _fbUser ? '' : '<a href="login.html">Log in</a> to use them.'}</p>`
           : aiEnabled()
-          ? `<div class="flex-gap"><span class="pill" style="background:var(--accent-light);color:var(--accent)">${icon('check', 12, 2.4)} Ready to use</span></div><p class="small muted mt-8">No setup needed, just upload a syllabus from Courses.</p>`
-          : `<p class="small" style="background:var(--warn-light);color:var(--warn);padding:10px 12px;border-radius:10px">Not set up on this deployment yet. The app owner needs to deploy the Cloudflare Worker proxy in <code>/worker</code> and fill in <code>WORKER_URL</code> in <code>js/config.js</code> (see <code>worker/README.md</code>).</p>`}
+          ? `<div class="flex-gap"><span class="pill settings-pill">${icon('check', 12, 2.4)} Ready to use</span></div><p class="small muted mt-8">No setup needed, just upload a syllabus from Courses.</p>`
+          : `<p class="small sg-callout">Not set up on this deployment yet. The app owner needs to deploy the Cloudflare Worker proxy in <code>/worker</code> and fill in <code>WORKER_URL</code> in <code>js/config.js</code> (see <code>worker/README.md</code>).</p>`}
       </div>
 
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Semester</h3>
+        <h3 class="sg-h3 mb-8">Semester</h3>
         <div class="field"><label>Viewing</label>
           <select class="select" onchange="setState({currentSemesterId:this.value})">
             ${state.semesters.map(s => `<option value="${s.id}" ${s.id === state.currentSemesterId ? 'selected' : ''}>${esc(s.name)}${s.archived ? ' (archived)' : ''}</option>`).join('')}
@@ -151,19 +151,21 @@ function pageSettings() {
         </div>
         <div class="field mt-8" style="margin-bottom:0"><label>Weekly study goal (min)</label><input class="input" type="number" value="${state.settings.weeklyStudyGoalMinutes ?? ''}" oninput="state.settings.weeklyStudyGoalMinutes=Number(this.value)||0;touch()"></div>
         <div class="flex-gap wrap mt-8">
-          <button class="btn" onclick="openSemesterReset()">${icon('refresh-cw', 13, 2)} Semester reset</button>
-          <button class="btn" onclick="openSemesterSetup()">${icon('sparkles', 13, 1.6)} Semester setup</button>
+          <button class="btn" onclick="openSemesterReset()">${icon('refresh-cw', 16)} Semester reset</button>
+          <button class="btn" onclick="openSemesterSetup()">${icon('calendar', 16)} Semester setup</button>
         </div>
       </div>
 
       ${feedSettingsCard()}
 
       <div class="card card-pad">
-        <h3 style="font-size:15px" class="mb-8">Data</h3>
+        <h3 class="sg-h3 mb-8">Data</h3>
         <div class="flex-gap wrap">
-          <button class="btn" onclick="exportData()">Export backup</button>
-          <button class="btn" onclick="$('#hidden-file-input').click()">Import backup</button>
-          <button class="btn btn-danger" onclick="resetAllData()">Erase all data</button>
+          <button class="btn" onclick="exportData()">${icon('download', 16)} Export backup</button>
+          <button class="btn" onclick="$('#hidden-file-input').click()">${icon('upload', 16)} Import backup</button>
+        </div>
+        <div class="settings-danger">
+          <button class="btn btn-danger" onclick="resetAllData()">${icon('trash', 16)} Erase all data</button>
         </div>
       </div>
 
@@ -173,7 +175,7 @@ function pageSettings() {
 
       ${expandable('set-faq', 'FAQ', `
         <div class="card card-pad">
-          <h3 style="font-size:15px" class="mb-8">FAQ</h3>
+          <h3 class="sg-h3 mb-8">FAQ</h3>
           <p class="small muted mb-8">Common questions about how this planner works.</p>
           ${FAQ_ITEMS.map(f => `
             <details class="faq-item">
@@ -195,7 +197,7 @@ function versionSettingsCard() {
   const running = window._runningVersion || (typeof APP_VERSION === 'string' ? APP_VERSION : '');
   return `
     <div class="card card-pad">
-      <h3 style="font-size:15px" class="mb-8">App version</h3>
+      <h3 class="sg-h3 mb-8">App version</h3>
       <p class="small muted">You're running <strong id="app-version-label">${esc(running || 'unknown')}</strong>. Semester HQ updates itself when you open it, so you shouldn't have to think about this.</p>
       <div class="flex-gap wrap mt-8">
         <button class="btn btn-sm" onclick="runUpdateCheck(this)">${icon('refresh-cw', 13, 2)} Check for updates</button>
@@ -240,18 +242,18 @@ function pageRecentlyDeleted() {
         <div class="row-title">${esc(t.label || 'Untitled')}</div>
         <div class="row-meta">Deleted ${fmtRelativeTime(t.deletedAt)}</div>
         <button class="btn btn-sm" onclick="restoreTrashItem('${t.id}')">${icon('refresh-cw', 12, 2)} Restore</button>
-        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete permanently" onclick="permanentlyDeleteTrashItem('${t.id}')">${icon('trash', 14)}</button>
+        <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete permanently" data-tip="Delete permanently" onclick="permanentlyDeleteTrashItem('${t.id}')">${icon('trash', 14)}</button>
       </div>
   `).join('');
   return `
     <div class="flex-between mb-8">
-      <h3 style="font-size:15px">Recently Deleted</h3>
+      <h3 class="sg-h3">Recently Deleted</h3>
       ${items.length ? `<button class="btn btn-ghost btn-sm" onclick="emptyTrash()">Empty trash</button>` : ''}
     </div>
     <p class="small muted mb-8">Deleted notes, courses, assignments, to-dos, time blocks, projects, and flashcard decks land here for ${TRASH_RETENTION_DAYS} days before they're gone for good.</p>
     ${items.length ? `
       <details class="settings-collapse">
-        <summary>View Recently Deleted (${items.length} item${items.length === 1 ? '' : 's'})</summary>
+        <summary><span>Recently deleted <span class="disclosure-count">${items.length}</span></span></summary>
         <div class="settings-collapse-body settings-collapse-scroll">${rows}</div>
       </details>
     ` : emptyState(icon('trash', 22, 1.4), 'Nothing deleted recently.')}

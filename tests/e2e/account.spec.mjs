@@ -14,7 +14,7 @@ test.beforeEach(requireEmulators);
 
 async function addCourse(page, name, code) {
   await navTo(page, 'courses');
-  await page.getByRole('button', { name: '+ Add course' }).first().click();
+  await page.getByRole('button', { name: 'Add course', exact: true }).first().click();
   await page.locator('#modal #cf-name').fill(name);
   await page.locator('#modal #cf-code').fill(code);
   await page.locator('#modal').getByRole('button', { name: 'Save course' }).click();
@@ -22,6 +22,8 @@ async function addCourse(page, name, code) {
 }
 
 test('a paying student’s semester is saved to their account and survives a reload', async ({ page }) => {
+  // The first signed-in test of a run meets cold emulators; alone it takes ~16s.
+  test.setTimeout(60_000);
   const alice = await newAccount('alice');
   const console_ = await openSignedIn(page, alice);
 
@@ -54,7 +56,11 @@ test('what one device saves, another device loads', async ({ browser }) => {
   const phonePage = await phone.newPage();
   const phoneConsole = await openSignedIn(phonePage, alice);
   await navTo(phonePage, 'courses');
-  await expect(phonePage.locator('.course-card')).toContainText('Linear Algebra');
+  // The class arrives from the account, after sign-in has finished. On a
+  // busy CI machine that took longer than the usual 7 seconds (it failed
+  // there on Sep 29, 2026 once three more multi-account tests ran beside
+  // it), so it gets the same allowance as the other waits on a sync.
+  await expect(phonePage.locator('.course-card')).toContainText('Linear Algebra', { timeout: 20_000 });
 
   laptopConsole.expectClean();
   phoneConsole.expectClean();

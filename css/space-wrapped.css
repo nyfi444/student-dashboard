@@ -1,0 +1,43 @@
+/* css/space-wrapped.css: part 3, wrapped. Tokens come from css/styles.css and spaceVars (js/spaces/tokens.js). One corner shape. */
+
+/* ── The keepsake card on a space's home ─────────────────────────
+   Flat L1 card, one fill, the crest in the space's own color. */
+.wrapped-space-banner { display: flex; align-items: center; gap: 16px; padding: 20px 24px; margin-bottom: 16px; }
+.wrapped-space-banner .space-crest.is-lg { width: 56px; height: 56px; }
+.wrapped-space-banner-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.wrapped-space-banner-text .small { margin: 0; }
+.wrapped-space-banner-title { font: 400 var(--fs-heading)/1.15 var(--font-serif); letter-spacing: -.01em; color: var(--text); text-wrap: balance; margin: 0; }
+.wrapped-space-banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
+@media (max-width: 760px) {
+  .wrapped-space-banner { flex-wrap: wrap; padding: 20px; }
+  .wrapped-space-banner-text { flex-basis: calc(100% - 72px); }
+  .wrapped-space-banner-actions { width: 100%; }
+  .wrapped-space-banner-actions .btn { flex: 1; justify-content: center; }
+}
+
+/* ── The viewer ──────────────────────────────────────────────────
+   The stage itself is the personal Wrapped's (.wrapped-* in styles.css):
+   only the third officer button needs room. */
+.wrapped-space-actions { flex-wrap: wrap; justify-content: center; }
+
+/* ── The officer's Term recap card ─────────────────────────────── */
+.wrapped-space-admin .sg-h3 { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── The printable one-pager ─────────────────────────────────────
+   Shown in the modal as a preview, then copied into #print-area. */
+.wrapped-print { display: flex; flex-direction: column; gap: 16px; padding: 20px; border: 1px solid var(--border); border-radius: var(--r-mid); background: var(--surface); color: var(--text); }
+.wrapped-print-head { display: flex; align-items: center; gap: 14px; }
+.wrapped-print-crest { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: var(--r-mid); background: var(--text); color: var(--surface); font: 600 var(--fs-md)/1 var(--font); letter-spacing: .02em; flex-shrink: 0; }
+.wrapped-print-name { font: 400 var(--fs-title)/1.1 var(--font-serif); letter-spacing: -.01em; }
+.wrapped-print-meta { font-size: var(--fs-sm); color: var(--text-dim); margin-top: 4px; }
+.wrapped-print-table { width: 100%; border-collapse: collapse; }
+.wrapped-print-table th, .wrapped-print-table td { padding: 10px 0; border-top: 1px solid var(--border); text-align: left; font-size: var(--fs-md); vertical-align: top; }
+.wrapped-print-table th { font-weight: 500; color: var(--text-dim); width: 44%; padding-right: 12px; }
+.wrapped-print-table td { font-weight: 500; }
+.wrapped-print-foot { font-size: var(--fs-xs); color: var(--text-dim); margin: 0; }
+@media print {
+  #print-area.wrapped-print-page { border: none; background: #fff; color: #000; padding: 30px 40px; }
+  #print-area.wrapped-print-page .wrapped-print-crest { background: #000; color: #fff; }
+  #print-area.wrapped-print-page .wrapped-print-table th, #print-area.wrapped-print-page .wrapped-print-table td { border-top-color: #ccc; }
+  #print-area.wrapped-print-page .wrapped-print-meta, #print-area.wrapped-print-page .wrapped-print-foot, #print-area.wrapped-print-page .wrapped-print-table th { color: #444; }
+}

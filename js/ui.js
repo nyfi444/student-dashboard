@@ -2,12 +2,14 @@
 // action: optional { label, run } shown as a button (e.g. Undo).
 function toast(msg, type = 'success', duration = 2600, action = null) {
   const stack = $('#toast-stack');
-  const icons = { success: icon('check', 11, 2.6), error: icon('x', 11, 2.6), info: icon('sparkles', 11, 1.9) };
+  // Inverse ink, compact. Info carries no icon; success and error keep a
+  // small glyph so the state is never color alone.
+  const icons = { success: icon('check', 14), error: icon('x', 14) };
   const el = document.createElement('div');
   el.className = `toast ${type}${action ? ' has-action' : ''}`;
   el.setAttribute('role', type === 'error' ? 'alert' : 'status');
-  el.innerHTML = `<span class="ic">${icons[type] || icons.info}</span><span>${esc(msg)}</span>${action ? `<button class="toast-action">${esc(action.label)}</button>` : ''}`;
-  const dismiss = () => { el.style.opacity = '0'; el.style.transition = 'opacity .25s'; setTimeout(() => el.remove(), 250); };
+  el.innerHTML = `${icons[type] ? `<span class="ic">${icons[type]}</span>` : ''}<span>${esc(msg)}</span>${action ? `<button class="toast-action">${esc(action.label)}</button>` : ''}`;
+  const dismiss = () => { el.style.opacity = '0'; el.style.transition = 'opacity var(--dur-2)'; setTimeout(() => el.remove(), 200); };
   if (action) el.querySelector('.toast-action').onclick = () => { action.run(); dismiss(); };
   stack.appendChild(el);
   setTimeout(dismiss, action ? Math.max(duration, 5000) : duration);
@@ -16,13 +18,66 @@ function toast(msg, type = 'success', duration = 2600, action = null) {
 let _modalCloseHandler = null;
 let _modalGen = 0;
 let _modalReturnFocus = null;
+// How to find the opener again when a redraw replaced it while the dialog
+// was open (an RSVP answered in the event sheet redraws the page): its id,
+// the RSVP control it sat in, or its onclick plus class.
+let _modalReturnKey = null;
+function modalFocusKey(el) {
+  if (!el || el === document.body || !el.getAttribute) return null;
+  return { id: el.id || '', rsvp: el.closest?.('[data-rsvp-key]')?.getAttribute('data-rsvp-key') || '', onclick: el.getAttribute('onclick') || '', cls: String(el.getAttribute('class') || ''), chat: !!el.closest?.('.chat-card'), tag: el.tagName, text: String(el.textContent || '').trim().slice(0, 80) };
+}
+function modalRefindFocus(k) {
+  if (!k) return null;
+  const scope = document.getElementById('content') || document.body;
+  // Rendered and on screen. checkVisibility, not closest('[hidden]'): a
+  // panel may carry hidden while its CSS still shows it.
+  const shown = (x) => x && x.isConnected && x.getClientRects().length > 0 && (typeof x.checkVisibility === 'function' ? x.checkVisibility() : !x.closest('[hidden]'));
+  if (k.id) { const x = document.getElementById(k.id); if (shown(x) && !x.closest('#modal')) return x; }
+  if (k.onclick) {
+    const same = [...scope.querySelectorAll('[onclick]')].filter(x => x.getAttribute('onclick') === k.onclick && shown(x));
+    const hit = same.find(x => x.getAttribute('class') === k.cls) || same[0];
+    if (hit) return hit;
+  }
+  if (k.rsvp) {
+    const ctl = [...scope.querySelectorAll('.space-rsvp')].find(x => x.getAttribute('data-rsvp-key') === k.rsvp);
+    const t = ctl && [ctl.querySelector('.space-rsvp-change'), ctl.querySelector('button.space-rsvp-pill'), ctl.querySelector('.space-rsvp-btn[aria-pressed="true"]'), ctl.querySelector('.space-rsvp-btn')].find(shown);
+    if (t) return t;
+  }
+  // A toggle whose onclick flips with its state (a legend chip): the same
+  // kind of control with the same words.
+  const cls0 = String(k.cls || '').split(/\s+/).find(c => c && c !== 'active' && /^[a-z][\w-]*$/i.test(c));
+  if (cls0 && k.tag && k.text) {
+    const twin = [...scope.querySelectorAll(`${k.tag.toLowerCase()}.${cls0}`)].find(x => shown(x) && String(x.textContent || '').trim().slice(0, 80) === k.text);
+    if (twin) return twin;
+  }
+  // The event the sheet was about: its face pile or its row title.
+  const m = /show(?:GroupSession|OrgEvent)Modal\('[^']*','[^']*'\)/.exec(k.onclick || '');
+  if (m) { const x = [...scope.querySelectorAll('[onclick]')].find(el => el.getAttribute('onclick').includes(m[0]) && shown(el)); if (x) return x; }
+  // A control in the chat that went away (a deleted message): the composer,
+  // or the sheet's back button on a touch phone so no keyboard pops up.
+  if (k.chat) {
+    const touch = typeof chatTouchKeyboard === 'function' && chatTouchKeyboard();
+    const c = scope.querySelector(touch ? '.chat-sheet-back' : '.chat-card .chat-input');
+    if (shown(c)) return c;
+  }
+  const tab = scope.querySelector('[role="tab"][aria-selected="true"]');
+  return shown(tab) ? tab : null;
+}
 function openModal(html, { wide = false, onClose } = {}) {
   _modalGen++;
   const modal = $('#modal');
   const wasOpen = $('#modal-wrap').classList.contains('show');
-  if (!wasOpen) _modalReturnFocus = document.activeElement;
+  if (!wasOpen) {
+    // A ··· menu item closes its menu before its onclick opens this dialog,
+    // so focus is on <body> by now: go back to the ··· button instead.
+    let from = document.activeElement;
+    if ((!from || from === document.body) && window._menuReturn?.isConnected) from = window._menuReturn;
+    _modalReturnFocus = from; _modalReturnKey = modalFocusKey(from);
+  }
+  window._menuReturn = null;
   modal.className = 'modal' + (wide ? ' wide' : '');
   modal.innerHTML = html;
+  modal.scrollTop = 0; // .is-scrolled is cleared by the className reset above
   // Every dialog is named by its first heading, wherever that heading sits.
   // One that already has an id keeps it; otherwise it gets one here.
   const title = modal.querySelector('h2, h3');
@@ -32,14 +87,22 @@ function openModal(html, { wide = false, onClose } = {}) {
   _modalCloseHandler = onClose || null;
   enhanceAccessibility(modal);
   // Move focus into the dialog (unless something inside already grabbed it).
-  if (!modal.contains(document.activeElement)) setTimeout(() => { if (!modal.contains(document.activeElement)) (modal.querySelector('.modal-body input:not([type=hidden]):not([disabled]), .modal-body textarea, .modal-body select') || modal).focus({ preventScroll: true }); }, 30);
+  // The first field that is actually rendered: a hidden file input can't take focus.
+  if (!modal.contains(document.activeElement)) setTimeout(() => {
+    if (modal.contains(document.activeElement)) return;
+    const first = [...modal.querySelectorAll('.modal-body input:not([type=hidden]):not([disabled]), .modal-body textarea:not([disabled]), .modal-body select:not([disabled])')].find(el => el.getClientRects().length && !el.closest('[hidden]'));
+    (first || modal).focus({ preventScroll: true });
+  }, 30);
 }
 function closeModal() {
   const wasOpen = $('#modal-wrap').classList.contains('show');
   $('#overlay').classList.remove('show');
   $('#modal-wrap').classList.remove('show');
-  if (wasOpen && _modalReturnFocus && document.contains(_modalReturnFocus)) { try { _modalReturnFocus.focus({ preventScroll: true }); } catch {} }
-  _modalReturnFocus = null;
+  if (wasOpen) {
+    const back = _modalReturnFocus && document.contains(_modalReturnFocus) && _modalReturnFocus.getClientRects().length ? _modalReturnFocus : modalRefindFocus(_modalReturnKey);
+    if (back) { try { back.focus({ preventScroll: true }); } catch {} }
+  }
+  _modalReturnFocus = null; _modalReturnKey = null;
   if (_modalCloseHandler) { _modalCloseHandler(); _modalCloseHandler = null; }
   // Snapshot the generation so a stale timeout can't wipe out a modal that
   // opened again (e.g. closeModal() immediately followed by openModal())
@@ -58,7 +121,7 @@ function requestCloseModal() {
 // default asks the plain question; a caller with a sharper one passes it in.
 function confirmDialog(message, onConfirm, confirmLabel = 'Delete', title = 'Are you sure?') {
   openModal(`
-    <div class="modal-head"><h3 id="confirm-title">${esc(title)}</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3 id="confirm-title">${esc(title)}</h3>${closeXButton()}</div>
     <div class="modal-body">
       <p style="font-size:14px">${esc(message)}</p>
     </div>
@@ -78,7 +141,8 @@ function courseChip(courseId, { small } = {}) {
 function typeTag(type) {
   const colors = { exam: 'var(--danger)', quiz: 'var(--warn)', project: 'var(--accent)', paper: 'var(--accent)', reading: 'var(--text-faint)', discussion: 'var(--success)', lab: 'var(--accent)', assignment: 'var(--text-dim)' };
   const c = colors[type] || 'var(--text-dim)';
-  return `<span class="tag" style="background:${c}18;color:${c}">${esc(type)}</span>`;
+  const label = String(type || '');
+  return `<span class="tag" style="background:color-mix(in srgb, ${c} 10%, transparent);color:${c}">${esc(label.charAt(0).toUpperCase() + label.slice(1))}</span>`;
 }
 function priorityDot(p) {
   const cls = { high: 'priority-high', medium: 'priority-med', low: 'priority-low' }[p] || 'priority-med';
@@ -95,13 +159,14 @@ function emptyState(icon, text, actionHtml = '', sub = '') {
    written by the caller, never user data. `compact` fits the same
    thing inside another card. `extra` is optional html under the
    buttons, for a quieter third choice like a sample-data link. */
-function emptyStateHtml({ icon: iconName = 'sparkles', title = '', body = '', actions = [], compact = false, extra = '' } = {}) {
+function emptyStateHtml({ icon: iconName = null, title = '', body = '', actions = [], compact = false, extra = '' } = {}) {
   const buttons = actions.filter(a => a && a.label && a.onclick).map((a, i) => {
     const primary = a.primary != null ? a.primary : i === 0;
-    return `<button class="btn${primary ? ' btn-primary' : ''}${compact ? ' btn-sm' : ''}" onclick="${a.onclick}">${a.icon ? icon(a.icon, 13, 1.8) + ' ' : ''}${esc(a.label)}</button>`;
+    return `<button class="btn${primary ? ' btn-primary' : ''}${compact ? ' btn-sm' : ''}" onclick="${a.onclick}">${a.icon ? icon(a.icon, compact ? 14 : 16) : ''}${esc(a.label)}</button>`;
   }).join('');
+  const disc = iconName ? icon(iconName, 20) : '';
   return `<div class="${compact ? 'empty-state compact' : 'card empty-state'}">
-    <span class="empty-state-ic" aria-hidden="true">${icon(iconName, compact ? 17 : 22, 1.6)}</span>
+    ${disc ? `<span class="empty-state-ic" aria-hidden="true">${disc}</span>` : ''}
     <h3 class="empty-state-title">${esc(title)}</h3>
     ${body ? `<p class="empty-state-body">${esc(body)}</p>` : ''}
     ${buttons ? `<div class="empty-state-actions">${buttons}</div>` : ''}
@@ -116,15 +181,272 @@ function emptyStateHtml({ icon: iconName = 'sparkles', title = '', body = '', ac
    html for a second way out (leave, remove, go back). */
 function inlineErrorHtml(message, retryOnclick = '', { retryLabel = 'Try again', extra = '' } = {}) {
   return `<div class="inline-error" role="alert">
-    <span class="inline-error-ic" aria-hidden="true">${icon('x', 12, 2.6)}</span>
+    <span class="inline-error-ic" aria-hidden="true">${icon('alert-circle', 16)}</span>
     <div class="inline-error-msg">${esc(message)}</div>
-    ${retryOnclick ? `<button class="btn btn-sm" onclick="${retryOnclick}">${icon('refresh-cw', 12, 2)} ${esc(retryLabel)}</button>` : ''}
+    ${retryOnclick ? `<button class="btn btn-sm" onclick="${retryOnclick}">${icon('refresh-cw', 14)}${esc(retryLabel)}</button>` : ''}
     ${extra}
   </div>`;
 }
-function pageHead(title, sub, actionsHtml = '') {
-  return `<div class="page-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-actions"><button class="btn btn-icon btn-sm mobile-search" aria-label="Search" onclick="openCommandPalette()">${typeof searchIcon === 'function' ? searchIcon() : ''}</button><button class="btn btn-icon btn-sm mobile-search" aria-label="Quick capture" onclick="openQuickCapture()">${icon('camera', 15, 1.8)}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}${signInHeaderButton()}${actionsHtml}</div></div>`;
+// On a desktop the title sits left and every action sits right, as before.
+// On a phone every page used to stack search, capture, the bell, Log in and
+// then its own buttons, wrapping into two or three rows before the page even
+// started. There, the tools ride next to the title, the row below keeps
+// Log in and the page's one primary button, and everything else moves into
+// a "More" sheet (openHeadMore) that lists each action by name.
+//
+// Header actions: the primary, at most 2 labelled ghosts and at most 2 icon
+// ghosts stay visible. A renderer marks every other secondary `head-menu`;
+// enhancePageHeads() then shows the ··· button, which lists them in a
+// popover on a desktop and in the sheet on a phone. Nothing is counted.
+// opts.titleHtml is trusted markup used instead of the escaped title (the
+// calendar needs it); opts.className adds classes to .page-head.
+function pageHead(title, sub, actionsHtml = '', opts = {}) {
+  const tools = `<button class="btn btn-icon btn-sm mobile-search" aria-label="Search" data-tip="Search" onclick="openCommandPalette()">${icon('search', 20)}</button><button class="btn btn-icon btn-sm mobile-search" aria-label="Quick capture" data-tip="Quick capture" onclick="openQuickCapture()">${icon('camera', 20)}</button>${typeof bellButton === 'function' ? bellButton('btn-sm mobile-search') : ''}<button type="button" class="btn btn-icon btn-sm head-more-top" aria-label="More actions" data-tip="More actions" aria-haspopup="true" onclick="openHeadMore(this)">${icon('more-horizontal', 20)}</button>`;
+  const titleHtml = opts.titleHtml != null ? opts.titleHtml : esc(title);
+  return `<div class="page-head${opts.className ? ' ' + esc(opts.className) : ''}">
+    <div class="page-head-top"><div class="page-head-title"><h2>${titleHtml}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div><div class="head-tools">${tools}</div></div>
+    <div class="head-actions">${signInHeaderButton()}${actionsHtml}<button type="button" class="btn btn-ghost btn-icon head-more" aria-label="More actions" aria-haspopup="true" data-tip="More" onclick="openHeadMore(this)">${icon('more-horizontal', 16)}</button></div>
+  </div>`;
 }
+// Runs after every render: a header that declared overflow (.head-menu)
+// shows its ··· button on a desktop. On a phone, a row 2 that would show
+// nothing but the ··· (no primary, no head-keep, no Log in) gets .only-more:
+// the CSS hides that row and shows the ··· beside the header tools instead.
+function enhancePageHeads(root) {
+  if (!root) return;
+  root.querySelectorAll('.head-actions').forEach(row => {
+    row.classList.toggle('has-overflow', !!row.querySelector(':scope > .head-menu'));
+    const hasTop = !!row.closest('.page-head')?.querySelector(':scope > .page-head-top .head-more-top');
+    // What a phone still shows in row 2: anything but the ···, the desktop
+    // Capture copy, and the secondary buttons the phone moves into the sheet.
+    // While the demo line shows, the phone hides Log in (it is in that line).
+    const skip = document.querySelector('#content > .demo-bar') ? '.head-more, .desktop-capture, .head-login' : '.head-more, .desktop-capture';
+    const stays = [...row.children].some(el => !el.matches(skip) && !(el.matches('.btn') && !el.matches('.btn-primary, .head-keep')));
+    row.classList.toggle('only-more', hasTop && !stays && headMoreItems(row).length > 0);
+  });
+}
+// The right edge of a to-do or assignment row. Overdue says so in words
+// with an icon (never color alone), today gets a filled tag, and everything
+// later stays quiet. 11:59 PM is "due that day" and isn't printed.
+function dueBadgeHtml(date, time, done, emptyLabel = '') {
+  const t = time && time !== '23:59' && !done ? `<span class="due-time">${fmtTime(time)}</span>` : '';
+  if (!date) return time && !done ? t : emptyLabel ? `<span class="due-none">${esc(emptyLabel)}</span>` : '';
+  if (done) return `<span class="due-when">${esc(fmtDate(date))}</span>`;
+  const when = esc(relativeDay(date).replace(' (overdue)', ''));
+  if (date < todayIso()) return `<span class="due-tag is-overdue">${icon('clock', 12)}Overdue</span><span class="due-time">${when}</span>`;
+  if (date === todayIso()) return `<span class="due-tag is-today">Today</span>${t}`;
+  return `<span class="due-when">${when}</span>${t}`;
+}
+// The ··· button. On a desktop it opens a popover menu of the header's
+// .head-menu items; on a phone it opens the "More" sheet listing every
+// action the phone header hides, by name. Each item runs its own onclick
+// unchanged; the menu or sheet closes first, so an action that opens its
+// own modal isn't closed straight after.
+function headMoreItems(row) {
+  return [...row.children].filter(el => el.matches('.btn, a.btn, .head-menu') && !el.matches('.btn-primary, .head-keep, .head-more, .desktop-capture, .mobile-search'));
+}
+function headItemLabel(el) {
+  return (el.textContent || '').trim() || el.getAttribute('aria-label') || el.getAttribute('data-tip') || el.getAttribute('title') || '';
+}
+function openHeadMore(btn) {
+  // The row-1 copy of the ··· (.head-more-top) reads its own header's row 2.
+  // A group or club page's cover band (.space-band) has its own action row.
+  const row = btn.closest('.head-actions, .space-actions') || btn.closest('.page-head')?.querySelector(':scope > .head-actions');
+  if (!row) return;
+  if (window.matchMedia('(min-width: 761px)').matches) {
+    const items = [...row.querySelectorAll(':scope > .head-menu')];
+    const html = items.map(el => {
+      const c = el.cloneNode(true);
+      c.removeAttribute('id');
+      [...c.classList].forEach(k => { if (k === 'btn' || k.startsWith('btn-') || k === 'head-menu' || k === 'is-on') c.classList.remove(k); });
+      c.classList.add('menu-item');
+      if (c.getAttribute('role') !== 'menuitemcheckbox') c.setAttribute('role', 'menuitem');
+      c.removeAttribute('title'); c.removeAttribute('data-tip');
+      if (el.matches('.btn-danger')) c.classList.add('is-danger');
+      if (!(el.textContent || '').trim()) c.insertAdjacentHTML('beforeend', `<span>${esc(headItemLabel(el))}</span>`);
+      return c.outerHTML;
+    }).join('');
+    if (html) openMenu(btn, html, { align: 'end' });
+    return;
+  }
+  const title = btn.closest('.page-head, .space-band')?.querySelector('h2')?.textContent || 'More';
+  const items = headMoreItems(row);
+  const html = items.map(el => {
+    const c = el.cloneNode(true);
+    c.removeAttribute('id'); c.removeAttribute('data-tip'); c.removeAttribute('title');
+    c.classList.remove('btn-sm', 'btn-icon', 'btn-primary', 'btn-ghost', 'head-menu', 'is-on'); c.classList.add('head-sheet-item');
+    if (!(el.textContent || '').trim()) c.insertAdjacentHTML('beforeend', `<span>${esc(headItemLabel(el))}</span>`);
+    return c.outerHTML;
+  }).join('');
+  openModal(`<div class="modal-head"><h3>${esc(title)}</h3>${closeXButton()}</div><div class="modal-body head-sheet">${html}</div>`);
+  const sheet = document.querySelector('#modal .head-sheet');
+  if (sheet) sheet.addEventListener('click', e => { if (e.target.closest('.head-sheet-item')) closeModal(); }, true);
+}
+
+/* ── Menus: one popover for every "···" and split button ──────────
+   openMenu(anchorEl, html, { align }) shows `html` (a list of
+   .menu-item buttons, .menu-sep and .menu-label) in a fixed menu under
+   the anchor, end-aligned by default ('start' lines up the left edges),
+   clamped to the window and flipped above when there's no room below.
+   Arrow keys, Home and End move between items; Escape, a click outside
+   or choosing an item closes it and returns focus to the anchor. Each
+   item runs its own onclick, after the menu has closed. Returns the menu
+   element. closeMenu() closes whichever menu is open. */
+let _menu = null;
+function closeMenu(returnFocus = true) {
+  if (!_menu) return;
+  const { el, anchor, cleanup } = _menu;
+  _menu = null;
+  cleanup();
+  el.remove();
+  if (returnFocus) window._menuReturn = null;
+  if (anchor) { anchor.setAttribute('aria-expanded', 'false'); if (returnFocus && document.contains(anchor)) { try { anchor.focus({ preventScroll: true }); } catch {} } }
+}
+function openMenu(anchorEl, html, { align = 'end' } = {}) {
+  const reopen = _menu && _menu.anchor === anchorEl;
+  closeMenu(false);
+  if (reopen) { try { anchorEl.focus({ preventScroll: true }); } catch {} return null; }
+  const el = document.createElement('div');
+  el.className = 'menu menu-surface';
+  el.setAttribute('role', 'menu');
+  el.innerHTML = html;
+  el.querySelectorAll('.menu-item').forEach(it => { if (!it.hasAttribute('role')) it.setAttribute('role', 'menuitem'); it.setAttribute('tabindex', '-1'); });
+  el.style.visibility = 'hidden';
+  document.body.appendChild(el);
+  // Place: below the anchor, end-aligned, clamped 8px inside the window.
+  const r = anchorEl.getBoundingClientRect();
+  const w = el.offsetWidth, h = el.offsetHeight;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let left = align === 'start' ? r.left : r.right - w;
+  left = Math.max(8, Math.min(left, vw - w - 8));
+  let top = r.bottom + 4;
+  if (top + h > vh - 8 && r.top - 4 - h >= 8) top = r.top - 4 - h;
+  top = Math.max(8, Math.min(top, vh - h - 8));
+  el.style.left = `${Math.round(left)}px`;
+  el.style.top = `${Math.round(top)}px`;
+  el.style.visibility = '';
+  if (anchorEl) { anchorEl.setAttribute('aria-expanded', 'true'); }
+  const items = () => [...el.querySelectorAll('.menu-item:not(:disabled)')];
+  const onKey = e => {
+    const list = items();
+    const i = list.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length]?.focus(); }
+    else if (e.key === 'Home') { e.preventDefault(); list[0]?.focus(); }
+    else if (e.key === 'End') { e.preventDefault(); list[list.length - 1]?.focus(); }
+    // Back on the anchor first, so the browser's own Tab moves on from the ···.
+    else if (e.key === 'Tab') { closeMenu(true); }
+  };
+  const onDown = e => { if (!el.contains(e.target) && !anchorEl.contains(e.target)) closeMenu(false); };
+  const onScroll = e => { if (!el.contains(e.target)) closeMenu(false); };
+  const onResize = () => closeMenu(false);
+  // An item closes the menu first, then its own onclick runs (capture phase).
+  // The ··· button is remembered for a moment, so a dialog the item opens
+  // (openModal) or a redraw it causes (render) can hand focus back to it.
+  el.addEventListener('click', e => {
+    if (!e.target.closest('.menu-item')) return;
+    window._menuReturn = anchorEl;
+    closeMenu(false);
+    setTimeout(() => { if (window._menuReturn === anchorEl) window._menuReturn = null; }, 400);
+  }, true);
+  document.addEventListener('keydown', onKey, true);
+  document.addEventListener('pointerdown', onDown, true);
+  window.addEventListener('scroll', onScroll, true);
+  window.addEventListener('resize', onResize);
+  _menu = { el, anchor: anchorEl, cleanup: () => {
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('pointerdown', onDown, true);
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', onResize);
+  } };
+  items()[0]?.focus({ preventScroll: true });
+  return el;
+}
+
+// The close button every dialog uses: a quiet 32px square with a tooltip.
+function closeXButton(onclick = 'closeModal()') {
+  return `<button class="close-x" aria-label="Close" data-tip="Close" onclick="${onclick}">${icon('x', 16)}</button>`;
+}
+
+/* ── Keyboard shortcut label: ⌘ on Apple devices, Ctrl+ elsewhere ── */
+function modKey() {
+  return /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl+';
+}
+
+/* ── Tooltips: one designed tip for every [data-tip] ───────────────
+   Icon-only controls carry data-tip plus aria-label (never title, so two
+   tips never show). Pointer hover opens it after 500ms, or at once if a
+   tip closed in the last 800ms; keyboard focus opens it too. data-tip-kbd
+   adds a shortcut: data-tip-kbd="B" reads "⌘B". Called once from app.js. */
+let _tipsWired = false;
+function wireTooltips() {
+  if (_tipsWired) return;
+  _tipsWired = true;
+  let tipEl = null, timer = null, current = null, lastHide = 0;
+  const canHover = window.matchMedia('(hover: hover)').matches;
+  const hide = () => {
+    clearTimeout(timer); timer = null;
+    if (tipEl) { tipEl.remove(); tipEl = null; lastHide = Date.now(); }
+    current = null;
+  };
+  const show = target => {
+    if (!target || !document.contains(target)) return;
+    const text = target.getAttribute('data-tip');
+    if (!text) return;
+    if (tipEl) tipEl.remove();
+    tipEl = document.createElement('div');
+    tipEl.className = 'tip';
+    tipEl.setAttribute('role', 'tooltip');
+    const kbd = target.getAttribute('data-tip-kbd');
+    tipEl.innerHTML = `${esc(text)}${kbd ? `<kbd>${esc(modKey() + kbd)}</kbd>` : ''}`;
+    tipEl.style.visibility = 'hidden';
+    document.body.appendChild(tipEl);
+    const r = target.getBoundingClientRect();
+    const w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = r.top - 6 - h;
+    const left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - w - 8));
+    tipEl.style.left = `${Math.round(left)}px`;
+    tipEl.style.top = `${Math.round(Math.max(8, top))}px`;
+    tipEl.style.visibility = '';
+  };
+  const schedule = target => {
+    if (current === target) return;
+    hide();
+    current = target;
+    const delay = Date.now() - lastHide < 800 ? 0 : 500;
+    timer = setTimeout(() => show(target), delay);
+  };
+  if (canHover) {
+    document.addEventListener('pointerover', e => {
+      if (e.pointerType && e.pointerType !== 'mouse' && e.pointerType !== 'pen') return;
+      const t = e.target.closest?.('[data-tip]');
+      if (t) schedule(t);
+    });
+    document.addEventListener('pointerout', e => {
+      const t = e.target.closest?.('[data-tip]');
+      if (t && t === current && !t.contains(e.relatedTarget)) hide();
+    });
+  }
+  document.addEventListener('focusin', e => {
+    const t = e.target.closest?.('[data-tip]');
+    if (t && t.matches(':focus-visible')) schedule(t); else if (current) hide();
+  });
+  document.addEventListener('focusout', e => { if (current && e.target.closest?.('[data-tip]') === current) hide(); });
+  document.addEventListener('pointerdown', () => { if (current) hide(); }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && current) hide(); }, true);
+  window.addEventListener('scroll', () => { if (current) hide(); }, true);
+  window.addEventListener('blur', hide);
+}
+
+// One scroll listener for the dialog: its header gets a hairline once the
+// body scrolls under it. openModal() resets the class and scroll position.
+(function wireModalScroll() {
+  const modal = typeof document !== 'undefined' && document.getElementById('modal');
+  if (!modal) return;
+  modal.addEventListener('scroll', () => modal.classList.toggle('is-scrolled', modal.scrollTop > 0), { passive: true });
+})();
 // A persistent, always-visible way to log in, not just buried in a modal or
 // Settings, since it's the same click for a brand-new account or an existing
 // paid one (Google sign-in / resolveLicenseStatus handles both, see
@@ -133,7 +455,7 @@ function pageHead(title, sub, actionsHtml = '') {
 // a popup layered on top of whatever you were doing.
 function signInHeaderButton() {
   if (!fbConfigured() || _fbUser) return '';
-  return `<a class="btn btn-sm" href="login.html">${icon('sparkles', 13, 2)} Log in</a>`;
+  return `<a class="btn btn-ghost btn-sm head-keep head-login" href="login.html">Log in</a>`;
 }
 // Circular progress indicator (0-100, or null for an empty ring).
 function progressRing(pct, color, size = 76) {
@@ -146,18 +468,19 @@ function progressRing(pct, color, size = 76) {
   </svg>`;
 }
 // In the demo these show a lock and explain Plus when clicked (see requireAi).
-function aiButton(label, onclick, id) {
+// `cls` adds classes, e.g. 'head-menu' when the button sits in a page head.
+function aiButton(label, onclick, id, cls = '') {
   const locked = typeof aiLooksUnlocked === 'function' && !aiLooksUnlocked();
-  return `<button class="btn btn-sm" ${id ? `id="${id}"` : ''} onclick="${onclick}" style="background:var(--badge);color:var(--ink);border:none" ${locked ? 'title="Included with Semester HQ Plus"' : ''}>${icon(locked ? 'lock' : 'sparkles', 13, 1.6)} ${esc(label)}</button>`;
+  return `<button class="btn btn-sm${cls ? ' ' + cls : ''}" ${id ? `id="${id}"` : ''} onclick="${onclick}" ${locked ? 'data-tip="Included with Semester HQ Plus"' : ''}>${esc(label)}${locked ? `<span class="ai-lock">${icon('lock', 12)}</span>` : ''}</button>`;
 }
 function setBtnLoading(btn, loading, labelWhenDone) {
   if (!btn) return;
-  if (loading) { btn.dataset.origHtml = btn.innerHTML; btn.innerHTML = '<span class="spin" style="display:inline-flex">' + icon('refresh-cw', 13, 2) + '</span> Working<span class="loading-dots"></span>'; btn.disabled = true; }
+  if (loading) { btn.dataset.origHtml = btn.innerHTML; btn.innerHTML = '<span class="spin" style="display:inline-flex">' + icon('refresh-cw', 14) + '</span> Working<span class="loading-dots"></span>'; btn.disabled = true; }
   else { btn.innerHTML = labelWhenDone || btn.dataset.origHtml || btn.innerHTML; btn.disabled = false; }
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { requestCloseModal(); return; }
+  if (e.key === 'Escape') { if (_menu) return; requestCloseModal(); return; }
   // Keep Tab inside an open dialog.
   if (e.key === 'Tab' && $('#modal-wrap').classList.contains('show')) {
     const f = [...$('#modal').querySelectorAll('button:not([disabled]), [href], input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(el => el.offsetParent !== null);
@@ -194,7 +517,7 @@ function askAboutDuplicateFile(name, where, { onReplace = null, onKeepBoth } = {
   window._dupFileKeepBoth = onKeepBoth;
   window._dupFileReplace = onReplace;
   openModal(`
-    <div class="modal-head"><h3>You already have that one</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>You already have that one</h3>${closeXButton()}</div>
     <div class="modal-body">
       <p class="small"><strong>${esc(name)}</strong> is already ${esc(where)}.</p>
       <p class="small muted mt-8">${onReplace ? 'Replace it with this new copy, or keep both if they’re genuinely different files.' : 'Add it again if they’re genuinely different files, or cancel and use the one that’s already there.'}</p>
@@ -223,7 +546,7 @@ function askAboutDuplicates(duplicates, total, noun, run) {
   const named = duplicates.slice(0, 6).map(d => `<li>${esc(d.title || d.name || '')}</li>`).join('');
   window._duplicateChoice = run;
   openModal(`
-    <div class="modal-head"><h3>Already in your planner</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-head"><h3>Already in your planner</h3>${closeXButton()}</div>
     <div class="modal-body">
       <p class="small">${all ? `Every ${noun} here matches something you already have:` : `${duplicates.length} of these ${duplicates.length === 1 ? 'matches' : 'match'} something you already have:`}</p>
       <ul class="dup-list small">${named}${duplicates.length > 6 ? `<li class="muted">and ${duplicates.length - 6} more</li>` : ''}</ul>
@@ -281,6 +604,8 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && _openSec
 
 function enhanceAccessibility(root) {
   if (!root) return;
+  // Every dialog's close button gets the designed tip, whoever built it.
+  root.querySelectorAll('.close-x:not([data-tip])').forEach(el => { el.setAttribute('data-tip', 'Close'); el.removeAttribute('title'); if (!el.hasAttribute('aria-label')) el.setAttribute('aria-label', 'Close'); });
   root.querySelectorAll('[onclick]:not(button):not(a):not(input):not(select):not(textarea):not(label):not([role])').forEach(el => {
     if (el.closest('.sg-grid')) return;
     if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
