@@ -61,10 +61,14 @@ sandbox.stripeRequest = async (env, method, path, params) => {
   if (method === 'POST' && path === '/v1/checkout/sessions') return { ok: true, data: { url: 'https://checkout.stripe.test/c' } };
   if (method === 'GET' && path.startsWith('/v1/checkout/sessions/')) return { ok: true, data: stripeSessions[path.split('/').pop()] || {} };
   if (method === 'GET' && path.startsWith('/v1/setup_intents/')) return { ok: true, data: { payment_method: 'pm_new' } };
+  if (method === 'GET' && path === '/v1/subscriptions/sub_1') return { ok: true, data: { id: 'sub_1', current_period_end: PERIOD_END, items: { data: [{ id: 'si_1', quantity: subQuantity }] } } };
+  if (method === 'POST' && path === '/v1/subscription_items/si_1') { subQuantity = Number(params.get('quantity')); return { ok: true, data: {} }; }
   if (method === 'GET' && path.includes('/payment_methods')) return { ok: true, data: { data: [{ id: 'pm_old' }, { id: 'pm_new' }] } };
   return { ok: true, data: {} };
 };
 let stripeSessions = {};
+let subQuantity = 5;
+const PERIOD_END = Math.floor(Date.now() / 1000) + 20 * 86400;
 
 const env = { FIREBASE_PROJECT_ID: 'p', STRIPE_SECRET_KEY: 'sk_test', APP_URL: 'https://app.semester-hq.com/' };
 async function call(action, as, body = {}) {
@@ -175,6 +179,33 @@ docs.set('groupPlans/PLAN0000000001', { ...plan(), status: 'pending', stripeCust
 r = await call('handoff', 'ana', { planId: 'PLAN0000000001', uid: 'cal', stay: false });
 check('nothing to pay for: the handoff is immediate', [r.body.removedSelf, plan().ownerUid, plan().adminUids, plan().handoffJson], [true, 'cal', ['cal'], '']);
 check('no card page for a plan without billing', (await call('card-checkout', 'cal', { planId: 'PLAN0000000001' })).status, 400);
+
+/* ── Seats: up easily, down carefully ─────────────────────────── */
+seed();
+docs.set('groupPlans/PLAN0000000001', { ...plan(), adminUids: ['ana', 'cal'], adminsJson: JSON.stringify([{ uid: 'ana', name: 'Ana' }, { uid: 'cal', name: 'Cal' }]) });
+subQuantity = 5;
+const seatCalls = () => stripe.filter(c => c.path === '/v1/subscription_items/si_1').map(c => [c.params.quantity, c.params.proration_behavior]);
+stripe = [];
+r = await call('seats', 'cal', { planId: 'PLAN0000000001', seats: 7 });
+check('any admin adds seats, charged for the rest of the month', [r.status, seatCalls(), plan().seats], [200, [['7', 'create_prorations']], 7]);
+r = await call('seats', 'cal', { planId: 'PLAN0000000001', seats: 6 });
+check('only the person paying can remove seats', [r.status, r.body.reason, plan().seats], [403, 'not-payer', 7]);
+check('the person paying can remove empty seats', (await call('seats', 'ana', { planId: 'PLAN0000000001', seats: 5 })).status, 200);
+check('but never below the 4 people using seats', (await call('seats', 'ana', { planId: 'PLAN0000000001', seats: 4 })).status, 400);
+stripe = [];
+await call('seats', 'ana', { planId: 'PLAN0000000001', seats: 7 });
+check('back up to what this month already paid for: free', seatCalls(), [['7', 'none']]);
+stripe = [];
+await call('seats', 'ana', { planId: 'PLAN0000000001', seats: 5 });
+check('a cut: no partial refund, the bill drops from the next renewal', seatCalls(), [['5', 'none']]);
+stripe = [];
+await call('seats', 'cal', { planId: 'PLAN0000000001', seats: 9 });
+check('past what was paid: the paid seats come back free, only the rest is charged', seatCalls(), [['7', 'none'], ['9', 'create_prorations']]);
+check('the plan knows what this period covers', [plan().seats, plan().paidSeats, (await call('details', 'ana', { planId: 'PLAN0000000001' })).body.plan.paidSeats], [9, 9, 9]);
+docs.set('groupPlans/PLAN0000000001', { ...plan(), paidSeatsUntil: '2020-01-01T00:00:00.000Z', paidSeats: 20 });
+stripe = [];
+await call('seats', 'cal', { planId: 'PLAN0000000001', seats: 10 });
+check('a new billing period starts from what is billed now', seatCalls(), [['10', 'create_prorations']]);
 
 /* ── Checkout stats ignore card changes ───────────────────────── */
 const sum = sandbox.summarizeCheckouts([{ mode: 'setup', created: 1, status: 'complete', metadata: { kind: 'group-card' } }, { mode: 'subscription', created: 1, status: 'complete', metadata: { kind: 'group' } }]);

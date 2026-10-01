@@ -57,6 +57,7 @@ function groupPlanSummary(env, plan) {
   return {
     id: plan.id, name: plan.name || '', kind: plan.kind || 'club', status: plan.status || 'pending',
     seats: plan.seats || 0, requestedSeats: plan.requestedSeats || 0, memberCount: plan.memberCount || 0,
+    paidSeats: plan.paidSeatsUntil && Date.parse(plan.paidSeatsUntil) > Date.now() ? Math.max(plan.paidSeats || 0, plan.seats || 0) : plan.seats || 0,
     seatPriceCents: GROUP_SEAT_PRICE_CENTS, minSeats: GROUP_MIN_SEATS, maxSeats: GROUP_MAX_SEATS,
     inviteCode: live ? plan.inviteCode || '' : '',
     inviteUrl: live && plan.inviteCode ? new URL(`?plan=${plan.inviteCode}`, env.APP_URL).toString() : '',
@@ -416,22 +417,51 @@ async function groupResetInvite(env, ctx) {
   if (plan.inviteCode) await deleteFirestoreDoc(env, 'groupInvites', plan.inviteCode);
   return groupDetails(env, ctx);
 }
+/* Seats go up easily and down carefully. Adding is any admin, billed now
+   for the rest of the month. Removing is only the person paying, never
+   below the people using seats (so only empty seats ever go), with no
+   partial refund: the bill drops from the next renewal. Seats removed and
+   added back in the same billing period cost nothing the second time,
+   since they were already paid for (paidSeats until paidSeatsUntil). */
 async function groupSetSeats(env, ctx) {
   const plan = await loadAdminPlan(env, ctx);
   if (!groupHasAccess(plan.status) || !plan.stripeSubscriptionId) throw new HttpError(400, 'Seats can be changed once the plan is active.');
   const seats = Math.round(Number(ctx.body.seats));
   if (!(seats >= GROUP_MIN_SEATS && seats <= GROUP_MAX_SEATS)) throw new HttpError(400, `Choose between ${GROUP_MIN_SEATS} and ${GROUP_MAX_SEATS} seats.`);
+  const current = plan.seats || 0;
+  if (seats === current) return groupDetails(env, ctx);
+  if (seats < current && (plan.ownerUid || '') !== ctx.uid) {
+    throw new HttpError(403, `Only ${groupBilledTo(plan).name || 'the person paying'} can remove seats, since it’s their card. Adding seats is open to every admin.`, { reason: 'not-payer' });
+  }
   // Counted from the members themselves, not the running total, so a count
   // that ever drifted can't let a plan drop below the people using it.
   const memberCount = (await listFirestoreCollection(env, `groupPlans/${plan.id}/members`)).length;
   if (seats < memberCount) throw new HttpError(400, `${memberCount} ${memberCount === 1 ? 'person has a seat' : 'people have seats'}. Remove someone before going below that.`);
-  let itemId = plan.stripeItemId;
-  if (!itemId) itemId = (await stripeRequest(env, 'GET', `/v1/subscriptions/${plan.stripeSubscriptionId}`)).data?.items?.data?.[0]?.id;
+  const sub = (await stripeRequest(env, 'GET', `/v1/subscriptions/${plan.stripeSubscriptionId}`)).data;
+  const item = sub?.items?.data?.[0];
+  const itemId = item?.id || plan.stripeItemId;
   if (!itemId) throw new HttpError(502, 'Couldn’t find this plan’s subscription in Stripe.');
-  // Stripe prorates the change onto the next bill.
-  const res = await stripeRequest(env, 'POST', `/v1/subscription_items/${itemId}`, new URLSearchParams({ quantity: String(seats), proration_behavior: 'create_prorations' }));
-  if (!res.ok) throw new HttpError(502, 'Stripe couldn’t change the seats: ' + (res.data.error?.message || 'unknown error'));
-  await patchFirestoreDoc(env, `groupPlans/${plan.id}`, { seats, stripeItemId: itemId, updatedAt: new Date() });
+  const quantity = item?.quantity ?? current;
+  const periodEnd = sub?.current_period_end || item?.current_period_end;
+  const until = periodEnd ? new Date(periodEnd * 1000).toISOString() : '';
+  const paid = until && plan.paidSeatsUntil === until ? Math.max(plan.paidSeats || 0, quantity) : quantity;
+  const setQuantity = async (q, proration) => {
+    const res = await stripeRequest(env, 'POST', `/v1/subscription_items/${itemId}`, new URLSearchParams({ quantity: String(q), proration_behavior: proration }));
+    if (!res.ok) throw new HttpError(502, 'Stripe couldn’t change the seats: ' + (res.data.error?.message || 'unknown error'));
+  };
+  if (seats < quantity || seats <= paid) {
+    // Fewer, or back up to what's already paid for this period: no charge, no credit.
+    await setQuantity(seats, 'none');
+  } else {
+    // More than this period's bill covered: back to what was paid, free,
+    // then only the seats beyond it are charged for the rest of the month.
+    if (quantity < paid) await setQuantity(paid, 'none');
+    await setQuantity(seats, 'create_prorations');
+  }
+  await patchFirestoreDoc(env, `groupPlans/${plan.id}`, {
+    seats, stripeItemId: itemId, paidSeats: Math.max(paid, seats), paidSeatsUntil: until,
+    ...(until ? { currentPeriodEnd: new Date(periodEnd * 1000) } : {}), updatedAt: new Date(),
+  });
   return groupDetails(env, ctx);
 }
 async function groupPortal(env, ctx) {
@@ -472,7 +502,7 @@ async function groupOrgSeats(env, ctx) {
   const live = groupHasAccess(plan.status);
   return {
     plan: {
-      id: plan.id, name: plan.name || '', status: plan.status || 'pending', seats: plan.seats || 0, memberCount: members.length,
+      id: plan.id, name: plan.name || '', status: plan.status || 'pending', seats: plan.seats || 0, memberCount: members.length, paidSeats: groupPlanSummary(env, plan).paidSeats,
       cancelAtPeriodEnd: !!plan.cancelAtPeriodEnd, orgCode: code,
       inviteUrl: live && plan.inviteCode ? new URL(`?plan=${plan.inviteCode}`, env.APP_URL).toString() : '',
       admins: groupAdmins(plan).map(a => ({ uid: a.uid, name: a.name || '' })),

@@ -254,6 +254,27 @@ function freeOrgSeat(btn, code, planId, uid) {
     } catch (e) { toast(e.message || 'Couldn’t free that seat', 'error', 5000); }
   }, 'Free seat');
 }
+// One tap from the club when every seat is taken (plan admins). Seats go
+// up easily; removing them is on the plan page, for the person paying.
+function addPlanSeat(btn, code, planId) {
+  const p = (window._groupMine?.plans || []).find(x => x.id === planId) || _orgSeatCache[code]?.data?.plan;
+  if (!p) return;
+  const next = (p.seats || 0) + 1;
+  if (next > ORG_PLAN_MAX_SEATS) {
+    confirmDialog(`Plans over ${ORG_PLAN_MAX_SEATS} seats are put together with you, so the rate fits your group. Ask for a quote?`, () => window.open(GROUP_PRICING_URL, '_blank', 'noopener'), 'Ask for a quote');
+    return;
+  }
+  const monthly = `$${(next * orgPlanSeatCents() / 100).toFixed(2)}`;
+  const free = next <= (p.paidSeats || 0);
+  confirmDialog(`Add a seat? The plan becomes ${next} seats, ${monthly} a month. ${free ? 'That seat was already paid for this month, so there’s nothing extra until the next bill.' : 'The rest of this month’s share goes on the plan’s next bill.'}`, async () => {
+    try {
+      await groupApi('seats', { planId, seats: next });
+      forgetOrgSeats(code);
+      toast('Seat added. A member can take it now.', 'success');
+      render();
+    } catch (e) { toast(e.message || 'Couldn’t add a seat', 'error', 5000); }
+  }, 'Add a seat');
+}
 async function startPlanCard(btn, planId) {
   setBtnLoading(btn, true);
   try { location.href = (await groupApi('card-checkout', { planId })).url; }
@@ -351,9 +372,11 @@ function orgPlanAdminCard(o, plan) {
     </div>` : ''}
     ${live ? `<p class="small muted mb-8">Someone leaves the ${esc(kindWord)}? Their seat opens up for the next person on its own. Swapping people never changes the bill; only adding seats does.</p>` : ''}
     ${orgPlanHandoffHtml(plan)}
+    ${live && plan.memberCount >= plan.seats ? `<p class="small sg-strong mb-8">Every seat is taken.${plan.viewOnly ? ` Ask ${esc(orgPlanAdminNames(plan))} to add one.` : ''}</p>` : ''}
     ${plan.viewOnly
       ? `<p class="small muted">${esc(orgPlanAdminNames(plan))} ${(plan.admins || []).length === 1 ? 'runs' : 'run'} the plan’s billing and seats. See who has a seat on the Members tab.</p>`
       : `<div class="flex-gap wrap">
+      ${live && plan.memberCount >= plan.seats ? `<button class="btn btn-primary btn-sm" onclick="addPlanSeat(this,'${esc(o.code)}','${esc(plan.id)}')">${icon('plus', 13, 1.8)} Add a seat</button>` : ''}
       <a class="btn btn-primary btn-sm" href="${GROUP_ADMIN_PAGE}?plan=${encodeURIComponent(plan.id)}">${icon('settings', 13, 1.8)} Seats, billing and members</a>
       ${plan.status === 'pending' ? `<a class="btn btn-sm" href="${GROUP_ADMIN_PAGE}?plan=${encodeURIComponent(plan.id)}">Finish setting it up</a>` : ''}
     </div>`}

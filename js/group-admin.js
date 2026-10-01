@@ -114,9 +114,21 @@ function saveSeats(btn) {
     return;
   }
   if (seats < MIN_SEATS) { toast(`Plans start at ${MIN_SEATS} seats. Cancel the plan instead if you're down to fewer than that.`, 'error', 5000); return; }
+  // Down carefully: only the person paying, only empty seats, no partial
+  // refund (worker/src/groups.js, groupSetSeats).
+  if (seats < plan.seats && !view.details.you.billed) {
+    toast(`Only ${plan.billedTo?.name || 'the person paying'} can remove seats, since it's their card. You can add seats anytime.`, 'info', 6000);
+    $('#ga-seats-input').value = plan.seats;
+    return;
+  }
+  const used = (view.details.members || []).length;
+  if (seats < used) { toast(`${used} people have seats. Remove someone first, then their seat can go.`, 'error', 5000); return; }
+  const paid = Math.max(plan.paidSeats || 0, plan.seats);
+  const nextBill = plan.currentPeriodEnd ? fmtJoined(plan.currentPeriodEnd) : '';
+  const added = seats - plan.seats;
   const change = seats > plan.seats
-    ? `Add ${seats - plan.seats} seat${seats - plan.seats === 1 ? '' : 's'}? Your plan becomes ${monthly(seats)} a month, and Stripe charges the difference for the rest of this month on your next bill.`
-    : `Drop to ${seats} seat${seats === 1 ? '' : 's'}? Your plan becomes ${monthly(seats)} a month, and the unused part of what you've paid comes off your next bill.`;
+    ? `Add ${added} seat${added === 1 ? '' : 's'}? Your plan becomes ${monthly(seats)} a month. ${seats <= paid ? 'They were already paid for this month, so there’s nothing extra to pay until your next bill.' : 'Stripe charges the difference for the rest of this month on your next bill.'}`
+    : `Remove ${plan.seats - seats} empty seat${plan.seats - seats === 1 ? '' : 's'}? Your bill drops to ${monthly(seats)} a month${nextBill ? ` starting ${nextBill}` : ' from your next bill'}. There’s no partial refund for this month, but if you add them back before then, they’re free.`;
   confirmDialog(change, () => act(btn, async () => {
     view.details = await api('seats', { planId: plan.id, seats });
     view.plans = view.plans.map(p => p.id === plan.id ? view.details.plan : p);
@@ -436,6 +448,7 @@ function planHtml() {
           <button class="btn btn-icon btn-sm" aria-label="More seats" onclick="stepSeats('ga-seats-input',1)">+</button>
           <button class="btn btn-sm" onclick="saveSeats(this)">Change seats</button>
         </div>
+        <p class="ga-hint">${details.you.billed ? 'Adding seats is charged for the rest of this month. Removing empty seats lowers your next bill, with no partial refund for this month.' : `Any admin can add seats. Only ${esc(plan.billedTo?.name || 'the person paying')} can remove them, since it’s their card.`}</p>
         <p class="ga-value"><b>Each member gets Plus ($7.99) for ${money(SEAT_PRICE_CENTS)}.</b> Up to ${MAX_SEATS} seats here. Outgrown that, or need an invoice or a PO? <a href="${GROUP_QUOTE_URL}">Ask for a quote</a> and we'll sort it out with you.</p>` : ''}
       </div>
     `)}
