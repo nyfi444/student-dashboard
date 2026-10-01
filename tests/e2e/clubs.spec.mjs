@@ -144,6 +144,8 @@ test('a club is members-only: a stranger sees the preview, a blocked member canâ
   await expect.poll(() => b.evaluate((c) => !!orgEntry(c), code)).toBe(false);
   // Removing him asked the Worker for new file links (worker/src/spaces.js).
   expect(await a.evaluate(() => true) && a._rotateCalls).toBe(1);
+  // And gave his seat on the club's group plan back (worker/src/groups.js).
+  await expect.poll(() => a._seatReleases || 0).toBe(1);
 
   // The code no longer lets him in.
   await b.getByRole('button', { name: 'Join with code' }).first().click();

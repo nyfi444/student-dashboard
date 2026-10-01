@@ -119,6 +119,11 @@ async function isolate(page, problems) {
     // (worker/src/spaces.js, tested in worker-spaces.mjs). Counted, so a
     // test can see the app asked.
     if (path === '/space/rotate-files') { page._rotateCalls = (page._rotateCalls || 0) + 1; return json(200, { ok: true, rotated: 0, moved: 0 }); }
+    // A club's group plan seats (worker/src/groups.js, tested in
+    // worker-groups.mjs). No plan here; a freed seat is counted, so a test
+    // can see the app gave it back after someone left or was removed.
+    if (path === '/group/org-seats') return json(200, { plan: null, seatUids: [], outside: [], canManage: false });
+    if (path === '/group/release-org-seat') { page._seatReleases = (page._seatReleases || 0) + 1; return json(200, { released: false }); }
     if (path === '/log-error') {
       let report = '';
       try { report = JSON.stringify(route.request().postDataJSON()).slice(0, 500); } catch {}
