@@ -382,7 +382,7 @@ function orgOverviewTab(o) {
   if (files.length) movable.push(`
         <div class="card card-pad org-rail-files">
           <div class="flex-between mb-8"><h3 class="sg-h3">Files</h3><button class="sg-link" onclick="setState({orgTab:'files'})">All ${files.length} ${icon('chevron-right', 12)}</button></div>
-          ${files.slice(0, 3).map(f => orgFileRow(o, f, { compact: true })).join('')}
+          <div class="org-rail-file-list">${files.slice(0, 3).map(f => orgFileRow(o, f, { compact: true })).join('')}</div>
         </div>`);
   // The left column is three cards tall with an event (hero, week, agenda)
   // and one without.

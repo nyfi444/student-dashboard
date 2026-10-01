@@ -8,6 +8,10 @@
 .wrapped-space-banner-text .small { margin: 0; }
 .wrapped-space-banner-title { font: 400 var(--fs-heading)/1.15 var(--font-serif); letter-spacing: -.01em; color: var(--text); text-wrap: balance; margin: 0; }
 .wrapped-space-banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
+/* In a narrow rail the buttons drop below rather than squeezing the text
+   to a word a line; the column's gap already spaces the cards. */
+.sg-col .wrapped-space-banner { flex-wrap: wrap; margin-bottom: 0; }
+.sg-col .wrapped-space-banner-text { flex: 1 1 120px; }
 @media (max-width: 760px) {
   .wrapped-space-banner { flex-wrap: wrap; padding: 20px; }
   .wrapped-space-banner-text { flex-basis: calc(100% - 72px); }

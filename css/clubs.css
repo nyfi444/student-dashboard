@@ -467,3 +467,13 @@ html.dark .org-month-cell.is-today .org-month-num { box-shadow: 0 0 0 1px var(--
 /* Overview cards that would run the rail past the calendar sit side by
    side under both columns instead. */
 .org-overview-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; margin-top: 16px; }
+/* Laptop widths fit two across: a third card (Files) takes the full width
+   and lays its files out side by side, rather than leaving a gap. */
+@media (min-width: 761px) and (max-width: 1179px) {
+  .org-overview-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .org-overview-row > :nth-child(3), .org-overview-row > :only-child { grid-column: 1 / -1; }
+  .org-overview-row > :nth-child(3) .org-rail-file-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); column-gap: 16px; }
+}
+@media (min-width: 761px) {
+  .org-overview-row > .org-rail-files:only-child .org-rail-file-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); column-gap: 16px; }
+}
