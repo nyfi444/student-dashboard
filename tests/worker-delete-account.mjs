@@ -39,6 +39,7 @@ function world(doc, { failFirstCommit = false } = {}) {
   sandbox.deleteStorageFolder = async (env, prefix) => { log.deletedFolders.push(prefix); return 1; };
   sandbox.runFirestoreQuery = async () => [];
   sandbox.logServerIssue = async () => {};
+  sandbox.writeSpacePreview = async () => true;   // covered in tests/worker-spaces.mjs
   sandbox.commitFirestore = async (env, writes) => {
     if (failures > 0) { failures--; return false; }
     log.commits.push(writes);
@@ -75,7 +76,7 @@ check('owner leaves: their name comes off the chat preview', w.fields['lastMessa
 log = world({ createdBy: 'solo', memberUids: ['solo'], people: { solo: { name: 'Ana', joinedAt: 1 } } });
 await sandbox.removeMemberFromSharedSpace({}, 'studyGroups/ABC123', 'solo', 'group');
 check('last member out: the group is deleted', log.deletedDocs, ['studyGroups/ABC123']);
-check('last member out: its subcollections go too, forms included', log.deletedSubs, ['studyGroups/ABC123/items', 'studyGroups/ABC123/messages', 'studyGroups/ABC123/forms']);
+check('last member out: its subcollections go too, forms and the join preview included', log.deletedSubs, ['studyGroups/ABC123/items', 'studyGroups/ABC123/messages', 'studyGroups/ABC123/forms', 'studyGroups/ABC123/public']);
 ok('last member out: nothing is written to a deleted doc', !log.commits.length);
 
 /* ── A club ────────────────────────────────────────────────────── */
@@ -152,7 +153,7 @@ check('forms they wrote stay, with their name taken off', log.commits.at(-1), [{
 log = formsWorld({ forms: [{ id: 'f1' }, { id: 'f2' }] });
 sandbox.readFirestoreDocWithTime = async () => ({ data: { createdBy: 'solo', memberUids: ['solo'], people: {} }, updateTime: 't1' });
 await sandbox.removeMemberFromSharedSpace({}, 'orgs/CLUB01', 'solo', 'org');
-check('last member out of a club: every form’s answers and marks go, then the forms', log.deletedSubs, ['orgs/CLUB01/messages', 'orgs/CLUB01/forms/f1/responses', 'orgs/CLUB01/forms/f1/marks', 'orgs/CLUB01/forms/f2/responses', 'orgs/CLUB01/forms/f2/marks', 'orgs/CLUB01/forms']);
+check('last member out of a club: every form’s answers and marks go, then the forms and the preview', log.deletedSubs, ['orgs/CLUB01/messages', 'orgs/CLUB01/forms/f1/responses', 'orgs/CLUB01/forms/f1/marks', 'orgs/CLUB01/forms/f2/responses', 'orgs/CLUB01/forms/f2/marks', 'orgs/CLUB01/forms', 'orgs/CLUB01/public']);
 check('last member out of a club: and the files sent as answers', log.deletedFolders, ['orgs/CLUB01/forms/']);
 
 /* ── Concurrency ───────────────────────────────────────────────── */

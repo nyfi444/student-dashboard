@@ -51,6 +51,7 @@ jobs:
           node tests/worker-onboarding.mjs
           node tests/worker-activity.mjs
           node tests/worker-forms.mjs
+          node tests/worker-spaces.mjs
 
   rules:
     runs-on: ubuntu-latest

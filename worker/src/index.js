@@ -67,6 +67,9 @@
   13. Anonymous form answers (/form/answer): the ONLY writer of an answer
       to an anonymous form. Files it under a random id with no name, and
       keeps the link to the sender where only they can read it. See forms.js.
+  14. Members-only groups and clubs (Oct 2026): the daily cron keeps every
+      public join preview true, and /space/rotate-files gives a club's
+      files new links after an officer removes someone. See spaces.js.
 ──────────────────────────────────────────────────────────────── */
 
 /* ── Where each job lives ─────────────────────────────────────────
@@ -90,6 +93,7 @@
      feeds.js        job 10  LMS calendar feeds
      account.js      deleting an account, terms acceptance
      forms.js        job 13  anonymous answers to a club's or study group's form
+     spaces.js       job 14  join previews, blocked lists, new club file links
      authmail.js     job 11  sign-in link and password-reset emails
      alerts.js       job 12  emails Nyla when something breaks, and AI spend
      mail.js                 the one door to Resend: one daily budget, sign-in first
@@ -118,6 +122,7 @@ import { featureForPath, handleAdminErrors, handleLogError, logServerIssue, prun
 import { buildBusinessEvents, handleAdminBizEvents, handleTrackEvent } from './events.js';
 import { handleCalendarFeed } from './feeds.js';
 import { handleFormAnswer } from './forms.js';
+import { handleRotateFiles, refreshSpacePreviews } from './spaces.js';
 import { handleGroupRoute } from './groups.js';
 import { checkRateLimit, corsHeaders, isAllowedOrigin, jsonError, stagingProblem } from './http.js';
 import { handleAdminLedger, writeDailyLedger } from './ledger.js';
@@ -155,6 +160,8 @@ export default {
     ctx.waitUntil(buildBusinessEvents(env, stripeReady).catch(e => logServerIssue(env, 'business-events', 'Daily business events failed', e)));
     ctx.waitUntil(writeDailyLedger(env, { stripeReady }).catch(e => logServerIssue(env, 'ledger', 'Daily ledger failed', e)));
     ctx.waitUntil(pruneOldIssues(env).catch(e => logServerIssue(env, 'diagnostics', 'Pruning old reports failed', e)));
+    // Job 14: every group's and club's public join preview, made true again.
+    ctx.waitUntil(refreshSpacePreviews(env).catch(e => logServerIssue(env, 'spaces', 'Refreshing join previews failed', e)));
     // Job 12: yesterday's errors to Nyla's inbox, only on days with any.
     ctx.waitUntil(fetchErrorSummary(env).then(summary => sendDailyDigest(env, summary)).catch(e => logServerIssue(env, 'alerts', 'Daily error digest failed', e)));
     // Job 13: the day's onboarding tips, at 9am Eastern (8am in winter).
@@ -259,6 +266,10 @@ async function routeRequest(request, env, ctx) {
     // Looser than most: a whole club can answer a vote from one campus network.
     if (!(await checkRateLimit(env, ip, 'form-answer', 60))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
     return handleFormAnswer(request, env, origin);
+  }
+  if (url.pathname === '/space/rotate-files') {
+    if (!(await checkRateLimit(env, ip, 'rotate-files', 5))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
+    return handleRotateFiles(request, env, origin);
   }
   if (url.pathname === '/calendar-feed') {
     if (!(await checkRateLimit(env, ip, 'feed', 10))) return jsonError('Too many requests, try again in a minute.', 429, env, origin);
