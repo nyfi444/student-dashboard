@@ -158,6 +158,74 @@ function setAdmin(btn, uid, admin) {
     toast(admin ? `${name} can manage this plan now` : `${name} is no longer an admin`, 'success');
   });
 }
+/* ── Handing the plan on ─────────────────────────────────────────
+   For an admin who's graduating or stepping down. The next person becomes
+   an admin right away and puts the plan on their own card (Stripe's card
+   page, then card-finish). Seats and members never change. Until the new
+   card is in, the plan stays on the old one, and the person paying stays
+   an admin (worker/src/groups.js, groupHandoff). */
+function gaHandoffCandidates() {
+  const d = view.details;
+  const seen = new Set([d.you.uid]);
+  const out = [];
+  (d.plan.admins || []).forEach(a => { if (!seen.has(a.uid)) { seen.add(a.uid); out.push({ uid: a.uid, name: a.name || a.email || 'Admin', note: 'Admin' }); } });
+  (d.members || []).forEach(m => { if (!seen.has(m.uid)) { seen.add(m.uid); out.push({ uid: m.uid, name: m.name || m.email || 'Member', note: m.email || '' }); } });
+  return out;
+}
+function openHandoff() {
+  const list = gaHandoffCandidates();
+  if (!list.length) { toast('Whoever takes over needs a seat on this plan first. Send them the invite link.', 'info', 6000); return; }
+  const billed = view.details.you.billed;
+  openModal(`
+    <div class="modal-head"><h3>Hand off this plan</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 13, 2.2)}</button></div>
+    <div class="modal-body">
+      <p class="ga-hint mb-8">For when you’re graduating or stepping down. The plan, its seats and its members stay exactly as they are.</p>
+      <div class="field"><label for="ga-heir">Who takes over</label>
+        <select class="select" id="ga-heir">${list.map(c => `<option value="${esc(c.uid)}">${esc(c.name)}${c.note ? ` · ${esc(c.note)}` : ''}</option>`).join('')}</select></div>
+      <label class="checkbox-row"><input type="checkbox" id="ga-heir-stay"> Stay on as an admin too</label>
+      ${billed ? `<p class="ga-hint mt-8">They’ll be asked to put the plan on their own card. Until they do, it stays on yours and you stay an admin, so you’re never paying for a plan you can’t see.</p>` : ''}
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ga-heir-go" onclick="saveHandoff()">Hand off</button></div>`);
+}
+function saveHandoff() {
+  const uid = $('#ga-heir')?.value;
+  const stay = !!$('#ga-heir-stay')?.checked;
+  const name = gaHandoffCandidates().find(c => c.uid === uid)?.name || 'They';
+  if (!uid) return;
+  act($('#ga-heir-go'), async () => {
+    const result = await api('handoff', { planId: view.planId, uid, stay });
+    closeModal();
+    if (result.removedSelf) { toast(`${name} runs this plan now`, 'success', 5000); view.planId = ''; await loadMine(); return; }
+    view.details = result;
+    toast(result.plan.handoff ? `Handed to ${name}. They’ll be asked to put it on their card.` : `${name} runs this plan now`, 'success', 6000);
+  });
+}
+function moveCardToMe(btn) {
+  act(btn, async () => {
+    const data = await api('card-checkout', { planId: view.planId });
+    window.location.href = data.url;
+    await new Promise(r => setTimeout(r, 4000));
+  });
+}
+// Back from Stripe's card page.
+async function finishCardReturn() {
+  const sessionId = params.get('session') || '';
+  history.replaceState({}, '', `${location.pathname}?plan=${encodeURIComponent(view.planId)}`);
+  try {
+    view.details = await api('card-finish', { planId: view.planId, sessionId });
+    toast('The plan is on your card now, and receipts come to you', 'success', 6000);
+  } catch (e) { toast(e.message || 'The card didn’t change', 'error', 6000); }
+  render();
+}
+function gaHandoffNotice(d) {
+  const h = d.plan.handoff;
+  if (!h || d.plan.status === 'canceled') return '';
+  const you = d.you.uid;
+  const payer = d.plan.billedTo?.name || 'the person who set it up';
+  if (h.to === you) return `<div class="ga-notice ga-handoff"><div><b>${esc(h.fromName || 'The last admin')} handed this plan to you.</b> It’s still billed to ${esc(payer)}’s card. Put it on yours and the receipts come to you. Nothing changes for your members.</div><button class="btn btn-primary btn-sm" onclick="moveCardToMe(this)">Put it on my card</button></div>`;
+  if (h.from === you) return `<div class="ga-notice">Waiting on ${esc(h.toName || 'the new admin')} to put this plan on their card. Until then it stays on yours${h.stay ? '' : ', and you stay an admin so you can see what you’re paying for'}.</div>`;
+  return `<div class="ga-notice">${esc(h.toName || 'A new admin')} is taking this plan over from ${esc(h.fromName || 'the last admin')} and still needs to put it on their card.</div>`;
+}
 function renamePlan() {
   const current = view.details?.plan?.name || '';
   openModal(`
@@ -342,6 +410,7 @@ function planHtml() {
     <h1 class="ga-title">Seats, members and billing</h1>
     ${plan.status === 'canceled' ? `<div class="ga-notice">This plan is canceled, so its members no longer have Semester HQ Plus through it. Start a new plan to bring them back.</div>` : ''}
     ${plan.status === 'past_due' ? `<div class="ga-notice">A payment didn't go through. Your members still have access for now. Update your card under Billing to keep it that way.</div>` : ''}
+    ${gaHandoffNotice(details)}
     ${plan.cancelAtPeriodEnd ? `<div class="ga-notice">This plan is set to end${nextBill ? ` on ${nextBill}` : ''}. Members keep access until then. Changed your mind? Manage billing lets you keep it going.</div>` : ''}
     ${card(`
       <div class="ga-plan">
@@ -387,7 +456,10 @@ function planHtml() {
     `) : ''}
     ${card(`
       <div class="ga-members-head">
-        <h3>Members <span class="ga-count">${used}</span></h3>
+        <div>
+          <h3>Members <span class="ga-count">${used}</span></h3>
+          <p class="ga-hint">Someone left? Remove them and their seat opens for the next person. Swapping people never costs anything; only changing the number of seats changes your bill.${plan.orgCode ? ' People who leave the club give their seat back on their own.' : ''}</p>
+        </div>
         ${members.length ? `<div class="ga-tools">
           <div class="ga-search">${icon('search', 14, 2)}<input class="input" type="search" id="ga-search" placeholder="Search members" value="${esc(gaList.q)}" oninput="gaSetQuery(this.value)" aria-label="Search members"></div>
           <select class="select" aria-label="Sort members" onchange="gaSetSort(this.value)">${GA_SORTS.map(([v, l]) => `<option value="${v}" ${v === gaList.sort ? 'selected' : ''}>${l}</option>`).join('')}</select>
@@ -403,8 +475,16 @@ function planHtml() {
     `)}
     ${card(`
       <h3>Billing</h3>
-      <p class="ga-hint mb-8">Update your card, download invoices, or cancel the plan. Canceling ends Semester HQ Plus for everyone on it at the end of the period you've paid for.</p>
-      <button class="btn mt-8" onclick="openBilling(this)">Manage billing</button>
+      ${plan.billedTo?.uid ? `<p class="ga-hint mb-8">Billed to <b>${details.you.billed ? 'you' : esc(plan.billedTo.name || 'the person who set it up')}</b>${plan.billedTo.email && !details.you.billed ? ` (${esc(plan.billedTo.email)})` : ''}.</p>` : ''}
+      <p class="ga-hint mb-8">Update the card, download invoices, or cancel the plan. Canceling ends Semester HQ Plus for everyone on it at the end of the period you've paid for.</p>
+      <div class="flex-gap wrap mt-8">
+        <button class="btn" onclick="openBilling(this)">Manage billing</button>
+        ${plan.status !== 'canceled' && !details.you.billed && !(plan.handoff?.to === details.you.uid) ? `<button class="btn" onclick="moveCardToMe(this)">Put it on my card</button>` : ''}
+      </div>
+      ${plan.status !== 'canceled' ? `<div class="ga-handoff-row">
+        <p class="ga-hint"><b>Graduating or stepping down?</b> Hand the plan to whoever runs things next. They put it on their own card, and your members never notice.</p>
+        <button class="btn btn-sm" onclick="openHandoff()">${icon('user-plus', 13, 1.8)} Hand off this plan</button>
+      </div>` : ''}
     `)}`;
 }
 const gaInitials = (name, email) => {
@@ -426,14 +506,15 @@ function gaVisibleMembers() {
 function gaRowsHtml() {
   const list = gaVisibleMembers();
   const you = view.details?.you?.uid;
+  const payer = view.details?.plan?.billedTo?.uid;
   if (!list.length) return `<div class="ga-empty">No one matches “${esc(gaList.q)}”.</div>`;
   return list.map(m => `
     <div class="ga-row" role="listitem">
       <div class="ga-avatar ${m.admin ? 'is-admin' : ''}" aria-hidden="true">${esc(gaInitials(m.name, m.email))}</div>
-      <div class="ga-who"><div class="ga-name"><span>${esc(m.name || 'Member')}</span>${m.uid === you ? '<span class="ga-you">(you)</span>' : ''}${m.admin ? '<span class="ga-badge">Admin</span>' : ''}</div><div class="ga-email">${esc(m.email || '')}</div></div>
+      <div class="ga-who"><div class="ga-name"><span>${esc(m.name || 'Member')}</span>${m.uid === you ? '<span class="ga-you">(you)</span>' : ''}${m.admin ? '<span class="ga-badge">Admin</span>' : ''}${m.uid === payer ? '<span class="ga-badge">Pays</span>' : ''}</div><div class="ga-email">${esc(m.email || '')}</div></div>
       <div class="ga-joined">Joined ${esc(fmtJoined(m.joinedAt))}</div>
       <div class="ga-actions">
-        <button class="btn btn-sm btn-ghost" aria-label="${m.admin ? 'Remove admin from' : 'Make admin:'} ${esc(m.name || m.email || 'member')}" onclick="setAdmin(this,'${esc(m.uid)}',${!m.admin})">${m.admin ? 'Remove admin' : 'Make admin'}</button>
+        ${m.admin && m.uid === payer ? '' : `<button class="btn btn-sm btn-ghost" aria-label="${m.admin ? 'Remove admin from' : 'Make admin:'} ${esc(m.name || m.email || 'member')}" onclick="setAdmin(this,'${esc(m.uid)}',${!m.admin})">${m.admin ? 'Remove admin' : 'Make admin'}</button>`}
         <button class="btn btn-sm btn-ghost" aria-label="Remove ${esc(m.name || m.email || 'member')}" onclick="removeMember(this,'${esc(m.uid)}')">Remove</button>
       </div>
     </div>`).join('');
@@ -512,7 +593,15 @@ function gaSampleDetails(pstate) {
   if (pstate === 'canceled') plan.status = 'canceled';
   if (pstate === 'ending') plan.cancelAtPeriodEnd = true;
   if (pstate === 'pending') { plan.status = 'pending'; plan.seats = 0; }
-  return { plan, members, you: { uid: 'sample-1', hasSeat: pstate !== 'noseat' } };
+  const [payerName, payerEmail] = GA_SAMPLE_PEOPLE[0];
+  plan.admins = members.filter(m => m.admin).map(({ uid, name, email }) => ({ uid, name, email }));
+  plan.billedTo = { uid: 'sample-1', name: payerName, email: payerEmail };
+  plan.handoff = null;
+  const you = { uid: 'sample-1', hasSeat: pstate !== 'noseat', billed: true };
+  // ?pstate=handoff: you handed it on. ?pstate=handed: it was handed to you.
+  if (pstate === 'handoff' && members[1]) plan.handoff = { from: 'sample-1', fromName: payerName, to: members[1].uid, toName: members[1].name, stay: false };
+  if (pstate === 'handed' && members[1]) { plan.handoff = { from: 'sample-1', fromName: payerName, to: members[1].uid, toName: members[1].name, stay: false }; you.uid = members[1].uid; you.billed = false; }
+  return { plan, members, you };
 }
 async function gaPreviewApi(action, body) {
   await new Promise(r => setTimeout(r, 250));
@@ -527,6 +616,7 @@ async function gaPreviewApi(action, body) {
     case 'remove-member': d.members = d.members.filter(m => m.uid !== body.uid); return done();
     case 'set-admin': d.members = d.members.map(m => m.uid === body.uid ? { ...m, admin: body.admin } : m); return done();
     case 'join': d.you.hasSeat = true; return done();
+    case 'handoff': { const m = d.members.find(x => x.uid === body.uid); d.plan.handoff = { from: d.you.uid, fromName: 'You', to: body.uid, toName: m?.name || 'Member', stay: !!body.stay }; return done(); }
     default: throw new Error(`Preview only: “${action}” would open Stripe or the Worker on the real page.`);
   }
 }
@@ -630,5 +720,8 @@ function signOutOfAdmin() { if (gaPreview) { location.href = location.pathname; 
     render();
     // Straight back from Stripe: wait for the plan to come alive.
     if (params.get('checkout') === 'success' && (!view.details || view.details.plan.status === 'pending')) waitForActivation();
+    // Straight back from Stripe's card page (a handoff, or "Put it on my card").
+    if (params.get('card') === 'done' && view.planId) finishCardReturn();
+    if (params.get('card') === 'cancel') { history.replaceState({}, '', `${location.pathname}?plan=${encodeURIComponent(view.planId)}`); toast('No change. The plan is billed the same way as before.', 'info', 5000); }
   });
 })();

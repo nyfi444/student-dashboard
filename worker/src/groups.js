@@ -60,15 +60,30 @@ function groupPlanSummary(env, plan) {
     seatPriceCents: GROUP_SEAT_PRICE_CENTS, minSeats: GROUP_MIN_SEATS, maxSeats: GROUP_MAX_SEATS,
     inviteCode: live ? plan.inviteCode || '' : '',
     inviteUrl: live && plan.inviteCode ? new URL(`?plan=${plan.inviteCode}`, env.APP_URL).toString() : '',
-    orgCode: plan.orgCode || '', admins: groupAdmins(plan),
+    orgCode: plan.orgCode || '', admins: groupAdmins(plan), billedTo: groupBilledTo(plan), handoff: groupHandoffOf(plan),
     cancelAtPeriodEnd: !!plan.cancelAtPeriodEnd, currentPeriodEnd: plan.currentPeriodEnd || '', createdAt: plan.createdAt || '',
   };
+}
+
+// Who the plan is billed to. ownerUid starts as whoever bought it and only
+// changes when another admin puts the plan on their own card (card-finish).
+function groupBilledTo(plan) {
+  const uid = plan.ownerUid || '';
+  const admin = groupAdmins(plan).find(a => a.uid === uid);
+  return { uid, name: plan.billingName || admin?.name || '', email: plan.billingEmail || admin?.email || '' };
+}
+// A handoff waiting on the new person's card: { from, fromName, to, toName, stay, at }.
+function groupHandoffOf(plan) {
+  const h = parseJsonField(plan.handoffJson, null);
+  return h && typeof h.to === 'string' && h.to ? h : null;
 }
 
 const GROUP_ACTIONS = {
   mine: groupMine, details: groupDetails, 'create-checkout': groupCreateCheckout, seats: groupSetSeats,
   'remove-member': groupRemoveMember, 'set-admin': groupSetAdmin, rename: groupRename, 'reset-invite': groupResetInvite,
   portal: groupPortal, 'delete-pending': groupDeletePending, join: groupJoin, leave: groupLeave,
+  'org-seats': groupOrgSeats, 'release-org-seat': groupReleaseOrgSeat, handoff: groupHandoff,
+  'card-checkout': groupCardCheckout, 'card-finish': groupCardFinish,
 };
 export async function handleGroupRoute(action, request, env, origin) {
   try {
@@ -122,15 +137,18 @@ async function findPlanForInvite(env, { code, orgCode }) {
     const plan = invite?.planId ? await readFirestoreDoc(env, 'groupPlans', invite.planId) : null;
     return plan && plan.status !== 'deleted' && plan.inviteCode === clean ? { ...plan, id: invite.planId } : null;
   }
-  if (/^[A-Za-z0-9]{6}$/.test(String(orgCode || ''))) {
-    const plans = await runFirestoreQuery(env, {
-      from: [{ collectionId: 'groupPlans' }],
-      where: { fieldFilter: { field: { fieldPath: 'orgCode' }, op: 'EQUAL', value: { stringValue: String(orgCode) } } },
-      limit: 10,
-    });
-    return plans.find(p => groupHasAccess(p.status)) || null;
-  }
-  return null;
+  const plan = await planForOrg(env, orgCode);
+  return plan && groupHasAccess(plan.status) ? plan : null;
+}
+// The plan started for a club: a live one first, then one still in checkout.
+async function planForOrg(env, orgCode) {
+  if (!/^[A-Za-z0-9]{6}$/.test(String(orgCode || ''))) return null;
+  const plans = (await runFirestoreQuery(env, {
+    from: [{ collectionId: 'groupPlans' }],
+    where: { fieldFilter: { field: { fieldPath: 'orgCode' }, op: 'EQUAL', value: { stringValue: String(orgCode) } } },
+    limit: 10,
+  })).filter(p => p.status !== 'deleted');
+  return plans.find(p => groupHasAccess(p.status)) || plans.find(p => p.status === 'pending') || null;
 }
 
 async function groupMine(env, ctx) {
@@ -155,7 +173,7 @@ async function groupDetails(env, ctx) {
     members: members
       .map(m => ({ uid: m.id, name: m.name || '', email: m.email || '', joinedAt: m.joinedAt || '', admin: adminUids.includes(m.id) }))
       .sort((a, b) => String(a.joinedAt).localeCompare(String(b.joinedAt))),
-    you: { uid: ctx.uid, hasSeat: members.some(m => m.id === ctx.uid) },
+    you: { uid: ctx.uid, hasSeat: members.some(m => m.id === ctx.uid), billed: (plan.ownerUid || '') === ctx.uid },
   };
 }
 
@@ -368,6 +386,11 @@ async function groupSetAdmin(env, ctx) {
     admins = [...admins, { uid: target, email: member.email || '', name: member.name || '' }];
   } else {
     if (admins.length <= 1) throw new HttpError(400, 'A plan needs at least one admin.');
+    // Otherwise they'd keep paying for a plan they can no longer see.
+    if (target === plan.ownerUid && plan.stripeSubscriptionId && groupHasAccess(plan.status)) {
+      const who = target === ctx.uid ? 'You still pay' : `${groupBilledTo(plan).name || 'They'} still pays`;
+      throw new HttpError(400, `${who} for this plan. Hand it off so someone else puts it on their card first, or cancel it from Manage billing.`);
+    }
     admins = admins.filter(a => a.uid !== target);
   }
   await setGroupAdmins(env, plan, admins);
@@ -424,4 +447,185 @@ async function groupDeletePending(env, ctx) {
   if (plan.status !== 'pending') throw new HttpError(400, 'Only a plan that never finished checkout can be deleted. Cancel an active plan from Billing.');
   await patchFirestoreDoc(env, `groupPlans/${plan.id}`, { status: 'deleted', updatedAt: new Date() });
   return { deleted: true };
+}
+
+/* ── Clubs: who's covered, and seats that free themselves ─────────
+   A plan started for a club (orgCode) is run from the club as well as
+   from group-admin.html. Any officer sees which members hold a seat;
+   only the plan's admins see emails or change anything. When someone
+   leaves a club, or an officer removes them, the app asks for their seat
+   back, so the club never pays for people who are gone and a new member
+   can take it: swapping people never changes the bill. */
+const SAFE_UID = /^[A-Za-z0-9_-]{1,128}$/;
+async function loadOrg(env, code) {
+  if (!/^[A-Za-z0-9]{6}$/.test(String(code || ''))) throw new HttpError(400, 'That club wasn’t found.');
+  return readFirestoreDoc(env, 'orgs', String(code));
+}
+async function groupOrgSeats(env, ctx) {
+  const code = String(ctx.body.orgCode || '');
+  const org = await loadOrg(env, code);
+  if (!org || !(org.officerUids || []).includes(ctx.uid)) throw new HttpError(403, 'Only that club’s officers can see its seats.');
+  const plan = await planForOrg(env, code);
+  if (!plan) return { plan: null, seatUids: [], outside: [], canManage: false };
+  const members = await listFirestoreCollection(env, `groupPlans/${plan.id}/members`);
+  const inClub = new Set(org.memberUids || []);
+  const live = groupHasAccess(plan.status);
+  return {
+    plan: {
+      id: plan.id, name: plan.name || '', status: plan.status || 'pending', seats: plan.seats || 0, memberCount: members.length,
+      cancelAtPeriodEnd: !!plan.cancelAtPeriodEnd, orgCode: code,
+      inviteUrl: live && plan.inviteCode ? new URL(`?plan=${plan.inviteCode}`, env.APP_URL).toString() : '',
+      admins: groupAdmins(plan).map(a => ({ uid: a.uid, name: a.name || '' })),
+      billedTo: { uid: groupBilledTo(plan).uid, name: groupBilledTo(plan).name },
+      handoff: groupHandoffOf(plan),
+    },
+    seatUids: members.filter(m => inClub.has(m.id)).map(m => m.id),
+    outside: members.filter(m => !inClub.has(m.id)).map(m => ({ uid: m.id, name: m.name || 'Member', joinedAt: m.joinedAt || '' })),
+    canManage: (plan.adminUids || []).includes(ctx.uid),
+  };
+}
+// The person themselves (after leaving), or an officer (after removing
+// them). Only ever someone no longer in the club, read fresh here, so it
+// can't be used to take a seat from a current member.
+async function groupReleaseOrgSeat(env, ctx) {
+  const code = String(ctx.body.orgCode || '');
+  const target = String(ctx.body.uid || ctx.uid);
+  if (!SAFE_UID.test(target)) throw new HttpError(400, 'Pick whose seat to free.');
+  const org = await loadOrg(env, code);
+  if (target !== ctx.uid && !(org?.officerUids || []).includes(ctx.uid)) throw new HttpError(403, 'Only that club’s officers can free someone else’s seat.');
+  if ((org?.memberUids || []).includes(target)) return { released: false, reason: 'member' };
+  const plan = await planForOrg(env, code);
+  if (!plan) return { released: false };
+  const released = await removeGroupMember(env, plan.id, target);
+  const license = released || target === ctx.uid ? await readFirestoreDoc(env, 'licenses', target) : null;
+  if (released && license?.groupPlanId === plan.id) await setLicenseSeat(env, target, license, {});
+  // The person leaving learns whether they're still covered by their own subscription.
+  return { released, ...(target === ctx.uid ? { paid: individualPaidOf(license) } : {}) };
+}
+
+/* ── Handing a plan to the next person ────────────────────────────
+   Officers graduate. An admin hands the plan to someone with a seat (or,
+   for a club's plan, anyone in the club): they become an admin straight
+   away and are asked to put the plan on their own card. The plan, its
+   seats and its members never change, so nobody notices the handoff.
+   Until the new card is in, the plan stays billed to the old one, so the
+   person handing off stays an admin until then even if they're stepping
+   back; otherwise they'd keep paying for a plan they can't see. */
+async function groupHandoff(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  const target = String(ctx.body.uid || '');
+  if (!SAFE_UID.test(target) || target === ctx.uid) throw new HttpError(400, 'Pick who takes over.');
+  const seat = await readFirestoreDoc(env, `groupPlans/${plan.id}/members`, target);
+  const asAdmin = groupAdmins(plan).find(a => a.uid === target);
+  let person = seat ? { name: seat.name || '', email: seat.email || '' } : asAdmin ? { name: asAdmin.name || '', email: asAdmin.email || '' } : null;
+  if (!person && plan.orgCode) {
+    const org = await loadOrg(env, plan.orgCode).catch(() => null);
+    if ((org?.memberUids || []).includes(target)) person = { name: cleanGroupText(org.people?.[target]?.name, 80), email: '' };
+  }
+  if (!person) throw new HttpError(400, plan.orgCode ? 'They need to be in the club, or hold a seat on this plan, first.' : 'They need a seat on this plan first.');
+  let admins = groupAdmins(plan);
+  const existing = admins.find(a => a.uid === target);
+  if (!existing) {
+    if (admins.length >= 10) throw new HttpError(400, 'A plan can have up to 10 admins. Remove one first.');
+    admins = [...admins, { uid: target, email: person.email, name: person.name }];
+  }
+  const stay = ctx.body.stay !== false;
+  const billed = (plan.ownerUid || '') === ctx.uid;
+  const needsCard = !!plan.stripeCustomerId && groupHasAccess(plan.status);
+  const fields = { updatedAt: new Date() };
+  if (needsCard) {
+    // The person paying waits for the new card; anyone else can step back now.
+    fields.handoffJson = JSON.stringify({ from: ctx.uid, fromName: ctx.name, to: target, toName: person.name || existing?.name || '', stay: stay || !billed, at: new Date().toISOString() });
+    if (!stay && !billed) admins = admins.filter(a => a.uid !== ctx.uid);
+  } else {
+    // Nothing billed yet (or any more): the role is all there is to hand on.
+    fields.ownerUid = target;
+    fields.handoffJson = '';
+    if (!stay) admins = admins.filter(a => a.uid !== ctx.uid);
+  }
+  fields.adminUids = admins.map(a => a.uid);
+  fields.adminsJson = JSON.stringify(admins);
+  await patchFirestoreDoc(env, `groupPlans/${plan.id}`, fields);
+  if (!admins.some(a => a.uid === ctx.uid)) return { removedSelf: true };
+  return groupDetails(env, ctx);
+}
+// Stripe's own page for saving a card (Checkout in setup mode), on the
+// plan's existing customer. Nothing is charged. The card becomes the
+// plan's from card-finish (on return) or the webhook, whichever is first.
+async function groupCardCheckout(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  if (!plan.stripeCustomerId || !plan.stripeSubscriptionId || !groupHasAccess(plan.status)) throw new HttpError(400, 'This plan doesn’t have billing to move. Finish checkout first.');
+  const back = groupAdminUrl(env, plan.id);
+  const params = new URLSearchParams();
+  params.set('mode', 'setup');
+  params.set('customer', plan.stripeCustomerId);
+  params.set('payment_method_types[0]', 'card');
+  params.set('success_url', `${back}&card=done&session={CHECKOUT_SESSION_ID}`);
+  params.set('cancel_url', `${back}&card=cancel`);
+  for (const [k, v] of [['kind', 'group-card'], ['planId', plan.id], ['uid', ctx.uid]]) {
+    params.set(`metadata[${k}]`, v);
+    params.set(`setup_intent_data[metadata][${k}]`, v);
+  }
+  const res = await stripeRequest(env, 'POST', '/v1/checkout/sessions', params);
+  if (!res.ok) throw new HttpError(502, 'Could not open Stripe: ' + (res.data.error?.message || 'unknown error'));
+  return { url: res.data.url };
+}
+async function groupCardFinish(env, ctx) {
+  const plan = await loadAdminPlan(env, ctx);
+  const id = String(ctx.body.sessionId || '');
+  if (!/^cs_[A-Za-z0-9_]{10,200}$/.test(id)) throw new HttpError(400, 'That card change wasn’t found.');
+  const res = await stripeRequest(env, 'GET', `/v1/checkout/sessions/${id}`);
+  const session = res.data;
+  if (!res.ok || session.metadata?.kind !== 'group-card' || session.metadata?.planId !== plan.id || session.metadata?.uid !== ctx.uid) throw new HttpError(400, 'That card change doesn’t belong to this plan.');
+  if (session.status !== 'complete') throw new HttpError(400, 'The card wasn’t saved. Try again.');
+  await applyGroupCard(env, plan, session, { uid: ctx.uid, email: ctx.email, name: ctx.name });
+  return groupDetails(env, ctx);
+}
+// Webhook: checkout.session.completed for a card change.
+export async function finishGroupCardFromWebhook(env, session) {
+  const planId = session.metadata?.planId;
+  const uid = session.metadata?.uid;
+  const plan = planId ? await readFirestoreDoc(env, 'groupPlans', planId) : null;
+  if (!plan || !SAFE_UID.test(String(uid || '')) || !(plan.adminUids || []).includes(uid)) return false;
+  const admin = groupAdmins(plan).find(a => a.uid === uid);
+  await applyGroupCard(env, { ...plan, id: planId }, session, { uid, email: admin?.email || '', name: admin?.name || '' });
+  return true;
+}
+async function setupIntentCard(env, session) {
+  const si = session.setup_intent;
+  if (si && typeof si === 'object') return typeof si.payment_method === 'string' ? si.payment_method : si.payment_method?.id || '';
+  if (typeof si !== 'string' || !si) return '';
+  const res = await stripeRequest(env, 'GET', `/v1/setup_intents/${si}`);
+  return res.ok && typeof res.data.payment_method === 'string' ? res.data.payment_method : '';
+}
+// Same session twice (return page and webhook) is a no-op the second time.
+async function applyGroupCard(env, plan, session, who) {
+  if (plan.cardSessionId === session.id) return;
+  if (session.customer !== plan.stripeCustomerId) throw new HttpError(400, 'That card change doesn’t belong to this plan.');
+  const card = await setupIntentCard(env, session);
+  if (!card) throw new HttpError(502, 'Stripe didn’t send the card back. Try again.');
+  const customer = new URLSearchParams({ 'invoice_settings[default_payment_method]': card });
+  if (who.email) customer.set('email', who.email);   // receipts go to the new person
+  const c = await stripeRequest(env, 'POST', `/v1/customers/${plan.stripeCustomerId}`, customer);
+  if (!c.ok) throw new HttpError(502, 'Stripe couldn’t switch the card: ' + (c.data.error?.message || 'unknown error'));
+  if (plan.stripeSubscriptionId) {
+    const s = await stripeRequest(env, 'POST', `/v1/subscriptions/${plan.stripeSubscriptionId}`, new URLSearchParams({ default_payment_method: card }));
+    if (!s.ok) throw new HttpError(502, 'Stripe couldn’t switch the card: ' + (s.data.error?.message || 'unknown error'));
+  }
+  // The person handing off shouldn't leave their card on a plan they no
+  // longer pay for. Best effort: a card left behind is never charged.
+  try {
+    const list = await stripeRequest(env, 'GET', `/v1/customers/${plan.stripeCustomerId}/payment_methods?limit=20`);
+    for (const pm of list.data?.data || []) {
+      if (pm.id !== card) await stripeRequest(env, 'POST', `/v1/payment_methods/${pm.id}/detach`, new URLSearchParams());
+    }
+  } catch (e) { await logServerIssue(env, 'group-plans', 'Old card not removed after a handoff', e, { planId: plan.id }); }
+  const handoff = groupHandoffOf(plan);
+  let admins = groupAdmins(plan).map(a => a.uid === who.uid ? { ...a, email: a.email || who.email, name: a.name || who.name } : a);
+  // Stepping back: now that someone else pays, the person who handed off goes.
+  if (handoff && !handoff.stay && handoff.from !== who.uid) admins = admins.filter(a => a.uid !== handoff.from);
+  await patchFirestoreDoc(env, `groupPlans/${plan.id}`, {
+    ownerUid: who.uid, billingName: who.name || '', billingEmail: who.email || '', cardSessionId: session.id, handoffJson: '',
+    adminUids: admins.map(a => a.uid), adminsJson: JSON.stringify(admins), updatedAt: new Date(),
+  });
 }

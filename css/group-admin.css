@@ -123,3 +123,9 @@ body { background: var(--bg); color: var(--bg-text); }
 @media print {
   .ga-top, .ga-foot, .ga-actions, .ga-members-foot, .ga-seats, .ga-tools { display: none !important; }
 }
+/* Handoff: the "handed to you" notice with its button, and the billing card's handoff row. */
+.ga-handoff { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+.ga-handoff > div { flex: 1 1 260px; }
+.ga-handoff-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; }
+.ga-handoff-row .ga-hint { flex: 1 1 260px; margin: 0; }
+.ga-members-head .ga-hint { margin: 4px 0 0; max-width: 56ch; }

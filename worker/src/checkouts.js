@@ -70,6 +70,7 @@ export function summarizeCheckouts(sessions, { since, truncated = false } = {}) 
   const byDay = {};
   const byVia = {};
   for (const s of sessions) {
+    if (s.mode === 'setup') continue;   // a group plan changing cards, not a purchase
     const created = (Number(s.created) || 0) * 1000;
     if (since && created < since) continue;
     const done = s.status === 'complete';

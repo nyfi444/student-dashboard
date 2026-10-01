@@ -168,14 +168,19 @@ function confirmLeaveGroupPlan(name) {
   confirmDialog(`Leave ${name}’s group plan? You’ll lose Semester HQ Plus on this account unless you subscribe yourself. Your planner stays on this device either way.`, async () => {
     try {
       const result = await groupApi('leave');
-      window._licensed = !!result.paid;
-      if (!result.paid) { try { localStorage.removeItem(LICENSE_DEVICE_FLAG); } catch {} }
-      if (window._licenseDoc) { window._licenseDoc.groupPaid = false; window._licenseDoc.groupName = ''; }
-      window._groupMine = null;
+      afterGroupSeatGone(result.paid);
       toast(result.paid ? 'You left the group plan. Your own subscription still covers you.' : 'You left the group plan.', 'success', 5000);
       render();
     } catch (e) { toast(e.message || 'Could not leave that plan', 'error', 5000); }
   }, 'Leave plan');
+}
+
+// This account no longer has a group seat: covered only by its own subscription, if any.
+function afterGroupSeatGone(paid) {
+  window._licensed = !!paid;
+  if (!paid) { try { localStorage.removeItem(LICENSE_DEVICE_FLAG); } catch {} }
+  if (window._licenseDoc) { window._licenseDoc.groupPaid = false; window._licenseDoc.groupName = ''; window._licenseDoc.groupPlanId = ''; }
+  window._groupMine = null;
 }
 
 /* ── Clubs & Teams: an officer covering their members ─────────── */
@@ -189,10 +194,79 @@ const ORG_PLAN_KINDS = { club: 'club', team: 'team', chapter: 'chapter', org: 'c
 // The group plan (if any) that this club's officer set up for it. Plans carry
 // the club's code, so a club page can show its own plan rather than making an
 // officer go hunting through Settings for it.
+// An officer who doesn't run the plan still sees it (viewOnly), from the
+// club's seats (orgSeats below), so nobody starts a second plan by mistake.
 function orgGroupPlan(o) {
   if (!o || o.local || !_fbUser || !checkoutEnabled()) return null;
   ensureGroupMine();
-  return (window._groupMine?.plans || []).find(p => p.orgCode && p.orgCode === o.code) || null;
+  const mine = (window._groupMine?.plans || []).find(p => p.orgCode && p.orgCode === o.code);
+  if (mine) return mine;
+  const seats = orgSeats(o);
+  return seats?.plan ? { ...seats.plan, viewOnly: true } : null;
+}
+
+/* ── Seats, seen from the club ──────────────────────────────────
+   Which members hold one of the plan's seats, for any officer (the
+   Worker's org-seats). Fetched once per club per app open, and again
+   after anyone leaves or is removed. When someone leaves or an officer
+   removes them, their seat goes back to the plan by itself
+   (release-org-seat), so the next member can take it at no extra cost. */
+const _orgSeatCache = {};
+function orgSeats(o) {
+  if (!o || o.local || !_fbUser || !checkoutEnabled() || !isOrgOfficer(o)) return null;
+  const c = _orgSeatCache[o.code];
+  if (c) return c.data || null;
+  _orgSeatCache[o.code] = { loading: true };
+  groupApi('org-seats', { orgCode: o.code })
+    .then(data => { _orgSeatCache[o.code] = { data }; })
+    .catch(e => { _orgSeatCache[o.code] = { data: null }; diag.warn('clubs', 'Could not load club seats', e); })
+    .finally(() => { if (state.route === 'orgs') render(); });
+  return null;
+}
+// What the Members tab needs: only for a plan that's running.
+function orgSeatInfo(o) {
+  const s = orgSeats(o);
+  if (!s?.plan || !(s.plan.status === 'active' || s.plan.status === 'past_due')) return null;
+  return { plan: s.plan, has: new Set(s.seatUids || []), outside: s.outside || [], canManage: !!s.canManage };
+}
+function forgetOrgSeats(code) { delete _orgSeatCache[code]; window._groupMine = null; }
+// After someone leaves a club (themselves) or is removed (by an officer).
+// Best effort: if it fails, the seat shows under "Holding a seat, not in
+// the club" on the Members tab for a plan admin to free.
+async function releaseOrgSeat(code, uid) {
+  if (!_fbUser || !checkoutEnabled() || !safeId(uid)) return;
+  try {
+    const result = await groupApi('release-org-seat', { orgCode: code, uid });
+    if (!result.released) return;
+    forgetOrgSeats(code);
+    if (uid === _fbUser.uid) afterGroupSeatGone(result.paid);
+    if (state.route === 'orgs' || state.route === 'settings') render();
+  } catch (e) { diag.warn('clubs', 'Could not free a seat', e); }
+}
+function freeOrgSeat(btn, code, planId, uid) {
+  const name = (_orgSeatCache[code]?.data?.outside || []).find(m => m.uid === uid)?.name || 'this person';
+  confirmDialog(`Free ${name}’s seat? They lose Semester HQ Plus through the plan unless they pay themselves, and the seat opens for a member.`, async () => {
+    try {
+      await groupApi('remove-member', { planId, uid });
+      forgetOrgSeats(code);
+      toast('Seat freed', 'success');
+      render();
+    } catch (e) { toast(e.message || 'Couldn’t free that seat', 'error', 5000); }
+  }, 'Free seat');
+}
+async function startPlanCard(btn, planId) {
+  setBtnLoading(btn, true);
+  try { location.href = (await groupApi('card-checkout', { planId })).url; }
+  catch (e) { setBtnLoading(btn, false); toast(e.message || 'Couldn’t open Stripe', 'error', 5000); }
+}
+// A handoff in progress, as the club's Officer home shows it.
+function orgPlanHandoffHtml(plan) {
+  const h = plan.handoff;
+  const me = _fbUser?.uid;
+  if (!h || !me) return '';
+  if (h.to === me) return `<div class="sg-callout small mb-8"><span>${icon('user-plus', 14)}</span><div style="flex:1"><span class="sg-strong">${esc(h.fromName || 'The last admin')} handed this plan to you.</span> It’s still on their card. Put it on yours and receipts come to you; members won’t notice a thing.</div>${plan.viewOnly ? '' : `<button class="btn btn-primary btn-sm" onclick="startPlanCard(this,'${esc(plan.id)}')">Put it on my card</button>`}</div>`;
+  if (h.from === me) return `<div class="sg-callout small mb-8"><span>${icon('clock', 14)}</span><div>Waiting on ${esc(h.toName || 'the new admin')} to put the plan on their card. It stays on yours until then.</div></div>`;
+  return `<p class="small muted mb-8">${esc(h.toName || 'A new admin')} is taking the plan over and still needs to put it on their card.</p>`;
 }
 /* The club Admin tab's plan section: what's paid for, how many seats are
    used, the one link members join with, and a way into the plan's own admin
@@ -226,6 +300,10 @@ function orgPlanPitch(o, { actionsHtml, note }) {
       <p class="small muted">${note(m)}</p>
     </div>
   </section>`;
+}
+function orgPlanAdminNames(plan) {
+  const names = (plan.admins || []).map(a => a.name).filter(Boolean);
+  return names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and ') || 'Its admins';
 }
 function orgPlanAdminCard(o, plan) {
   const kindWord = o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club';
@@ -271,9 +349,13 @@ function orgPlanAdminCard(o, plan) {
       <div class="sg-invite-row"><input class="input" id="oa-plan-link" value="${esc(plan.inviteUrl)}" readonly onclick="this.select()"><button class="btn btn-primary" onclick="copyText('${esc(plan.inviteUrl)}','Seat link copied')">${icon('copy', 13, 1.8)} Copy</button></div>
       <div class="small muted mt-8">Anyone in the ${esc(kindWord)} who opens it and signs in is covered. Members can also join with the ${esc(o.name)} code.</div>
     </div>` : ''}
-    <div class="flex-gap wrap">
+    ${live ? `<p class="small muted mb-8">Someone leaves the ${esc(kindWord)}? Their seat opens up for the next person on its own. Swapping people never changes the bill; only adding seats does.</p>` : ''}
+    ${orgPlanHandoffHtml(plan)}
+    ${plan.viewOnly
+      ? `<p class="small muted">${esc(orgPlanAdminNames(plan))} ${(plan.admins || []).length === 1 ? 'runs' : 'run'} the plan’s billing and seats. See who has a seat on the Members tab.</p>`
+      : `<div class="flex-gap wrap">
       <a class="btn btn-primary btn-sm" href="${GROUP_ADMIN_PAGE}?plan=${encodeURIComponent(plan.id)}">${icon('settings', 13, 1.8)} Seats, billing and members</a>
       ${plan.status === 'pending' ? `<a class="btn btn-sm" href="${GROUP_ADMIN_PAGE}?plan=${encodeURIComponent(plan.id)}">Finish setting it up</a>` : ''}
-    </div>
+    </div>`}
   </div>`;
 }

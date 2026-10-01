@@ -349,8 +349,11 @@ function orgAdminTab(o) {
           </div>
 
           <div class="card card-pad">
-            <h3 class="sg-h3 mb-8">${icon('log-out', 16)} Leaving and closing</h3>
-            <p class="small muted mb-8">${o.local ? 'Removing it clears it from this tab.' : isOrgOwner(o) ? 'As founder, you pick who takes over when you leave.' : 'Leaving takes this club’s events off your calendar. Other members keep theirs.'}</p>
+            <h3 class="sg-h3 mb-8">${icon('log-out', 16)} ${isOrgOwner(o) && !o.local ? 'Handing off and leaving' : 'Leaving and closing'}</h3>
+            ${isOrgOwner(o) && !o.local ? `
+            <p class="small muted mb-8">Graduating or stepping down? Pick who runs ${esc(o.name)} next. They become the founder${plan && !plan.viewOnly && plan.status !== 'canceled' ? ' and take over the group plan' : ''}, and you choose whether to stay on as an officer, step back, or leave.</p>
+            <button class="btn btn-primary btn-sm mb-8" onclick="openOrgHeirModal('${o.code}','officer')">${icon('user-plus', 14)} Hand off leadership</button>` : ''}
+            <p class="small muted mb-8">${o.local ? 'Removing it clears it from this tab.' : isOrgOwner(o) ? 'If you leave, you pick who takes over first.' : 'Leaving takes this club’s events off your calendar. Other members keep theirs.'}</p>
             <div class="sg-danger">
               <button class="btn btn-sm" onclick="confirmLeaveOrg('${o.code}')">${icon('log-out', 14)} ${o.sample ? 'Remove sample' : 'Leave ' + esc(o.name)}</button>
               ${isOrgOwner(o) && !o.local ? `<button class="btn btn-danger btn-sm" onclick="confirmDeleteOrg('${o.code}')">${icon('trash', 14)} Delete for everyone</button>` : ''}
@@ -472,6 +475,8 @@ function removeOrgMember(code, memberUid) {
     const ok = await orgWrite(code, { memberUids: gwRemove(memberUid), officerUids: gwRemove(memberUid), [`people.${memberUid}`]: GW_DELETE, [`rsvp.${memberUid}`]: GW_DELETE, [`titles.${memberUid}`]: GW_DELETE, ...(block ? spaceBlockOp(memberUid, name) : {}) });
     // New links for the club's files, so ones the removed member saved stop working (the Worker, js/orgs/files.js).
     if (ok && !o.local && typeof orgRotateFileLinks === 'function') orgRotateFileLinks(code);
+    // Their seat on the club's group plan goes back for the next member (js/groupplans.js).
+    if (ok && !o.local && typeof releaseOrgSeat === 'function') releaseOrgSeat(code, memberUid);
   } });
 }
 
@@ -525,8 +530,9 @@ function confirmLeaveOrg(code) {
   }
   const others = orgPeople(o).filter(p => p.uid !== myOrgUid(o));
   if (!others.length) { confirmDialog(`You’re the only member, so leaving deletes “${o.name}”.`, () => deleteOrgEverywhere(code), 'Leave and delete'); return; }
-  if (isOrgOwner(o)) { openOrgHeirModal(code); return; }
-  confirmDialog(`Leave “${o.name}”? Its events come off your calendar.`, () => leaveOrg(code), 'Leave');
+  if (isOrgOwner(o)) { openOrgHeirModal(code, 'leave'); return; }
+  const seat = window._licenseDoc?.groupPaid ? ' If the club’s group plan covers your Semester HQ, your seat goes back to the club.' : '';
+  confirmDialog(`Leave “${o.name}”? Its events come off your calendar.${seat}`, () => leaveOrg(code), 'Leave');
 }
 // Who can take over from the founder: officers first, then everyone
 // else, each oldest member first. The earliest-joined officer (or member,
@@ -538,47 +544,84 @@ function orgHeirCandidates(o) {
   const others = orgPeople(o).filter(p => p.uid !== me);
   return [...others.filter(p => p.officer).sort(byJoined), ...others.filter(p => !p.officer).sort(byJoined)];
 }
-function openOrgHeirModal(code) {
+// The founder hands the club on: the next founder, and what happens to
+// the person handing off (stay an officer, step back to a member, or
+// leave). If the founder also runs the club's group plan, the next founder
+// becomes its admin and is asked to put it on their own card; it stays on
+// the founder's card until then (worker/src/groups.js, groupHandoff).
+const ORG_HANDOFF_AFTER = [['officer', 'Stay on as an officer'], ['member', 'Step back to a member'], ['leave', 'Leave the club']];
+function openOrgHeirModal(code, after = 'leave') {
   const o = findOrg(code);
   if (!o || !isOrgOwner(o)) return;
   const list = orgHeirCandidates(o);
-  if (!list.length) return;
+  if (!list.length) { toast('There’s nobody to hand it to yet. Invite someone first.', 'info', 4500); return; }
   const faces = orgFaceColors(o);
+  const plan = typeof orgGroupPlan === 'function' ? orgGroupPlan(o) : null;
+  const myPlan = plan && !plan.viewOnly && plan.status !== 'canceled';
   openModal(`
-    <div class="modal-head"><h3>Who takes over ${esc(o.name)}?</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
+    <div class="modal-head"><h3>Who runs ${esc(o.name)} next?</h3><button class="close-x" aria-label="Close" onclick="closeModal()">${icon('x', 16)}</button></div>
     <div class="modal-body">
-      <p class="small muted mb-8">They become the founder: the one who adds officers. If they aren’t an officer yet, they become one. Then you leave.</p>
-      <div class="org-heir-list" role="radiogroup" aria-label="New founder">${list.map((p, i) => `
+      <p class="small muted mb-8">They become the founder: the one who adds officers. If they aren’t an officer yet, they become one. Everything in ${esc(o.name)} stays as it is.</p>
+      <div class="org-heir-list is-people" role="radiogroup" aria-label="New founder">${list.map((p, i) => `
         <label class="org-heir">
           <input type="radio" name="org-heir" value="${esc(p.uid)}" ${i === 0 ? 'checked' : ''}>
           ${personAvatar(p.uid, p.name, 28, faces[p.uid] || orgColor(o))}
           <span class="org-heir-text"><span class="sg-strong">${esc(p.name)}</span><span class="small muted">${esc(orgRoleLabel(o, p))}${p.joinedAt ? ` · joined ${esc(fmtDate(iso(new Date(p.joinedAt)), { month: 'short', year: 'numeric' }))}` : ''}</span></span>
         </label>`).join('')}
       </div>
+      <div class="small sg-strong mt-16 mb-8">And you?</div>
+      <div class="org-heir-list is-after" role="radiogroup" aria-label="After the handoff">${ORG_HANDOFF_AFTER.map(([k, label]) => `
+        <label class="org-heir"><input type="radio" name="org-after" value="${k}" ${k === after ? 'checked' : ''}><span class="org-heir-text"><span>${label}</span></span></label>`).join('')}
+      </div>
+      ${myPlan ? `<div class="sg-callout small mt-16"><span>${icon('shield', 14)}</span><div>They also take over the <span class="sg-strong">${esc(plan.name || o.name)}</span> group plan and get asked to put it on their own card. It stays on your card until they do. Seats and members don’t change.</div></div>` : ''}
     </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-danger" id="oh-leave" onclick="leaveOrg('${code}', document.querySelector('#modal input[name=org-heir]:checked')?.value)">Hand off and leave</button></div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="oh-leave" onclick="handOffOrg('${code}')">Hand off</button></div>
   `);
 }
-async function leaveOrg(code, heirUid) {
+async function handOffOrg(code) {
   const o = findOrg(code);
   const me = _fbUser?.uid;
-  if (!o || !me) return;
-  if (isOrgOwner(o)) {
-    // Hand the club over first (a founder-only change), then leave as a
-    // regular officer. If the second write fails, the handoff stands.
-    const heir = orgHeirCandidates(o).find(p => p.uid === heirUid) || orgHeirCandidates(o)[0];
-    if (!heir) return;
-    setBtnLoading($('#oh-leave'), true);
-    const handoff = { createdBy: heir.uid };
-    if (!heir.officer) handoff.officerUids = gwUnion(heir.uid);
-    if (!(await orgWrite(code, handoff, { denied: 'Only the founder can hand the club over.' }))) { setBtnLoading($('#oh-leave'), false, 'Hand off and leave'); return; }
-    closeModal();
+  if (!o || !me || !isOrgOwner(o)) return;
+  const heir = orgHeirCandidates(o).find(p => p.uid === document.querySelector('#modal input[name=org-heir]:checked')?.value);
+  const after = document.querySelector('#modal input[name=org-after]:checked')?.value || 'leave';
+  if (!heir) return;
+  const btn = $('#oh-leave');
+  setBtnLoading(btn, true);
+  // The plan first: if that's refused, nothing has changed yet.
+  const plan = typeof orgGroupPlan === 'function' ? orgGroupPlan(o) : null;
+  let planNote = '';
+  if (plan && !plan.viewOnly && plan.status !== 'canceled') {
+    try {
+      const result = await groupApi('handoff', { planId: plan.id, uid: heir.uid, stay: after === 'officer' });
+      planNote = result.removedSelf || !result.plan?.handoff ? ` They run the group plan too.` : ` They’ll be asked to put the group plan on their card.`;
+      forgetOrgSeats(code);
+    } catch (e) { setBtnLoading(btn, false, 'Hand off'); toast(e.message || 'Couldn’t hand off the group plan', 'error', 6000); return; }
   }
+  // Then the club: a founder-only change. Stepping back or leaving drops
+  // officer access in the same write as the handoff.
+  const officers = new Set(o.officerUids);
+  officers.add(heir.uid);
+  if (after !== 'officer') officers.delete(me);
+  if (!(await orgWrite(code, { createdBy: heir.uid, officerUids: [...officers] }, { denied: 'Only the founder can hand the club over.' }))) { setBtnLoading(btn, false, 'Hand off'); return; }
+  closeModal();
+  if (after === 'leave') { await leaveOrg(code, { handedOff: true }); return; }
+  if (after === 'member' && state.orgTab === 'admin') setState({ orgTab: 'overview' });
+  toast(`${heir.name} runs ${o.name} now.${planNote}`, 'success', 6000);
+}
+// handedOff: straight after handOffOrg, before the club's snapshot has
+// caught up with the new founder.
+async function leaveOrg(code, { handedOff = false } = {}) {
+  const o = findOrg(code);
+  const me = _fbUser?.uid;
+  if (!o || !me || (isOrgOwner(o) && !handedOff)) return;   // a founder hands off first (handOffOrg)
   const ops = { memberUids: gwRemove(me), [`people.${me}`]: GW_DELETE, [`rsvp.${me}`]: GW_DELETE };
   if (o.officerUids.includes(me)) ops.officerUids = gwRemove(me);
   if (_orgDocUnsubs[code]) { _orgDocUnsubs[code](); delete _orgDocUnsubs[code]; }
-  if (await orgWrite(code, ops)) dropOrgEntry(code, `You left “${o.name}”.`);
-  else reconcileOrgSubscriptions();
+  if (await orgWrite(code, ops)) {
+    dropOrgEntry(code, `You left “${o.name}”.`);
+    // Your seat on the club's group plan goes back to the club (js/groupplans.js).
+    if (typeof releaseOrgSeat === 'function') releaseOrgSeat(code, me);
+  } else reconcileOrgSubscriptions();
 }
 function confirmDeleteOrg(code) {
   const o = findOrg(code);

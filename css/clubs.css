@@ -77,6 +77,9 @@
 .org-heir { display: grid; grid-template-columns: 20px 28px minmax(0, 1fr); align-items: center; column-gap: 12px; min-height: 52px; padding: 8px 0; border-top: 1px solid var(--border); cursor: pointer; }
 .org-heir:first-child { border-top: 0; }
 .org-heir input { width: 18px; height: 18px; margin: 0; accent-color: var(--text); }
+.org-heir-list.is-people { max-height: 36vh; }
+.org-heir-list.is-after { max-height: none; }
+.org-heir-list.is-after .org-heir { grid-template-columns: 20px minmax(0, 1fr); min-height: 44px; }
 .org-heir-text { display: flex; flex-direction: column; min-width: 0; font-size: var(--fs-lg); }
 /* Group plan seats, as a ring. */
 .org-plan-seats { display: flex; align-items: center; gap: 16px; }
@@ -454,3 +457,9 @@ html.dark .org-month-cell.is-today .org-month-num { box-shadow: 0 0 0 1px var(--
 @media (max-width: 760px), (pointer: coarse) {
   .org-dir-more { width: 44px; min-width: 44px; min-height: 44px; }
 }
+/* Group plan seats on the Members tab (officers only). */
+.org-dir-pill.is-seat { background: var(--space-wash, var(--surface-2)); color: var(--space-text, var(--text)); }
+.org-dir-pill.is-noseat { background: transparent; color: var(--text-dim); box-shadow: inset 0 0 0 1px var(--border); }
+.org-seats-foot > p { display: flex; gap: 8px; align-items: flex-start; margin: 0; }
+.org-seats-foot > p > svg { flex: none; margin-top: 2px; }
+.org-seats-outside .org-dir-row { padding: 8px 0; }

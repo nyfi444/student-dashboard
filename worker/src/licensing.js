@@ -5,7 +5,7 @@
 
 import { logServerIssue } from './diagnostics.js';
 import { encodeEmailDocId, patchFirestoreDoc, readFirestoreDoc, runFirestoreQuery, verifyFirebaseIdToken, writeFirestoreDoc } from './firebase.js';
-import { activateGroupPlan, syncGroupPlan } from './groups.js';
+import { activateGroupPlan, finishGroupCardFromWebhook, syncGroupPlan } from './groups.js';
 import { claimWebhookEvent, jsonError, jsonOk, turnstileOk, underDailyCap, verifiedEmailOf } from './http.js';
 import { startCustomerEmails, stopCustomerEmails } from './onboarding.js';
 import { verifyStripeSignature } from './stripe.js';
@@ -35,6 +35,16 @@ export async function handleStripeWebhook(request, env) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
+    // A group plan admin putting the plan on their own card (a handoff).
+    // Saves a card, charges nothing, and grants nobody anything.
+    if (session.metadata?.kind === 'group-card') {
+      try { await finishGroupCardFromWebhook(env, session); }
+      catch (e) {
+        console.error('Group card change failed', e);
+        return new Response(`Group card change failed: ${e.message}`, { status: 500 });
+      }
+      return new Response('ok', { status: 200 });
+    }
     // A group plan purchase activates the plan, not a license for whoever paid.
     if (session.metadata?.kind === 'group') {
       if (session.payment_status === 'unpaid') return new Response('ok', { status: 200 });

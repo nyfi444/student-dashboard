@@ -25,10 +25,16 @@
    Reads only existing fields. Writes nothing new: Make officer and
    Remove reuse reviewOrgRole and removeOrgMember (js/orgs/admin.js). The
    roster CSV (downloadOrgRosterCsv) keeps its columns.
+
+   Seats (officers, when the club has a running group plan): each row says
+   whether that person holds one of the plan's seats, "No seat" is a
+   filter, and anyone holding a seat who isn't in the club is listed at
+   the bottom, where a plan admin can free it (orgSeatInfo and
+   freeOrgSeat in js/groupplans.js).
    ──────────────────────────────────────────────────────────────── */
 const ORG_MEMBER_SEARCH_FROM = 8;
 const ORG_MEMBER_NEW_DAYS = 30;
-const ORG_MEMBER_FILTERS = [['all', 'All'], ['lead', 'Leadership'], ['member', 'Members'], ['new', 'New this month'], ['owe', 'Hasn’t answered']];
+const ORG_MEMBER_FILTERS = [['all', 'All'], ['lead', 'Leadership'], ['member', 'Members'], ['new', 'New this month'], ['owe', 'Hasn’t answered'], ['noseat', 'No seat']];
 let _orgMemberView = { code: '', filter: 'all', q: '' };
 
 function _orgMemberFor(code) {
@@ -79,11 +85,16 @@ function orgMemberRateHtml(r) {
   const tip = `${r.yes} going, ${r.no} can’t, ${r.none} no answer this term since they joined`;
   return `<span class="org-dir-rate" title="${esc(tip)}"><span class="sr-only">Answered </span><span class="org-dir-rate-n">${r.answered} of ${r.asked}</span><span class="org-dir-meter" aria-hidden="true"><span style="width:${Math.round(r.answered / r.asked * 100)}%"></span></span></span>`;
 }
-function orgMemberRow(o, p, ctx) {
-  const { me, officer, faces, rates, owed, leader } = ctx;
+function orgMemberTags(p, { officer, owed, seats, leader }) {
   const tags = [leader ? 'lead' : 'member'];
   if (orgMemberIsNew(p)) tags.push('new');
   if (officer && owed[p.uid]) tags.push('owe');
+  if (seats && !seats.has.has(p.uid)) tags.push('noseat');
+  return tags;
+}
+function orgMemberRow(o, p, ctx) {
+  const { me, officer, faces, rates, owed, leader, seats } = ctx;
+  const tags = orgMemberTags(p, ctx);
   const hay = `${p.name} ${orgRoleLabel(o, p)}`.toLowerCase();
   const pill = p.owner ? '<span class="org-dir-pill is-founder">Founder</span>'
     : p.officer ? `<span class="org-dir-pill is-officer">${icon('shield', 11)}Officer</span>`
@@ -99,7 +110,7 @@ function orgMemberRow(o, p, ctx) {
           ${personAvatar(p.uid, p.name, 36, faces[p.uid] || orgColor(o))}
           <div class="org-dir-text">
             <div class="org-dir-name">${esc(p.name)}${p.uid === me && p.name !== 'You' ? ' <span class="org-dir-you">(you)</span>' : ''}</div>
-            <div class="org-dir-sub">${p.title ? `<span class="org-dir-role">${esc(p.title)}</span>` : ''}${pill}${joined ? `<span class="org-dir-joined">${esc(joined)}</span>` : ''}</div>
+            <div class="org-dir-sub">${p.title ? `<span class="org-dir-role">${esc(p.title)}</span>` : ''}${pill}${seats ? (seats.has.has(p.uid) ? '<span class="org-dir-pill is-seat">Seat</span>' : '<span class="org-dir-pill is-noseat">No seat</span>') : ''}${joined ? `<span class="org-dir-joined">${esc(joined)}</span>` : ''}</div>
             ${owe ? `<div class="org-dir-owe">Hasn’t answered ${esc(owe[0].title)}, ${esc(fmtDate(owe[0].date, { month: 'short', day: 'numeric' }))}${owe.length > 1 ? ` and ${owe.length - 1} more` : ''}</div>` : ''}
           </div>
           ${officer ? orgMemberRateHtml(rates[p.uid]) : ''}
@@ -119,18 +130,16 @@ function orgMembersTab(o) {
   const rates = {};
   if (officer) people.forEach(p => { rates[p.uid] = orgMemberAnswerRate(o, p, past); });
   const owed = officer ? orgMemberOwed(o) : {};
+  const seats = officer && typeof orgSeatInfo === 'function' ? orgSeatInfo(o) : null;
   const leaders = people.filter(p => orgIsLeader(o, p));
   const others = people.filter(p => !orgIsLeader(o, p)).sort((a, b) => a.name.localeCompare(b.name));
-  const counts = { all: people.length, lead: leaders.length, member: others.length, new: people.filter(p => orgMemberIsNew(p)).length, owe: officer ? people.filter(p => owed[p.uid]).length : 0 };
+  const counts = { all: people.length, lead: leaders.length, member: others.length, new: people.filter(p => orgMemberIsNew(p)).length, owe: officer ? people.filter(p => owed[p.uid]).length : 0, noseat: seats ? people.filter(p => !seats.has.has(p.uid)).length : 0 };
   const filters = ORG_MEMBER_FILTERS.filter(([k]) => k === 'all' || k === 'lead' || k === 'member' || counts[k] > 0);
   if (!filters.some(([k]) => k === st.filter)) st.filter = 'all';
   if (people.length < ORG_MEMBER_SEARCH_FROM) st.q = '';
-  const ctx = { me, officer, faces, rates, owed };
+  const ctx = { me, officer, faces, rates, owed, seats };
   const rows = (list, leader) => list.map(p => orgMemberRow(o, p, { ...ctx, leader })).join('');
-  const shownIn = (list, leader) => list.filter(p => {
-    const tags = [leader ? 'lead' : 'member', ...(orgMemberIsNew(p) ? ['new'] : []), ...(officer && owed[p.uid] ? ['owe'] : [])];
-    return orgMemberMatch(tags, `${p.name} ${orgRoleLabel(o, p)}`.toLowerCase(), st);
-  }).length;
+  const shownIn = (list, leader) => list.filter(p => orgMemberMatch(orgMemberTags(p, { ...ctx, leader }), `${p.name} ${orgRoleLabel(o, p)}`.toLowerCase(), st)).length;
   const leadShown = shownIn(leaders, true), otherShown = shownIn(others, false);
   const chip = ([k, label]) => `<button type="button" class="chip org-dir-chip" data-filter="${k}" aria-pressed="${st.filter === k}" onclick="setOrgMemberFilter('${o.code}','${k}')">${esc(label)}<span class="sr-only">, </span><span class="org-dir-chip-n">${counts[k]}</span></button>`;
   const section = (key, title, note, list, leader, shown) => `
@@ -142,7 +151,7 @@ function orgMembersTab(o) {
   return `
     <div class="org-dir${st.filter === 'owe' ? ' is-owe' : ''}" id="org-member-list" data-code="${esc(o.code)}">
       <div class="org-dir-bar">
-        <div class="org-dir-count">${people.length} member${people.length === 1 ? '' : 's'} · ${leaders.length} in leadership</div>
+        <div class="org-dir-count">${people.length} member${people.length === 1 ? '' : 's'} · ${leaders.length} in leadership${seats ? ` · ${seats.plan.memberCount} of ${seats.plan.seats} seats used` : ''}</div>
         <div class="org-dir-actions">
           ${officer ? `<button class="btn btn-sm" onclick="downloadOrgRosterCsv('${o.code}')">${icon('download', 14)} Export roster</button>` : ''}
           <button class="btn btn-primary btn-sm org-dir-invite" onclick="openOrgInviteModal('${o.code}')">${icon('user-plus', 14)} Invite</button>
@@ -164,6 +173,7 @@ function orgMembersTab(o) {
         <button type="button" class="btn btn-sm" onclick="clearOrgMemberFilter('${o.code}')">Show everyone</button>
       </div>
       ${!others.length && !st.q && st.filter === 'all' ? `<p class="small muted org-dir-empty">No ${esc(general.toLowerCase())} yet. <button class="sg-link" onclick="openOrgInviteModal('${o.code}')">Invite members</button></p>` : ''}
+      ${seats ? orgSeatsFootHtml(o, seats, counts.noseat) : ''}
       <p class="sr-only" id="org-member-status" aria-live="polite"></p>
       ${officer ? `<p class="org-dir-foot">${icon('eye', 14)}<span>Answered counts RSVPs to this term’s events since each person joined. Only officers see it. <button class="sg-link" onclick="setState({orgTab:'admin'});setTimeout(()=>document.getElementById('org-attendance')?.scrollIntoView({block:'start'}),80)">See the RSVP grid</button></span></p>` : ''}
     </div>
@@ -176,6 +186,32 @@ function orgMembersTab(o) {
         <p><span class="sg-strong">Titles:</span> anyone can add one, like Treasurer or Captain. Titles are for show and don’t change what someone can do. A title moves to Leadership once the founder has seen it.</p>
       </div>
     </details>`;
+}
+
+// Under the roster: what an open seat means, and anyone holding a seat
+// who isn't in the club (took one from the plan link, or left before
+// seats freed themselves).
+function orgSeatsFootHtml(o, seats, noSeat) {
+  const open = Math.max(0, seats.plan.seats - seats.plan.memberCount);
+  const kindWord = o.kind === 'team' ? 'team' : o.kind === 'chapter' ? 'chapter' : 'club';
+  const line = noSeat && !open
+    ? `Every seat is taken. ${seats.canManage ? `<a class="sg-link" href="${GROUP_ADMIN_PAGE}?plan=${encodeURIComponent(seats.plan.id)}">Add seats</a>, or free one below.` : `Ask ${esc(orgPlanAdminNames(seats.plan))} to add seats.`}`
+    : noSeat ? `${open} seat${open === 1 ? '' : 's'} open. Members without one can take it from the seat link on Officer home.`
+    : 'Everyone in the club has a seat.';
+  return `
+      <div class="card card-pad org-seats-foot mt-16">
+        <p class="small">${icon('shield', 14)} <span>${line} When someone leaves the ${esc(kindWord)}, their seat opens up for the next person, and swapping people never changes the bill.</span></p>
+        ${seats.outside.length ? `
+        <h3 class="org-dir-title mt-16">Holding a seat, not in the ${esc(kindWord)} <span class="org-dir-n">${seats.outside.length}</span></h3>
+        <p class="small muted mb-8">They took a seat from the plan link but aren’t in ${esc(o.name)}.${seats.canManage ? ' Free a seat and it opens for a member.' : ` ${esc(orgPlanAdminNames(seats.plan))} can free these.`}</p>
+        <div class="org-seats-outside">${seats.outside.map(m => `
+          <div class="org-dir-row">
+            ${personAvatar(m.uid, m.name, 32, orgColor(o))}
+            <div class="org-dir-text"><div class="org-dir-name">${esc(m.name)}</div></div>
+            ${seats.canManage ? `<div class="org-dir-act"><button class="btn btn-sm" onclick="freeOrgSeat(this,'${o.code}','${esc(seats.plan.id)}','${esc(m.uid)}')">Free seat</button></div>` : ''}
+          </div>`).join('')}
+        </div>` : ''}
+      </div>`;
 }
 
 /* ── Filtering in place ─────────────────────────────────────────── */
