@@ -244,7 +244,12 @@ function reconcileGroupSubscriptions() {
     if (_groupDocUnsubs[code]) return;
     _groupDocUnsubs[code] = _fbDb.collection('studyGroups').doc(code).onSnapshot(
       doc => onGroupSnapshot(code, doc),
-      err => { _groupLoadErrors[code] = err; diag.error('studygroups', 'Group listener failed', err); renderRemote(); },
+      err => {
+        // Groups are members-only, so a removed member's listener is refused
+        // rather than handed a list without them in it (js/spaces/preview.js).
+        if (err?.code === 'permission-denied') { spaceGoneOrRemoved('group', code); return; }
+        _groupLoadErrors[code] = err; diag.error('studygroups', 'Group listener failed', err); renderRemote();
+      },
     );
   });
 }
@@ -267,6 +272,7 @@ function onGroupSnapshot(code, doc) {
   }
   _liveGroups[code] = data;
   persistGroupCache();
+  if (typeof spacePreviewKeep === 'function') spacePreviewKeep('group', code, data, { fromCache: doc.metadata.fromCache, pending: doc.metadata.hasPendingWrites });
   if (entry.name !== data.name) { entry.name = data.name; save(); }
   if (!doc.metadata.hasPendingWrites) {
     const ops = {};
@@ -334,9 +340,35 @@ function joinOps(myUid) {
 // converting a first-version doc to the current format along the way.
 // localLegacy is an old full-copy group from this planner, used to
 // recreate a group whose creator never synced it.
-async function ensureGroupMembership(code, localLegacy = null) {
+async function ensureGroupMembership(code, localLegacy = null, { joining = false } = {}) {
   const myUid = _fbUser.uid;
   const ref = _fbDb.collection('studyGroups').doc(code);
+  let items = [], name = '';
+  try {
+    // Someone joining with a code can't read a members-only group first, so
+    // they skip straight to adding themselves (below).
+    if (joining && !localLegacy) throw Object.assign(new Error('joining'), { code: 'permission-denied' });
+    await ensureGroupMembershipTx(ref, code, myUid, localLegacy, (n, it) => { name = n; items = it; });
+  } catch (e) {
+    // They add themselves without reading it; the rules allow exactly that,
+    // unless the owner blocked them.
+    if (e?.code !== 'permission-denied' || localLegacy) throw e;
+    try { await ref.update(joinOps(myUid)); }
+    catch (e2) {
+      if (e2?.code === 'not-found') throw new Error('No group found with that code. Double-check it with whoever invited you.');
+      if (e2?.code === 'permission-denied') throw new Error('You can’t join this group. Ask its owner if you think that’s a mistake.');
+      throw e2;
+    }
+    name = (await ref.get()).data()?.name || '';
+  }
+  for (const it of items) {
+    try { await addCloudGroupItem(code, it); } catch (e) { diag.warn('studygroups', 'Could not move a shared item to the new format', e); }
+  }
+  return name;
+}
+// The member's own path: read the group, convert a first-version one, and
+// join if not in it yet. done(name, itemsToMove) reports what it found.
+async function ensureGroupMembershipTx(ref, code, myUid, localLegacy, done) {
   let items = [], name = '';
   await _fbDb.runTransaction(async (tx) => {
     items = [];
@@ -356,10 +388,7 @@ async function ensureGroupMembership(code, localLegacy = null) {
     }
     if (!(data.memberUids || []).includes(myUid)) tx.update(ref, joinOps(myUid));
   });
-  for (const it of items) {
-    try { await addCloudGroupItem(code, it); } catch (e) { diag.warn('studygroups', 'Could not move a shared item to the new format', e); }
-  }
-  return name;
+  done(name, items);
 }
 async function adoptGroupEntry(entry) {
   try {
@@ -387,8 +416,9 @@ async function uploadLocalGroup(entry) {
 async function unusedGroupCode() {
   for (let i = 0; i < 6; i++) {
     const code = genGroupCode();
-    try { const snap = await _fbDb.collection('studyGroups').doc(code).get(); if (!snap.exists) return code; }
-    catch { return code; } // offline: a collision is astronomically unlikely, and set() would be rejected by the rules anyway
+    // Groups are members-only, so the public preview is what can be checked.
+    try { const snap = await spacePreviewRef('group', code).get(); if (!snap.exists) return code; }
+    catch { return code; } // offline or refused: a collision is astronomically unlikely, and set() would be rejected by the rules anyway
   }
   return genGroupCode();
 }
@@ -526,9 +556,9 @@ async function handlePendingJoin() {
     return;
   }
   try {
-    const snap = await _fbDb.collection('studyGroups').doc(code).get();
-    if (!snap.exists) { clearPendingJoin(); toast('That invite link doesn’t match a group anymore. Ask for a new one.', 'error', 5000); return; }
-    showJoinPreview(code, snap.data());
+    const found = await spaceLookup('group', code);   // js/spaces/preview.js
+    if (found.from === 'none') { clearPendingJoin(); toast('That invite link doesn’t match a group anymore. Ask for a new one.', 'error', 5000); return; }
+    showJoinPreview(code, found.data);
   } catch (e) { diag.warn('studygroups', 'Could not load invite', e); }
 }
 // Shown on the paywall when someone followed an invite link but hasn't
@@ -539,8 +569,8 @@ function pendingInviteBanner() {
   if (!code) return '';
   if (window._pendingInviteName === undefined && _fbUser && _fbDb) {
     window._pendingInviteName = null;
-    _fbDb.collection('studyGroups').doc(code).get()
-      .then(snap => { if (snap.exists) { window._pendingInviteName = snap.data().name || null; render(); } })
+    spaceLookup('group', code)
+      .then(found => { if (found.data?.name) { window._pendingInviteName = found.data.name; render(); } })
       .catch(() => {});
   }
   const name = window._pendingInviteName;

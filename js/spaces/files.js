@@ -336,7 +336,7 @@ function libDetail(it) {
   }
   if (it.kind === 'file') {
     if (libIsImage(it)) return `<div class="lib-sheet-img-box"><img class="lib-sheet-img" src="${esc(it.url)}" alt="${esc(it.title)}" decoding="async"></div>`;
-    return `<div class="lib-sheet-file"><span class="lib-ext">${esc(libExtLabel(it.fileName || it.title))}</span><div class="lib-sheet-file-text"><div class="lib-sheet-row-title">${esc(it.fileName || it.title)}</div><div class="lib-sheet-row-sub">${esc(it.size ? fmtFileSize(it.size) : 'Size unknown')}</div></div></div>${it.url ? '' : '<p class="lib-sheet-empty">This file isn’t available on this device.</p>'}`;
+    return `<div class="lib-sheet-file"><span class="lib-ext">${esc(libExtLabel(it.fileName || it.title))}</span><div class="lib-sheet-file-text"><div class="lib-sheet-row-title">${esc(it.fileName || it.title)}</div><div class="lib-sheet-row-sub">${esc(it.size ? fmtFileSize(it.size) : 'Size unknown')}</div></div></div>${it.url || it.path ? '' : '<p class="lib-sheet-empty">This file isn’t available on this device.</p>'}`;
   }
   if (it.kind === 'link') {
     const host = hostOf(it.url) || 'link';

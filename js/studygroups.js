@@ -404,13 +404,13 @@ async function lookupJoinCode() {
   const btn = $('#jf-btn');
   setBtnLoading(btn, true);
   try {
-    const snap = await _fbDb.collection('studyGroups').doc(code).get();
-    if (!snap.exists) {
+    const found = await spaceLookup('group', code);   // js/spaces/preview.js
+    if (found.from === 'none') {
       setBtnLoading(btn, false, 'Find group');
       $('#jf-result').innerHTML = `<div class="sg-callout small"><div>No group uses the code <strong>${esc(code)}</strong>. Double-check it with whoever invited you.</div></div>`;
       return;
     }
-    showJoinPreview(code, snap.data());
+    showJoinPreview(code, found.data);
   } catch (e) {
     setBtnLoading(btn, false, 'Find group');
     toast('Couldn’t look that up. Check your connection and try again.', 'error');
@@ -440,7 +440,7 @@ async function confirmJoinGroup(code) {
   const btn = $('#jf-confirm');
   setBtnLoading(btn, true);
   try {
-    const name = await ensureGroupMembership(code);
+    const name = await ensureGroupMembership(code, null, { joining: true });
     clearPendingJoin();
     replaceWithCloudEntry(code, name);
     reconcileGroupSubscriptions();
@@ -450,9 +450,10 @@ async function confirmJoinGroup(code) {
     openGroup(code);
     toast(`You joined ${name}`);
   } catch (e) {
-    if (!e.message?.startsWith('No group')) diag.error('studygroups', 'Join failed', e);
+    const said = e.message?.startsWith('No group') || e.message?.startsWith('You can’t join');
+    if (!said) diag.error('studygroups', 'Join failed', e);
     setBtnLoading(btn, false, 'Join group');
-    toast(e.message?.startsWith('No group') ? e.message : 'Couldn’t join. Check your connection and try again.', 'error', 5000);
+    toast(said ? e.message : 'Couldn’t join. Check your connection and try again.', 'error', 5000);
   }
 }
 function groupInviteLink(code) {
@@ -514,6 +515,7 @@ function openGroupSettingsModal(code) {
           <div class="row-title small">${esc(p.name)}${p.uid === u && p.name !== 'You' ? ' <span class="muted">(you)</span>' : ''}</div>
           ${p.role === 'owner' ? '<span class="small muted">Owner</span>' : isOwner && !g.local && p.uid !== u ? `<button class="btn btn-ghost btn-sm" onclick="confirmRemoveMember('${code}','${esc(p.uid)}')">Remove</button>` : ''}
         </div>`).join('')}
+      ${spaceBlockedHtml('group', g, isOwner && !g.local)}
       <div class="divider"></div>
       <div class="sg-danger">
         <button class="btn btn-sm" onclick="confirmLeaveGroup('${code}')">${icon('log-out', 14)} ${g.sample ? 'Remove sample group' : 'Leave group'}</button>
@@ -542,9 +544,11 @@ async function saveGroupSettings(code) {
 }
 function confirmRemoveMember(code, memberUid) {
   const g = findGroup(code);
-  confirmDialog(`Remove ${personName(g, memberUid)} from ${g.name}? They can rejoin only if someone shares the code again.`, () => {
-    groupWrite(code, { memberUids: gwRemove(memberUid), [`people.${memberUid}`]: GW_DELETE, [`avail.${memberUid}`]: GW_DELETE, ...groupDepartureOps(findGroup(code), memberUid) });
-  }, 'Remove');
+  if (!g || !safeId(memberUid)) return;
+  const name = personName(g, memberUid);
+  spaceRemoveDialog({ name, spaceName: g.name, canBlock: !g.local, onRemove: (block) => {   // js/spaces/preview.js
+    groupWrite(code, { memberUids: gwRemove(memberUid), [`people.${memberUid}`]: GW_DELETE, [`avail.${memberUid}`]: GW_DELETE, ...groupDepartureOps(findGroup(code), memberUid), ...(block ? spaceBlockOp(memberUid, name) : {}) });
+  } });
 }
 function confirmLeaveGroup(code) {
   const g = findGroup(code);
@@ -593,6 +597,7 @@ async function deleteGroupEverywhere(code) {
       }
     }
     if (_groupDocUnsubs[code]) { _groupDocUnsubs[code](); delete _groupDocUnsubs[code]; }
+    await spacePreviewRemove('group', code);   // while still the owner, so the rules allow it
     await ref.delete();
     dropGroupEntry(code, `Deleted “${g?.name || 'the group'}”.`);
   } catch (e) {

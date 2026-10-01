@@ -162,7 +162,11 @@ function reconcileOrgSubscriptions() {
   Object.keys(_orgDocUnsubs).forEach(code => { if (!want.has(code)) { _orgDocUnsubs[code](); delete _orgDocUnsubs[code]; } });
   want.forEach(code => {
     if (_orgDocUnsubs[code]) return;
-    _orgDocUnsubs[code] = _fbDb.collection('orgs').doc(code).onSnapshot(doc => onOrgSnapshot(code, doc), err => { _orgLoadErrors[code] = err; diag.error('clubs', 'Club listener failed', err); renderRemote(); });
+    _orgDocUnsubs[code] = _fbDb.collection('orgs').doc(code).onSnapshot(doc => onOrgSnapshot(code, doc), err => {
+      // Clubs are members-only, so a removed member's listener is refused.
+      if (err?.code === 'permission-denied') { spaceGoneOrRemoved('club', code); return; }
+      _orgLoadErrors[code] = err; diag.error('clubs', 'Club listener failed', err); renderRemote();
+    });
   });
 }
 function onOrgSnapshot(code, doc) {
@@ -178,6 +182,7 @@ function onOrgSnapshot(code, doc) {
   const before = _liveOrgs[code];
   _liveOrgs[code] = data;
   persistOrgCache();
+  if (typeof spacePreviewKeep === 'function') spacePreviewKeep('club', code, data, { fromCache: doc.metadata.fromCache, pending: doc.metadata.hasPendingWrites });
   if (entry.name !== data.name) { entry.name = data.name; save(); }
   if (!doc.metadata.hasPendingWrites && data.people?.[_fbUser.uid] && data.people[_fbUser.uid].name !== myGroupName()) orgWrite(code, { [`people.${_fbUser.uid}.name`]: myGroupName() });
   // A new announcement while the app is open.
@@ -219,7 +224,8 @@ function orgLoadNotice(o) {
 async function unusedOrgCode() {
   for (let i = 0; i < 6; i++) {
     const code = genGroupCode();
-    try { const snap = await _fbDb.collection('orgs').doc(code).get(); if (!snap.exists) return code; } catch { return code; }
+    // Clubs are members-only, so the public preview is what can be checked.
+    try { const snap = await spacePreviewRef('club', code).get(); if (!snap.exists) return code; } catch { return code; }
   }
   return genGroupCode();
 }
@@ -282,5 +288,5 @@ async function handlePendingOrg() {
     openOrg(code, tab && orgTabsFor(findOrg(code) || {}).some(([k]) => k === tab) ? tab : undefined);
     return;
   }
-  try { const snap = await _fbDb.collection('orgs').doc(code).get(); if (snap.exists) showOrgPreview(code, snap.data()); else clearPendingOrg(); } catch {}
+  try { const found = await spaceLookup('club', code); if (found.from !== 'none') showOrgPreview(code, found.data); else clearPendingOrg(); } catch {}
 }

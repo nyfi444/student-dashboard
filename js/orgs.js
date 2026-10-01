@@ -567,9 +567,9 @@ async function lookupOrgCode() {
   const btn = $('#oj-btn');
   setBtnLoading(btn, true);
   try {
-    const snap = await _fbDb.collection('orgs').doc(code).get();
-    if (!snap.exists) { setBtnLoading(btn, false, 'Find'); $('#oj-result').innerHTML = `<div class="sg-callout small"><div>Nothing uses the code <strong>${esc(code)}</strong>. Double-check it with an officer.</div></div>`; return; }
-    showOrgPreview(code, snap.data());
+    const found = await spaceLookup('club', code);   // js/spaces/preview.js
+    if (found.from === 'none') { setBtnLoading(btn, false, 'Find'); $('#oj-result').innerHTML = `<div class="sg-callout small"><div>Nothing uses the code <strong>${esc(code)}</strong>. Double-check it with an officer.</div></div>`; return; }
+    showOrgPreview(code, found.data);
   } catch { setBtnLoading(btn, false, 'Find'); toast('Couldn’t look that up. Check your connection.', 'error'); }
 }
 function showOrgPreview(code, data) {
@@ -600,14 +600,17 @@ async function confirmJoinOrg(code) {
   try {
     const myUid = _fbUser.uid;
     const ref = _fbDb.collection('orgs').doc(code);
-    let name = '';
-    await _fbDb.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error('That club doesn’t exist anymore.');
-      const data = snap.data();
-      name = data.name;
-      if (!(data.memberUids || []).includes(myUid)) tx.update(ref, { memberUids: firebase.firestore.FieldValue.arrayUnion(myUid), [`people.${myUid}`]: { name: myGroupName(), joinedAt: Date.now(), title }, updatedAt: Date.now() });
-    });
+    // Clubs are members-only, so joining can't read the club first: add
+    // yourself without reading it. The rules allow exactly that, unless an
+    // officer blocked you.
+    try {
+      await ref.update({ memberUids: firebase.firestore.FieldValue.arrayUnion(myUid), [`people.${myUid}`]: { name: myGroupName(), joinedAt: Date.now(), title }, updatedAt: Date.now() });
+    } catch (e) {
+      if (e?.code === 'not-found') throw new Error('That club doesn’t exist anymore.');
+      if (e?.code === 'permission-denied') throw new Error('You can’t join this club. Ask one of its officers if you think that’s a mistake.');
+      throw e;
+    }
+    const name = (await ref.get()).data()?.name || 'the club';
     clearPendingOrg();
     state.orgs = [...orgEntries().filter(e => e.code !== code), { code, cloud: true, name, joinedAt: Date.now() }];
     save();
@@ -620,7 +623,9 @@ async function confirmJoinOrg(code) {
     toast(`You joined ${name}. Its events are on your calendar now.`, 'success', 4500);
   } catch (e) {
     setBtnLoading(btn, false, 'Join');
-    toast(e.message?.startsWith('That club') ? e.message : 'Couldn’t join. Check your connection and try again.', 'error', 5000);
+    const said = e.message?.startsWith('That club') || e.message?.startsWith('You can’t join');
+    if (!said) diag.error('clubs', 'Join failed', e);
+    toast(said ? e.message : 'Couldn’t join. Check your connection and try again.', 'error', 5000);
   }
 }
 /* ── Sample clubs for looking around ───────────────────────────── */

@@ -467,7 +467,12 @@ function removeOrgMember(code, memberUid) {
   const o = findOrg(code);
   if (!o || !safeId(memberUid)) return;
   const name = orgPeople(o).find(p => p.uid === memberUid)?.name || 'this member';
-  confirmDialog(`Remove ${name} from ${o.name}?`, () => orgWrite(code, { memberUids: gwRemove(memberUid), officerUids: gwRemove(memberUid), [`people.${memberUid}`]: GW_DELETE, [`rsvp.${memberUid}`]: GW_DELETE, [`titles.${memberUid}`]: GW_DELETE }), 'Remove');
+  closeModal();
+  spaceRemoveDialog({ name, spaceName: o.name, canBlock: !o.local, onRemove: async (block) => {   // js/spaces/preview.js
+    const ok = await orgWrite(code, { memberUids: gwRemove(memberUid), officerUids: gwRemove(memberUid), [`people.${memberUid}`]: GW_DELETE, [`rsvp.${memberUid}`]: GW_DELETE, [`titles.${memberUid}`]: GW_DELETE, ...(block ? spaceBlockOp(memberUid, name) : {}) });
+    // New links for the club's files, so ones the removed member saved stop working (the Worker, js/orgs/files.js).
+    if (ok && !o.local && typeof orgRotateFileLinks === 'function') orgRotateFileLinks(code);
+  } });
 }
 
 /* ── Settings, leave, delete ────────────────────────────── */
@@ -489,6 +494,7 @@ function openOrgSettingsModal(code) {
       ` : `<p class="small muted mb-8">Officers manage the details. You can leave any time.</p>`}
       <div class="flex-between small mb-8"><span>Your title: <span class="sg-strong">${esc(orgTitleOf(o, myOrgUid(o)) || (isOrgOwner(o) ? 'Founder' : isOrgOfficer(o) ? 'Officer' : orgGeneralLabel(o)))}</span></span><button class="sg-link" onclick="openMyOrgTitleModal('${code}')">Change</button></div>
       <label class="checkbox-row small"><input type="checkbox" ${o.hideCalendar ? '' : 'checked'} onchange="setOrgOnCalendar('${code}',this.checked)"><span>Show events on my calendar</span></label>
+      ${spaceBlockedHtml('club', o, officer && !o.local)}
       <div class="divider"></div>
       <div class="sg-danger">
         <button class="btn btn-sm" onclick="confirmLeaveOrg('${code}')">${icon('log-out', 14)} ${o.sample ? 'Remove sample' : 'Leave'}</button>
@@ -588,7 +594,8 @@ async function deleteOrgEverywhere(code) {
       const msgs = await _fbDb.collection('orgs').doc(code).collection('messages').limit(450).get();
       if (!msgs.empty) { const batch = _fbDb.batch(); msgs.docs.forEach(d => batch.delete(d.ref)); await batch.commit(); }
     } catch (e) { diag.warn('clubs', 'Could not clear club chat', e); }
-    if (o) orgFileList(o).filter(f => f.kind === 'file' && String(f.url || '').includes('firebasestorage')).forEach(f => fbStorage().then(s => s.refFromURL(f.url).delete()).catch(() => {}));
+    if (o) orgFileList(o).filter(f => f.kind === 'file').forEach(f => orgFileStorageRef(f).then(r => r?.delete()).catch(() => {}));
+    await spacePreviewRemove('club', code);   // while still the founder, so the rules allow it
     await _fbDb.collection('orgs').doc(code).delete();
     dropOrgEntry(code, `Deleted “${o?.name || 'the club'}”.`);
   } catch (e) { diag.error('clubs', 'Delete club failed', e); reconcileOrgSubscriptions(); toast('Couldn’t delete it. Check your connection.', 'error'); }

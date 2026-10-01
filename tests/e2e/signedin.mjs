@@ -113,6 +113,10 @@ async function isolate(page, problems) {
     // What the real one refuses and stores is tested in worker-forms.mjs;
     // here it lets the screens on both sides be driven for real.
     if (path === '/form/answer') return json(...await standInForFormAnswer(route.request().postDataJSON()));
+    // New links for a club's files after an officer removes someone
+    // (worker/src/spaces.js, tested in worker-spaces.mjs). Counted, so a
+    // test can see the app asked.
+    if (path === '/space/rotate-files') { page._rotateCalls = (page._rotateCalls || 0) + 1; return json(200, { ok: true, rotated: 0, moved: 0 }); }
     if (path === '/log-error') {
       let report = '';
       try { report = JSON.stringify(route.request().postDataJSON()).slice(0, 500); } catch {}

@@ -270,42 +270,52 @@ function inviteLegacyPrint(html, title) {
 /* ── Join preview and the signed-out invite ── */
 // Cover, crest, name, kind or class · school · N members, the next event,
 // one big Join. No faces or names: this person is not a member yet.
+// data is the space's public preview (js/spaces/preview.js), or, for a
+// space made before previews existed, the space itself, or null when
+// nothing about it is readable: then the card shows the code alone and
+// joining is what finds out whether the code is right.
 function inviteJoinPreview(kind, code, data) {
   const isClub = kind === 'club';
+  const preview = typeof spacePreviewIsPreview === 'function' && spacePreviewIsPreview(data);
+  const known = !!data;
+  const d = data || {};
   let s, count, next, extra = '', confirmId, confirmJs, notNowJs, verb;
   if (isClub) {
-    // Straight from the doc: orgView only knows clubs this person is already in.
-    const o = { ...data, code, local: false, people: data.people || {}, memberUids: data.memberUids || [], officerUids: data.officerUids || [], events: data.events || {}, rsvp: data.rsvp || {}, titles: data.titles || {} };
+    // The preview, or straight from the doc: orgView only knows clubs this person is already in.
+    const o = { ...d, code, local: false, people: preview ? {} : d.people || {}, memberUids: preview ? [] : d.memberUids || [], officerUids: [], events: preview ? {} : d.events || {}, rsvp: {}, titles: {}, links: preview ? [] : d.links };
     s = inviteSpaceOf(o, 'club');
-    count = o.memberUids.length;
-    const e = upcomingOrgEvents(o)[0];
+    count = preview ? d.memberCount : o.memberUids.length;
+    const e = preview ? d.next : upcomingOrgEvents(o)[0];
     next = e ? `${esc(e.title)} · ${fmtSessionDay(e.date)}${e.start ? ` at ${fmtTime(e.start)}` : ''}` : '';
-    extra = `${orgLinksHtml(o) ? `<div class="invite-join-links">${orgLinksHtml(o)}</div>` : ''}<div class="invite-join-fields">${orgRoleFieldsHtml(o, '', 'oj')}</div>`;
+    extra = `${!preview && orgLinksHtml(o) ? `<div class="invite-join-links">${orgLinksHtml(o)}</div>` : ''}<div class="invite-join-fields">${orgRoleFieldsHtml(o, '', 'oj')}</div>`;
     confirmId = 'oj-confirm'; confirmJs = `confirmJoinOrg('${code}')`; notNowJs = 'clearPendingOrg();closeModal()'; verb = 'Join';
   } else {
-    const g = normalizeGroup({ ...data, code });
+    const g = normalizeGroup({ ...d, code });
     s = inviteSpaceOf(g, 'group');
-    count = data.v === 2 ? groupPeople(g).length : (data.members || []).length;
-    const n = data.v === 2 ? upcomingSessions(g)[0] : null;
-    next = n ? `${esc(n.title)} · ${fmtSessionWhen(n)}` : '';
+    count = preview ? d.memberCount : d.v === 2 ? groupPeople(g).length : (d.members || []).length;
+    const n = preview ? d.next : d.v === 2 ? upcomingSessions(g)[0] : null;
+    next = n ? `${esc(n.title)} · ${preview ? `${fmtSessionDay(n.date)}${n.start ? ` at ${fmtTime(n.start)}` : ''}` : fmtSessionWhen(n)}` : '';
     confirmId = 'jf-confirm'; confirmJs = `confirmJoinGroup('${code}')`; notNowJs = 'clearPendingJoin();closeModal()'; verb = 'Join';
   }
-  const meta = [esc(s.sub), count ? `${count} member${count === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
-  const desc = data.description ? cleanStr(data.description, 200) : '';
+  const meta = known ? [esc(s.sub), count ? `${count} member${count === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ') : '';
+  const desc = d.description ? cleanStr(d.description, 200) : '';
+  const name = known ? s.name : (isClub ? `the club ${code}` : `the group ${code}`);
   openModal(`
     <div class="space invite-join" style="${inviteRootStyle(s)}">
       <div class="invite-join-cover space-cover" data-pattern="${spacePattern(code)}">
         <button class="close-x invite-close" aria-label="Close" onclick="${notNowJs}">${icon('x', 16)}</button>
       </div>
       <div class="modal-body invite-join-body">
-        ${spaceCrest(s.crest, 'xl')}
+        ${known ? spaceCrest(s.crest, 'xl') : `<span class="space-crest is-xl" aria-hidden="true"><span class="space-crest-main">${icon(isClub ? 'flag' : 'users', 26)}</span></span>`}
         <div class="eyebrow invite-eyebrow">You’re invited</div>
-        <h3 class="invite-join-name">${esc(s.name)}</h3>
+        <h3 class="invite-join-name">${known ? esc(s.name) : (isClub ? 'Join a club' : 'Join a study group')}</h3>
+        ${known ? '' : inviteCodeTiles(code, 'sg-invite-code small-code')}
         ${meta ? `<div class="small muted invite-join-meta">${meta}</div>` : ''}
         ${desc ? `<p class="small invite-join-desc">${esc(desc)}</p>` : ''}
+        ${known ? '' : `<p class="small muted invite-join-desc">Only members can see ${isClub ? 'a club' : 'a group'}, so its details show once you’re in.</p>`}
         ${next ? `<div class="invite-join-next small"><span class="invite-join-next-k">Next</span> ${next}</div>` : ''}
         ${extra}
-        <button class="btn btn-primary invite-join-btn" id="${confirmId}" onclick="${confirmJs}">${verb} ${esc(s.name)}</button>
+        <button class="btn btn-primary invite-join-btn" id="${confirmId}" onclick="${confirmJs}">${verb} ${esc(name)}</button>
         <button class="sg-link invite-join-notnow" onclick="${notNowJs}">Not now</button>
       </div>
     </div>

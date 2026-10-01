@@ -22,6 +22,8 @@ async function addCourse(page, name, code) {
 }
 
 test('a paying student’s semester is saved to their account and survives a reload', async ({ page }) => {
+  // The first signed-in test of a run meets cold emulators; alone it takes ~16s.
+  test.setTimeout(60_000);
   const alice = await newAccount('alice');
   const console_ = await openSignedIn(page, alice);
 

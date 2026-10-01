@@ -7,14 +7,80 @@ function orgFileList(o) {
     .map(f => ({ ...f, title: cleanStr(f.title, 120) || 'File', name: cleanStr(f.name, 60) || 'An officer', size: Number(f.size) || 0 }))
     .sort((a, b) => (b.at || 0) - (a.at || 0));
 }
+// A club file shared since Oct 2026 keeps only where it lives in Storage
+// (files.{id}.path). The link to it is asked for when someone opens it, and
+// the Storage rules hand it only to members, so the club no longer carries a
+// list of every file's permanent link. Older files carry url until the
+// Worker's file-link rotation moves them to path.
+const _orgFileLinks = {};   // path -> download link, this session
+function orgFilePath(o, f) {
+  const p = String(f.path || '');
+  return p.startsWith(`orgs/${o.code}/files/`) && !p.includes('..') ? p : '';
+}
 function orgFileUrl(o, f) {
   const url = String(f.url || '');
   if (isHttpUrl(url)) return url;
-  return o.local && url.startsWith('data:') ? url : '';
+  if (o.local && url.startsWith('data:')) return url;
+  const path = orgFilePath(o, f);
+  return path ? (_orgFileLinks[path] || '') : '';
+}
+async function orgFileStorageRef(f) {
+  const st = await fbStorage();
+  if (typeof f.path === 'string' && f.path.startsWith('orgs/')) return st.ref(f.path);
+  return String(f.url || '').includes('firebasestorage') ? st.refFromURL(f.url) : null;
+}
+async function orgFileLink(path) {
+  if (_orgFileLinks[path]) return _orgFileLinks[path];
+  const url = await (await fbStorage()).ref(path).getDownloadURL();
+  _orgFileLinks[path] = url;
+  return url;
+}
+// The window opens inside the tap (Safari blocks one opened after a wait)
+// and is pointed at the file once the link arrives.
+async function openOrgFile(code, id) {
+  const o = findOrg(code);
+  const f = o && orgFileList(o).find(x => x.id === id);
+  const path = f && orgFilePath(o, f);
+  if (!path) return;
+  const w = window.open('', '_blank');
+  try {
+    const url = await orgFileLink(path);
+    if (w) { w.opener = null; w.location.href = url; } else location.href = url;
+  } catch (e) {
+    if (w) w.close();
+    diag.warn('clubs', 'A club file didn’t open', e);
+    toast('That file didn’t open. Check your connection, or ask an officer to share it again.', 'error', 5000);
+  }
+}
+// After an officer removes someone: the Worker gives every club file a new
+// token and moves older files from a stored link to a stored path, so a
+// link the removed member saved stops working. Best effort; the removal
+// itself has already happened.
+async function orgRotateFileLinks(code) {
+  if (!_fbUser || !cloudGroupsEnabled()) return;
+  const o = findOrg(code);
+  if (!o || !orgFileList(o).some(f => f.kind === 'file')) return;
+  try {
+    const idToken = await _fbUser.getIdToken();
+    const res = await fetch(`${WORKER_URL}/space/rotate-files`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idToken, kind: 'club', code }) });
+    if (!res.ok) throw new Error(`rotate-files ${res.status}`);
+    Object.keys(_orgFileLinks).filter(p => p.startsWith(`orgs/${code}/`)).forEach(p => { delete _orgFileLinks[p]; _orgThumbAsked.delete(p); });
+  } catch (e) { diag.warn('clubs', 'New file links after a removal didn’t go through', e); }
+}
+// Image thumbnails need the link up front: asked for once per image while
+// the Files tab is drawn, then the tab redraws with it.
+const _orgThumbAsked = new Set();
+function orgAskThumb(path) {
+  if (_orgThumbAsked.has(path) || _orgFileLinks[path] || !cloudGroupsEnabled()) return;
+  _orgThumbAsked.add(path);
+  orgFileLink(path).then(() => renderRemote()).catch(() => {});
 }
 // The library's item model (see js/spaces/files.js) for a club file.
 function orgLibItem(o, f) {
-  return { id: f.id, kind: f.kind, title: f.title, by: f.name, at: Number(f.at) || 0, url: orgFileUrl(o, f), fileName: typeof f.fileName === 'string' ? f.fileName : '', size: f.size, pinned: false };
+  const path = orgFilePath(o, f);
+  const url = orgFileUrl(o, f);
+  if (path && !url && /\.(png|jpe?g|gif|webp|heic)$/i.test(f.fileName || '')) orgAskThumb(path);
+  return { id: f.id, kind: f.kind, title: f.title, by: f.name, at: Number(f.at) || 0, url, path, fileName: typeof f.fileName === 'string' ? f.fileName : '', size: f.size, pinned: false };
 }
 function orgLibItems(o) { return orgFileList(o).map(f => orgLibItem(o, f)); }
 // The Overview rail keeps a compact row (compact is the only form now; the
@@ -24,9 +90,10 @@ function orgFileRow(o, f) {
   return libRow('club', o.code, it, orgLibPrimary(o, it, false));
 }
 function orgLibPrimary(o, it, sheet) {
-  if (!it.url) return '';
   const cls = `btn${sheet ? ' btn-primary' : ' btn-sm'}`;
   const is = sheet ? 16 : 14;
+  if (it.kind === 'file' && it.path && !it.url) return `<button type="button" class="${cls}" onclick="openOrgFile('${o.code}','${esc(it.id)}')">${icon('download', is)}Open</button>`;
+  if (!it.url) return '';
   return it.kind === 'file'
     ? `<a class="${cls}" href="${esc(it.url)}" target="_blank" rel="noopener" download="${esc(it.fileName || it.title)}">${icon('download', is)}Open</a>`
     : `<a class="${cls}" href="${esc(it.url)}" target="_blank" rel="noopener noreferrer">${icon('arrow-up-right', is)}Open</a>`;
@@ -135,7 +202,10 @@ async function saveOrgFile() {
     if (item.kind === 'file') {
       if (o.local) item.url = st.file.dataUrl;
       else if (!cloudGroupsEnabled()) { setBtnLoading(btn, false, 'Share'); toast('Log in to share files.', 'error'); return; }
-      else item.url = await uploadDataUrlToStorage(`orgs/${o.code}/files/${id}-${storageSafeName(st.file.name)}`, st.file.dataUrl, st.file.name);
+      else {
+        item.path = `orgs/${o.code}/files/${id}-${storageSafeName(st.file.name)}`;
+        _orgFileLinks[item.path] = await uploadDataUrlToStorage(item.path, st.file.dataUrl, st.file.name);   // the sharer can open it right away
+      }
     }
     if (await orgWrite(o.code, { [`files.${id}`]: item })) { closeModal(); toast(`Shared “${item.title}”`); }
     else setBtnLoading(btn, false, 'Share');
@@ -153,7 +223,7 @@ function removeOrgFile(code, id, { silent = false } = {}) {
   if (!f || !isOrgOfficer(o)) return;
   const remove = async () => {
     if (!(await orgWrite(code, { [`files.${id}`]: GW_DELETE }))) return;
-    if (f.kind === 'file' && String(f.url || '').includes('firebasestorage')) fbStorage().then(s => s.refFromURL(f.url).delete()).catch(() => {});
+    if (f.kind === 'file') orgFileStorageRef(f).then(r => r?.delete()).catch(() => {});
   };
   if (silent) { remove(); return; }
   confirmDialog(`Remove “${f.title}” for everyone?`, remove, 'Remove');
